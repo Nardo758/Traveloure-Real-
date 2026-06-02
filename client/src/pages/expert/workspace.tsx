@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -234,6 +235,7 @@ function AddItemModal({ dayNumber, tripId, onClose, onItemAdded }: { dayNumber: 
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       onItemAdded();
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       onClose();
@@ -868,28 +870,35 @@ export default function ExpertWorkspace() {
               </div>
             ) : (
               <>
-                {days.map(d => (
-                  <DayCard key={d.dayNumber} day={d.dayNumber} date={`Day ${d.dayNumber}`} loc={trip?.destination || ""} onAdd={() => setAddingItemDay(d.dayNumber)} onTemplate={() => toast({ title: "Templates coming soon" })}>
-                    {d.items.map((item, idx) => (
-                      <div key={item.id}>
-                        {idx > 0 && item.startTime && <TConn mode="walk" dur="walk" />}
-                        <ARow
-                          time={item.startTime}
-                          cat={item.itemType}
-                          name={item.title}
-                          price={formatCost(item.estimatedCost)}
-                          edited={item.bookingStatus === "pending"}
-                          alts={item.itemType === "dining" || item.itemType === "food"}
-                          onEdit={() => toast({ title: "Edit coming soon", description: item.title })}
-                        />
-                      </div>
-                    ))}
-                  </DayCard>
-                ))}
+                {/* Add item button */}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                  <button
+                    onClick={() => setAddingItemDay(1)}
+                    data-testid="button-add-item-expert"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    <Plus style={{ width: 12, height: 12 }} /> Add Item
+                  </button>
+                </div>
+
+                {trip && (
+                  <PlanCard
+                    trip={{
+                      id: tripId!,
+                      destination: trip.destination,
+                      title: trip.trip_title,
+                      startDate: trip.start_date,
+                      endDate: trip.end_date,
+                      numberOfTravelers: 1,
+                    }}
+                    role="expert"
+                    stage="full"
+                  />
+                )}
 
                 {/* Budget footer */}
                 {commission && (
-                  <div style={{ background: "white", borderRadius: 10, border: `1px solid ${G[200]}`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ background: "white", borderRadius: 10, border: `1px solid ${G[200]}`, padding: "10px 14px", marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ display: "flex", gap: 20 }}>
                       {[
                         { l: "Activities", v: days.reduce((s, d) => s + d.items.filter(i => i.itemType === "activity" || i.itemType === "culture").reduce((a, i) => a + parseFloat(i.estimatedCost || "0"), 0), 0) },

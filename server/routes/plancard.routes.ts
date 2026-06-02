@@ -6,6 +6,7 @@ import {
   itineraryChanges,
   activityComments,
   transportLegs,
+  transportBookingOptions,
   itineraryComparisons,
   itineraryVariants,
   itineraryVariantItems,
@@ -44,7 +45,18 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     }
 
     if (trip.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
+      // Allow assigned experts to read the plancard
+      const expertCheck = await db.execute(sql`
+        SELECT id FROM trip_expert_advisors
+        WHERE trip_id = ${tripId}
+          AND local_expert_id = ${userId}
+          AND status IN ('pending', 'accepted')
+        LIMIT 1
+      `);
+      const isAssignedExpert = expertCheck.rows && expertCheck.rows.length > 0;
+      if (!isAssignedExpert) {
+        return res.status(403).json({ error: "Access denied" });
+      }
     }
 
     const items = await db.select().from(itineraryItems)
@@ -84,13 +96,31 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       }
     }
 
+    // Build a map from transportLegId → primary booking option for badge display
+    const legBookingMap: Record<string, { bookingSource: "platform" | "affiliate"; partnerName: string | null }> = {};
+    if (variantLegs.length > 0) {
+      const legIds = variantLegs.map((l: any) => l.id).filter(Boolean);
+      if (legIds.length > 0) {
+        const bookingOpts = await db.select().from(transportBookingOptions)
+          .where(sql`${transportBookingOptions.transportLegId} = ANY(ARRAY[${sql.join(legIds.map(id => sql`${id}`), sql`, `)}]::text[])`);
+        for (const opt of bookingOpts) {
+          if (!opt.transportLegId) continue;
+          if (legBookingMap[opt.transportLegId]) continue;
+          legBookingMap[opt.transportLegId] = {
+            bookingSource: opt.bookingType === "platform" ? "platform" : "affiliate",
+            partnerName: opt.source !== "traveloure" ? opt.source : null,
+          };
+        }
+      }
+    }
+
     const changes = await storage.getItineraryChanges(tripId, 20);
     const commentCounts = await storage.getActivityCommentCounts(tripId);
 
     const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
     const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
 
-    const days = dayNumbers.map(dayNum => {
+    let days = dayNumbers.map(dayNum => {
       const dayItems = items.filter(i => i.dayNumber === dayNum);
       const dayLegs = variantLegs.filter(l => l.dayNumber === dayNum && l.userSelectedMode !== "dismissed");
 
@@ -115,6 +145,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           cost: parseFloat(item.estimatedCost?.toString() || "0"),
           latitude: item.latitude ? parseFloat(item.latitude.toString()) : null,
           longitude: item.longitude ? parseFloat(item.longitude.toString()) : null,
+          expertNote: (item as any).notes || null,
           comments: commentCounts[item.id] || 0,
           suggestedBy: item.suggestedBy || null,
           changes: changes
@@ -134,6 +165,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           line: null,
           status: leg.userSelectedMode ? "confirmed" : "suggested",
           suggestedBy: leg.userSelectedMode ? null : "ai",
+          bookingSource: legBookingMap[leg.id]?.bookingSource ?? null,
+          partnerName: legBookingMap[leg.id]?.partnerName ?? null,
         })),
       };
     });
@@ -166,7 +199,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       starRatingDelta: toNum(rawMetrics, "starRatingDelta", "star_rating_delta"),
     };
 
-    // If no structured itinerary items, fall back to generated_itineraries activity count
+    // If no structured itinerary items, fall back to generated_itineraries full day objects
     let fallbackActivityCount = items.length;
     let fallbackDays = days.length;
     if (items.length === 0) {
@@ -174,10 +207,54 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
         where: eq(generatedItineraries.tripId, tripId),
       });
       if (genItinerary?.itineraryData) {
-        const data = genItinerary.itineraryData as { days?: Array<{ activities?: unknown[] }> };
+        const data = genItinerary.itineraryData as { days?: Array<any> };
         const genDays = data.days ?? [];
         fallbackDays = genDays.length || fallbackDays;
-        fallbackActivityCount = genDays.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
+        fallbackActivityCount = genDays.reduce((s: number, d: any) => s + (d.activities?.length ?? 0), 0);
+        // Build full day objects from the generated itinerary so PlanCard renders correctly
+        days = genDays.map((d: any, idx: number) => {
+          const dayNum: number = d.day || idx + 1;
+          const dayDate = new Date(startDate);
+          dayDate.setDate(dayDate.getDate() + dayNum - 1);
+          const dateLabel = dayDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+          const acts: any[] = d.activities || [];
+          const types: string[] = acts.map((a: any) => a.category || a.type || "activity");
+          return {
+            dayNum,
+            date: dateLabel,
+            label: generateDayLabel(types, []),
+            activities: acts.map((a: any, ai: number) => ({
+              id: a.id || `gen-${dayNum}-${ai}`,
+              time: a.time || "",
+              name: a.name || a.title || "",
+              location: a.location || a.venue || "",
+              type: a.category || a.type || "activity",
+              status: a.status || "planned",
+              cost: parseFloat(a.estimatedCost?.toString() || a.cost?.toString() || "0"),
+              latitude: a.latitude ?? null,
+              longitude: a.longitude ?? null,
+              expertNote: null,
+              comments: 0,
+              suggestedBy: null,
+              changes: [],
+            })),
+            transports: (d.transportLegs || []).map((l: any, li: number) => ({
+              id: l.id || `tleg-${dayNum}-${li}`,
+              from: l.fromName || l.from || "",
+              to: l.toName || l.to || "",
+              fromName: l.fromName || l.from || "",
+              toName: l.toName || l.to || "",
+              mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
+              duration: l.estimatedDurationMinutes || l.duration || 0,
+              cost: l.estimatedCostUsd || l.cost || 0,
+              line: null,
+              status: "suggested",
+              suggestedBy: "ai",
+              bookingSource: "platform",
+              partnerName: null,
+            })),
+          };
+        });
       }
     }
 
