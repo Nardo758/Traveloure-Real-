@@ -147,38 +147,76 @@ function ApprovalBar({ current, onSubmit, isPending }: { current: string; onSubm
   );
 }
 
-function BookingBriefModal({ provider, travelerName, onClose, onConfirm }: { provider: string; travelerName: string; onClose: () => void; onConfirm: () => void }) {
+interface TravelerProfile {
+  tripId: string;
+  tripTitle: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  numberOfTravelers: number;
+  travelerName: string;
+  travelerEmail: string | null;
+  profileImageUrl: string | null;
+}
+
+function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider: string; bookingUrl?: string; tripId: string; onClose: () => void }) {
+  const { data: profile, isLoading } = useQuery<TravelerProfile>({
+    queryKey: [`/api/trips/${tripId}/traveler-profile`],
+    enabled: !!tripId,
+  });
+
+  const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  const rows = profile ? [
+    { icon: <User style={{ width: 13, height: 13 }} />, label: "Booking name", value: profile.travelerName },
+    { icon: <Mail style={{ width: 13, height: 13 }} />, label: "Contact email", value: profile.travelerEmail || "Not on file" },
+    { icon: <MapPin style={{ width: 13, height: 13 }} />, label: "Destination", value: profile.destination },
+    { icon: <CalendarDays style={{ width: 13, height: 13 }} />, label: "Travel dates", value: `${formatDate(profile.startDate)} → ${formatDate(profile.endDate)}` },
+    { icon: <Users style={{ width: 13, height: 13 }} />, label: "Travellers", value: profile.numberOfTravelers ? `${profile.numberOfTravelers} person${profile.numberOfTravelers > 1 ? "s" : ""}` : "1 person" },
+    { icon: <CreditCard style={{ width: 13, height: 13 }} />, label: "Passport / ID", value: "Not on file" },
+  ] : [];
+
+  const handleContinue = () => {
+    if (bookingUrl) {
+      window.open(bookingUrl, "_blank", "noopener,noreferrer");
+    }
+    onClose();
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ background: "white", borderRadius: 16, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", overflow: "hidden" }}>
+      <div style={{ background: "white", borderRadius: 16, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", overflow: "hidden" }}>
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: `${P}15`, display: "flex", alignItems: "center", justifyContent: "center" }}><ShieldCheck style={{ width: 16, height: 16, color: P }} /></div>
             <div><div style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Booking Brief</div><div style={{ fontSize: 11, color: G[500] }}>Secure client details for {provider}</div></div>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: G[400], padding: 4, display: "flex" }}><X style={{ width: 18, height: 18 }} /></button>
+          <button onClick={onClose} data-testid="button-close-booking-brief" style={{ background: "none", border: "none", cursor: "pointer", color: G[400], padding: 4, display: "flex" }}><X style={{ width: 18, height: 18 }} /></button>
         </div>
         <div style={{ margin: "12px 18px 0", padding: "8px 12px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
           <Lock style={{ width: 13, height: 13, color: "#2563EB", flexShrink: 0, marginTop: 1 }} />
           <span style={{ fontSize: 11, color: "#1D4ED8", lineHeight: 1.5 }}>Booking context only. Use these details to complete your client's reservation. Do not save or share with unrelated third parties.</span>
         </div>
-        <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            { icon: <User style={{ width: 13, height: 13 }} />, label: "Booking name", value: travelerName || "Client" },
-            { icon: <CalendarDays style={{ width: 13, height: 13 }} />, label: "Trip details", value: "See trip dates in workspace" },
-          ].map((row, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: G[50], borderRadius: 8, border: `1px solid ${G[200]}` }}>
+        <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {isLoading ? (
+            <>
+              <div style={{ height: 44, background: G[100], borderRadius: 8, animation: "pulse 1.5s infinite" }} />
+              <div style={{ height: 44, background: G[100], borderRadius: 8, animation: "pulse 1.5s infinite" }} />
+              <div style={{ height: 44, background: G[100], borderRadius: 8, animation: "pulse 1.5s infinite" }} />
+            </>
+          ) : rows.map((row, i) => (
+            <div key={i} data-testid={`booking-brief-row-${row.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: G[50], borderRadius: 8, border: `1px solid ${G[200]}` }}>
               <div style={{ color: G[400], flexShrink: 0 }}>{row.icon}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{row.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>{row.value}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: row.value === "Not on file" ? G[400] : G[900] }}>{row.value}</div>
               </div>
             </div>
           ))}
         </div>
         <div style={{ padding: "14px 18px", display: "flex", gap: 8 }}>
           <button onClick={onClose} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1.5px solid ${G[200]}`, background: "white", fontSize: 13, fontWeight: 600, color: G[600], cursor: "pointer" }}>Cancel</button>
-          <button onClick={() => { onConfirm(); onClose(); }} data-testid="button-confirm-booking" style={{ flex: 2, padding: "8px", borderRadius: 8, border: "none", background: P, color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <button onClick={handleContinue} data-testid="button-confirm-booking" style={{ flex: 2, padding: "8px", borderRadius: 8, border: "none", background: P, color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <ExternalLink style={{ width: 13, height: 13 }} /> Continue to {provider}
           </button>
         </div>
@@ -294,7 +332,7 @@ export default function ExpertWorkspace() {
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [bookingBriefProvider, setBookingBriefProvider] = useState<string | null>(null);
+  const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [addingItemDay, setAddingItemDay] = useState<number | null>(null);
 
   // ── Data fetching ──
@@ -467,8 +505,8 @@ export default function ExpertWorkspace() {
 
   return (
     <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", height: "100vh", display: "flex", flexDirection: "column", background: G[50], overflow: "hidden" }}>
-      {bookingBriefProvider && (
-        <BookingBriefModal provider={bookingBriefProvider} travelerName={identityRevealed ? travelerName : `Client #${travelerCode}`} onClose={() => setBookingBriefProvider(null)} onConfirm={() => { toast({ title: "Opening " + bookingBriefProvider, description: "Use client details to complete the booking." }); }} />
+      {bookingBrief && tripId && (
+        <BookingBriefModal provider={bookingBrief.provider} bookingUrl={bookingBrief.bookingUrl} tripId={tripId} onClose={() => setBookingBrief(null)} />
       )}
       {addingItemDay !== null && tripId && (
         <AddItemModal dayNumber={addingItemDay} tripId={tripId} onClose={() => setAddingItemDay(null)} />
@@ -814,7 +852,7 @@ export default function ExpertWorkspace() {
                   <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
                   No platform providers found for this destination yet.
                   <div style={{ marginTop: 10 }}>
-                    <button onClick={() => setBookingBriefProvider("Viator")} data-testid="button-browse-viator" style={{ padding: "6px 14px", borderRadius: 7, background: P, color: "white", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Browse Viator</button>
+                    <button onClick={() => setBookingBrief({ provider: "Viator", bookingUrl: "https://www.viator.com" })} data-testid="button-browse-viator" style={{ padding: "6px 14px", borderRadius: 7, background: P, color: "white", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Browse Viator</button>
                   </div>
                 </div>
               )}
@@ -891,7 +929,7 @@ export default function ExpertWorkspace() {
                       {p.location && <div style={{ fontSize: 11, color: G[400], marginBottom: 4 }}>{p.location}</div>}
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {p.price && <span style={{ fontSize: 11, color: G[600], fontWeight: 600 }}>${p.price}</span>}
-                        <button onClick={() => setBookingBriefProvider(p.serviceName)} data-testid={`button-book-provider-${p.id}`} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                        <button onClick={() => setBookingBrief({ provider: p.serviceName, bookingUrl: p.websiteUrl || p.bookingUrl })} data-testid={`button-book-provider-${p.id}`} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                           <CheckCircle style={{ width: 10, height: 10 }} /> Book
                         </button>
                       </div>
@@ -916,11 +954,11 @@ export default function ExpertWorkspace() {
               </div>
               <p style={{ fontSize: 11, color: G[500], marginBottom: 12 }}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client.</p>
               {[
-                { n: "Booking.com", c: "Hotels", e: "🏨", active: true, note: "Use for hotel reservations — enter client details from Booking Brief" },
-                { n: "Viator", c: "Activities & Experiences", e: "🎭", active: true, note: "Best for tours, tickets & experiences — client name required at checkout" },
-                { n: "12Go Asia", c: "Ground Transport", e: "🚅", active: true, note: "Trains, buses, ferries — great for multi-city transport legs" },
-                { n: "SafetyWing", c: "Travel Insurance", e: "🛡️", active: false, note: "Connect to offer travel insurance add-ons" },
-                { n: "Airalo", c: "eSIM Data", e: "📱", active: false, note: "Connect to offer destination eSIM before departure" },
+                { n: "Booking.com", c: "Hotels", e: "🏨", active: true, url: "https://www.booking.com", note: "Use for hotel reservations — enter client details from Booking Brief" },
+                { n: "Viator", c: "Activities & Experiences", e: "🎭", active: true, url: "https://www.viator.com", note: "Best for tours, tickets & experiences — client name required at checkout" },
+                { n: "12Go Asia", c: "Ground Transport", e: "🚅", active: true, url: "https://12go.asia", note: "Trains, buses, ferries — great for multi-city transport legs" },
+                { n: "SafetyWing", c: "Travel Insurance", e: "🛡️", active: false, url: "", note: "Connect to offer travel insurance add-ons" },
+                { n: "Airalo", c: "eSIM Data", e: "📱", active: false, url: "", note: "Connect to offer destination eSIM before departure" },
               ].map((aff, i) => (
                 <div key={i} data-testid={`card-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ padding: "10px 11px", border: `1px solid ${aff.active ? G[200] : G[100]}`, borderRadius: 10, marginBottom: 8, background: "white" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: aff.active ? 6 : 0 }}>
@@ -932,7 +970,7 @@ export default function ExpertWorkspace() {
                       </div>
                       <div style={{ fontSize: 11, color: G[400] }}>{aff.c}</div>
                     </div>
-                    <button onClick={() => aff.active ? setBookingBriefProvider(aff.n) : toast({ title: "Coming soon", description: `${aff.n} integration is in progress.` })} data-testid={`button-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: aff.active ? "white" : P, color: aff.active ? P : "white", border: `1.5px solid ${P}`, cursor: "pointer" }}>
+                    <button onClick={() => aff.active ? setBookingBrief({ provider: aff.n, bookingUrl: aff.url }) : toast({ title: "Coming soon", description: `${aff.n} integration is in progress.` })} data-testid={`button-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: aff.active ? "white" : P, color: aff.active ? P : "white", border: `1.5px solid ${P}`, cursor: "pointer" }}>
                       {aff.active ? "Open →" : "Connect →"}
                     </button>
                   </div>
