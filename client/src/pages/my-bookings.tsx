@@ -34,8 +34,10 @@ import {
   Search,
   ThumbsUp,
   ThumbsDown,
-  AlertCircle
+  AlertCircle,
+  ListChecks,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -51,6 +53,7 @@ interface VisaBookingMetadata {
   visaApplicationStatus?: "pending" | "submitted" | "in_review" | "approved" | "rejected";
   visaStatusNotes?: string;
   visaStatusUpdatedAt?: string;
+  documentChecklist?: Array<{ label: string; checked: boolean }>;
 }
 
 interface Booking {
@@ -105,7 +108,8 @@ function isVisaBooking(booking: Booking): boolean {
   return !!(meta && (meta.passportNationality || meta.destinationCountry || meta.visaType || meta.visaApplicationStatus));
 }
 
-function VisaStatusTimeline({ metadata }: { metadata: VisaBookingMetadata }) {
+function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMetadata; bookingId: string }) {
+  const { toast } = useToast();
   const currentStatus = metadata.visaApplicationStatus || "pending";
   const isRejected = currentStatus === "rejected";
 
@@ -114,6 +118,28 @@ function VisaStatusTimeline({ metadata }: { metadata: VisaBookingMetadata }) {
     : VISA_STATUS_STEPS.filter(s => s.key !== "rejected");
 
   const currentIdx = stepsToShow.findIndex(s => s.key === currentStatus);
+
+  const checklist = metadata.documentChecklist || [];
+
+  const checklistMutation = useMutation({
+    mutationFn: (updatedChecklist: Array<{ label: string; checked: boolean }>) =>
+      apiRequest("PATCH", `/api/service-bookings/${bookingId}/document-checklist`, {
+        documentChecklist: updatedChecklist,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not save checklist progress.", variant: "destructive" });
+    },
+  });
+
+  const handleToggleItem = (idx: number, checked: boolean) => {
+    const updated = checklist.map((item, i) =>
+      i === idx ? { ...item, checked } : item
+    );
+    checklistMutation.mutate(updated);
+  };
 
   return (
     <div className="mt-4 border rounded-lg p-4 bg-muted/30" data-testid="visa-status-timeline">
@@ -185,6 +211,38 @@ function VisaStatusTimeline({ metadata }: { metadata: VisaBookingMetadata }) {
       <p className="text-xs text-muted-foreground mt-2 text-center">
         {stepsToShow.find(s => s.key === currentStatus)?.description}
       </p>
+
+      {checklist.length > 0 && (
+        <div className="mt-4 border-t pt-3" data-testid="document-checklist">
+          <div className="flex items-center gap-1.5 mb-2">
+            <ListChecks className="w-3.5 h-3.5 text-[#FF385C]" />
+            <span className="text-xs font-semibold">Required Documents</span>
+            <span className="text-xs text-muted-foreground ml-auto">
+              {checklist.filter(d => d.checked).length}/{checklist.length} ready
+            </span>
+          </div>
+          <ul className="space-y-1.5" data-testid="document-checklist-items">
+            {checklist.map((item, idx) => (
+              <li key={idx} className="flex items-center gap-2" data-testid={`checklist-item-${idx}`}>
+                <Checkbox
+                  id={`doc-item-${bookingId}-${idx}`}
+                  checked={item.checked}
+                  onCheckedChange={(checked) => handleToggleItem(idx, Boolean(checked))}
+                  disabled={checklistMutation.isPending}
+                  data-testid={`checkbox-doc-item-${idx}`}
+                />
+                <label
+                  htmlFor={`doc-item-${bookingId}-${idx}`}
+                  className={`text-xs cursor-pointer select-none ${item.checked ? "line-through text-muted-foreground" : "text-foreground"}`}
+                  data-testid={`label-doc-item-${idx}`}
+                >
+                  {item.label}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -367,7 +425,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             </div>
 
             {showVisaTimeline && booking.bookingMetadata && (
-              <VisaStatusTimeline metadata={booking.bookingMetadata} />
+              <VisaStatusTimeline metadata={booking.bookingMetadata} bookingId={booking.id} />
             )}
           </div>
           

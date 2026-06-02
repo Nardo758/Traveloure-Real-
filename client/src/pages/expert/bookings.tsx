@@ -34,7 +34,11 @@ import {
   ThumbsUp,
   ThumbsDown,
   Loader2,
+  Plus,
+  X,
+  ListChecks,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -50,6 +54,7 @@ interface VisaBookingMetadata {
   visaApplicationStatus?: "pending" | "submitted" | "in_review" | "approved" | "rejected";
   visaStatusNotes?: string;
   visaStatusUpdatedAt?: string;
+  documentChecklist?: Array<{ label: string; checked: boolean }>;
 }
 
 interface Booking {
@@ -100,17 +105,37 @@ function VisaStatusDialog({
   const { toast } = useToast();
   const [selectedStatus, setSelectedStatus] = useState<string>("pending");
   const [notes, setNotes] = useState("");
+  const [documentItems, setDocumentItems] = useState<string[]>([]);
+  const [newDocItem, setNewDocItem] = useState("");
 
   useEffect(() => {
     if (open && booking) {
       setSelectedStatus(booking.bookingMetadata?.visaApplicationStatus || "pending");
       setNotes(booking.bookingMetadata?.visaStatusNotes || "");
+      setDocumentItems(
+        (booking.bookingMetadata?.documentChecklist || []).map((d) => d.label)
+      );
+      setNewDocItem("");
     }
   }, [open, booking]);
 
   const mutation = useMutation({
-    mutationFn: ({ id, visaApplicationStatus, notes }: { id: string; visaApplicationStatus: string; notes: string }) =>
-      apiRequest("PATCH", `/api/service-bookings/${id}/visa-status`, { visaApplicationStatus, notes }),
+    mutationFn: ({
+      id,
+      visaApplicationStatus,
+      notes,
+      documentChecklist,
+    }: {
+      id: string;
+      visaApplicationStatus: string;
+      notes: string;
+      documentChecklist: Array<{ label: string; checked: boolean }>;
+    }) =>
+      apiRequest("PATCH", `/api/service-bookings/${id}/visa-status`, {
+        visaApplicationStatus,
+        notes,
+        documentChecklist,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
       toast({ title: "Visa status updated", description: "The traveler will see the updated status." });
@@ -121,14 +146,30 @@ function VisaStatusDialog({
     },
   });
 
+  const handleAddDocItem = () => {
+    const trimmed = newDocItem.trim();
+    if (!trimmed) return;
+    setDocumentItems((prev) => [...prev, trimmed]);
+    setNewDocItem("");
+  };
+
+  const handleRemoveDocItem = (idx: number) => {
+    setDocumentItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSave = () => {
     if (!booking) return;
-    mutation.mutate({ id: booking.id, visaApplicationStatus: selectedStatus, notes });
+    const existingChecklist = booking.bookingMetadata?.documentChecklist || [];
+    const documentChecklist = documentItems.map((label) => {
+      const existing = existingChecklist.find((d) => d.label === label);
+      return { label, checked: existing?.checked ?? false };
+    });
+    mutation.mutate({ id: booking.id, visaApplicationStatus: selectedStatus, notes, documentChecklist });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle data-testid="text-visa-dialog-title">Update Visa Application Status</DialogTitle>
           <DialogDescription>
@@ -171,6 +212,57 @@ function VisaStatusDialog({
               rows={3}
               data-testid="input-visa-notes"
             />
+          </div>
+
+          <div>
+            <Label className="mb-2 flex items-center gap-1.5 block">
+              <ListChecks className="w-4 h-4" />
+              Required Documents Checklist
+            </Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Add documents the traveler must gather. They can check them off as they prepare.
+            </p>
+            {documentItems.length > 0 && (
+              <ul className="mb-2 space-y-1" data-testid="document-checklist-items">
+                {documentItems.map((item, idx) => (
+                  <li
+                    key={idx}
+                    className="flex items-center gap-2 text-sm bg-muted/40 rounded px-2 py-1"
+                    data-testid={`checklist-item-${idx}`}
+                  >
+                    <span className="flex-1">{item}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveDocItem(idx)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      data-testid={`button-remove-doc-item-${idx}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={newDocItem}
+                onChange={(e) => setNewDocItem(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDocItem(); } }}
+                placeholder="e.g. 2 passport-size photos"
+                className="text-sm"
+                data-testid="input-new-doc-item"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddDocItem}
+                disabled={!newDocItem.trim()}
+                data-testid="button-add-doc-item"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
 

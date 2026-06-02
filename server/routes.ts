@@ -4732,18 +4732,83 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
       const VALID_VISA_STATUSES = ["pending", "submitted", "in_review", "approved", "rejected"];
-      const { visaApplicationStatus, notes } = req.body;
+      const { visaApplicationStatus, notes, documentChecklist } = req.body;
       if (!VALID_VISA_STATUSES.includes(visaApplicationStatus)) {
         return res.status(400).json({ message: "Invalid visa application status" });
       }
       const metadata: Record<string, any> = { visaApplicationStatus };
       if (notes !== undefined) metadata.visaStatusNotes = notes;
+      if (documentChecklist !== undefined) {
+        if (!Array.isArray(documentChecklist)) {
+          return res.status(400).json({ message: "documentChecklist must be an array" });
+        }
+        metadata.documentChecklist = documentChecklist.map((item: any) => ({
+          label: String(item.label || ""),
+          checked: Boolean(item.checked),
+        }));
+      }
       metadata.visaStatusUpdatedAt = new Date().toISOString();
       const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+
+      // Send notification to the traveler about the visa status change
+      try {
+        const service = await storage.getProviderServiceById(booking.serviceId);
+        const serviceName = service?.title || "your visa application";
+        const statusMessages: Record<string, string> = {
+          pending: `Your visa application for ${serviceName} is being prepared.`,
+          submitted: `Your visa application for ${serviceName} has been submitted to the embassy.`,
+          in_review: `Your visa application for ${serviceName} is currently under review.`,
+          approved: `Great news! Your visa application for ${serviceName} has been approved.`,
+          rejected: `Your visa application for ${serviceName} has been rejected. Please contact your expert for next steps.`,
+        };
+        const statusTitles: Record<string, string> = {
+          pending: "Visa Application: Pending",
+          submitted: "Visa Application: Submitted",
+          in_review: "Visa Application: Under Review",
+          approved: "Visa Application: Approved",
+          rejected: "Visa Application: Rejected",
+        };
+        await storage.createNotification({
+          userId: booking.travelerId,
+          type: "visa_status_update",
+          title: statusTitles[visaApplicationStatus] || "Visa Application Update",
+          message: statusMessages[visaApplicationStatus] || `Your visa application status has been updated to: ${visaApplicationStatus}.`,
+          relatedId: booking.id,
+          relatedType: "booking",
+          data: { bookingId: booking.id, visaApplicationStatus, serviceName: service?.title },
+        });
+      } catch (notifErr) {
+        console.error("Failed to create visa status notification:", notifErr);
+      }
+
       res.json(updated);
     } catch (err) {
       console.error("Visa status update error:", err);
       res.status(500).json({ message: "Failed to update visa status" });
+    }
+  });
+
+  // Update traveler's document checklist checked state
+  app.patch("/api/service-bookings/:id/document-checklist", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const { documentChecklist } = req.body;
+      if (!Array.isArray(documentChecklist)) {
+        return res.status(400).json({ message: "documentChecklist must be an array" });
+      }
+      const sanitized = documentChecklist.map((item: any) => ({
+        label: String(item.label || ""),
+        checked: Boolean(item.checked),
+      }));
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, { documentChecklist: sanitized });
+      res.json(updated);
+    } catch (err) {
+      console.error("Document checklist update error:", err);
+      res.status(500).json({ message: "Failed to update document checklist" });
     }
   });
 
