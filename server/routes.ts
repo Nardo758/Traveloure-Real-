@@ -1757,6 +1757,27 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Location View aggregation orchestrator (v2 spec §3, §5, §10) ===
+  // Thin routing layer that fans out to existing TravelPulse / enriched /
+  // recommendation / events services and returns one shaped payload with
+  // per-section { data, error } envelopes for graceful degradation.
+  app.get("/api/discover/location/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const country = typeof req.query.country === "string" ? req.query.country : null;
+      const month = req.query.month ? Number(req.query.month) : undefined;
+      const year = req.query.year ? Number(req.query.year) : undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+
+      const { locationViewService } = await import("./services/location-view.service");
+      const payload = await locationViewService.getLocationView(city, country, { month, year, limit });
+      res.json(payload);
+    } catch (err: any) {
+      console.error("Error building location view:", err);
+      res.status(500).json({ message: "Failed to build location view", error: err?.message });
+    }
+  });
+
   // === Service Categories Routes ===
 
   // Get all categories
