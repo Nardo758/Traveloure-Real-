@@ -100,6 +100,7 @@ import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportC
 import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
 import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
+import { CuratedContentSection } from "@/components/curated-content-section";
 
 interface VenueResult {
   id: string;
@@ -3113,6 +3114,16 @@ export default function ExperienceTemplatePage() {
                 />
               </div>
             )
+          )}
+
+          {/* Recommended by Traveloure — content hub items matched to this tab + destination */}
+          {destination && activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
+            <CuratedContentSection
+              destination={destination}
+              tab={activeTab}
+              label="Recommended by Traveloure"
+              className="mb-6"
+            />
           )}
 
           {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (

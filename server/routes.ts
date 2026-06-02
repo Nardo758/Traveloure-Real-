@@ -35,7 +35,7 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
@@ -59,7 +59,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -11534,6 +11534,138 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json({ product });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get product", error: error.message });
+    }
+  });
+
+  // Content Hub Discover endpoint — returns curated affiliate + registry items matched to a destination
+  app.get("/api/content/discover", async (req, res) => {
+    try {
+      const destination = (req.query.destination as string || "").trim();
+      const tabParam = (req.query.tab as string || "").trim();
+      const contentTypesParam = (req.query.content_types as string || "").trim();
+
+      if (!destination) {
+        return res.json({ items: [], total: 0 });
+      }
+
+      // Extract city and country from destination string "City, Country"
+      const parts = destination.split(",");
+      const city = parts[0].trim();
+      const country = parts.length > 1 ? parts[parts.length - 1].trim() : city;
+
+      // Tab → content type filter for content_registry
+      const TAB_CONTENT_TYPE_MAP: Record<string, string[]> = {
+        venues: ["experience", "template", "service"],
+        venue: ["experience", "template", "service"],
+        dining: ["service", "experience"],
+        accommodations: ["service"],
+        "guest-accommodations": ["service"],
+        activities: ["experience", "template"],
+        photography: ["service"],
+        transportation: ["service"],
+        entertainment: ["experience"],
+        wellness: ["service", "experience"],
+        "spa-wellness": ["service", "experience"],
+        shopping: ["experience"],
+        nightlife: ["experience"],
+        sports: ["experience"],
+        vendors: ["service"],
+        "team-activities": ["experience"],
+      };
+
+      const allowedContentTypes = tabParam && TAB_CONTENT_TYPE_MAP[tabParam]
+        ? TAB_CONTENT_TYPE_MAP[tabParam]
+        : contentTypesParam
+          ? contentTypesParam.split(",").map(t => t.trim()).filter(Boolean)
+          : ["experience", "template", "service", "media", "other"];
+
+      // Query affiliate_products matched to destination
+      const affiliateItems = await db
+        .select()
+        .from(affiliateProducts)
+        .where(
+          and(
+            eq(affiliateProducts.isActive, true),
+            or(
+              ilike(affiliateProducts.city, `%${city}%`),
+              ilike(affiliateProducts.country, `%${country}%`),
+              ilike(affiliateProducts.location, `%${city}%`)
+            )
+          )
+        )
+        .limit(20);
+
+      // Query content_registry for published items with location metadata matching destination
+      const registryItems = await db
+        .select()
+        .from(contentRegistry)
+        .where(
+          and(
+            eq(contentRegistry.status, "published"),
+            sql`(
+              ${contentRegistry.metadata}->>'location' ILIKE ${'%' + city + '%'}
+              OR ${contentRegistry.metadata}->>'city' ILIKE ${'%' + city + '%'}
+              OR ${contentRegistry.metadata}->>'country' ILIKE ${'%' + country + '%'}
+              OR ${contentRegistry.metadata}->>'destination' ILIKE ${'%' + city + '%'}
+            )`,
+            inArray(contentRegistry.contentType, allowedContentTypes as any)
+          )
+        )
+        .limit(20);
+
+      // Normalize affiliate products into unified card shape
+      const affiliateCards = affiliateItems.map((p: any) => ({
+        id: `affiliate-${p.id}`,
+        sourceId: p.id,
+        type: "affiliate" as const,
+        contentCategory: p.category || "experience",
+        title: p.name,
+        description: p.shortDescription || p.description || "",
+        cover_image: p.imageUrl || null,
+        price: p.price ? String(p.price) : null,
+        price_display: p.price
+          ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}`
+          : null,
+        affiliate_url: p.affiliateUrl || p.productUrl || null,
+        source: "Affiliate Partner",
+        rating: p.rating ? parseFloat(String(p.rating)) : null,
+        city: p.city || null,
+        country: p.country || null,
+        duration: p.duration || null,
+        highlights: p.highlights || [],
+        metadata: p.metadata || {},
+      }));
+
+      // Normalize content_registry items into unified card shape
+      const registryCards = registryItems.map((r: any) => {
+        const meta = r.metadata || {};
+        return {
+          id: `registry-${r.id}`,
+          sourceId: r.id,
+          type: "curated" as const,
+          contentCategory: r.contentType,
+          title: r.title || "Curated Experience",
+          description: r.description || "",
+          cover_image: meta.cover_image || meta.imageUrl || meta.image_url || null,
+          price: meta.price ? String(meta.price) : null,
+          price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
+          affiliate_url: meta.affiliate_url || null,
+          source: "Traveloure Curated",
+          rating: meta.rating ? parseFloat(String(meta.rating)) : null,
+          city: meta.city || meta.location || city,
+          country: meta.country || country,
+          duration: meta.duration || null,
+          highlights: meta.highlights || [],
+          metadata: meta,
+        };
+      });
+
+      const allItems = [...affiliateCards, ...registryCards];
+
+      res.json({ items: allItems, total: allItems.length });
+    } catch (err: any) {
+      console.error("Content discover error:", err);
+      res.status(500).json({ message: "Failed to fetch curated content", items: [], total: 0 });
     }
   });
 
