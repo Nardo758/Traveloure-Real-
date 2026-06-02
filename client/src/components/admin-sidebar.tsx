@@ -1,4 +1,18 @@
 import { Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarHeader,
+  SidebarFooter,
+} from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   Users,
@@ -11,9 +25,6 @@ import {
   Bell,
   Settings,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
   FolderKanban,
   Database,
   Link2,
@@ -25,40 +36,57 @@ import {
   PlugZap,
   Package,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
-  { icon: Users, label: "Users", href: "/admin/users" },
-  { icon: UserCheck, label: "Experts", href: "/admin/experts" },
-  { icon: Building2, label: "Providers", href: "/admin/providers" },
-  { icon: Link2, label: "Affiliates", href: "/admin/affiliate-partners" },
-  { icon: FileText, label: "Content", href: "/admin/content-tracking" },
-  { icon: Package, label: "Services", href: "/admin/services" },
-  { icon: FolderKanban, label: "Categories", href: "/admin/categories" },
-  { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
-  { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },
-  { icon: Banknote, label: "Payouts", href: "/admin/payouts" },
-  { icon: Percent, label: "Fee Config", href: "/admin/fee-config" },
-  { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
-  { icon: MapPin, label: "Tourism", href: "/admin/tourism-analytics" },
-  { icon: Cpu, label: "AI Costs", href: "/admin/ai-costs" },
-  { icon: PlugZap, label: "Platform APIs", href: "/admin/platform-providers" },
-  { icon: Database, label: "Data", href: "/admin/data" },
-  { icon: Search, label: "Search", href: "/admin/search" },
-  { icon: Bell, label: "Notifications", href: "/admin/notifications" },
-];
-
-const bottomNavItems = [
-  { icon: Settings, label: "System", href: "/admin/system" },
+const menuGroups = [
+  {
+    label: "Overview",
+    items: [
+      { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+      { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { title: "Tourism", href: "/admin/tourism-analytics", icon: MapPin },
+      { title: "Search", href: "/admin/search", icon: Search },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { title: "Users", href: "/admin/users", icon: Users },
+      { title: "Experts", href: "/admin/experts", icon: UserCheck },
+      { title: "Providers", href: "/admin/providers", icon: Building2 },
+    ],
+  },
+  {
+    label: "Catalog",
+    items: [
+      { title: "Services", href: "/admin/services", icon: Package },
+      { title: "Categories", href: "/admin/categories", icon: FolderKanban },
+      { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
+      { title: "Content", href: "/admin/content-tracking", icon: FileText },
+      { title: "Plans", href: "/admin/plans", icon: ClipboardList },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
+      { title: "Revenue", href: "/admin/revenue", icon: DollarSign },
+      { title: "Payouts", href: "/admin/payouts", icon: Banknote },
+      { title: "Fee Config", href: "/admin/fee-config", icon: Percent },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
+      { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
+      { title: "Data", href: "/admin/data", icon: Database },
+      { title: "Notifications", href: "/admin/notifications", icon: Bell },
+      { title: "Settings", href: "/admin/system", icon: Settings },
+    ],
+  },
 ];
 
 export function AdminSidebar() {
   const [location] = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
   const { user } = useAuth();
 
   const handleLogout = () => {
@@ -66,111 +94,112 @@ export function AdminSidebar() {
   };
 
   const initials = user
-    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "AD"
-    : "AD";
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "A"
+    : "A";
 
   const displayName = user
-    ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Admin User"
-    : "Admin User";
+    ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Admin"
+    : "Admin";
 
   return (
-    <aside
-      className={`h-screen bg-white border-r border-[#E8E8E2] flex flex-col transition-all duration-300 ${
-        collapsed ? "w-16" : "w-56"
-      }`}
-      data-testid="admin-sidebar"
-    >
-      {/* Header */}
-      <div className="p-4 border-b border-[#E8E8E2] flex items-center justify-between">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#1A1A18] rounded-lg flex items-center justify-center">
-              <Shield className="w-4 h-4 text-white" />
+    <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
+      <SidebarHeader
+        className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3"
+        style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
+      >
+        <Link href="/" className="flex items-center gap-2.5" data-testid="link-admin-logo">
+          <div
+            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "#E85D55" }}
+          >
+            <span className="text-white text-[16px] font-bold">T</span>
+          </div>
+          <span
+            className="text-[16px] font-semibold group-data-[collapsible=icon]:hidden"
+            style={{ color: "#1A1A18", letterSpacing: -0.3 }}
+          >
+            Traveloure
+          </span>
+        </Link>
+      </SidebarHeader>
+
+      <SidebarContent className="px-2.5 py-3 group-data-[collapsible=icon]:px-1">
+        {menuGroups.map((group) => (
+          <SidebarGroup key={group.label} className="mb-3 p-0">
+            <SidebarGroupLabel
+              className="text-[10px] font-semibold uppercase tracking-[1.2px] px-2.5 mb-1 h-auto group-data-[collapsible=icon]:hidden"
+              style={{ color: "#AEAEA6" }}
+            >
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const isActive =
+                    location === item.href ||
+                    (item.href !== "/admin/dashboard" && location.startsWith(item.href));
+
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={item.title}
+                        className={
+                          isActive
+                            ? "bg-[rgba(232,85,85,0.08)] text-[#E85D55] font-semibold"
+                            : "text-[#7A7A72] hover:text-[#1A1A18] hover:bg-[#F3F3EE]"
+                        }
+                      >
+                        <Link
+                          href={item.href}
+                          data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
+                          <span className="text-[13px]">{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+
+      <SidebarFooter
+        className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5"
+        style={{ borderTop: "1px solid #E8E8E2" }}
+      >
+        {user && (
+          <div className="flex items-center gap-2.5 mb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mb-0">
+            <div
+              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-semibold text-white flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #E85D55, #1E3A5F)" }}
+            >
+              {initials}
             </div>
-            <span className="font-semibold text-[#1A1A18]">Admin</span>
+            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+              <p className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
+                {displayName}
+              </p>
+              <p className="text-[11px] truncate" style={{ color: "#7A7A72" }}>
+                {user.email}
+              </p>
+            </div>
           </div>
         )}
         <Button
           variant="ghost"
-          size="icon"
-          onClick={() => setCollapsed(!collapsed)}
-          className={collapsed ? "mx-auto" : ""}
-          data-testid="button-toggle-sidebar"
+          className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          onClick={handleLogout}
+          data-testid="button-admin-logout"
         >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          <LogOut className="w-4 h-4 mr-2 group-data-[collapsible=icon]:mr-0" />
+          <span className="group-data-[collapsible=icon]:hidden">Logout</span>
         </Button>
-      </div>
-
-      {/* Admin Info */}
-      {!collapsed && (
-        <div className="p-4 border-b border-[#E8E8E2]">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="bg-[#1A1A18] text-white">{initials}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-[#1A1A18] truncate">{displayName}</p>
-              <p className="text-xs text-[#7A7A72]">Platform Administrator</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Navigation */}
-      <nav className="flex-1 p-2 overflow-y-auto">
-        <div className="space-y-0.5">
-          {navItems.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link key={item.href} href={item.href}>
-                <div
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    isActive
-                      ? "bg-[#1A1A18] text-white"
-                      : "text-[#1A1A18] hover:bg-[#F3F3EE]"
-                  } ${collapsed ? "justify-center" : ""}`}
-                  data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
-                >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
-
-      {/* Bottom Navigation */}
-      <div className="p-2 border-t border-[#E8E8E2]">
-        <div className="space-y-0.5">
-          {bottomNavItems.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link key={item.href} href={item.href}>
-                <div
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    isActive
-                      ? "bg-[#1A1A18] text-white"
-                      : "text-[#1A1A18] hover:bg-[#F3F3EE]"
-                  } ${collapsed ? "justify-center" : ""}`}
-                  data-testid={`nav-${item.label.toLowerCase()}`}
-                >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
-                </div>
-              </Link>
-            );
-          })}
-          <button
-            onClick={handleLogout}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors text-[#1A1A18] hover:bg-[#F3F3EE] ${collapsed ? "justify-center" : ""}`}
-            data-testid="button-logout"
-          >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span className="text-sm font-medium">Logout</span>}
-          </button>
-        </div>
-      </div>
-    </aside>
+      </SidebarFooter>
+    </Sidebar>
   );
 }

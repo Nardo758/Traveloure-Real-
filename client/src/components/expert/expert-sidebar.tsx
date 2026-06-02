@@ -12,7 +12,6 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Home,
@@ -25,97 +24,117 @@ import {
   BarChart3,
   User,
   LogOut,
-  Compass,
-  PlusSquare,
-  TrendingUp,
-  Award,
-  FileText,
-  Camera,
-  Lightbulb,
   Palette,
   Settings,
   Link2,
 } from "lucide-react";
 
-const menuGroups = [
-  {
-    label: "WORK",
-    items: [
-      { title: "Dashboard", href: "/expert/dashboard", icon: Home },
-      { title: "Bookings", href: "/expert/bookings", icon: Calendar },
-      { title: "Clients", href: "/expert/clients", icon: Users },
-      { title: "Messages", href: "/expert/messages", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "BUSINESS",
-    items: [
-      { title: "Services", href: "/expert/services", icon: Briefcase },
-      { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
-      { title: "Content Studio", href: "/expert/content-studio", icon: Palette },
-      { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
-      { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
-    ],
-  },
-  {
-    label: "ACCOUNT",
-    items: [
-      { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
-      { title: "Profile", href: "/expert/profile", icon: User },
-      { title: "Settings", href: "/expert/settings", icon: Settings },
-    ],
-  },
-];
+function buildMenuGroups(expertType?: string | null) {
+  const isEventPlanner = expertType === "event_planner";
+  const isEA = expertType === "executive_assistant";
+
+  return [
+    {
+      label: "Work",
+      items: [
+        { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+        { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
+        { title: isEA ? "Executives" : "Clients", href: "/expert/clients", icon: Users },
+        { title: "Messages", href: "/expert/messages", icon: MessageSquare },
+      ],
+    },
+    {
+      label: "Business",
+      items: [
+        { title: isEventPlanner ? "Packages" : "Services", href: "/expert/services", icon: Briefcase },
+        { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
+        { title: isEventPlanner ? "Promo Content" : "Content Studio", href: "/expert/content-studio", icon: Palette },
+        { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
+        { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
+      ],
+    },
+    {
+      label: "Account",
+      items: [
+        { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
+        { title: "Profile", href: "/expert/profile", icon: User },
+        { title: "Settings", href: "/expert/settings", icon: Settings },
+      ],
+    },
+  ];
+}
+
+const roleLabel: Record<string, string> = {
+  travel_expert: "Travel Expert",
+  local_expert: "Local Expert",
+  event_planner: "Event Planner",
+  executive_assistant: "Executive Assistant",
+  expert: "Expert",
+};
 
 export function ExpertSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const menuGroups = buildMenuGroups(user?.role);
 
-  const userInitials = user
-    ? `${user.firstName?.[0] || ""}${user.lastName?.[0] || ""}`.toUpperCase() || "EX"
-    : "EX";
+  const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "E";
 
   return (
-    <Sidebar className="border-r border-border">
-      <SidebarHeader className="p-4 border-b border-border">
-        <Link href="/" data-testid="link-expert-logo">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-              <Compass className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <div>
-              <span className="font-bold text-lg text-foreground">Traveloure</span>
-              <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-                EXPERT
-              </span>
-            </div>
+    <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
+      <SidebarHeader
+        className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3"
+        style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
+      >
+        <Link href="/" className="flex items-center gap-2.5" data-testid="link-expert-logo">
+          <div
+            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "#E85D55" }}
+          >
+            <span className="text-white text-[16px] font-bold">T</span>
           </div>
+          <span
+            className="text-[16px] font-semibold group-data-[collapsible=icon]:hidden"
+            style={{ color: "#1A1A18", letterSpacing: -0.3 }}
+          >
+            Traveloure
+          </span>
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-3 py-4">
+      <SidebarContent className="px-2.5 py-3 group-data-[collapsible=icon]:px-1">
         {menuGroups.map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 mb-2">
+          <SidebarGroup key={group.label} className="mb-3 p-0">
+            <SidebarGroupLabel
+              className="text-[10px] font-semibold uppercase tracking-[1.2px] px-2.5 mb-1 h-auto group-data-[collapsible=icon]:hidden"
+              style={{ color: "#AEAEA6" }}
+            >
               {group.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  const isActive = location === item.href ||
+                  const isActive =
+                    location === item.href ||
                     (item.href !== "/expert/dashboard" && location.startsWith(item.href));
+
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
+                        tooltip={item.title}
+                        className={
+                          isActive
+                            ? "bg-[rgba(232,85,85,0.08)] text-[#E85D55] font-semibold"
+                            : "text-[#7A7A72] hover:text-[#1A1A18] hover:bg-[#F3F3EE]"
+                        }
                       >
                         <Link
                           href={item.href}
                           data-testid={`link-expert-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                         >
-                          <item.icon className="w-5 h-5" />
-                          <span>{item.title}</span>
+                          <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
+                          <span className="text-[13px]">{item.title}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -127,29 +146,36 @@ export function ExpertSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-border">
-        <div className="flex items-center gap-3 mb-3">
-          <Avatar className="h-10 w-10 border-2 border-primary/20">
-            <AvatarImage src={user?.profileImageUrl || undefined} />
-            <AvatarFallback className="bg-primary/10 text-primary font-medium">
-              {userInitials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground truncate">
-              {user?.firstName} {user?.lastName}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">Travel Expert</p>
+      <SidebarFooter
+        className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5"
+        style={{ borderTop: "1px solid #E8E8E2" }}
+      >
+        {user && (
+          <div className="flex items-center gap-2.5 mb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mb-0">
+            <div
+              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-semibold text-white flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #E85D55, #1E3A5F)" }}
+            >
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+              <p className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
+                {user.firstName} {user.lastName}
+              </p>
+              <p className="text-[11px] truncate" style={{ color: "#E85D55" }}>
+                {roleLabel[user.role ?? ""] ?? "Expert"}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
         <Button
           variant="ghost"
-          className="w-full justify-start gap-2 text-destructive"
+          className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           onClick={() => logout()}
           data-testid="button-expert-logout"
         >
-          <LogOut className="w-4 h-4" />
-          <span>Logout</span>
+          <LogOut className="w-4 h-4 mr-2 group-data-[collapsible=icon]:mr-0" />
+          <span className="group-data-[collapsible=icon]:hidden">Logout</span>
         </Button>
       </SidebarFooter>
     </Sidebar>
