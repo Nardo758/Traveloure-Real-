@@ -138,10 +138,33 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       };
     });
 
-    const metricsMap: Record<string, string> = {};
-    for (const m of variantMetrics) {
-      metricsMap[m.metricKey] = m.metricValue;
+    function toNum(raw: Record<string, string>, ...keys: string[]): number | undefined {
+      for (const k of keys) {
+        const v = raw[k];
+        if (v != null) {
+          const n = parseFloat(v);
+          if (!isNaN(n)) return n;
+        }
+      }
+      return undefined;
     }
+
+    const rawMetrics: Record<string, string> = {};
+    for (const m of variantMetrics) {
+      rawMetrics[m.metricKey] = m.metricValue;
+    }
+
+    const metricsMap = {
+      traveloureScore: toNum(rawMetrics, "traveloureScore", "traveloure_score"),
+      optimizationScore: toNum(rawMetrics, "optimizationScore", "optimization_score"),
+      totalCost: toNum(rawMetrics, "totalCost", "total_cost"),
+      perPersonCost: toNum(rawMetrics, "perPersonCost", "per_person_cost"),
+      savings: toNum(rawMetrics, "savings"),
+      savingsPercent: toNum(rawMetrics, "savingsPercent", "savings_percent"),
+      wellnessMinutes: toNum(rawMetrics, "wellnessMinutes", "wellness_minutes"),
+      travelDistanceMinutes: toNum(rawMetrics, "travelDistanceMinutes", "travel_distance_minutes"),
+      starRatingDelta: toNum(rawMetrics, "starRatingDelta", "star_rating_delta"),
+    };
 
     // If no structured itinerary items, fall back to generated_itineraries activity count
     let fallbackActivityCount = items.length;
@@ -320,6 +343,52 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
     res.status(201).json(change);
   } catch (error) {
     res.status(500).json({ error: "Failed to create change record" });
+  }
+});
+
+router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, res) => {
+  try {
+    const { legId } = req.params;
+    const userId = (req.user as any)?.claims?.sub;
+    const userName = (req.user as any)?.claims?.name || "User";
+    const { status, tripId } = req.body;
+
+    if (!status || !tripId) {
+      return res.status(400).json({ error: "status and tripId are required" });
+    }
+
+    const allowed = ["confirmed", "dismissed", "suggested", "pending"];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
+    }
+
+    const trip = await storage.getTrip(tripId);
+    if (!trip || trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    await db.update(transportLegs)
+      .set({ userSelectedMode: status === "dismissed" ? null : undefined } as any)
+      .where(eq(transportLegs.id, legId));
+
+    if (status === "dismissed") {
+      await db.update(transportLegs)
+        .set({ legOrder: -1 } as any)
+        .where(eq(transportLegs.id, legId));
+    }
+
+    await logChange(
+      tripId,
+      userName,
+      status === "dismissed" ? "Declined suggested transport leg" : `Updated transport leg status to ${status}`,
+      status === "dismissed" ? "decline" : "edit",
+      "owner",
+    );
+
+    res.json({ success: true, legId, status });
+  } catch (error) {
+    console.error("Error updating transport leg status:", error);
+    res.status(500).json({ error: "Failed to update transport leg status" });
   }
 });
 

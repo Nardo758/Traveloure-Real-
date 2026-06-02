@@ -2,6 +2,9 @@ import { Clock, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
 import { openInMaps } from "@/lib/navigate";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { MODE_COLORS, STATUS_STYLES, ModeIcon, type PlanCardDay } from "./plancard-types";
 
 interface TransportSectionProps {
@@ -11,6 +14,20 @@ interface TransportSectionProps {
 }
 
 export function TransportSection({ tripId, tripDestination, day }: TransportSectionProps) {
+  const { toast } = useToast();
+
+  const declineLeg = useMutation({
+    mutationFn: (legId: string) =>
+      apiRequest("PATCH", `/api/transport-legs/${legId}/status`, { status: "dismissed", tripId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: "Transport leg declined", description: "The suggestion has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Failed to decline", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
   if (!day) return null;
 
   function handleGoogleMaps() {
@@ -127,6 +144,16 @@ export function TransportSection({ tripId, tripDestination, day }: TransportSect
                 </Button>
                 <Button size="sm" variant="outline" className="text-[11px] h-7 px-3" data-testid={`button-change-${tr.id}`}>
                   Change
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-[11px] h-7 px-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => declineLeg.mutate(tr.id)}
+                  disabled={declineLeg.isPending}
+                  data-testid={`button-decline-${tr.id}`}
+                >
+                  Decline
                 </Button>
               </div>
             )}
