@@ -5,6 +5,23 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
   Search,
   Filter,
   Calendar,
@@ -13,10 +30,28 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  MessageSquare
+  MessageSquare,
+  FileCheck,
+  ThumbsUp,
+  ThumbsDown,
+  Loader2,
 } from "lucide-react";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface VisaBookingMetadata {
+  passportNationality?: string;
+  destinationCountry?: string;
+  travelStartDate?: string;
+  travelEndDate?: string;
+  visaType?: string;
+  specialCircumstances?: string;
+  visaApplicationStatus?: "pending" | "submitted" | "in_review" | "approved" | "rejected";
+  visaStatusNotes?: string;
+  visaStatusUpdatedAt?: string;
+}
 
 interface Booking {
   id: string;
@@ -28,6 +63,7 @@ interface Booking {
   amount?: string | number;
   status: string;
   expert?: string;
+  bookingMetadata?: VisaBookingMetadata;
   [key: string]: any;
 }
 
@@ -38,9 +74,142 @@ const statusColors: Record<string, string> = {
   cancelled: "bg-red-100 text-red-700 border-red-200",
 };
 
+const VISA_STATUS_OPTIONS: Array<{ value: VisaBookingMetadata["visaApplicationStatus"]; label: string; icon: any; color: string }> = [
+  { value: "pending", label: "Pending", icon: Clock, color: "text-yellow-600" },
+  { value: "submitted", label: "Submitted to Embassy", icon: FileCheck, color: "text-blue-600" },
+  { value: "in_review", label: "Under Embassy Review", icon: Search, color: "text-purple-600" },
+  { value: "approved", label: "Approved", icon: ThumbsUp, color: "text-green-600" },
+  { value: "rejected", label: "Rejected", icon: ThumbsDown, color: "text-red-600" },
+];
+
+function isVisaBooking(booking: Booking): boolean {
+  const meta = booking.bookingMetadata;
+  return !!(meta && (meta.passportNationality || meta.destinationCountry || meta.visaType || meta.visaApplicationStatus));
+}
+
+function VisaStatusBadge({ status }: { status: VisaBookingMetadata["visaApplicationStatus"] }) {
+  const option = VISA_STATUS_OPTIONS.find(o => o.value === status);
+  if (!option) return null;
+  const Icon = option.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${option.color}`}>
+      <Icon className="w-3 h-3" />
+      {option.label}
+    </span>
+  );
+}
+
+function VisaStatusDialog({
+  open,
+  onOpenChange,
+  booking,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  booking: Booking | null;
+}) {
+  const { toast } = useToast();
+  const [selectedStatus, setSelectedStatus] = useState<string>("pending");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (open && booking) {
+      setSelectedStatus(booking.bookingMetadata?.visaApplicationStatus || "pending");
+      setNotes(booking.bookingMetadata?.visaStatusNotes || "");
+    }
+  }, [open, booking]);
+
+  const mutation = useMutation({
+    mutationFn: ({ id, visaApplicationStatus, notes }: { id: string; visaApplicationStatus: string; notes: string }) =>
+      apiRequest("PATCH", `/api/service-bookings/${id}/visa-status`, { visaApplicationStatus, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/bookings"] });
+      toast({ title: "Visa status updated", description: "The traveler will see the updated status." });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: "Update failed", description: "Could not update visa status. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const handleSave = () => {
+    if (!booking) return;
+    mutation.mutate({ id: booking.id, visaApplicationStatus: selectedStatus, notes });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle data-testid="text-visa-dialog-title">Update Visa Application Status</DialogTitle>
+          <DialogDescription>
+            {booking?.bookingMetadata?.passportNationality && booking?.bookingMetadata?.destinationCountry
+              ? `${booking.bookingMetadata.passportNationality} → ${booking.bookingMetadata.destinationCountry} (${booking.bookingMetadata.visaType || "visa"})`
+              : "Update the applicant's visa progress"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <Label className="mb-2 block">Application Status</Label>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger data-testid="select-visa-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VISA_STATUS_OPTIONS.map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <SelectItem key={opt.value} value={opt.value!} data-testid={`option-visa-status-${opt.value}`}>
+                      <span className={`flex items-center gap-2 ${opt.color}`}>
+                        <Icon className="w-4 h-4" />
+                        {opt.label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="visa-notes" className="mb-2 block">Notes for traveler (optional)</Label>
+            <Textarea
+              id="visa-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Your appointment is on June 15th at 9am. Please bring all original documents."
+              rows={3}
+              data-testid="input-visa-notes"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-visa-update">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={mutation.isPending} data-testid="button-save-visa-status">
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Status"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ProviderBookings() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [visaDialogOpen, setVisaDialogOpen] = useState(false);
+  const [selectedVisaBooking, setSelectedVisaBooking] = useState<Booking | null>(null);
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/provider/bookings"],
@@ -181,6 +350,9 @@ export default function ProviderBookings() {
                         <span className="font-semibold text-gray-900">{booking.eventType || "Event"}</span>
                         <span className="text-gray-500">-</span>
                         <span className="text-gray-700">{booking.clientName || "Client"}</span>
+                        {isVisaBooking(booking) && booking.bookingMetadata?.visaApplicationStatus && (
+                          <VisaStatusBadge status={booking.bookingMetadata.visaApplicationStatus} />
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-600">
                         {booking.date && (
@@ -209,6 +381,20 @@ export default function ProviderBookings() {
                       )}
                     </div>
                     <div className="flex gap-2">
+                      {isVisaBooking(booking) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedVisaBooking(booking);
+                            setVisaDialogOpen(true);
+                          }}
+                          data-testid={`button-update-visa-status-${booking.id}`}
+                        >
+                          <FileCheck className="w-4 h-4 mr-1" />
+                          Visa Status
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" data-testid={`button-view-${booking.id}`}>
                         View Details
                       </Button>
@@ -227,6 +413,12 @@ export default function ProviderBookings() {
           </CardContent>
         </Card>
       </div>
+
+      <VisaStatusDialog
+        open={visaDialogOpen}
+        onOpenChange={setVisaDialogOpen}
+        booking={selectedVisaBooking}
+      />
     </ProviderLayout>
   );
 }
