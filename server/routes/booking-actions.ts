@@ -1049,4 +1049,73 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
   }
 });
 
+/**
+ * GET /api/trips/:tripId/traveler-profile
+ * Returns traveler contact info for an assigned expert to complete bookings on behalf of the client.
+ * Only accessible by experts assigned to this trip.
+ */
+router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) => {
+  try {
+    const expertId = (req as any).user?.claims?.sub;
+    if (!expertId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { tripId } = req.params;
+
+    // Verify this expert is assigned to the trip
+    const assignmentCheck = await db.execute(sql`
+      SELECT tea.id FROM trip_expert_advisors tea
+      WHERE tea.trip_id = ${tripId}
+        AND tea.local_expert_id = ${expertId}
+        AND tea.status IN ('pending', 'accepted')
+      LIMIT 1
+    `);
+
+    if (!assignmentCheck.rows || assignmentCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized to view this trip profile' });
+    }
+
+    // Fetch trip + traveler user info
+    const result = await db.execute(sql`
+      SELECT
+        t.id as trip_id,
+        t.title as trip_title,
+        t.destination,
+        t.start_date,
+        t.end_date,
+        t.number_of_travelers,
+        u.id as traveler_user_id,
+        u.first_name,
+        u.last_name,
+        u.email,
+        u.profile_image_url
+      FROM trips t
+      JOIN users u ON u.id = t.user_id
+      WHERE t.id = ${tripId}
+      LIMIT 1
+    `);
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    const row: any = result.rows[0];
+    const profile = {
+      tripId: row.trip_id,
+      tripTitle: row.trip_title,
+      destination: row.destination,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      numberOfTravelers: row.number_of_travelers,
+      travelerName: [row.first_name, row.last_name].filter(Boolean).join(' ') || 'Traveler',
+      travelerEmail: row.email || null,
+      profileImageUrl: row.profile_image_url || null,
+    };
+
+    res.json(profile);
+  } catch (error: any) {
+    console.error('Get traveler profile error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

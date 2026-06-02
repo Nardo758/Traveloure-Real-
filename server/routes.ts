@@ -9479,6 +9479,128 @@ Respond with this exact JSON structure:
   });
 
   // ============================================
+  // GEOCODE HELPER (for map centering)
+  // ============================================
+
+  app.get("/api/geocode", async (req, res) => {
+    try {
+      const { address } = req.query as { address?: string };
+      if (!address) return res.status(400).json({ message: "address required" });
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (!apiKey) return res.status(503).json({ message: "Maps API not configured" });
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+      const resp = await fetch(url);
+      const data: any = await resp.json();
+      const loc = data.results?.[0]?.geometry?.location;
+      if (!loc) return res.status(404).json({ message: "Location not found" });
+      res.json({ lat: loc.lat, lng: loc.lng, formattedAddress: data.results[0].formatted_address });
+    } catch (e: any) {
+      res.status(500).json({ message: "Geocode failed", error: e.message });
+    }
+  });
+
+  // ============================================
+  // LIVE EXPERIENCE SEARCH (Google Places + Platform)
+  // Used by the Expert Workspace Browse tab
+  // ============================================
+
+  app.get("/api/search/experiences", async (req, res) => {
+    try {
+      const { q, destination, category } = req.query as Record<string, string>;
+      if (!q && !destination) {
+        return res.status(400).json({ message: "q or destination is required" });
+      }
+
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      const results: any[] = [];
+
+      // ── Google Places Text Search ──
+      if (apiKey) {
+        const catToType: Record<string, string> = {
+          dining: "restaurant",
+          hotels: "lodging",
+          activities: "tourist_attraction|museum|amusement_park|park|spa",
+          all: "",
+        };
+        const typeFilter = catToType[category || "all"] || "";
+        const searchQuery = [q, destination].filter(Boolean).join(" in ");
+        const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+        placesUrl.searchParams.set("query", searchQuery);
+        placesUrl.searchParams.set("key", apiKey);
+        if (typeFilter) placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
+
+        const resp = await fetch(placesUrl.toString());
+        if (resp.ok) {
+          const data: any = await resp.json();
+          const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+          const catFromTypes = (types: string[]): string => {
+            if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
+            if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
+            if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
+            if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
+            return "activity";
+          };
+          for (const place of (data.results || []).slice(0, 15)) {
+            const photoRef = place.photos?.[0]?.photo_reference;
+            results.push({
+              id: `gp_${place.place_id}`,
+              source: "google_places",
+              placeId: place.place_id,
+              name: place.name,
+              address: place.formatted_address,
+              category: catFromTypes(place.types || []),
+              rating: place.rating ?? null,
+              reviewCount: place.user_ratings_total ?? null,
+              priceLevel: place.price_level ?? null,
+              priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
+              location: place.geometry?.location ?? null,
+              photoUrl: photoRef
+                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
+                : null,
+              mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+            });
+          }
+        }
+      }
+
+      // ── Platform providers (secondary) ──
+      try {
+        const platformProviders = await storage.getProviderServices({ status: "active" });
+        const dest = (destination || "").toLowerCase();
+        const qLower = (q || "").toLowerCase();
+        const catLower = (category || "").toLowerCase();
+        for (const p of platformProviders) {
+          const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
+          const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || p.category?.toLowerCase().includes(catLower);
+          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
+          if ((nameMatch || destMatch) && catMatch) {
+            results.push({
+              id: `pl_${p.id}`,
+              source: "platform",
+              name: p.serviceName,
+              address: p.location || null,
+              category: p.serviceType || p.category || "activity",
+              rating: null,
+              reviewCount: null,
+              priceLevel: null,
+              priceLabel: p.price ? `$${p.price}` : null,
+              location: null,
+              photoUrl: null,
+              mapsUrl: null,
+              platformId: p.id,
+            });
+          }
+        }
+      } catch (_) {}
+
+      res.json({ results, count: results.length });
+    } catch (error: any) {
+      console.error("Error in /api/search/experiences:", error);
+      res.status(500).json({ message: "Search failed", error: error.message });
+    }
+  });
+
+  // ============================================
   // VENUE SEARCH API ROUTES
   // Google Places API integration for venues/vendors
   // ============================================
