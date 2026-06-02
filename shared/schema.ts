@@ -462,7 +462,8 @@ export const providerServices = pgTable("provider_services", {
   description: text("description"),
   serviceType: varchar("service_type", { length: 50 }).default("planning"), // consultation, planning, action, concierge, experience, specialty
   categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "set null" }),
-  
+  subcategoryId: varchar("subcategory_id").references(() => serviceSubcategories.id, { onDelete: "set null" }),
+
   // Pricing
   price: decimal("price", { precision: 10, scale: 2 }),
   priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote
