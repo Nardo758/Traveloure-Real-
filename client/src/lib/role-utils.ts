@@ -10,8 +10,10 @@ export function getRoleHomePath(role: string): string {
 }
 
 export function userHasRequiredRole(userRole: string, requiredRole: string): boolean {
+  // Admins can access everything
   if (userRole === "admin") return true;
-  if (requiredRole === "expert") return EXPERT_ROLES.includes(userRole);
-  if (requiredRole === "provider") return PROVIDER_ROLES.includes(userRole);
+  // Any authenticated user may enter the three shared consoles
+  if (requiredRole === "expert" || requiredRole === "provider") return true;
+  // EA and other specialised roles still require an exact match
   return userRole === requiredRole;
 }
