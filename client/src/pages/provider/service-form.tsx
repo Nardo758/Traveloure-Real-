@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -15,14 +16,24 @@ import {
 import { DynamicPricingEditor } from "@/components/shared/dynamic-pricing-editor";
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
-import { Plus, Trash2, Loader2, CheckCircle } from "lucide-react";
+import {
+  Plus, Trash2, Loader2, CheckCircle,
+  MapPin, Navigation, Truck, Radius, Info,
+} from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+interface ServiceCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+}
+
 interface ServiceFormData {
   name: string;
-  category: string;
+  categoryId: string;
   description: string;
   basePrice: number;
   priceType: "Fixed" | "Range" | "Per-person";
@@ -30,26 +41,21 @@ interface ServiceFormData {
   deliveryMethod: "in-person" | "video-call" | "hybrid";
   revisionsIncluded: number;
   includesExpertNotes: boolean;
-  photos: string[];
   whatIncluded: string[];
   maxConcurrentClients: number;
-  maxGroupSize: number;
+  // Logistics
   serviceArea: string;
+  meetingPoint: string;
   pickupAvailable: boolean;
-  pickupRadius: number;
+  pickupAddress: string;
+  serviceRadius: number;
   active: boolean;
-}
-
-function getCategoryFromSearch(): string {
-  if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
-  return params.get("category") || "";
 }
 
 function buildEmptyForm(): ServiceFormData {
   return {
     name: "",
-    category: getCategoryFromSearch(),
+    categoryId: "",
     description: "",
     basePrice: 0,
     priceType: "Fixed",
@@ -57,13 +63,13 @@ function buildEmptyForm(): ServiceFormData {
     deliveryMethod: "in-person",
     revisionsIncluded: 0,
     includesExpertNotes: false,
-    photos: [],
     whatIncluded: [],
     maxConcurrentClients: 1,
-    maxGroupSize: 4,
     serviceArea: "",
+    meetingPoint: "",
     pickupAvailable: false,
-    pickupRadius: 0,
+    pickupAddress: "",
+    serviceRadius: 0,
     active: true,
   };
 }
@@ -71,7 +77,7 @@ function buildEmptyForm(): ServiceFormData {
 function mapServiceToForm(s: any): ServiceFormData {
   return {
     name: s.serviceName || "",
-    category: s.serviceType || "",
+    categoryId: s.categoryId || "",
     description: s.description || "",
     basePrice: Number(s.price || 0),
     priceType: "Fixed",
@@ -79,13 +85,13 @@ function mapServiceToForm(s: any): ServiceFormData {
     deliveryMethod: s.deliveryMethod || "in-person",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
     includesExpertNotes: Boolean(s.includesExpertNotes),
-    photos: [],
     whatIncluded: (s.whatIncluded as string[]) || [],
     maxConcurrentClients: s.maxConcurrentBookings || 1,
-    maxGroupSize: 4,
     serviceArea: s.location || "",
-    pickupAvailable: false,
-    pickupRadius: 0,
+    meetingPoint: s.meetingPoint || "",
+    pickupAvailable: Boolean(s.pickupAvailable),
+    pickupAddress: s.pickupAddress || "",
+    serviceRadius: Number(s.serviceRadius || 0),
     active: s.status === "active",
   };
 }
@@ -96,6 +102,11 @@ export default function ProviderServiceForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [creationSuccess, setCreationSuccess] = useState(false);
+  const [newIncluded, setNewIncluded] = useState("");
+
+  const { data: categories = [] } = useQuery<ServiceCategory[]>({
+    queryKey: ["/api/service-categories"],
+  });
 
   const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
     queryKey: ["/api/provider/services", params?.id],
@@ -110,14 +121,33 @@ export default function ProviderServiceForm() {
     }
   }, [existingService]);
 
-  const [newIncluded, setNewIncluded] = useState("");
+  const set = (key: keyof ServiceFormData, value: any) =>
+    setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const handleAddIncluded = () => {
+    if (newIncluded.trim()) {
+      set("whatIncluded", [...formData.whatIncluded, newIncluded.trim()]);
+      setNewIncluded("");
+    }
+  };
+
+  const handleRemoveIncluded = (index: number) => {
+    set("whatIncluded", formData.whatIncluded.filter((_, i) => i !== index));
+  };
+
+  const handleAddAnother = () => {
+    setCreationSuccess(false);
+    setFormData(buildEmptyForm());
+    setNewIncluded("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const createMutation = useMutation({
     mutationFn: async (draft: boolean) => {
-      const payload = {
+      const payload: Record<string, any> = {
         serviceName: formData.name,
+        categoryId: formData.categoryId || undefined,
         description: formData.description,
-        serviceType: formData.category.toLowerCase() || "planning",
         price: String(formData.basePrice),
         priceType: formData.priceType.toLowerCase().replace("-", "_"),
         deliveryTimeframe: formData.duration,
@@ -127,6 +157,11 @@ export default function ProviderServiceForm() {
         whatIncluded: formData.whatIncluded,
         maxConcurrentBookings: formData.maxConcurrentClients,
         location: formData.serviceArea || "Unknown",
+        // logistics
+        meetingPoint: formData.meetingPoint || null,
+        pickupAvailable: formData.pickupAvailable,
+        pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
+        serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
         status: draft ? "draft" : (formData.active ? "active" : "draft"),
       };
       if (isEditMode) {
@@ -152,23 +187,8 @@ export default function ProviderServiceForm() {
     },
   });
 
-  const handleAddIncluded = () => {
-    if (newIncluded.trim()) {
-      setFormData({ ...formData, whatIncluded: [...formData.whatIncluded, newIncluded] });
-      setNewIncluded("");
-    }
-  };
-
-  const handleRemoveIncluded = (index: number) => {
-    setFormData({ ...formData, whatIncluded: formData.whatIncluded.filter((_, i) => i !== index) });
-  };
-
-  const handleAddAnother = () => {
-    setCreationSuccess(false);
-    setFormData(buildEmptyForm());
-    setNewIncluded("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const selectedCategory = categories.find((c) => c.id === formData.categoryId);
+  const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
 
   if (isEditMode && loadingExisting) {
     return (
@@ -196,11 +216,7 @@ export default function ProviderServiceForm() {
                 Your service is now live. You can add more services to build out your full catalog.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => navigate("/provider/services")}
-                  data-testid="button-view-services"
-                >
+                <Button variant="outline" onClick={() => navigate("/provider/services")} data-testid="button-view-services">
                   View My Services
                 </Button>
                 <Button
@@ -220,36 +236,49 @@ export default function ProviderServiceForm() {
 
   return (
     <ProviderLayout title={isEditMode ? "Edit Service" : "New Service"}>
-      <div className="p-6 max-w-3xl">
+      <div className="p-6 max-w-3xl space-y-6">
+
+        {/* ── Basic Information ── */}
         <Card>
           <CardHeader>
             <CardTitle>{isEditMode ? "Edit Service" : "Create New Service"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+
             {/* Service Name */}
             <div>
               <Label htmlFor="name">Service Name *</Label>
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Airport Transfer"
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="e.g., Private City Walking Tour, Airport Transfer, Sunset Photography"
                 className="mt-2"
                 data-testid="input-service-name"
               />
             </div>
 
-            {/* Category */}
+            {/* Category — live dropdown from DB */}
             <div>
               <Label htmlFor="category">Category *</Label>
-              <Input
-                id="category"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                placeholder="e.g., Transport, Tour, Equipment"
-                className="mt-2"
-                data-testid="input-category"
-              />
+              <Select value={formData.categoryId} onValueChange={(v) => set("categoryId", v)}>
+                <SelectTrigger id="category" className="mt-2" data-testid="select-category">
+                  <SelectValue placeholder="Select a service category…" />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id} data-testid={`option-category-${cat.slug}`}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedCategory?.description && (
+                <p className="text-xs text-muted-foreground mt-1.5 flex items-start gap-1">
+                  <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                  {selectedCategory.description}
+                </p>
+              )}
             </div>
 
             {/* Description */}
@@ -258,100 +287,97 @@ export default function ProviderServiceForm() {
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Describe your service in detail..."
+                onChange={(e) => set("description", e.target.value)}
+                placeholder="Describe your service in detail — what makes it special, who it's for, what clients should expect…"
                 rows={4}
                 className="mt-2"
                 data-testid="input-description"
               />
             </div>
 
-            {/* Base Price & Type */}
+            {/* Price */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="basePrice">Base Price ($) *</Label>
+                <Label htmlFor="basePrice">Price ($) *</Label>
                 <Input
                   id="basePrice"
                   type="number"
+                  min={0}
                   value={formData.basePrice}
-                  onChange={(e) => setFormData({ ...formData, basePrice: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => set("basePrice", parseInt(e.target.value) || 0)}
                   className="mt-2"
                   data-testid="input-base-price"
                 />
               </div>
               <div>
                 <Label htmlFor="priceType">Price Type</Label>
-                <Select value={formData.priceType} onValueChange={(val: any) => setFormData({ ...formData, priceType: val })}>
+                <Select value={formData.priceType} onValueChange={(v: any) => set("priceType", v)}>
                   <SelectTrigger id="priceType" className="mt-2" data-testid="select-price-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Fixed">Fixed</SelectItem>
-                    <SelectItem value="Range">Range</SelectItem>
-                    <SelectItem value="Per-person">Per-person</SelectItem>
+                    <SelectItem value="Fixed">Fixed — set price per booking</SelectItem>
+                    <SelectItem value="Range">Range — price varies</SelectItem>
+                    <SelectItem value="Per-person">Per-person — multiply by group size</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* Duration */}
-            <div>
-              <Label htmlFor="duration">Duration / Delivery Timeframe</Label>
-              <Input
-                id="duration"
-                value={formData.duration}
-                onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                placeholder="e.g., 2-3 hours, Full day"
-                className="mt-2"
-                data-testid="input-duration"
-              />
-            </div>
-
-            {/* Delivery Method */}
-            <div>
-              <Label htmlFor="deliveryMethod">Delivery Method</Label>
-              <Select
-                value={formData.deliveryMethod}
-                onValueChange={(val: any) => setFormData({ ...formData, deliveryMethod: val })}
-              >
-                <SelectTrigger id="deliveryMethod" className="mt-2" data-testid="select-delivery-method">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in-person">In-person</SelectItem>
-                  <SelectItem value="video-call">Video call</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Revisions Included */}
-            <div>
-              <Label htmlFor="revisionsIncluded">Revisions Included</Label>
-              <Input
-                id="revisionsIncluded"
-                type="number"
-                min={0}
-                value={formData.revisionsIncluded}
-                onChange={(e) => setFormData({ ...formData, revisionsIncluded: parseInt(e.target.value) || 0 })}
-                placeholder="0"
-                className="mt-2"
-                data-testid="input-revisions-included"
-              />
-            </div>
-
-            {/* Expert Notes */}
-            <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
+            {/* Duration / Delivery Method */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="expertNotes" className="cursor-pointer">Includes Expert Notes</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Add personalised expert commentary to this service</p>
+                <Label htmlFor="duration">Duration / Timeframe</Label>
+                <Input
+                  id="duration"
+                  value={formData.duration}
+                  onChange={(e) => set("duration", e.target.value)}
+                  placeholder="e.g., 3 hours, Full day, 24-48 hrs"
+                  className="mt-2"
+                  data-testid="input-duration"
+                />
               </div>
-              <Switch
-                id="expertNotes"
-                checked={formData.includesExpertNotes}
-                onCheckedChange={(checked) => setFormData({ ...formData, includesExpertNotes: checked })}
-                data-testid="switch-expert-notes"
-              />
+              <div>
+                <Label htmlFor="deliveryMethod">How it's delivered</Label>
+                <Select value={formData.deliveryMethod} onValueChange={(v: any) => set("deliveryMethod", v)}>
+                  <SelectTrigger id="deliveryMethod" className="mt-2" data-testid="select-delivery-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in-person">In-person</SelectItem>
+                    <SelectItem value="video-call">Video call</SelectItem>
+                    <SelectItem value="hybrid">Hybrid (in-person + remote)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Expert Notes + Revisions */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
+                <div>
+                  <Label htmlFor="expertNotes" className="cursor-pointer">Expert Notes</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Personalised commentary</p>
+                </div>
+                <Switch
+                  id="expertNotes"
+                  checked={formData.includesExpertNotes}
+                  onCheckedChange={(c) => set("includesExpertNotes", c)}
+                  data-testid="switch-expert-notes"
+                />
+              </div>
+              <div>
+                <Label htmlFor="revisionsIncluded">Revisions Included</Label>
+                <Input
+                  id="revisionsIncluded"
+                  type="number"
+                  min={0}
+                  value={formData.revisionsIncluded}
+                  onChange={(e) => set("revisionsIncluded", parseInt(e.target.value) || 0)}
+                  className="mt-2"
+                  data-testid="input-revisions-included"
+                />
+              </div>
             </div>
 
             {/* What's Included */}
@@ -361,12 +387,7 @@ export default function ProviderServiceForm() {
                 {formData.whatIncluded.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded" data-testid={`item-included-${idx}`}>
                     <span className="text-sm">{item}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveIncluded(idx)}
-                      data-testid={`button-remove-included-${idx}`}
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => handleRemoveIncluded(idx)} data-testid={`button-remove-included-${idx}`}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -376,7 +397,7 @@ export default function ProviderServiceForm() {
                 <Input
                   value={newIncluded}
                   onChange={(e) => setNewIncluded(e.target.value)}
-                  placeholder="Add an item..."
+                  placeholder="e.g., Hotel pickup, English-speaking guide, Entrance fees…"
                   onKeyDown={(e) => e.key === "Enter" && handleAddIncluded()}
                   data-testid="input-add-included"
                 />
@@ -386,75 +407,157 @@ export default function ProviderServiceForm() {
               </div>
             </div>
 
-            {/* Max Concurrent Clients */}
+            {/* Max clients */}
             <div>
-              <Label htmlFor="maxClients">Max Concurrent Clients</Label>
+              <Label htmlFor="maxClients">Max Concurrent Bookings</Label>
               <Input
                 id="maxClients"
                 type="number"
+                min={1}
                 value={formData.maxConcurrentClients}
-                onChange={(e) => setFormData({ ...formData, maxConcurrentClients: parseInt(e.target.value) || 1 })}
+                onChange={(e) => set("maxConcurrentClients", parseInt(e.target.value) || 1)}
                 className="mt-2"
                 data-testid="input-max-clients"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Logistics ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-[#FF385C]" />
+              Logistics & Location
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Tell customers where to go, how to get there, and whether you offer pickup.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-5">
 
             {/* Service Area */}
             <div>
-              <Label htmlFor="serviceArea">Service Area</Label>
+              <Label htmlFor="serviceArea" className="flex items-center gap-1.5">
+                <Navigation className="w-4 h-4" /> Coverage Area
+              </Label>
               <Input
                 id="serviceArea"
                 value={formData.serviceArea}
-                onChange={(e) => setFormData({ ...formData, serviceArea: e.target.value })}
-                placeholder="e.g., Kyoto, Osaka, Nara"
+                onChange={(e) => set("serviceArea", e.target.value)}
+                placeholder="e.g., Kyoto City, Osaka Prefecture, Greater London"
                 className="mt-2"
                 data-testid="input-service-area"
               />
+              <p className="text-xs text-muted-foreground mt-1">The region or city your service covers.</p>
             </div>
 
-            {/* Pickup Available */}
+            {/* Meeting Point — only shown for in-person / hybrid */}
+            {needsMeetingPoint && (
+              <div>
+                <Label htmlFor="meetingPoint" className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" /> Meeting Point
+                  <Badge variant="outline" className="text-[10px] py-0 px-1.5">Recommended</Badge>
+                </Label>
+                <Input
+                  id="meetingPoint"
+                  value={formData.meetingPoint}
+                  onChange={(e) => set("meetingPoint", e.target.value)}
+                  placeholder="e.g., Main entrance of Kyoto Station, Lobby of The Ritz, Central Park Bow Bridge"
+                  className="mt-2"
+                  data-testid="input-meeting-point"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The exact location where customers should arrive. Be specific — a landmark, entrance, or GPS-friendly address.
+                </p>
+              </div>
+            )}
+
+            {/* Pickup toggle */}
             <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
-              <Label htmlFor="pickup" className="cursor-pointer">Pickup Available</Label>
+              <div>
+                <Label htmlFor="pickup" className="cursor-pointer flex items-center gap-1.5">
+                  <Truck className="w-4 h-4" /> Pickup Available
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  You can collect customers from their hotel or a designated pickup spot.
+                </p>
+              </div>
               <Switch
                 id="pickup"
                 checked={formData.pickupAvailable}
-                onCheckedChange={(checked) => setFormData({ ...formData, pickupAvailable: checked })}
+                onCheckedChange={(c) => set("pickupAvailable", c)}
                 data-testid="switch-pickup"
               />
             </div>
 
             {formData.pickupAvailable && (
-              <div>
-                <Label htmlFor="pickupRadius">Pickup Radius (km)</Label>
-                <Input
-                  id="pickupRadius"
-                  type="number"
-                  value={formData.pickupRadius}
-                  onChange={(e) => setFormData({ ...formData, pickupRadius: parseInt(e.target.value) || 0 })}
-                  className="mt-2"
-                  data-testid="input-pickup-radius"
-                />
+              <div className="pl-4 border-l-2 border-[#FF385C]/30 space-y-4">
+                {/* Pickup Address */}
+                <div>
+                  <Label htmlFor="pickupAddress">Pickup Starting Point / Hub</Label>
+                  <Input
+                    id="pickupAddress"
+                    value={formData.pickupAddress}
+                    onChange={(e) => set("pickupAddress", e.target.value)}
+                    placeholder="e.g., Any hotel in central Kyoto, Gion district hotels, Specific pickup address"
+                    className="mt-2"
+                    data-testid="input-pickup-address"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Where you start pickups from, or describe the area you collect from.
+                  </p>
+                </div>
+
+                {/* Service Radius */}
+                <div>
+                  <Label htmlFor="serviceRadius" className="flex items-center gap-1.5">
+                    <Radius className="w-4 h-4" /> Pickup Radius (km)
+                  </Label>
+                  <Input
+                    id="serviceRadius"
+                    type="number"
+                    min={0}
+                    value={formData.serviceRadius}
+                    onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
+                    placeholder="e.g., 10"
+                    className="mt-2"
+                    data-testid="input-service-radius"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    How far from your pickup hub you'll travel to collect customers. Leave 0 if unlimited.
+                  </p>
+                </div>
               </div>
             )}
+          </CardContent>
+        </Card>
 
+        {/* ── Pricing & Status ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Pricing & Availability</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
             {/* Dynamic Pricing Editor */}
-            <div className="border-t pt-6">
-              <DynamicPricingEditor basePrice={formData.basePrice} />
-            </div>
+            <DynamicPricingEditor basePrice={formData.basePrice} />
 
             {/* Active Toggle */}
             <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
-              <Label htmlFor="active" className="cursor-pointer">Active (visible to travelers)</Label>
+              <div>
+                <Label htmlFor="active" className="cursor-pointer">Visible to Travelers</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Turn off to hide this service without deleting it.</p>
+              </div>
               <Switch
                 id="active"
                 checked={formData.active}
-                onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
+                onCheckedChange={(c) => set("active", c)}
                 data-testid="switch-active"
               />
             </div>
 
             {/* Buttons */}
-            <div className="flex gap-3 pt-4">
+            <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => navigate("/provider/services")} data-testid="button-cancel">
                 Cancel
               </Button>
@@ -474,7 +577,7 @@ export default function ProviderServiceForm() {
                 data-testid="button-publish"
               >
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {isEditMode ? "Update Service" : "Publish"}
+                {isEditMode ? "Update Service" : "Publish Service"}
               </Button>
             </div>
           </CardContent>

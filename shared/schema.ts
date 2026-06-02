@@ -479,6 +479,12 @@ export const providerServices = pgTable("provider_services", {
   leadTimeHours: integer("lead_time_hours").default(24),
   location: varchar("location", { length: 255 }).default("Unknown"),
   availability: jsonb("availability").default([]),
+
+  // Logistics
+  meetingPoint: text("meeting_point"), // Where client meets provider (address / description)
+  pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
+  pickupAddress: text("pickup_address"), // Starting pickup location
+  serviceRadius: integer("service_radius"), // km radius provider covers
   
   // What's Included & Requirements
   whatIncluded: jsonb("what_included").default([]), // Array of strings: ["3 hours shooting", "50+ edited photos"]
