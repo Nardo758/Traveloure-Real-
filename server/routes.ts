@@ -17717,6 +17717,50 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // === Expert Assigned Trips list (powers Dashboard + Assigned Trips page) ===
+  app.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rows = await db
+        .select({
+          trip_id: tripExpertAdvisors.tripId,
+          trip_title: trips.title,
+          destination: trips.destination,
+          start_date: trips.startDate,
+          end_date: trips.endDate,
+          status: tripExpertAdvisors.status,
+          assigned_at: tripExpertAdvisors.assignedAt,
+          traveler_first: users.firstName,
+          traveler_last: users.lastName,
+          suggestion_count: sql<number>`(
+            SELECT COUNT(*) FROM trip_suggestions
+            WHERE trip_id = ${tripExpertAdvisors.tripId}
+            AND expert_id = ${userId}
+          )`,
+        })
+        .from(tripExpertAdvisors)
+        .innerJoin(trips, eq(tripExpertAdvisors.tripId, trips.id))
+        .leftJoin(users, eq(trips.userId, users.id))
+        .where(eq(tripExpertAdvisors.localExpertId, userId))
+        .orderBy(desc(tripExpertAdvisors.assignedAt));
+
+      res.json(rows.map(r => ({
+        trip_id: r.trip_id,
+        trip_title: r.trip_title || r.destination,
+        destination: r.destination,
+        start_date: r.start_date,
+        end_date: r.end_date,
+        traveler_name: [r.traveler_first, r.traveler_last].filter(Boolean).join(" ") || "Traveler",
+        status: r.status,
+        assigned_at: r.assigned_at,
+        suggestion_count: Number(r.suggestion_count) || 0,
+      })));
+    } catch (err) {
+      console.error("[Expert] assigned-trips error:", err);
+      res.status(500).json({ message: "Failed to fetch assigned trips" });
+    }
+  });
+
   // === Trip Commission ===
   app.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     try {
