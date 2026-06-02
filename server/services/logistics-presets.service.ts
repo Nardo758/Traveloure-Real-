@@ -438,8 +438,20 @@ export async function generatePresetsForTrip(
   let anchorsCreated = 0;
   let boundariesCreated = 0;
 
-  // Create temporal anchors
+  // Load existing data upfront to ensure idempotency
+  const [existingAnchors, existingBoundaries] = await Promise.all([
+    storage.getTemporalAnchors(tripId),
+    storage.getDayBoundaries(tripId),
+  ]);
+
+  // Build sets of already-existing anchor types and day numbers
+  const existingAnchorTypes = new Set(existingAnchors.map(a => a.anchorType));
+  const existingDayNumbers = new Set(existingBoundaries.map(b => b.dayNumber));
+
+  // Create temporal anchors — skip any anchor type already present
   for (const preset of presets.anchors) {
+    if (existingAnchorTypes.has(preset.anchorType)) continue;
+
     const anchorDate = new Date(baseDate);
     anchorDate.setDate(anchorDate.getDate() + preset.dayOffset);
     const [hours, minutes] = preset.defaultTimeOfDay.split(':').map(Number);
@@ -457,15 +469,17 @@ export async function generatePresetsForTrip(
     };
 
     await storage.createTemporalAnchor(anchor);
+    existingAnchorTypes.add(preset.anchorType); // prevent duplicates within same preset set
     anchorsCreated++;
   }
 
-  // Create day boundaries
+  // Create day boundaries — skip any day number already present
   for (const boundary of presets.dayBoundaries) {
     // Calculate day number relative to trip (not event)
     // For simplicity, dayOffset 0 = event day = day 1
     const dayNumber = boundary.dayOffset + 1;
     if (dayNumber < 1) continue; // Skip days before trip start
+    if (existingDayNumbers.has(dayNumber)) continue;
 
     const dayBoundary: InsertDayBoundary = {
       tripId,
@@ -477,6 +491,7 @@ export async function generatePresetsForTrip(
     };
 
     await storage.createDayBoundary(dayBoundary);
+    existingDayNumbers.add(dayNumber); // prevent duplicates within same preset set
     boundariesCreated++;
   }
 
