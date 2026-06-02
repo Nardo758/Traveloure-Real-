@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -110,7 +110,9 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
-});
+}, (table) => ({
+  uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
+}));
 
 export const tripSuggestions = pgTable("trip_suggestions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -509,7 +511,9 @@ export const providerServices = pgTable("provider_services", {
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
   reviewCount: integer("review_count").default(0),
-  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.30"),
+  // Expert-favorable split: floor 0.75, ceiling 0.85. Stored as decimal string in DB.
+  // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
+  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -5250,7 +5254,7 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   category: varchar("category", { length: 50 }).notNull().unique(),
   platformFeePercent: decimal("platform_fee_percent", { precision: 5, scale: 2 }).default("12.00"),
-  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("70.00"),
+  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("75.00"),
   aiKeeps100: boolean("ai_keeps_100").default(true),
   minFee: decimal("min_fee", { precision: 10, scale: 2 }),
   maxFee: decimal("max_fee", { precision: 10, scale: 2 }),

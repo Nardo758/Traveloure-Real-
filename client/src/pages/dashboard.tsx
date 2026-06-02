@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
@@ -203,12 +203,12 @@ export default function Dashboard() {
                 data-testid="active-plans-grid"
               >
                 {activePlans.slice(0, 6).map((trip, i) => (
-                  <DashboardPlanCard
+                  <PlanCard
                     key={trip.id}
                     trip={trip}
                     index={i}
-                    conversations={convList}
-                    notifications={notifications}
+                    role="owner"
+                    stage="summary"
                   />
                 ))}
               </div>

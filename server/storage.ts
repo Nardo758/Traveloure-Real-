@@ -485,6 +485,7 @@ export interface IStorage {
   addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate>;
   deleteProviderBlackoutDate(id: string): Promise<void>;
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
+  createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any>;
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
   getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]>;
   createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest>;
@@ -3266,6 +3267,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, expertId)))
       .limit(1);
     return !!row;
+  }
+
+  async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
+    const [created] = await db.insert(tripExpertAdvisors).values({
+      tripId: data.tripId,
+      localExpertId: data.localExpertId,
+      status: data.status ?? "pending",
+      workspaceStatus: "draft",
+      message: data.message,
+    }).returning();
+    return created;
   }
 
   async getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]> {
