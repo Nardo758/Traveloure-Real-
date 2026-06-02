@@ -59,7 +59,7 @@ router.post("/create-session", isAuthenticated, async (req, res) => {
 router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
   try {
     const userId = (req.user as any).claims.sub;
-    const { country, registrationNumber } = req.body as { country: string; registrationNumber: string };
+    const { country, registrationNumber, additionalDocUrl } = req.body as { country: string; registrationNumber: string; additionalDocUrl?: string };
 
     if (!country || !registrationNumber) {
       return res.status(400).json({ message: "country and registrationNumber are required" });
@@ -81,6 +81,8 @@ router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
     if ((form as any).businessLicense) existingDocuments.businessLicense = (form as any).businessLicense;
     if ((form as any).businessGstTax) existingDocuments.businessGstTax = (form as any).businessGstTax;
     if ((form as any).businessLogo) existingDocuments.businessLogo = (form as any).businessLogo;
+    // Include any additional document URL submitted at verification time
+    if (additionalDocUrl) existingDocuments.additionalDoc = additionalDocUrl;
 
     const PERSONA_API_KEY = process.env.PERSONA_API_KEY;
 

@@ -138,8 +138,13 @@ export default function ProviderStatusPage() {
     refetchInterval: 10000,
   });
 
+  const [bizDocUrl, setBizDocUrl] = useState("");
+
   const startIdVerification = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/identity/create-session", { formType: "provider" }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/identity/create-session", { formType: "provider" });
+      return res.json();
+    },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] });
       if (data.verificationUrl) window.open(data.verificationUrl, "_blank");
@@ -150,10 +155,14 @@ export default function ProviderStatusPage() {
   });
 
   const submitBizVerification = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/identity/business/create-inquiry", {
-      country: bizCountry,
-      registrationNumber: bizRegNumber,
-    }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/identity/business/create-inquiry", {
+        country: bizCountry,
+        registrationNumber: bizRegNumber,
+        additionalDocUrl: bizDocUrl || undefined,
+      });
+      return res.json();
+    },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] });
       if (data.inquiryUrl) {
@@ -320,6 +329,18 @@ export default function ProviderStatusPage() {
                       onChange={e => setBizRegNumber(e.target.value)}
                       data-testid="input-registration-number"
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="biz-doc-url">Supporting Document URL <span className="text-gray-400 text-xs font-normal">(optional)</span></Label>
+                    <Input
+                      id="biz-doc-url"
+                      className="mt-1"
+                      placeholder="Link to business license, certificate of incorporation, etc."
+                      value={bizDocUrl}
+                      onChange={e => setBizDocUrl(e.target.value)}
+                      data-testid="input-document-url"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Upload your document elsewhere and paste the URL, or your previously uploaded business license will be used automatically.</p>
                   </div>
                   <Button
                     className="w-full bg-purple-600 hover:bg-purple-700 text-white"
