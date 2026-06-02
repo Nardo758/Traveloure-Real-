@@ -2752,6 +2752,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     const experienceTypeId = req.query.experienceTypeId as string | undefined;
     const location = req.query.location as string | undefined;
     const experienceType = req.query.experienceType as string | undefined;
+    const neighbourhood = req.query.neighbourhood as string | undefined;
     const experts = await storage.getExpertsWithProfiles(experienceTypeId);
 
     let filtered = experts;
@@ -2768,6 +2769,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
           city.includes(loc) || loc.includes(city) ||
           country.includes(loc) || loc.includes(country);
+      });
+    }
+
+    // Filter by neighbourhood name (partial match against local expert neighborhoods array)
+    if (neighbourhood) {
+      const nbh = neighbourhood.toLowerCase();
+      filtered = filtered.filter((expert: any) => {
+        const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+        return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
       });
     }
 
