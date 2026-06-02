@@ -11701,6 +11701,62 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items
+  app.post("/api/content/checkout", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const user = await storage.getUser(userId);
+      const userEmail = user?.email || undefined;
+
+      const { title, price, currency, itemId, itemType, destination } = req.body;
+      if (!title || !price || parseFloat(price) <= 0) {
+        return res.status(400).json({ message: "title and a valid price are required" });
+      }
+
+      const { getBaseUrl } = await import("./services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      const baseUrl = getBaseUrl();
+      const amountCents = Math.round(parseFloat(price) * 100);
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: (currency || 'usd').toLowerCase(),
+              product_data: {
+                name: title,
+                description: destination ? `Curated experience in ${destination}` : 'Curated Traveloure experience',
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          type: 'content_hub_purchase',
+          userId,
+          itemId: String(itemId || ''),
+          itemType: itemType || 'curated',
+          destination: destination || '',
+        },
+        success_url: `${baseUrl}/discover?purchase=success`,
+        cancel_url: `${baseUrl}/discover?purchase=cancelled`,
+      });
+
+      res.json({ sessionId: session.id, url: session.url });
+    } catch (err: any) {
+      console.error("Content checkout error:", err);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
   // Track affiliate click
   app.post("/api/affiliate/track-click", async (req, res) => {
     try {

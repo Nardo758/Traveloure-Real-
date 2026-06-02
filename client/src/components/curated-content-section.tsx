@@ -182,19 +182,17 @@ function CuratedCard({
   const trackClickMutation = useMutation({
     mutationFn: async () => {
       if (!isAffiliate) return;
-      // Build trackable identifiers: affiliate items use sourceId as productId,
-      // registry items with affiliate_url use partnerId from metadata if present
-      const trackPayload: Record<string, any> = { initiatedBy: "user" };
-      if (item.type === "affiliate") {
-        trackPayload.productId = item.sourceId;
-      } else if (item.metadata?.partnerId) {
-        trackPayload.partnerId = item.metadata.partnerId;
-      } else if (item.metadata?.partner_id) {
-        trackPayload.partnerId = item.metadata.partner_id;
-      } else {
-        // No trackable identifier — skip API call, just open link
-        return;
-      }
+      // Always pass productId using sourceId as stable tracking identifier.
+      // For affiliate_products rows sourceId is the affiliate product id;
+      // for registry rows it's the content_registry id — both work as
+      // opaque tracking keys that satisfy the backend's productId||partnerId check.
+      const trackPayload: Record<string, any> = {
+        productId: String(item.sourceId),
+        initiatedBy: "user",
+      };
+      // Additionally surface partnerId from metadata when present
+      if (item.metadata?.partnerId) trackPayload.partnerId = item.metadata.partnerId;
+      else if (item.metadata?.partner_id) trackPayload.partnerId = item.metadata.partner_id;
       try {
         await apiRequest("POST", "/api/affiliate/track-click", trackPayload);
       } catch {
@@ -215,17 +213,47 @@ function CuratedCard({
     }
   };
 
+  const stripeCheckoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/content/checkout", {
+        itemId: item.sourceId,
+        itemType: item.type,
+        title: item.title,
+        price: item.price || "0",
+        currency: item.metadata?.currency || "USD",
+        destination: item.city || item.country || "",
+      });
+      return res.json();
+    },
+    onSuccess: (data: { url?: string }) => {
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast({ title: "Checkout unavailable", description: "Could not open checkout. Try Add to Trip instead.", variant: "destructive" });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Checkout failed",
+        description: "Unable to start checkout. Please sign in or try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleBookNow = () => {
     if (isAffiliate) {
       handleBookViaTraveloure();
+    } else if (item.price && parseFloat(item.price) > 0) {
+      // Non-affiliate curated items with a price → Stripe Checkout Session
+      stripeCheckoutMutation.mutate();
     } else {
-      // For curated content_registry items without a direct affiliate URL,
-      // navigate to the experience planning flow with the destination pre-filled
+      // No price available → navigate to experience planner with destination
       const dest = item.city || item.country || "";
       const planUrl = `/experiences/travel/new${dest ? `?destination=${encodeURIComponent(dest)}` : ""}`;
       toast({
-        title: "Starting your trip plan…",
-        description: `Opening the travel planner for ${dest || "your destination"}.`,
+        title: "Opening trip planner…",
+        description: `Plan your trip to ${dest || "this destination"}.`,
         duration: 2500,
       });
       navigate(planUrl);
@@ -278,6 +306,11 @@ function CuratedCard({
           <h4 className="font-semibold text-sm line-clamp-2 mb-1" data-testid={`text-curated-title-${item.id}`}>
             {item.title}
           </h4>
+          {item.source && (
+            <p className="text-[10px] text-muted-foreground/70 mb-1 uppercase tracking-wide" data-testid={`text-curated-source-${item.id}`}>
+              {item.source}
+            </p>
+          )}
           {item.description && (
             <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{item.description}</p>
           )}
@@ -329,10 +362,17 @@ function CuratedCard({
                 size="sm"
                 className="flex-1 text-xs h-8"
                 onClick={handleBookNow}
+                disabled={stripeCheckoutMutation.isPending}
                 data-testid={`button-book-now-${item.id}`}
               >
-                <ShoppingCart className="w-3 h-3 mr-1" />
-                Book Now
+                {stripeCheckoutMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <>
+                    <ShoppingCart className="w-3 h-3 mr-1" />
+                    Book Now
+                  </>
+                )}
               </Button>
             )}
           </div>
