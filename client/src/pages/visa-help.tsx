@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -27,9 +28,11 @@ import {
   Loader2,
   Shield,
   BookOpen,
+  X,
 } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia",
@@ -87,10 +90,73 @@ type DiscoverResult = {
   total: number;
 };
 
+const VISA_TYPES = [
+  { value: "tourist", label: "Tourist / Holiday" },
+  { value: "business", label: "Business" },
+  { value: "student", label: "Student" },
+  { value: "work", label: "Work" },
+  { value: "transit", label: "Transit" },
+  { value: "other", label: "Other" },
+];
+
 export default function VisaHelpPage() {
+  const { toast } = useToast();
   const [passportCountry, setPassportCountry] = useState("");
   const [destinationCountry, setDestinationCountry] = useState("");
   const [result, setResult] = useState<VisaRequirements | null>(null);
+
+  const [bookingService, setBookingService] = useState<Service | null>(null);
+  const [intakePassport, setIntakePassport] = useState("");
+  const [intakeDestination, setIntakeDestination] = useState("");
+  const [intakeStartDate, setIntakeStartDate] = useState("");
+  const [intakeEndDate, setIntakeEndDate] = useState("");
+  const [intakeVisaType, setIntakeVisaType] = useState("tourist");
+  const [intakeCircumstances, setIntakeCircumstances] = useState("");
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+
+  const bookingMutation = useMutation({
+    mutationFn: async (data: { serviceId: string; bookingMetadata: Record<string, any> }) => {
+      const res = await apiRequest("POST", "/api/expert-booking-requests", data);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Booking failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setBookingSuccess(true);
+      toast({ title: "Booking submitted!", description: "The expert will contact you shortly." });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Booking failed", description: err.message });
+    },
+  });
+
+  const handleOpenBooking = (service: Service) => {
+    setBookingService(service);
+    setIntakePassport(passportCountry);
+    setIntakeDestination(destinationCountry);
+    setIntakeStartDate("");
+    setIntakeEndDate("");
+    setIntakeVisaType("tourist");
+    setIntakeCircumstances("");
+    setBookingSuccess(false);
+  };
+
+  const handleSubmitBooking = () => {
+    if (!bookingService) return;
+    bookingMutation.mutate({
+      serviceId: bookingService.id,
+      bookingMetadata: {
+        passportNationality: intakePassport,
+        destinationCountry: intakeDestination,
+        travelStartDate: intakeStartDate,
+        travelEndDate: intakeEndDate,
+        visaType: intakeVisaType,
+        specialCircumstances: intakeCircumstances,
+      },
+    });
+  };
 
   const requirementsMutation = useMutation<VisaRequirements, Error, { passportCountry: string; destinationCountry: string }>({
     mutationFn: async (data: { passportCountry: string; destinationCountry: string }) => {
@@ -126,6 +192,145 @@ export default function VisaHelpPage() {
         title="Visa Help - Requirements & Expert Assistance | Traveloure"
         description="Look up visa requirements for your destination instantly with AI, then book a certified visa expert to handle your application."
       />
+
+      {/* Visa Booking Intake Modal */}
+      <AnimatePresence>
+        {bookingService && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setBookingService(null); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+                <div>
+                  <h2 className="font-bold text-lg text-gray-900 dark:text-white">Book Visa Assistance</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{bookingService.serviceName}</p>
+                </div>
+                <button
+                  onClick={() => setBookingService(null)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  data-testid="button-close-visa-modal"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {bookingSuccess ? (
+                <div className="p-8 text-center space-y-3">
+                  <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-lg">Booking Submitted!</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Your visa assistance request has been sent. The expert will reach out to you shortly.
+                  </p>
+                  <Button className="mt-2 bg-[#FF385C] hover:bg-[#FF385C]/90 text-white" onClick={() => setBookingService(null)}>
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Your Passport (Nationality)</label>
+                      <Select value={intakePassport} onValueChange={setIntakePassport}>
+                        <SelectTrigger data-testid="select-intake-passport">
+                          <SelectValue placeholder="Select country…" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {COUNTRIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Destination Country</label>
+                      <Select value={intakeDestination} onValueChange={setIntakeDestination}>
+                        <SelectTrigger data-testid="select-intake-destination">
+                          <SelectValue placeholder="Select country…" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {COUNTRIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Travel Start Date</label>
+                      <input
+                        type="date"
+                        value={intakeStartDate}
+                        onChange={(e) => setIntakeStartDate(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid="input-intake-start-date"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Travel End Date</label>
+                      <input
+                        type="date"
+                        value={intakeEndDate}
+                        onChange={(e) => setIntakeEndDate(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid="input-intake-end-date"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Visa Type</label>
+                    <Select value={intakeVisaType} onValueChange={setIntakeVisaType}>
+                      <SelectTrigger data-testid="select-intake-visa-type">
+                        <SelectValue placeholder="Select type…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VISA_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Special Circumstances <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <Textarea
+                      value={intakeCircumstances}
+                      onChange={(e) => setIntakeCircumstances(e.target.value)}
+                      placeholder="e.g. prior visa denials, dual nationality, criminal record, urgent timeline…"
+                      rows={3}
+                      data-testid="textarea-intake-circumstances"
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setBookingService(null)}
+                      data-testid="button-cancel-visa-booking"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1 bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+                      onClick={handleSubmitBooking}
+                      disabled={!intakePassport || !intakeDestination || !intakeStartDate || bookingMutation.isPending}
+                      data-testid="button-submit-visa-booking"
+                    >
+                      {bookingMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</>
+                      ) : (
+                        "Submit Booking Request"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Hero */}
       <div className="bg-gradient-to-br from-[#FF385C]/10 via-orange-50 to-blue-50 dark:from-[#FF385C]/20 dark:via-gray-900 dark:to-gray-900 py-16 px-4">
@@ -365,7 +570,7 @@ export default function VisaHelpPage() {
           ) : expertsData?.services && expertsData.services.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {expertsData.services.map((service) => (
-                <VisaExpertCard key={service.id} service={service} />
+                <VisaExpertCard key={service.id} service={service} onBook={handleOpenBooking} />
               ))}
             </div>
           ) : (
@@ -410,7 +615,7 @@ export default function VisaHelpPage() {
   );
 }
 
-function VisaExpertCard({ service }: { service: Service }) {
+function VisaExpertCard({ service, onBook }: { service: Service; onBook: (service: Service) => void }) {
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const name = service.providerName || "Visa Specialist";
@@ -461,11 +666,14 @@ function VisaExpertCard({ service }: { service: Service }) {
             <p className="text-xs text-gray-400">Starting from</p>
             <p className="font-bold text-gray-900 dark:text-white">${price.toFixed(0)}</p>
           </div>
-          <Link href={`/services/${service.id}`}>
-            <Button size="sm" className="bg-[#FF385C] hover:bg-[#FF385C]/90 text-white" data-testid={`button-book-visa-${service.id}`}>
-              Book Visa Help
-            </Button>
-          </Link>
+          <Button
+            size="sm"
+            className="bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+            onClick={() => onBook(service)}
+            data-testid={`button-book-visa-${service.id}`}
+          >
+            Book Visa Help
+          </Button>
         </div>
       </div>
     </motion.div>

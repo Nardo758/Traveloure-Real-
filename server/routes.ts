@@ -542,9 +542,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Request expert booking assistance
   const expertBookingRequestSchema = z.object({
-    tripId: z.string().min(1, "tripId is required"),
+    tripId: z.string().optional(),
     notes: z.string().optional().default(""),
     serviceId: z.string().optional(),
+    bookingMetadata: z.record(z.any()).optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -556,13 +557,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, serviceId } = validation.data;
+      const { tripId, notes, serviceId, bookingMetadata } = validation.data;
       const userId = (req.user as any).claims.sub;
       
-      // Check if this is a real trip vs demo/mock trip
-      const trip = await storage.getTrip(tripId);
-      if (trip && trip.userId !== userId) {
-        return res.status(401).json({ message: "Unauthorized" });
+      // Only validate trip ownership when a tripId is provided
+      if (tripId) {
+        const trip = await storage.getTrip(tripId);
+        if (trip && trip.userId !== userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
       }
 
       let bookingId: string | undefined;
@@ -585,13 +588,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           serviceId,
           travelerId: userId,
           providerId,
-          tripId,
+          tripId: tripId || null,
           bookingDetails: { notes },
           status: "pending",
           totalAmount: String(totalAmount),
           platformFee: platformFeeAmt,
           providerEarnings: providerEarningsAmt,
-        });
+          ...(bookingMetadata ? { bookingMetadata } : {}),
+        } as any);
         bookingId = booking.id;
 
         // Notify the expert/provider that a new booking request has arrived
