@@ -11,6 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   DollarSign,
   TrendingUp,
   TrendingDown,
@@ -29,6 +35,7 @@ import {
   Ticket,
   Hotel,
   Server,
+  ChevronDown,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -352,9 +359,43 @@ export default function AdminRevenue() {
                 <SelectItem value="last_90_days">Last 90 Days</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" data-testid="button-download-report">
-              <Download className="w-4 h-4 mr-2" /> Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-download-report">
+                  <Download className="w-4 h-4 mr-2" /> Export <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="export-csv"
+                  onClick={() => {
+                    const url = `/api/admin/revenue/unified/export?period=${period}&format=csv`;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `traveloure-revenue-${period}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                >
+                  <FileText className="w-4 h-4 mr-2" /> Download CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="export-pdf"
+                  onClick={() => {
+                    const url = `/api/admin/revenue/unified/export?period=${period}&format=pdf`;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `traveloure-revenue-${period}.html`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                >
+                  <FileText className="w-4 h-4 mr-2" /> Download Report (HTML/PDF)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" data-testid="button-process-payouts">
               <CreditCard className="w-4 h-4 mr-2" /> Process Payouts
             </Button>
