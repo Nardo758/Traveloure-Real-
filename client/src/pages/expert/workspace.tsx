@@ -12,7 +12,7 @@ import {
   FileText, DollarSign, CheckCircle, Clock, LayoutTemplate,
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
-  Search, Star, MapPinned,
+  Search, Star, MapPinned, Activity, Battery, Shield, BatteryLow,
 } from "lucide-react";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -234,6 +234,9 @@ function AddItemModal({ dayNumber, tripId, onClose }: { dayNumber: number; tripI
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+        .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }));
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       onClose();
     },
@@ -311,6 +314,21 @@ interface CommissionData {
 }
 interface MyAssignment { id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null; }
 
+interface AnchorImpact { type: string; message: string; severity: 'warning' | 'critical'; }
+interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
+interface EnergyRecord { dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; }
+interface DayBoundaryRecord { id: string; dayNumber: number; latestActivityEnd?: string | null; earliestActivityStart?: string | null; mustReturnToHotel: boolean; reasonForConstraint?: string | null; }
+interface BoundaryViolation { dayNumber: number; violation: string; severity: 'warning' | 'critical'; }
+interface WorkspaceConstraints {
+  anchors: Array<{ id: string; anchorType: string; anchorDatetime: string; bufferBefore: number; bufferAfter: number; isImmovable: boolean; description?: string | null }>;
+  dayBoundaries: DayBoundaryRecord[];
+  energyTracking: EnergyRecord[];
+  anchorConflicts: AnchorConflict[];
+  boundaryViolations: BoundaryViolation[];
+  optimizerScores: Record<string, number> | null;
+  tripExperienceType: string | null;
+}
+
 const formatCost = (c?: string | null) => {
   if (!c || c === "0" || c === "0.00") return null;
   const n = parseFloat(c);
@@ -379,6 +397,41 @@ export default function ExpertWorkspace() {
     enabled: !!tripId,
   });
 
+  const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
+    queryKey: [`/api/trips/${tripId}/workspace-constraints`],
+    enabled: !!tripId,
+    staleTime: 30 * 1000,
+  });
+
+  const energyCalcRef = useRef(false);
+  useEffect(() => {
+    if (!tripId || energyCalcRef.current) return;
+    energyCalcRef.current = true;
+    apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+      .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+      .catch(() => {});
+  }, [tripId]);
+
+  const presetsAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!tripId || presetsAppliedRef.current) return;
+    if (!workspaceConstraints || !trip) return;
+    // Gate on trip.start_date being available before deciding
+    const startDate = trip?.start_date;
+    if (!startDate) return;
+    // Already populated — nothing to do
+    const hasAnchors = workspaceConstraints.anchors.length > 0;
+    const hasBoundaries = workspaceConstraints.dayBoundaries.length > 0;
+    if (hasAnchors && hasBoundaries) { presetsAppliedRef.current = true; return; }
+    const slug = workspaceConstraints.tripExperienceType;
+    if (!slug) { presetsAppliedRef.current = true; return; }
+    // Mark applied only now that we're about to attempt (all guards passed)
+    presetsAppliedRef.current = true;
+    apiRequest("POST", `/api/trips/${tripId}/generate-presets`, { templateSlug: slug, eventDate: startDate })
+      .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+      .catch(() => {});
+  }, [tripId, workspaceConstraints, trip]);
+
   useEffect(() => {
     if (expertNotesData !== undefined && !noteInitialized.current) {
       setNoteText(expertNotesData.expertNotes || "");
@@ -430,6 +483,9 @@ export default function ExpertWorkspace() {
     onSuccess: (_, result) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
+      apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+        .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }));
       toast({ title: "Added to itinerary", description: `${result.name} → Day ${addToDay}` });
       setSelectedPin(null);
     },
@@ -527,14 +583,12 @@ export default function ExpertWorkspace() {
   const days = itineraryData?.days || [];
   const totalItems = itineraryData?.total || 0;
 
-  // Detect evening dinner gap (no dining item in evening)
-  const daysWithDinnerGap = days.filter(d => {
-    const hasEvening = d.items.some(i => {
-      const t = i.startTime; if (!t) return false;
-      const h = parseInt(t.split(":")[0]); return h >= 18 && (i.itemType === "dining" || i.itemType === "food");
-    });
-    return !hasEvening && d.items.length > 0;
-  }).map(d => d.dayNumber);
+  const anchorConflicts = workspaceConstraints?.anchorConflicts || [];
+  const dayBoundaries = workspaceConstraints?.dayBoundaries || [];
+  const energyTracking = workspaceConstraints?.energyTracking || [];
+  const boundaryViolations = workspaceConstraints?.boundaryViolations || [];
+  const optimizerScores = workspaceConstraints?.optimizerScores || null;
+  const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
 
   const isLoading = tripsLoading || assignmentLoading;
 
@@ -725,13 +779,36 @@ export default function ExpertWorkspace() {
                 </div>
               )}
 
-              {/* Schedule Check */}
-              {daysWithDinnerGap.length > 0 && (
+              {/* Schedule Check summary */}
+              {totalConstraintIssues > 0 && (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Schedule Check</div>
                   <div style={{ background: "#FFFBEB", border: "1px solid #FEF3C7", borderRadius: 8, padding: "8px 10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}><AlertTriangle style={{ width: 13, height: 13, color: "#D97706" }} /><span style={{ fontSize: 12, fontWeight: 700, color: "#B45309" }}>{daysWithDinnerGap.length} gap{daysWithDinnerGap.length > 1 ? "s" : ""} found</span></div>
-                    {daysWithDinnerGap.map(d => <div key={d} style={{ display: "flex", gap: 5, marginBottom: 3 }}><span style={{ fontSize: 10, color: "#D97706", marginTop: 1 }}>•</span><span style={{ fontSize: 11, color: "#B45309" }}>Day {d} — no evening dining</span></div>)}
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}>
+                      <AlertTriangle style={{ width: 13, height: 13, color: "#D97706" }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#B45309" }}>{totalConstraintIssues} issue{totalConstraintIssues > 1 ? "s" : ""} detected</span>
+                    </div>
+                    {anchorConflicts.map(c => (
+                      <div key={c.anchorId} style={{ display: "flex", gap: 5, marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, color: c.impacts.some(i => i.severity === "critical") ? "#DC2626" : "#D97706", marginTop: 1 }}>•</span>
+                        <span style={{ fontSize: 11, color: "#B45309" }}>{c.description} conflict</span>
+                      </div>
+                    ))}
+                    {energyTracking.filter(e => e.recoveryNeeded).map(e => (
+                      <div key={e.dayNumber} style={{ display: "flex", gap: 5, marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, color: "#D97706", marginTop: 1 }}>•</span>
+                        <span style={{ fontSize: 11, color: "#B45309" }}>Day {e.dayNumber} — energy critical</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {totalConstraintIssues === 0 && workspaceConstraints && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Schedule Check</div>
+                  <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <CheckCircle style={{ width: 13, height: 13, color: "#16A34A" }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#15803D" }}>No constraint issues</span>
                   </div>
                 </div>
               )}
@@ -802,9 +879,6 @@ export default function ExpertWorkspace() {
                         />
                       </div>
                     ))}
-                    {daysWithDinnerGap.includes(d.dayNumber) && (
-                      <ARow gap onAddOne={() => { setRightTab("browse"); }} />
-                    )}
                   </DayCard>
                 ))}
 
@@ -835,7 +909,13 @@ export default function ExpertWorkspace() {
         {/* ── Right Panel ── */}
         <aside style={{ width: 380, background: "white", borderLeft: `1px solid ${G[200]}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ borderBottom: `1px solid ${G[200]}`, padding: "0 10px", display: "flex", gap: 0, flexShrink: 0, overflowX: "auto" }}>
-            {[{ k: "gaps", l: "⚠️ Schedule Check" }, { k: "browse", l: "🔍 Browse" }, { k: "commission", l: "💰 Earnings" }, { k: "providers", l: "👥 Providers" }, { k: "affiliates", l: "🔗 Affiliates" }].map(t => (
+            {[
+              { k: "gaps", l: totalConstraintIssues > 0 ? `⚠️ Schedule Check (${totalConstraintIssues})` : "⚠️ Schedule Check" },
+              { k: "browse", l: "🔍 Browse" },
+              { k: "commission", l: "💰 Earnings" },
+              { k: "providers", l: "👥 Providers" },
+              { k: "affiliates", l: "🔗 Affiliates" },
+            ].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${P}` : "2px solid transparent", color: rightTab === t.k ? P : G[500], marginBottom: -1, whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
@@ -843,27 +923,149 @@ export default function ExpertWorkspace() {
           {/* Schedule Check Tab */}
           {rightTab === "gaps" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}><AlertTriangle style={{ width: 14, height: 14, color: P }} /><span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Schedule Check</span></div>
-              {daysWithDinnerGap.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px 20px" }}>
-                  <CheckCircle style={{ width: 36, height: 36, color: "#22C55E", margin: "0 auto 12px" }} />
-                  <div style={{ fontSize: 14, fontWeight: 600, color: G[900], marginBottom: 6 }}>No gaps found!</div>
-                  <div style={{ fontSize: 12, color: G[500] }}>All days have complete coverage.</div>
-                </div>
-              ) : (
-                daysWithDinnerGap.map((d, i) => (
-                  <div key={d} style={{ border: `1px solid ${P}40`, borderRadius: 10, padding: "10px 12px", marginBottom: 9, background: `${P}05` }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><Bdg c="primary">Day {d}</Bdg><span style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>No evening dining booked</span></div>
-                    <p style={{ fontSize: 12, color: G[500], margin: "0 0 5px" }}>Add a dinner recommendation for this evening</p>
-                    <div style={{ fontSize: 11, color: "#15803D", fontWeight: 600, marginBottom: 7 }}>💰 Add a restaurant to earn commission</div>
-                    <button onClick={() => { setRightTab("browse"); setCat("dining"); }} data-testid={`button-fill-gap-day-${d}`} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer" }}>Fill This Gap →</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+                <Shield style={{ width: 14, height: 14, color: P }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Schedule Check</span>
+              </div>
+
+              {/* Optimizer Scores */}
+              {optimizerScores && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Optimizer Scores</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    {[
+                      { key: "balance_score", label: "Balance", color: "#2563EB" },
+                      { key: "wellness_score", label: "Wellness", color: "#16A34A" },
+                      { key: "pace_score", label: "Pace", color: "#9333EA" },
+                      { key: "diversity_score", label: "Diversity", color: "#EA580C" },
+                    ].map(s => {
+                      const val = optimizerScores[s.key] ?? null;
+                      if (val === null) return null;
+                      const pct = Math.min(100, Math.max(0, val));
+                      return (
+                        <div key={s.key} data-testid={`score-${s.key}`} style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "7px 9px" }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: G[500], marginBottom: 4 }}>{s.label}</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1 }}>{Math.round(val)}</div>
+                          <div style={{ marginTop: 4, height: 3, background: G[200], borderRadius: 99, overflow: "hidden" }}>
+                            <div style={{ width: `${pct}%`, height: "100%", background: s.color, borderRadius: 99 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
+                </div>
               )}
+
+              {/* Anchor Conflicts */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Anchor Conflicts</div>
+                {constraintsLoading ? (
+                  <Skeleton className="h-16 rounded-lg" />
+                ) : anchorConflicts.length === 0 ? (
+                  <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <CheckCircle style={{ width: 12, height: 12, color: "#16A34A" }} />
+                    <span style={{ fontSize: 12, color: "#15803D", fontWeight: 500 }}>No anchor conflicts</span>
+                  </div>
+                ) : anchorConflicts.map(conflict => (
+                  <div key={conflict.anchorId} style={{ border: `1px solid ${conflict.impacts.some(i => i.severity === "critical") ? "#FCA5A5" : "#FDE68A"}`, borderRadius: 9, padding: "9px 11px", marginBottom: 7, background: conflict.impacts.some(i => i.severity === "critical") ? "#FEF2F2" : "#FFFBEB" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                      <Bdg c={conflict.impacts.some(i => i.severity === "critical") ? "rose" : "amber"}>{conflict.impacts.some(i => i.severity === "critical") ? "CRITICAL" : "WARNING"}</Bdg>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: G[900] }}>{conflict.description}</span>
+                    </div>
+                    {conflict.impacts.map((imp, idx) => (
+                      <div key={idx} data-testid={`anchor-impact-${conflict.anchorId}-${idx}`} style={{ display: "flex", gap: 5, marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, color: imp.severity === "critical" ? "#DC2626" : "#D97706", marginTop: 2, flexShrink: 0 }}>•</span>
+                        <span style={{ fontSize: 11, color: imp.severity === "critical" ? "#991B1B" : "#B45309" }}>{imp.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              {/* Day Boundaries */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Day Boundaries</div>
+                {constraintsLoading ? (
+                  <Skeleton className="h-12 rounded-lg" />
+                ) : dayBoundaries.length === 0 ? (
+                  <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: G[400] }}>No day boundaries set</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {dayBoundaries.map(b => {
+                      const violations = boundaryViolations.filter(v => v.dayNumber === b.dayNumber);
+                      return (
+                        <div key={b.id} data-testid={`day-boundary-${b.dayNumber}`} style={{ background: violations.length > 0 ? "#FFFBEB" : G[50], border: `1px solid ${violations.length > 0 ? "#FDE68A" : G[200]}`, borderRadius: 8, padding: "7px 10px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                            <Bdg c="blue">Day {b.dayNumber}</Bdg>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {b.mustReturnToHotel && <Bdg c="violet">Must return to hotel</Bdg>}
+                              {violations.length > 0 && <Bdg c="amber">{violations.length} violation{violations.length > 1 ? "s" : ""}</Bdg>}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: G[600] }}>
+                            {b.earliestActivityStart && <span>From {b.earliestActivityStart} </span>}
+                            {b.latestActivityEnd && <span>until {b.latestActivityEnd}</span>}
+                            {b.reasonForConstraint && <div style={{ marginTop: 2, fontSize: 10, color: G[400] }}>{b.reasonForConstraint}</div>}
+                          </div>
+                          {violations.length > 0 && (
+                            <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 3 }}>
+                              {violations.map((v, idx) => (
+                                <div key={idx} data-testid={`boundary-violation-day${b.dayNumber}-${idx}`} style={{ display: "flex", gap: 5 }}>
+                                  <span style={{ fontSize: 10, color: "#D97706", marginTop: 2, flexShrink: 0 }}>⚠</span>
+                                  <span style={{ fontSize: 11, color: "#B45309" }}>{v.violation}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Energy Tracking */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Energy per Day</div>
+                {constraintsLoading ? (
+                  <Skeleton className="h-16 rounded-lg" />
+                ) : energyTracking.length === 0 ? (
+                  <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: G[400] }}>No energy data yet</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {energyTracking.sort((a, b) => a.dayNumber - b.dayNumber).map(e => {
+                      const pct = e.endingEnergy;
+                      const barColor = pct < 20 ? "#DC2626" : pct < 40 ? "#D97706" : "#16A34A";
+                      return (
+                        <div key={e.dayNumber} data-testid={`energy-day-${e.dayNumber}`} style={{ background: e.recoveryNeeded ? "#FEF2F2" : G[50], border: `1px solid ${e.recoveryNeeded ? "#FCA5A5" : G[200]}`, borderRadius: 8, padding: "7px 10px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                              <BatteryLow style={{ width: 11, height: 11, color: barColor }} />
+                              <span style={{ fontSize: 12, fontWeight: 600, color: G[700] }}>Day {e.dayNumber}</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: barColor }}>{e.endingEnergy}%</span>
+                              {e.recoveryNeeded && <Bdg c="rose">Burnout risk</Bdg>}
+                            </div>
+                          </div>
+                          <div style={{ height: 4, background: G[200], borderRadius: 99, overflow: "hidden" }}>
+                            <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 99, transition: "width 0.3s" }} />
+                          </div>
+                          {e.recoveryNeeded && e.recoveryReason && (
+                            <div style={{ fontSize: 10, color: "#991B1B", marginTop: 4 }}>{e.recoveryReason}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Earnings reminder */}
               {totalItems > 0 && commission && (
-                <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 8, padding: "8px 12px", marginTop: 6 }}>
+                <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 8, padding: "8px 12px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "#15803D", display: "flex", alignItems: "center", gap: 5 }}>
-                    <TrendingUp style={{ width: 12, height: 12 }} /> Your estimated earnings: ${parseFloat(commission.expertShare).toFixed(2)}
+                    <TrendingUp style={{ width: 12, height: 12 }} /> Estimated earnings: ${parseFloat(commission.expertShare).toFixed(2)}
                   </div>
                 </div>
               )}

@@ -13977,6 +13977,152 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // === Workspace Constraints Summary ===
+
+  app.get("/api/trips/:tripId/workspace-constraints", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // Assignment-scoped authorization: owner, admin, or an expert assigned to this specific trip
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) {
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(401).json({ message: "Not authenticated" });
+        if (user.role === "admin") {
+          // admins pass through
+        } else {
+          const assigned = await storage.isExpertAssignedToTrip(tripId, userId);
+          if (!assigned) return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const [anchors, boundaries, energyRecords, items] = await Promise.all([
+        storage.getTemporalAnchors(tripId),
+        storage.getDayBoundaries(tripId),
+        storage.getEnergyTracking(tripId),
+        storage.getItineraryItems(tripId),
+      ]);
+
+      // Detect anchor conflicts using the logistics service
+      const { detectAnchorImpacts } = await import('./services/logistics-presets.service');
+      const anchorConflicts: Array<{
+        anchorId: string;
+        anchorType: string;
+        description: string;
+        impacts: Array<{ type: string; message: string; severity: 'warning' | 'critical' }>;
+      }> = [];
+      for (const anchor of anchors) {
+        const impacts = await detectAnchorImpacts(tripId, anchor.id);
+        if (impacts.length > 0) {
+          anchorConflicts.push({
+            anchorId: anchor.id,
+            anchorType: anchor.anchorType,
+            description: anchor.description || anchor.anchorType,
+            impacts,
+          });
+        }
+      }
+
+      // Evaluate day-boundary violations against current itinerary items
+      const itemsByDay = new Map<number, typeof items>();
+      for (const item of items) {
+        if (!itemsByDay.has(item.dayNumber)) itemsByDay.set(item.dayNumber, []);
+        itemsByDay.get(item.dayNumber)!.push(item);
+      }
+
+      const boundaryViolations: Array<{
+        dayNumber: number;
+        violation: string;
+        severity: 'warning' | 'critical';
+      }> = [];
+
+      for (const boundary of boundaries) {
+        const dayItems = itemsByDay.get(boundary.dayNumber) || [];
+
+        if (boundary.latestActivityEnd && dayItems.length > 0) {
+          // Find the latest end time or start time among day's items
+          for (const item of dayItems) {
+            const itemTime = item.endTime || item.startTime;
+            if (itemTime && itemTime > boundary.latestActivityEnd) {
+              boundaryViolations.push({
+                dayNumber: boundary.dayNumber,
+                violation: `Item "${item.title}" ends at ${itemTime}, past the Day ${boundary.dayNumber} limit of ${boundary.latestActivityEnd}`,
+                severity: 'warning',
+              });
+            }
+          }
+        }
+
+        if (boundary.mustReturnToHotel && dayItems.length > 0) {
+          const hasHotel = dayItems.some(i => {
+            const t = (i.itemType || '').toLowerCase();
+            return t === 'hotel' || t === 'accommodation' || t === 'lodging';
+          });
+          if (!hasHotel) {
+            boundaryViolations.push({
+              dayNumber: boundary.dayNumber,
+              violation: `Day ${boundary.dayNumber} requires return to hotel but no accommodation item is scheduled`,
+              severity: 'warning',
+            });
+          }
+        }
+      }
+
+      // Fetch optimizer scores from the most recent variant for this trip
+      let optimizerScores: Record<string, number> | null = null;
+      const comparisons = await db
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.tripId, tripId))
+        .orderBy(desc(itineraryComparisons.createdAt))
+        .limit(1);
+
+      if (comparisons.length > 0) {
+        const variants = await db
+          .select({ id: itineraryVariants.id })
+          .from(itineraryVariants)
+          .where(eq(itineraryVariants.comparisonId, comparisons[0].id))
+          .orderBy(desc(itineraryVariants.createdAt))
+          .limit(1);
+
+        if (variants.length > 0) {
+          const scoreMetrics = await db
+            .select()
+            .from(itineraryVariantMetrics)
+            .where(
+              and(
+                eq(itineraryVariantMetrics.variantId, variants[0].id),
+                inArray(itineraryVariantMetrics.metricKey, ['balance_score', 'wellness_score', 'pace_score', 'diversity_score'])
+              )
+            );
+          if (scoreMetrics.length > 0) {
+            optimizerScores = {};
+            for (const m of scoreMetrics) {
+              optimizerScores[m.metricKey] = parseFloat(m.value as string);
+            }
+          }
+        }
+      }
+
+      res.json({
+        anchors,
+        dayBoundaries: boundaries,
+        energyTracking: energyRecords,
+        anchorConflicts,
+        boundaryViolations,
+        optimizerScores,
+        tripExperienceType: trip.experienceType || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch workspace constraints", error: error.message });
+    }
+  });
+
   // === Logistics: Template Presets ===
 
   app.get("/api/logistics/presets/:templateSlug", async (req, res) => {
