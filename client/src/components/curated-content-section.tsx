@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -174,6 +175,7 @@ function CuratedCard({
   onAddToTrip: (item: CuratedItem) => void;
 }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const isAffiliate = !!item.affiliate_url;
 
   const trackClickMutation = useMutation({
@@ -202,9 +204,31 @@ function CuratedCard({
     }
   };
 
+  const addToCartMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/cart", { serviceId: item.sourceId, quantity: 1 });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Added to cart",
+        description: `"${item.title}" is ready to book.`,
+      });
+      navigate("/cart");
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't add to cart",
+        description: "Use 'Add to Trip' to include this in your itinerary instead.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleBookNow = () => {
-    if (item.affiliate_url) {
+    if (isAffiliate) {
       handleBookViaTraveloure();
+    } else {
+      addToCartMutation.mutate();
     }
   };
 
@@ -295,7 +319,7 @@ function CuratedCard({
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <>
-                    Book
+                    Book via Traveloure
                     <ExternalLink className="w-3 h-3 ml-1" />
                   </>
                 )}
@@ -305,10 +329,17 @@ function CuratedCard({
                 size="sm"
                 className="flex-1 text-xs h-8"
                 onClick={handleBookNow}
+                disabled={addToCartMutation.isPending}
                 data-testid={`button-book-now-${item.id}`}
               >
-                <ShoppingCart className="w-3 h-3 mr-1" />
-                Book Now
+                {addToCartMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <>
+                    <ShoppingCart className="w-3 h-3 mr-1" />
+                    Book Now
+                  </>
+                )}
               </Button>
             )}
           </div>

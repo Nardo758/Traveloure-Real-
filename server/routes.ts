@@ -11542,7 +11542,11 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const destination = (req.query.destination as string || "").trim();
       const tabParam = (req.query.tab as string || "").trim();
-      const contentTypesParam = (req.query.content_types as string || "").trim();
+      // Support both ?content_types=foo,bar (string) and ?content_types[]=foo&content_types[]=bar (array)
+      const rawContentTypes = req.query.content_types;
+      const contentTypesParam: string = Array.isArray(rawContentTypes)
+        ? (rawContentTypes as string[]).join(",")
+        : (rawContentTypes as string || "").trim();
 
       if (!destination) {
         return res.json({ items: [], total: 0 });
@@ -11579,20 +11583,48 @@ export async function registerDiscoveryRoutes(app: Express) {
           ? contentTypesParam.split(",").map(t => t.trim()).filter(Boolean)
           : ["experience", "template", "service", "media", "other"];
 
-      // Query affiliate_products matched to destination
+      // Tab → affiliate product category mapping
+      const TAB_AFFILIATE_CATEGORIES: Record<string, string[]> = {
+        venues: ["venue", "events", "conference"],
+        venue: ["venue", "events", "conference"],
+        dining: ["food", "restaurant", "dining", "culinary"],
+        accommodations: ["accommodation", "hotel", "lodging"],
+        "guest-accommodations": ["accommodation", "hotel", "lodging"],
+        activities: ["activity", "tour", "outdoor", "entertainment", "sport"],
+        photography: ["photography", "media"],
+        transportation: ["transport", "transfer", "car", "train"],
+        entertainment: ["entertainment", "show", "concert", "theater"],
+        wellness: ["wellness", "spa", "fitness"],
+        "spa-wellness": ["wellness", "spa", "fitness"],
+        shopping: ["shopping", "retail", "market"],
+        nightlife: ["nightlife", "bar", "club"],
+        sports: ["sport", "outdoor", "adventure"],
+        vendors: ["service", "vendor"],
+        "team-activities": ["activity", "team", "group"],
+      };
+      const affiliateCategoryFilter = tabParam && TAB_AFFILIATE_CATEGORIES[tabParam]
+        ? TAB_AFFILIATE_CATEGORIES[tabParam]
+        : null;
+
+      // Query affiliate_products matched to destination (+ optional category filter for tab)
+      const affiliateBaseCondition = and(
+        eq(affiliateProducts.isActive, true),
+        or(
+          ilike(affiliateProducts.city, `%${city}%`),
+          ilike(affiliateProducts.country, `%${country}%`),
+          ilike(affiliateProducts.location, `%${city}%`)
+        )
+      );
+      const affiliateCondition = affiliateCategoryFilter
+        ? and(affiliateBaseCondition, or(
+            ...affiliateCategoryFilter.map(cat => ilike(affiliateProducts.category, `%${cat}%`))
+          ))
+        : affiliateBaseCondition;
+
       const affiliateItems = await db
         .select()
         .from(affiliateProducts)
-        .where(
-          and(
-            eq(affiliateProducts.isActive, true),
-            or(
-              ilike(affiliateProducts.city, `%${city}%`),
-              ilike(affiliateProducts.country, `%${country}%`),
-              ilike(affiliateProducts.location, `%${city}%`)
-            )
-          )
-        )
+        .where(affiliateCondition)
         .limit(20);
 
       // Query content_registry for published items with location metadata matching destination
