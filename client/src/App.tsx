@@ -91,7 +91,6 @@ import FeaturesPage from "@/pages/features";
 import ExperienceTemplatePage from "@/pages/experience-template";
 import ArchitectureDiagram from "@/pages/architecture-diagram";
 import ExperiencesPage from "@/pages/experiences";
-import ExperienceDiscoveryPage from "@/pages/experience-discovery";
 import DealsPage from "@/pages/deals";
 import PaymentPage from "@/pages/payment";
 import TravelExpertsPage from "@/pages/travel-experts";
@@ -117,7 +116,6 @@ import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import ExpertWorkspace from "@/pages/expert/workspace";
 import CartPage from "@/pages/cart";
-import BrowsePage from "@/pages/browse";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
@@ -303,7 +301,7 @@ function Router() {
         <ExperienceTemplatePage />
       </Route>
       <Route path="/discover-experiences">
-        <ExperienceDiscoveryPage />
+        <Redirect to="/discover" />
       </Route>
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
@@ -613,7 +611,7 @@ function Router() {
         <Redirect to="/discover" />
       </Route>
       <Route path="/browse">
-        <BrowsePage />
+        <Redirect to="/discover" />
       </Route>
       <Route path="/travel-experts">
         <Redirect to="/become-expert" />
