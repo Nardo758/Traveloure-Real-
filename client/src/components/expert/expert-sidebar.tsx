@@ -27,6 +27,7 @@ import {
   Palette,
   Settings,
   Link2,
+  ShieldCheck,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -59,6 +60,7 @@ function buildMenuGroups(expertType?: string | null) {
       items: [
         { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
         { title: "Profile", href: "/expert/profile", icon: User },
+        { title: "Verification & Payouts", href: "/expert/verification", icon: ShieldCheck },
         { title: "Settings", href: "/expert/settings", icon: Settings },
       ],
     },
