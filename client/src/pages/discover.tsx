@@ -1443,6 +1443,7 @@ export default function DiscoverPage() {
                 {locationFilter && (
                   <CuratedContentSection
                     destination={locationFilter}
+                    surface="travelpulse-discover"
                     label="Curated Experiences"
                     className="mb-6"
                   />
