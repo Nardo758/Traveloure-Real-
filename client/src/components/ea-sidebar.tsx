@@ -22,6 +22,7 @@ import { useState } from "react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/ea/dashboard" },
+  { icon: Users, label: "Clients", href: "/ea/clients" },
   { icon: Users, label: "Executives", href: "/ea/executives" },
   { icon: Calendar, label: "Calendar", href: "/ea/calendar" },
   { icon: ClipboardList, label: "Events", href: "/ea/events" },

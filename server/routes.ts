@@ -21,7 +21,8 @@ import {
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
   userAndExpertChats, insertUserAndExpertChatSchema,
-  expertPayouts, providerPayouts
+  expertPayouts, providerPayouts,
+  eaClientRelationships
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -16563,6 +16564,164 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("[Expert] saveExpertNotes error:", err);
       res.status(500).json({ message: "Failed to save expert notes" });
+    }
+  });
+
+  // === EA Client Delegation Routes ===
+
+  // GET /api/ea/clients — list all clients managed by this EA
+  app.get("/api/ea/clients", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id;
+      const rows = await db
+        .select({
+          id: eaClientRelationships.id,
+          clientUserId: eaClientRelationships.clientUserId,
+          clientEmail: eaClientRelationships.clientEmail,
+          displayName: eaClientRelationships.displayName,
+          notes: eaClientRelationships.notes,
+          billingName: eaClientRelationships.billingName,
+          billingEmail: eaClientRelationships.billingEmail,
+          billingAddress: eaClientRelationships.billingAddress,
+          paymentNotes: eaClientRelationships.paymentNotes,
+          preferredCurrency: eaClientRelationships.preferredCurrency,
+          createdAt: eaClientRelationships.createdAt,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
+          userProfileImageUrl: users.profileImageUrl,
+        })
+        .from(eaClientRelationships)
+        .leftJoin(users, eq(eaClientRelationships.clientUserId, users.id))
+        .where(eq(eaClientRelationships.eaUserId, eaUserId))
+        .orderBy(desc(eaClientRelationships.createdAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getClients error:", err);
+      res.status(500).json({ message: "Failed to fetch clients" });
+    }
+  });
+
+  // POST /api/ea/clients — add a client (by email lookup)
+  app.post("/api/ea/clients", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id;
+      const { email, displayName, notes } = z.object({
+        email: z.string().email(),
+        displayName: z.string().optional(),
+        notes: z.string().optional(),
+      }).parse(req.body);
+
+      // Look up the user by email
+      const [foundUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+      // Check not already added
+      const existing = await db.select().from(eaClientRelationships)
+        .where(and(
+          eq(eaClientRelationships.eaUserId, eaUserId),
+          foundUser
+            ? eq(eaClientRelationships.clientUserId, foundUser.id)
+            : eq(eaClientRelationships.clientEmail, email)
+        )).limit(1);
+
+      if (existing.length > 0) {
+        return res.status(409).json({ message: "Client already added" });
+      }
+
+      const [created] = await db.insert(eaClientRelationships).values({
+        eaUserId,
+        clientUserId: foundUser?.id ?? null,
+        clientEmail: email,
+        displayName: displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email),
+        notes: notes ?? null,
+      }).returning();
+
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] addClient error:", err);
+      res.status(500).json({ message: "Failed to add client" });
+    }
+  });
+
+  // PATCH /api/ea/clients/:id — update payment info / notes
+  app.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id;
+      const { id } = req.params;
+      const updates = z.object({
+        displayName: z.string().optional(),
+        notes: z.string().optional(),
+        billingName: z.string().optional(),
+        billingEmail: z.string().email().optional(),
+        billingAddress: z.string().optional(),
+        paymentNotes: z.string().optional(),
+        preferredCurrency: z.string().optional(),
+      }).parse(req.body);
+
+      const [row] = await db.select().from(eaClientRelationships)
+        .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.eaUserId, eaUserId)))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "Client not found" });
+
+      const [updated] = await db.update(eaClientRelationships)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(eaClientRelationships.id, id))
+        .returning();
+
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateClient error:", err);
+      res.status(500).json({ message: "Failed to update client" });
+    }
+  });
+
+  // DELETE /api/ea/clients/:id — remove client relationship
+  app.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id;
+      const { id } = req.params;
+      const [row] = await db.select().from(eaClientRelationships)
+        .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.eaUserId, eaUserId)))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "Client not found" });
+      await db.delete(eaClientRelationships).where(eq(eaClientRelationships.id, id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteClient error:", err);
+      res.status(500).json({ message: "Failed to remove client" });
+    }
+  });
+
+  // POST /api/ea/clients/:id/push — send a notification to the client
+  app.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id;
+      const { id } = req.params;
+      const { title, message } = z.object({
+        title: z.string().min(1).max(255),
+        message: z.string().min(1),
+      }).parse(req.body);
+
+      const [row] = await db.select().from(eaClientRelationships)
+        .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.eaUserId, eaUserId)))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "Client not found" });
+      if (!row.clientUserId) return res.status(400).json({ message: "Client does not have a platform account" });
+
+      await db.insert(notifications).values({
+        userId: row.clientUserId,
+        type: "ea_message",
+        title,
+        message,
+        relatedId: eaUserId,
+        relatedType: "ea_user",
+        data: { fromEaUserId: eaUserId },
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] pushNotification error:", err);
+      res.status(500).json({ message: "Failed to send notification" });
     }
   });
 

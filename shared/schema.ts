@@ -5260,3 +5260,25 @@ export const providerSettings = pgTable("provider_settings", {
 export const insertProviderSettingsSchema = createInsertSchema(providerSettings).omit({ id: true, updatedAt: true });
 export type ProviderSettings = typeof providerSettings.$inferSelect;
 export type InsertProviderSettings = z.infer<typeof insertProviderSettingsSchema>;
+
+// === EA Client Relationships (Delegation System) ===
+
+export const eaClientRelationships = pgTable("ea_client_relationships", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clientUserId: varchar("client_user_id").references(() => users.id, { onDelete: "set null" }),
+  clientEmail: varchar("client_email", { length: 255 }),
+  displayName: varchar("display_name", { length: 100 }),
+  notes: text("notes"),
+  billingName: varchar("billing_name", { length: 255 }),
+  billingEmail: varchar("billing_email", { length: 255 }),
+  billingAddress: text("billing_address"),
+  paymentNotes: text("payment_notes"),
+  preferredCurrency: varchar("preferred_currency", { length: 10 }).default("USD"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEaClientRelationshipSchema = createInsertSchema(eaClientRelationships).omit({ id: true, createdAt: true, updatedAt: true });
+export type EaClientRelationship = typeof eaClientRelationships.$inferSelect;
+export type InsertEaClientRelationship = z.infer<typeof insertEaClientRelationshipSchema>;
