@@ -31,6 +31,7 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
+  expertSelectedServices,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -1137,6 +1138,19 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       // Use the expertType from the form, default to "expert" for backwards compatibility
       const role = (updated as any).expertType || "expert";
       await db.update(users).set({ role }).where(eq(users.id, updated.userId));
+
+      // Auto-populate expert's service catalogue from their application selections
+      const selectedOfferingIds = ((updated as any).selectedServices ?? []) as string[];
+      if (selectedOfferingIds.length > 0) {
+        await db.insert(expertSelectedServices)
+          .values(selectedOfferingIds.map(serviceOfferingId => ({
+            expertId: updated.userId,
+            serviceOfferingId,
+            isActive: true,
+          })))
+          .onConflictDoNothing();
+      }
+
       // Notify the user to complete Stripe Connect setup
       await db.insert(notifications).values({
         userId: updated.userId,
