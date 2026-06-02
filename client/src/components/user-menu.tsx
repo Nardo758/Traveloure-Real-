@@ -12,7 +12,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   ChevronDown,
-  Map,
   UserCheck,
   Building2,
   LogOut,
@@ -188,16 +187,6 @@ export function UserMenu() {
             </DropdownMenuItem>
           </>
         )}
-
-        <DropdownMenuSeparator />
-
-        {/* ── My Trips shortcut ── */}
-        <DropdownMenuItem asChild>
-          <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
-            <Map className="w-4 h-4 mr-2" />
-            My Trips
-          </Link>
-        </DropdownMenuItem>
 
         {/* ── Application links for regular users ── */}
         {!isExpert && !isProvider && !isEA && !isAdmin && (
