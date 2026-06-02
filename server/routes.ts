@@ -105,6 +105,44 @@ import {
 const EXPERT_SHARE_RATE = 0.75;
 const PLATFORM_FEE_RATE = 0.25;
 
+// ─── Commission rate resolution ───────────────────────────────────────────────
+// Priority order:
+//  1. Per-service revenueShareRate column (caller applies this as final override)
+//  2. Category row in booking_fee_configs
+//  3. EXPERT_SHARE_RATE / PLATFORM_FEE_RATE constants (hardcoded fallback)
+interface CommissionRates {
+  expertShareRate: number;  // fraction of price that goes to the expert
+  platformFeeRate: number;  // fraction of price that goes to the platform
+}
+async function resolveCommissionRates(category?: string | null): Promise<CommissionRates> {
+  try {
+    const cat = category || "default";
+    const result = await db.execute(sql`
+      SELECT
+        CAST(expert_share_percent  AS FLOAT) AS expert_share_percent,
+        CAST(platform_fee_percent  AS FLOAT) AS platform_fee_percent
+      FROM booking_fee_configs
+      WHERE category = ${cat} AND is_active = true
+      LIMIT 1
+    `);
+    if (result.rows && result.rows.length > 0) {
+      const row = result.rows[0] as any;
+      const expertShare  = Number(row.expert_share_percent ?? 0);
+      const platformFee  = Number(row.platform_fee_percent ?? 0);
+      // booking_fee_configs stores percentages (e.g. 75 = 75%), convert to rate
+      if (expertShare > 0) {
+        return {
+          expertShareRate: expertShare / 100,
+          platformFeeRate: platformFee > 0 ? platformFee / 100 : 1 - expertShare / 100,
+        };
+      }
+    }
+  } catch (_err) {
+    // fall through to defaults
+  }
+  return { expertShareRate: EXPERT_SHARE_RATE, platformFeeRate: PLATFORM_FEE_RATE };
+}
+
 // Helper function to verify trip ownership
 async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
   const trip = await storage.getTrip(tripId);
@@ -3387,10 +3425,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Calculate fees (platform takes PLATFORM_FEE_RATE = 25%)
+      // Resolve commission rates from booking_fee_configs (fallback: PLATFORM_FEE_RATE)
+      const templateRates = await resolveCommissionRates(null);
       const price = parseFloat(template.price as string);
-      const platformFee = price * PLATFORM_FEE_RATE;
-      const expertEarnings = price - platformFee;
+      const platformFee = price * templateRates.platformFeeRate;
+      const expertEarnings = price * templateRates.expertShareRate;
 
       // Create purchase record
       const purchase = await storage.createTemplatePurchase({
@@ -5622,13 +5661,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
     
-    // Calculate totals
+    // Calculate totals — use booking_fee_configs default, falling back to PLATFORM_FEE_RATE
     const subtotal = items.reduce((sum, item) => {
       const price = parseFloat(item.service?.price || "0");
       return sum + (price * (item.quantity || 1));
     }, 0);
     
-    const platformFee = subtotal * PLATFORM_FEE_RATE;
+    const cartRates = await resolveCommissionRates("default");
+    const platformFee = subtotal * cartRates.platformFeeRate;
     const total = subtotal + platformFee;
     
     res.json({
@@ -5749,12 +5789,28 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(400).json({ message: "Cart is empty" });
       }
       
-      // Calculate totals
-      const subtotal = cartData.reduce((sum, item) => {
-        const price = parseFloat(item.service?.price || "0");
-        return sum + (price * (item.quantity || 1));
-      }, 0);
-      const platformFee = subtotal * PLATFORM_FEE_RATE;
+      // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+
+      // Calculate totals — resolve per-item rates from booking_fee_configs then sum
+      let checkoutSubtotal = 0;
+      let checkoutPlatformFeeTotal = 0;
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // Per-item: category config → fallback default rates
+        const itemCategoryRates = await resolveCommissionRates(item.service.categoryId ?? null);
+        // Per-service revenueShareRate is the final override (takes priority over config)
+        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        checkoutSubtotal += itemPrice;
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare);
+      }
+      const subtotal = checkoutSubtotal;
+      // For Stripe total, charge subtotal + weighted-average platform fee
+      const platformFee = checkoutPlatformFeeTotal;
       const total = subtotal + platformFee;
       
       // Create bookings for each cart item
@@ -5763,13 +5819,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // safeParseRate: returns fallback (EXPERT_SHARE_RATE) when value is missing, non-numeric, or outside [0,1]
-        const safeParseRate = (value: any, fallback: number): number => {
-          const n = parseFloat(value);
-          return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
-        };
+        // expertShareRate: category config first, then per-service revenueShareRate as final override
+        const itemCategoryRates2 = await resolveCommissionRates(item.service.categoryId ?? null);
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
-        const expertShareRate = safeParseRate(item.service.revenueShareRate, EXPERT_SHARE_RATE);
+        const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;
         const platformFeeAmt = price - expertEarningsAmt;
         
