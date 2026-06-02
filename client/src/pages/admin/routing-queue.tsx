@@ -65,6 +65,7 @@ function ScoreBadge({ label, value, max, color }: { label: string; value: number
 function QueueRow({ item }: { item: QueueItem }) {
   const [expanded, setExpanded] = useState(false);
   const [reassignExpertId, setReassignExpertId] = useState<string>("");
+  const [confirmed, setConfirmed] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -83,6 +84,7 @@ function QueueRow({ item }: { item: QueueItem }) {
       } else {
         toast({ title: "Assignment confirmed", description: `${item.expert_name} has been assigned. The workspace is now open.` });
       }
+      setConfirmed(true);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/routing-queue"] });
     },
     onError: (err: any) => {
@@ -162,9 +164,9 @@ function QueueRow({ item }: { item: QueueItem }) {
           )}
           <Button
             size="sm"
-            className="bg-[#E85D55] hover:bg-[#d44e47] text-white text-xs h-8"
-            onClick={() => confirmMutation.mutate()}
-            disabled={confirmMutation.isPending}
+            className={confirmed ? "bg-green-600 text-white text-xs h-8 cursor-default" : "bg-[#E85D55] hover:bg-[#d44e47] text-white text-xs h-8"}
+            onClick={() => !confirmed && confirmMutation.mutate()}
+            disabled={confirmMutation.isPending || confirmed}
             data-testid={`button-confirm-assignment-${item.id}`}
           >
             {confirmMutation.isPending ? (
@@ -172,7 +174,7 @@ function QueueRow({ item }: { item: QueueItem }) {
             ) : (
               <CheckCircle className="w-3.5 h-3.5 mr-1" />
             )}
-            Confirm
+            {confirmed ? "Confirmed" : "Confirm"}
           </Button>
         </div>
       </div>
