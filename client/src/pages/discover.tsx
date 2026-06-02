@@ -171,6 +171,7 @@ const categoryIcons: Record<string, React.ElementType> = {
   "language-translation": Languages,
   "specialty-services": Award,
   "custom-other": HelpCircle,
+  "visa-assistance": Globe,
 };
 
 const tripCategories = [
@@ -1437,6 +1438,46 @@ export default function DiscoverPage() {
                       </div>
                     )}
                   </motion.div>
+                )}
+
+                {/* Quick Category Chips */}
+                {categories && categories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    <Button
+                      key="all"
+                      variant={selectedCategory === "all" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedCategory("all")}
+                      data-testid="button-quick-cat-all"
+                    >
+                      All Services
+                    </Button>
+                    {[
+                      "tours-experiences",
+                      "food-culinary",
+                      "photography-videography",
+                      "transportation-logistics",
+                      "health-wellness",
+                      "visa-assistance",
+                    ]
+                      .map((slug) => categories.find((c: any) => c.slug === slug))
+                      .filter(Boolean)
+                      .map((cat: any) => {
+                        const Icon = categoryIcons[cat.slug] || Globe;
+                        return (
+                          <Button
+                            key={cat.id}
+                            variant={selectedCategory === cat.id ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedCategory(cat.id)}
+                            data-testid={`button-quick-cat-${cat.slug}`}
+                          >
+                            <Icon className="w-3.5 h-3.5 mr-1.5" />
+                            {cat.name}
+                          </Button>
+                        );
+                      })}
+                  </div>
                 )}
 
                 {/* Curated Content Hub — shows affiliate + platform-curated items matching destination */}
