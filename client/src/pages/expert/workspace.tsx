@@ -725,10 +725,10 @@ export default function ExpertWorkspace() {
                 </div>
               )}
 
-              {/* AI gaps */}
+              {/* Schedule Check */}
               {daysWithDinnerGap.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>AI Gap Analysis</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Schedule Check</div>
                   <div style={{ background: "#FFFBEB", border: "1px solid #FEF3C7", borderRadius: 8, padding: "8px 10px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}><AlertTriangle style={{ width: 13, height: 13, color: "#D97706" }} /><span style={{ fontSize: 12, fontWeight: 700, color: "#B45309" }}>{daysWithDinnerGap.length} gap{daysWithDinnerGap.length > 1 ? "s" : ""} found</span></div>
                     {daysWithDinnerGap.map(d => <div key={d} style={{ display: "flex", gap: 5, marginBottom: 3 }}><span style={{ fontSize: 10, color: "#D97706", marginTop: 1 }}>•</span><span style={{ fontSize: 11, color: "#B45309" }}>Day {d} — no evening dining</span></div>)}
@@ -835,15 +835,15 @@ export default function ExpertWorkspace() {
         {/* ── Right Panel ── */}
         <aside style={{ width: 380, background: "white", borderLeft: `1px solid ${G[200]}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ borderBottom: `1px solid ${G[200]}`, padding: "0 10px", display: "flex", gap: 0, flexShrink: 0, overflowX: "auto" }}>
-            {[{ k: "gaps", l: "⚡ AI Gaps" }, { k: "browse", l: "🔍 Browse" }, { k: "commission", l: "💰 Earnings" }, { k: "providers", l: "👥 Providers" }, { k: "affiliates", l: "🔗 Affiliates" }].map(t => (
+            {[{ k: "gaps", l: "⚠️ Schedule Check" }, { k: "browse", l: "🔍 Browse" }, { k: "commission", l: "💰 Earnings" }, { k: "providers", l: "👥 Providers" }, { k: "affiliates", l: "🔗 Affiliates" }].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${P}` : "2px solid transparent", color: rightTab === t.k ? P : G[500], marginBottom: -1, whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
 
-          {/* AI Gaps Tab */}
+          {/* Schedule Check Tab */}
           {rightTab === "gaps" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}><Zap style={{ width: 14, height: 14, color: P }} /><span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>AI Gap Analysis</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}><AlertTriangle style={{ width: 14, height: 14, color: P }} /><span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Schedule Check</span></div>
               {daysWithDinnerGap.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px 20px" }}>
                   <CheckCircle style={{ width: 36, height: 36, color: "#22C55E", margin: "0 auto 12px" }} />
