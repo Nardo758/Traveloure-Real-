@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   Globe,
   FileText,
@@ -29,6 +29,7 @@ import {
   Shield,
   BookOpen,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
 import { motion, AnimatePresence } from "framer-motion";
@@ -68,6 +69,7 @@ type VisaRequirements = {
   feeRange: string | null;
   disclaimer: string | null;
   fromCache?: boolean;
+  cachedAt?: string | Date | null;
 };
 
 type Service = {
@@ -101,8 +103,23 @@ const VISA_TYPES = [
 
 export default function VisaHelpPage() {
   const { toast } = useToast();
+  const searchString = useSearch();
   const [passportCountry, setPassportCountry] = useState("");
-  const [destinationCountry, setDestinationCountry] = useState("");
+
+  // Pre-fill destination from ?destination= query param (e.g. when arriving from an itinerary page)
+  const prefilledDestination = (() => {
+    const params = new URLSearchParams(searchString);
+    const raw = params.get("destination") || "";
+    return COUNTRIES.find((c) => c.toLowerCase() === raw.toLowerCase()) ?? "";
+  })();
+  const [destinationCountry, setDestinationCountry] = useState(prefilledDestination);
+
+  useEffect(() => {
+    if (prefilledDestination && !destinationCountry) {
+      setDestinationCountry(prefilledDestination);
+    }
+  }, [prefilledDestination]);
+
   const [result, setResult] = useState<VisaRequirements | null>(null);
 
   const [bookingService, setBookingService] = useState<Service | null>(null);
@@ -158,8 +175,19 @@ export default function VisaHelpPage() {
     });
   };
 
-  const requirementsMutation = useMutation<VisaRequirements, Error, { passportCountry: string; destinationCountry: string }>({
-    mutationFn: async (data: { passportCountry: string; destinationCountry: string }) => {
+  const trackIVisaClick = async (destination: string) => {
+    try {
+      await apiRequest("POST", "/api/affiliates/track", {
+        partner: "ivisa",
+        destination: destination || undefined,
+      });
+    } catch {
+      // tracking errors are non-blocking
+    }
+  };
+
+  const requirementsMutation = useMutation<VisaRequirements, Error, { passportCountry: string; destinationCountry: string; forceRefresh?: boolean }>({
+    mutationFn: async (data) => {
       const res = await apiRequest("POST", "/api/visa/requirements", data);
       return res.json() as Promise<VisaRequirements>;
     },
@@ -180,6 +208,25 @@ export default function VisaHelpPage() {
   const handleLookup = () => {
     if (!passportCountry || !destinationCountry) return;
     requirementsMutation.mutate({ passportCountry, destinationCountry });
+  };
+
+  const handleForceRefresh = () => {
+    if (!passportCountry || !destinationCountry) return;
+    requirementsMutation.mutate({ passportCountry, destinationCountry, forceRefresh: true });
+  };
+
+  const formatCachedAt = (cachedAt: string | Date | null | undefined): string => {
+    if (!cachedAt) return "";
+    const date = new Date(cachedAt);
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffMins = Math.floor(diffMs / 60_000);
+    const diffHours = Math.floor(diffMs / 3_600_000);
+    const diffDays = Math.floor(diffMs / 86_400_000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+    return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
   };
 
   const iVisakUrl = destinationCountry
@@ -428,7 +475,7 @@ export default function VisaHelpPage() {
             className="space-y-6"
           >
             {/* Visa Required Badge */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {result.visaRequired ? (
                 <Badge className="flex items-center gap-1.5 px-4 py-2 text-base bg-red-100 text-red-700 border-red-200 hover:bg-red-100">
                   <XCircle className="w-4 h-4" />
@@ -443,6 +490,24 @@ export default function VisaHelpPage() {
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {passportCountry} passport → {destinationCountry}
               </span>
+              {result.cachedAt && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500" data-testid="text-visa-cached-at">
+                    <Clock className="w-3 h-3" />
+                    Last checked {formatCachedAt(result.cachedAt)}
+                  </span>
+                  <button
+                    onClick={handleForceRefresh}
+                    disabled={requirementsMutation.isPending}
+                    className="flex items-center gap-1 text-xs text-[#FF385C] hover:text-[#FF385C]/80 disabled:opacity-50 transition-colors"
+                    title="Force refresh from AI"
+                    data-testid="button-visa-refresh"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${requirementsMutation.isPending ? "animate-spin" : ""}`} />
+                    Refresh
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -541,6 +606,7 @@ export default function VisaHelpPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   data-testid="button-ivisa-apply"
+                  onClick={() => trackIVisaClick(destinationCountry)}
                 >
                   <Button className="bg-white text-blue-700 hover:bg-blue-50 font-semibold whitespace-nowrap">
                     Apply Now on iVisa

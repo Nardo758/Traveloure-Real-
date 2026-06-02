@@ -1,1 +1,1 @@
-- [EA Client Delegation](ea-client-delegation.md) — lightweight delegation layer on top of existing EA console; clients table, push notifications, payment info storage (no raw card numbers).
+- [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { CheckCircle, Download, Mail, Calendar, MapPin, Users, CreditCard, FileText } from 'lucide-react';
+import { CheckCircle, Download, Mail, Calendar, MapPin, Users, CreditCard, FileText, ExternalLink } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 interface BookingItem {
@@ -26,6 +26,7 @@ interface BookingConfirmationProps {
   travelers: number;
   userEmail?: string;
   itineraryId?: string;
+  destination?: string;
   onClose: () => void;
 }
 
@@ -36,9 +37,26 @@ export default function BookingConfirmation({
   travelers,
   userEmail,
   itineraryId,
+  destination,
   onClose,
 }: BookingConfirmationProps) {
   const [, navigate] = useLocation();
+
+  const trackIVisaClick = async () => {
+    try {
+      await fetch("/api/affiliates/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partner: "ivisa", destination: destination || undefined }),
+      });
+    } catch {
+      // tracking is non-blocking
+    }
+  };
+
+  const iVisaUrl = destination
+    ? `https://www.ivisa.com/apply?country=${encodeURIComponent(destination)}&ref=traveloure`
+    : "https://www.ivisa.com/?ref=traveloure";
 
   const handleDownloadReceipt = () => {
     // TODO: Implement receipt download
@@ -174,6 +192,31 @@ export default function BookingConfirmation({
             Email Receipt
           </button>
         )}
+      </div>
+
+      {/* iVisa CTA */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <p className="font-semibold text-base">Don't forget your visa!</p>
+          <p className="text-blue-100 text-sm mt-0.5">
+            {destination
+              ? `Apply for your ${destination} visa quickly and securely through iVisa.`
+              : "Apply for your visa quickly and securely through iVisa."}
+          </p>
+        </div>
+        <a
+          href={iVisaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={trackIVisaClick}
+          data-testid="button-ivisa-apply-confirmation"
+          className="flex-shrink-0"
+        >
+          <button className="flex items-center gap-2 bg-white text-blue-700 hover:bg-blue-50 transition font-semibold px-4 py-2 rounded-lg text-sm whitespace-nowrap">
+            Apply on iVisa
+            <ExternalLink className="w-4 h-4" />
+          </button>
+        </a>
       </div>
 
       {/* Next Steps */}

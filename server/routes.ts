@@ -4723,6 +4723,30 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Update visa application status on a service booking (expert/provider action)
+  app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const VALID_VISA_STATUSES = ["pending", "submitted", "in_review", "approved", "rejected"];
+      const { visaApplicationStatus, notes } = req.body;
+      if (!VALID_VISA_STATUSES.includes(visaApplicationStatus)) {
+        return res.status(400).json({ message: "Invalid visa application status" });
+      }
+      const metadata: Record<string, any> = { visaApplicationStatus };
+      if (notes !== undefined) metadata.visaStatusNotes = notes;
+      metadata.visaStatusUpdatedAt = new Date().toISOString();
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+      res.json(updated);
+    } catch (err) {
+      console.error("Visa status update error:", err);
+      res.status(500).json({ message: "Failed to update visa status" });
+    }
+  });
+
   // Cancel booking (traveler action)
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
@@ -11294,6 +11318,18 @@ export async function seedDatabase() {
 export async function registerDiscoveryRoutes(app: Express) {
   const { grokDiscoveryService } = await import("./services/grok-discovery.service");
 
+  // Local admin guard (mirrors the one in registerRoutes)
+  const requireAdmin = async (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then((r: any[]) => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    next();
+  };
+
   // Trigger discovery for a destination
   app.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
     try {
@@ -11999,6 +12035,36 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Lightweight iVisa / generic partner affiliate click tracker.
+  // Unlike /api/affiliate/track-click this endpoint does NOT require a DB-stored productId/partnerId.
+  // It inserts directly into affiliate_clicks with those FKs as null and uses `sessionId` to
+  // record the partner name (e.g. "ivisa") so revenue reports can filter by it.
+  app.post("/api/affiliates/track", async (req, res) => {
+    try {
+      const { partner, destination, tripId, itineraryId } = req.body;
+      if (!partner) {
+        return res.status(400).json({ message: "partner is required" });
+      }
+      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      await db.insert(affiliateClicks).values({
+        productId: null,
+        partnerId: null,
+        userId: userId || null,
+        tripId: tripId || itineraryId || null,
+        referrer: req.headers.referer || null,
+        userAgent: (req.headers["user-agent"] as string) || null,
+        ipAddress: req.ip || null,
+        initiatedBy: "user",
+        agentType: null,
+        sessionId: [partner, destination].filter(Boolean).join(":") || partner,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error tracking affiliates click:", error);
+      res.status(500).json({ message: "Failed to track click" });
     }
   });
 
@@ -17651,6 +17717,50 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // === Expert Assigned Trips list (powers Dashboard + Assigned Trips page) ===
+  app.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rows = await db
+        .select({
+          trip_id: tripExpertAdvisors.tripId,
+          trip_title: trips.title,
+          destination: trips.destination,
+          start_date: trips.startDate,
+          end_date: trips.endDate,
+          status: tripExpertAdvisors.status,
+          assigned_at: tripExpertAdvisors.assignedAt,
+          traveler_first: users.firstName,
+          traveler_last: users.lastName,
+          suggestion_count: sql<number>`(
+            SELECT COUNT(*) FROM trip_suggestions
+            WHERE trip_id = ${tripExpertAdvisors.tripId}
+            AND expert_id = ${userId}
+          )`,
+        })
+        .from(tripExpertAdvisors)
+        .innerJoin(trips, eq(tripExpertAdvisors.tripId, trips.id))
+        .leftJoin(users, eq(trips.userId, users.id))
+        .where(eq(tripExpertAdvisors.localExpertId, userId))
+        .orderBy(desc(tripExpertAdvisors.assignedAt));
+
+      res.json(rows.map(r => ({
+        trip_id: r.trip_id,
+        trip_title: r.trip_title || r.destination,
+        destination: r.destination,
+        start_date: r.start_date,
+        end_date: r.end_date,
+        traveler_name: [r.traveler_first, r.traveler_last].filter(Boolean).join(" ") || "Traveler",
+        status: r.status,
+        assigned_at: r.assigned_at,
+        suggestion_count: Number(r.suggestion_count) || 0,
+      })));
+    } catch (err) {
+      console.error("[Expert] assigned-trips error:", err);
+      res.status(500).json({ message: "Failed to fetch assigned trips" });
+    }
+  });
+
   // === Trip Commission ===
   app.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     try {
@@ -18469,31 +18579,47 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
       }
 
-      // Check cache first (7-day TTL)
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const cached = await db
-        .select()
-        .from(visaRequirementsCache)
-        .where(
-          and(
-            eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
-            eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
-            sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
-          )
-        )
-        .limit(1)
-        .then((r) => r[0]);
+      const { forceRefresh } = req.body;
 
-      if (cached) {
-        return res.json({
-          visaRequired: cached.visaRequired,
-          visaTypes: cached.visaTypes,
-          requiredDocuments: cached.requiredDocuments,
-          processingTime: cached.processingTime,
-          feeRange: cached.feeRange,
-          disclaimer: cached.disclaimer,
-          fromCache: true,
-        });
+      // Check cache first (7-day TTL), unless force-refresh requested
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      if (forceRefresh) {
+        // Delete stale cache entry so we re-fetch fresh data
+        await db
+          .delete(visaRequirementsCache)
+          .where(
+            and(
+              eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+              eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+            )
+          );
+      } else {
+        const cached = await db
+          .select()
+          .from(visaRequirementsCache)
+          .where(
+            and(
+              eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+              eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+              sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
+            )
+          )
+          .limit(1)
+          .then((r) => r[0]);
+
+        if (cached) {
+          return res.json({
+            visaRequired: cached.visaRequired,
+            visaTypes: cached.visaTypes,
+            requiredDocuments: cached.requiredDocuments,
+            processingTime: cached.processingTime,
+            feeRange: cached.feeRange,
+            disclaimer: cached.disclaimer,
+            fromCache: true,
+            cachedAt: cached.cachedAt,
+          });
+        }
       }
 
       // Call Claude to get visa requirements
@@ -18525,6 +18651,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
       const parsed = JSON.parse(jsonMatch[0]);
 
       // Store in cache
+      const nowTs = new Date();
       await db.insert(visaRequirementsCache).values({
         passportCountry: passportCountry.toLowerCase(),
         destinationCountry: destinationCountry.toLowerCase(),
@@ -18544,6 +18671,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
         feeRange: parsed.fee_range,
         disclaimer: parsed.disclaimer,
         fromCache: false,
+        cachedAt: nowTs,
       });
     } catch (err) {
       console.error("[Visa] requirements error:", err);
