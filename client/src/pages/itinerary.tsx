@@ -41,12 +41,7 @@ import type { ActivityDiff, TransportDiff } from "@/components/itinerary/Itinera
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { cn } from "@/lib/utils";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
-import { MapControlCenter } from "@/components/plancard/MapControlCenter";
-import { HeroSection } from "@/components/plancard/HeroSection";
-import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
-import { DaySelector } from "@/components/plancard/DaySelector";
-import { SectionTabs } from "@/components/plancard/SectionTabs";
-import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
 import { TripLogisticsDashboard } from "@/components/logistics";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
@@ -420,12 +415,6 @@ export default function ItineraryPage() {
     ferry: "bg-cyan-500", boat: "bg-cyan-500",
   };
 
-  const extraStats: ExtraStat[] = [
-    { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
-    { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
-    { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
-  ];
-
   const templateConfig = getTemplateConfig(tripData?.eventType);
 
   const planCardTrip: PlanCardTrip = {
@@ -470,6 +459,8 @@ export default function ItineraryPage() {
         duration: l.estimatedDurationMinutes || l.duration || 0,
         cost: l.estimatedCostUsd || l.cost || 0,
         status: "active",
+        bookingSource: undefined,
+        partnerName: undefined,
       }));
     })(),
   }));
@@ -598,108 +589,11 @@ export default function ItineraryPage() {
               </div>
             )}
 
-            <Card className="overflow-hidden border-border bg-card" data-testid="itinerary-plancard">
-              <HeroSection
-                trip={planCardTrip}
-                traveloureScore={null}
-                shareToken={shareData?.shareToken}
-                totalCost={`$${totalCost.toLocaleString()}`}
-                perPerson={perPerson}
-                budget={itinerary.budget ? `$${itinerary.budget.toLocaleString()}` : null}
-              />
-              <StatsRow
-                trip={planCardTrip}
-                days={planCardDays}
-                totalActivities={totalActivities}
-                totalLegs={allTransportLegs}
-                totalMinutes={allTransportMinutes}
-                templateConfig={templateConfig}
-                extraStats={extraStats}
-              />
-
-              {categoryPills.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-4 py-2.5 border-b border-border" data-testid="category-filter-pills">
-                  {categoryPills.map(({ type, count }) => (
-                    <Badge
-                      key={type}
-                      variant="secondary"
-                      className="text-[11px] capitalize bg-muted text-muted-foreground"
-                      data-testid={`badge-category-${type}`}
-                    >
-                      {type} ({count})
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              <DaySelector
-                tripId={String(itinerary.id)}
-                days={planCardDays}
-                selectedDay={selectedDay - 1}
-                onSelectDay={(i) => setSelectedDay(i + 1)}
-                showActivityCounts
-              />
-
-              <SectionTabs
-                tripId={String(itinerary.id)}
-                section={section}
-                onSetSection={setSection}
-                showChanges={showChanges}
-                onToggleChanges={() => setShowChanges(!showChanges)}
-                templateConfig={templateConfig}
-                dayActivityCount={currentPlanCardDay?.activities?.length || 0}
-                dayTransportCount={currentPlanCardDay?.transports?.length || 0}
-                confirmedActivities={totalBooked}
-                totalActivities={totalActivities}
-                transportLocked={false}
-                changeLogCount={0}
-                expertChanges={0}
-              />
-
-              {section === "activities" && (
-                <ActivitiesSection
-                  tripId={String(itinerary.id)}
-                  day={currentPlanCardDay}
-                  templateConfig={templateConfig}
-                  legs={currentDayLegs}
-                />
-              )}
-
-              {section === "transport" && (
-                <div className="p-5">
-                  <DayTransportPanel
-                    dayNumber={selectedDay}
-                    legs={currentDayLegs}
-                    readOnly={false}
-                    tripId={String(itinerary.id)}
-                    destination={itinerary.destination}
-                  />
-                </div>
-              )}
-            </Card>
-
-            <div className="flex items-center justify-end">
-              <Button
-                variant={showMap ? "default" : "outline"}
-                size="sm"
-                className="gap-2 text-xs"
-                onClick={() => setShowMap(!showMap)}
-                data-testid="button-toggle-map"
-              >
-                <MapPin className="w-3.5 h-3.5" />
-                {showMap ? "Hide Map" : "Show Map"}
-              </Button>
-            </div>
-
-            {showMap && (
-              <MapControlCenter
-                tripId={String(itinerary.id)}
-                tripDestination={itinerary.destination}
-                days={planCardDays}
-                selectedDay={selectedDay - 1}
-                onSelectDay={(i) => setSelectedDay(i + 1)}
-              />
-            )}
+            <PlanCard
+              role="owner"
+              stage="full"
+              trip={planCardTrip}
+            />
           </div>
 
           <div className="lg:w-72 flex-shrink-0">

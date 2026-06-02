@@ -123,6 +123,8 @@ export interface PlanCardTransport {
   status: string;
   line?: string;
   suggestedBy?: string;
+  partnerName?: string;
+  bookingSource?: "platform" | "affiliate";
 }
 
 export interface PlanCardDay {
@@ -181,10 +183,16 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
+export type PlanCardRole = "owner" | "expert" | "viewer";
+export type PlanCardStage = "summary" | "full";
+
 export interface PlanCardProps {
   trip: PlanCardTrip;
   score?: { tripId: string; optimizationScore: number | null; shareToken: string | null };
   index?: number;
+  role?: PlanCardRole;
+  stage?: PlanCardStage;
+  days?: PlanCardDay[];
 }
 
 export interface PlanCardScore {
