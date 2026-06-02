@@ -29,39 +29,53 @@ import {
   Link2,
 } from "lucide-react";
 
-const menuGroups = [
-  {
-    label: "Work",
-    items: [
-      { title: "Dashboard", href: "/expert/dashboard", icon: Home },
-      { title: "Bookings", href: "/expert/bookings", icon: Calendar },
-      { title: "Clients", href: "/expert/clients", icon: Users },
-      { title: "Messages", href: "/expert/messages", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "Business",
-    items: [
-      { title: "Services", href: "/expert/services", icon: Briefcase },
-      { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
-      { title: "Content Studio", href: "/expert/content-studio", icon: Palette },
-      { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
-      { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
-    ],
-  },
-  {
-    label: "Account",
-    items: [
-      { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
-      { title: "Profile", href: "/expert/profile", icon: User },
-      { title: "Settings", href: "/expert/settings", icon: Settings },
-    ],
-  },
-];
+function buildMenuGroups(expertType?: string | null) {
+  const isEventPlanner = expertType === "event_planner";
+  const isEA = expertType === "executive_assistant";
+
+  return [
+    {
+      label: "Work",
+      items: [
+        { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+        { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
+        { title: isEA ? "Executives" : "Clients", href: "/expert/clients", icon: Users },
+        { title: "Messages", href: "/expert/messages", icon: MessageSquare },
+      ],
+    },
+    {
+      label: "Business",
+      items: [
+        { title: isEventPlanner ? "Packages" : "Services", href: "/expert/services", icon: Briefcase },
+        { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
+        { title: isEventPlanner ? "Promo Content" : "Content Studio", href: "/expert/content-studio", icon: Palette },
+        { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
+        { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
+      ],
+    },
+    {
+      label: "Account",
+      items: [
+        { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
+        { title: "Profile", href: "/expert/profile", icon: User },
+        { title: "Settings", href: "/expert/settings", icon: Settings },
+      ],
+    },
+  ];
+}
+
+const roleLabel: Record<string, string> = {
+  travel_expert: "Travel Expert",
+  local_expert: "Local Expert",
+  event_planner: "Event Planner",
+  executive_assistant: "Executive Assistant",
+  expert: "Expert",
+};
 
 export function ExpertSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const menuGroups = buildMenuGroups(user?.role);
 
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "E";
 
@@ -148,8 +162,8 @@ export function ExpertSidebar() {
               <p className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
                 {user.firstName} {user.lastName}
               </p>
-              <p className="text-[11px] truncate" style={{ color: "#7A7A72" }}>
-                {user.email}
+              <p className="text-[11px] truncate" style={{ color: "#E85D55" }}>
+                {roleLabel[user.role ?? ""] ?? "Expert"}
               </p>
             </div>
           </div>

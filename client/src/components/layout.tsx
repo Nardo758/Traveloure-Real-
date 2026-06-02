@@ -307,11 +307,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-2 flex-shrink-0">
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
-                  <Link href="/become-expert">
-                    <Button variant="outline" size="sm" data-testid="button-become-expert">
-                      Become an Expert
-                    </Button>
-                  </Link>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" data-testid="button-become-expert" className="gap-1">
+                        Join as Partner
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-72 p-2">
+                      {[
+                        { label: "Travel / Local Expert", desc: "Share your destination expertise & guide travellers", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Event Planner", desc: "Plan weddings, proposals & celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
+                        { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
+                        { label: "Executive Assistant", desc: "Manage premium travel for high-end clients", href: "/become-expert?type=executive_assistant", icon: Briefcase },
+                      ].map(({ label, desc, href, icon: Icon }) => (
+                        <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
+                          <Link href={href} data-testid={`link-partner-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
+                            <div className="flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-muted w-full cursor-pointer">
+                              <div className="mt-0.5 w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <Icon className="w-3.5 h-3.5 text-primary" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{label}</p>
+                                <p className="text-xs text-muted-foreground leading-snug mt-0.5">{desc}</p>
+                              </div>
+                            </div>
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button 
                     size="sm" 
                     onClick={() => openSignInModal()}
@@ -420,14 +445,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-3">
-                    <Link href="/become-expert" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Button variant="outline" className="w-full" data-testid="button-mobile-become-expert">
-                        Become an Expert
-                      </Button>
-                    </Link>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Join as a Partner</p>
+                    {[
+                      { label: "Travel / Local Expert", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
+                      { label: "Service Provider", href: "/become-provider", icon: Building2 },
+                      { label: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
+                    ].map(({ label, href, icon: Icon }) => (
+                      <Link key={label} href={href} onClick={() => setIsMobileMenuOpen(false)}>
+                        <Button variant="outline" className="w-full justify-start gap-2" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
+                          <Icon className="w-4 h-4 text-primary" />
+                          {label}
+                        </Button>
+                      </Link>
+                    ))}
                     <Button 
-                      className="w-full" 
+                      className="w-full mt-1" 
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         openSignInModal();
