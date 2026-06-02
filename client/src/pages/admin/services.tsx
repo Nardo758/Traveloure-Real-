@@ -183,7 +183,7 @@ export default function AdminServices() {
     { label: "Active",          value: summary?.byStatus?.active ?? 0, icon: CheckCircle, color: "text-green-600" },
     { label: "Total Bookings",  value: summary?.totalBookings ?? 0,  icon: ShoppingCart, color: "text-purple-600" },
     { label: "Platform Revenue",
-      value: `$${((summary?.totalRevenue ?? 0) * parseFloat(services[0]?.revenueShareRate ?? "0.30")).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      value: `$${((summary?.totalRevenue ?? 0) * (1 - parseFloat(services[0]?.revenueShareRate ?? "0.75"))).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
       icon: DollarSign, color: "text-[#FF385C]" },
     { label: "Featured",        value: summary?.featuredCount ?? 0,  icon: Star,         color: "text-amber-500" },
     { label: "Paused / Draft",

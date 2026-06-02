@@ -10,7 +10,6 @@ import {
   MapPin,
   FileText,
   Clock,
-  DollarSign,
   ArrowRight
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -20,15 +19,15 @@ import { useLocation, Link } from "wouter";
 
 interface ServiceTemplate {
   id: string;
-  name: string;
+  title: string;
   description: string | null;
   categoryId: string | null;
   serviceType: string | null;
   deliveryMethod: string | null;
   deliveryTimeframe: string | null;
   suggestedPrice: string | null;
-  requirements: string | null;
-  whatIncluded: string | null;
+  requirements: unknown;
+  whatIncluded: unknown;
   isActive: boolean;
   sortOrder: number | null;
   createdAt: string;
@@ -44,19 +43,7 @@ export default function ServiceTemplates() {
 
   const createFromTemplateMutation = useMutation({
     mutationFn: async (template: ServiceTemplate) => {
-      const serviceData = {
-        serviceName: template.name,
-        description: template.description,
-        categoryId: template.categoryId,
-        price: template.suggestedPrice || "0",
-        serviceType: template.serviceType,
-        deliveryMethod: template.deliveryMethod,
-        deliveryTimeframe: template.deliveryTimeframe,
-        requirements: template.requirements,
-        whatIncluded: template.whatIncluded,
-        status: "draft",
-      };
-      return apiRequest("POST", "/api/provider/services", serviceData);
+      return apiRequest("POST", `/api/expert/services/from-template/${template.id}`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
@@ -96,100 +83,12 @@ export default function ServiceTemplates() {
     }
   };
 
-  const popularTemplates: ServiceTemplate[] = [
-    {
-      id: "quick-consultation",
-      name: "Quick Consultation",
-      description: "15-minute video call to answer quick travel questions and provide immediate guidance",
-      categoryId: null,
-      serviceType: "consultation",
-      deliveryMethod: "video",
-      deliveryTimeframe: "15 min",
-      suggestedPrice: "29",
-      requirements: "Travel question or topic to discuss",
-      whatIncluded: "15-min video call, Personalized advice, Follow-up summary email",
-      isActive: true,
-      sortOrder: 1,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "cart-review",
-      name: "Cart Review & Optimization",
-      description: "Expert review of your travel cart to find savings and better alternatives",
-      categoryId: null,
-      serviceType: "review",
-      deliveryMethod: "document",
-      deliveryTimeframe: "24 hours",
-      suggestedPrice: "49",
-      requirements: "Cart link or selections, Budget constraints",
-      whatIncluded: "Written recommendations, Alternative suggestions, Savings estimate",
-      isActive: true,
-      sortOrder: 2,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "full-trip-planning",
-      name: "Full Trip Planning",
-      description: "Comprehensive trip planning from start to finish with personalized itinerary",
-      categoryId: null,
-      serviceType: "planning",
-      deliveryMethod: "hybrid",
-      deliveryTimeframe: "3-5 days",
-      suggestedPrice: "249",
-      requirements: "Destination, Dates, Budget, Interests, Travel style",
-      whatIncluded: "Full itinerary, Booking links, Restaurant reservations, Daily schedule, Packing list",
-      isActive: true,
-      sortOrder: 3,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "destination-guide",
-      name: "Destination Deep Dive",
-      description: "In-depth guide to a specific destination with local insights and hidden gems",
-      categoryId: null,
-      serviceType: "custom",
-      deliveryMethod: "document",
-      deliveryTimeframe: "48 hours",
-      suggestedPrice: "79",
-      requirements: "Destination, Travel dates, Interests",
-      whatIncluded: "PDF guide, Local recommendations, Maps, Insider tips, Safety advice",
-      isActive: true,
-      sortOrder: 4,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "honeymoon-planning",
-      name: "Honeymoon Planning Package",
-      description: "Romantic trip planning with special touches and memorable experiences",
-      categoryId: null,
-      serviceType: "planning",
-      deliveryMethod: "hybrid",
-      deliveryTimeframe: "5-7 days",
-      suggestedPrice: "399",
-      requirements: "Couple preferences, Budget, Dates, Special requests",
-      whatIncluded: "Custom itinerary, Romantic experiences, Special arrangements, Booking assistance",
-      isActive: true,
-      sortOrder: 5,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "group-coordination",
-      name: "Group Trip Coordinator",
-      description: "Organize and coordinate travel for groups with complex logistics",
-      categoryId: null,
-      serviceType: "planning",
-      deliveryMethod: "video",
-      deliveryTimeframe: "1 week",
-      suggestedPrice: "349",
-      requirements: "Group size, Budget per person, Destination preferences, Special needs",
-      whatIncluded: "Group logistics, Shared itinerary, Booking coordination, Communication support",
-      isActive: true,
-      sortOrder: 6,
-      createdAt: new Date().toISOString(),
-    },
-  ];
-
-  const allTemplates = [...templates, ...popularTemplates];
+  const formatWhatIncluded = (value: unknown): string | null => {
+    if (!value) return null;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.join(", ");
+    return null;
+  };
 
   return (
     <ExpertLayout title="Service Templates">
@@ -230,7 +129,7 @@ export default function ServiceTemplates() {
               </Card>
             ))
           ) : (
-            allTemplates.map((template) => (
+            templates.map((template) => (
               <Card key={template.id} className="border-gray-200 hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
@@ -243,7 +142,7 @@ export default function ServiceTemplates() {
                       </Badge>
                     )}
                   </div>
-                  <CardTitle className="text-lg mt-3">{template.name}</CardTitle>
+                  <CardTitle className="text-lg mt-3">{template.title}</CardTitle>
                   <CardDescription className="line-clamp-2">
                     {template.description}
                   </CardDescription>
@@ -264,10 +163,10 @@ export default function ServiceTemplates() {
                     )}
                   </div>
 
-                  {template.whatIncluded && (
+                  {formatWhatIncluded(template.whatIncluded) && (
                     <div className="text-sm text-gray-600">
                       <p className="font-medium text-gray-900 mb-1">Includes:</p>
-                      <p className="line-clamp-2">{template.whatIncluded}</p>
+                      <p className="line-clamp-2">{formatWhatIncluded(template.whatIncluded)}</p>
                     </div>
                   )}
 
@@ -286,7 +185,7 @@ export default function ServiceTemplates() {
           )}
         </div>
 
-        {allTemplates.length === 0 && !isLoading && (
+        {templates.length === 0 && !isLoading && (
           <div className="text-center py-12">
             <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>
