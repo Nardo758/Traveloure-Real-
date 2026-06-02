@@ -5,6 +5,7 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { resolveCommissionRates } from './commission';
 
 interface FeeBreakdown {
   serviceAmount: number;
@@ -15,17 +16,6 @@ interface FeeBreakdown {
 }
 
 class PricingService {
-  // Platform fee percentages by category
-  private readonly feeRates = {
-    accommodation: 0.15,    // 15%
-    transportation: 0.10,   // 10%
-    activities: 0.12,       // 12%
-    dining: 0.08,           // 8%
-    shopping: 0.05,         // 5%
-    expert_services: 0.20,  // 20%
-    default: 0.12,          // 12%
-  };
-
   // Deposit percentages
   private readonly depositRate = 0.25; // 25% deposit
 
@@ -85,11 +75,14 @@ class PricingService {
   }
 
   /**
-   * Calculate platform fees
+   * Calculate platform fees.
+   * Reads the live rate from booking_fee_configs via resolveCommissionRates so
+   * admin overrides take effect immediately without a restart.
    */
-  calculatePlatformFees(serviceAmount: number, category: string): FeeBreakdown {
-    const feeRate = this.feeRates[category as keyof typeof this.feeRates] || this.feeRates.default;
-    
+  async calculatePlatformFees(serviceAmount: number, category: string): Promise<FeeBreakdown> {
+    const rates = await resolveCommissionRates(category);
+    const feeRate = rates.platformFeeRate;
+
     const platformFee = Math.round(serviceAmount * feeRate * 100) / 100;
     const providerDeduction = platformFee;
     const providerPayout = serviceAmount - providerDeduction;
@@ -220,7 +213,7 @@ class PricingService {
     for (const item of tripItems) {
       try {
         const price = await this.getPrice(item.providerId, item.date, item.travelers || 1);
-        const fees = this.calculatePlatformFees(price, item.category);
+        const fees = await this.calculatePlatformFees(price, item.category);
 
         breakdown.push({
           title: item.title,
