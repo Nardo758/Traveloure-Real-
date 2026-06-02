@@ -2,11 +2,15 @@ import { useState } from "react";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Bell,
   Lock,
@@ -18,6 +22,15 @@ import {
   Eye,
   EyeOff,
   Save,
+  ShieldCheck,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  ExternalLink,
+  CreditCard,
+  CheckCircle,
+  LinkIcon,
+  Loader2,
 } from "lucide-react";
 
 interface NotificationSetting {
@@ -30,6 +43,161 @@ interface ResponseTemplate {
   id: string;
   title: string;
   body: string;
+}
+
+function VerificationPayoutsTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: idStatus, isLoading: idLoading } = useQuery<any>({
+    queryKey: ["/api/expert/application-status"],
+  });
+  const { data: stripeStatus, isLoading: stripeLoading } = useQuery<any>({
+    queryKey: ["/api/stripe/connect/status"],
+  });
+
+  const identityMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/identity/create-session", { formType: "expert" });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] });
+      if (data.verificationUrl) window.open(data.verificationUrl, "_blank");
+    },
+    onError: () => toast({ title: "Verification unavailable", description: "Please try again later.", variant: "destructive" }),
+  });
+
+  const onboardMutation = useMutation({
+    mutationFn: async () => { const res = await apiRequest("POST", "/api/stripe/connect/onboard"); return res.json(); },
+    onSuccess: (data: any) => { if (data.url) window.open(data.url, "_blank"); },
+    onError: () => toast({ title: "Error", description: "Could not start Stripe setup.", variant: "destructive" }),
+  });
+
+  const dashboardMutation = useMutation({
+    mutationFn: async () => { const res = await fetch("/api/stripe/connect/dashboard", { credentials: "include" }); if (!res.ok) throw new Error(); return res.json(); },
+    onSuccess: (data: any) => { if (data.url) window.open(data.url, "_blank"); },
+  });
+
+  const idVerifStatus = idStatus?.identityVerificationStatus ?? "pending";
+
+  const idBadge = idVerifStatus === "verified"
+    ? <Badge className="bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Verified</Badge>
+    : idVerifStatus === "processing"
+    ? <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Processing</Badge>
+    : idVerifStatus === "failed"
+    ? <Badge className="bg-red-100 text-red-700"><AlertCircle className="w-3 h-3 mr-1" />Failed</Badge>
+    : <Badge variant="secondary">Not started</Badge>;
+
+  const stripeConnected = stripeStatus?.connected;
+  const stripeStatusKey = stripeStatus?.status ?? "not_connected";
+  const stripeBadge = stripeStatusKey === "active"
+    ? <Badge className="bg-green-100 text-green-700"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>
+    : stripeStatusKey === "onboarding_incomplete"
+    ? <Badge className="bg-orange-100 text-orange-700"><AlertCircle className="w-3 h-3 mr-1" />Incomplete</Badge>
+    : stripeStatusKey === "under_review"
+    ? <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Under Review</Badge>
+    : <Badge variant="secondary">Not connected</Badge>;
+
+  return (
+    <div className="space-y-4">
+      {/* Identity Verification */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-blue-600" />
+              Identity Verification
+            </div>
+            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : idBadge}
+          </CardTitle>
+          <CardDescription>Verify your government-issued ID to build trust with travellers and unlock higher visibility on the platform.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {idVerifStatus === "verified" ? (
+            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="font-medium text-green-800">Identity confirmed</p>
+                {idStatus?.identityVerifiedAt && (
+                  <p className="text-sm text-green-600">Verified on {new Date(idStatus.identityVerifiedAt).toLocaleDateString()}</p>
+                )}
+              </div>
+            </div>
+          ) : idVerifStatus === "processing" ? (
+            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+              <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+              <p className="text-sm text-amber-700">Your verification is being processed — usually takes a few minutes.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {idVerifStatus === "failed" && (
+                <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">Verification failed. Please try again with a clear, unobstructed photo of your ID.</p>
+                </div>
+              )}
+              <p className="text-sm text-gray-600">Supports passports, national IDs, and driver's licenses from 100+ countries. Takes about 2 minutes.</p>
+              <Button
+                onClick={() => identityMutation.mutate()}
+                disabled={identityMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                data-testid="button-verify-identity"
+              >
+                {identityMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                {idVerifStatus === "failed" ? "Retry Verification" : "Verify My Identity"}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Stripe Connect / Payouts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-gray-600" />
+              Payout Account (Stripe Connect)
+            </div>
+            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : stripeBadge}
+          </CardTitle>
+          <CardDescription>Connect your Stripe account to receive payouts directly when travellers book your services.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!stripeConnected ? (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">You'll be guided through a quick Stripe setup — takes about 5 minutes. Stripe collects your bank details securely.</p>
+              <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="w-full" data-testid="button-connect-stripe">
+                {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
+                Connect Stripe Account
+              </Button>
+            </div>
+          ) : stripeStatusKey === "onboarding_incomplete" ? (
+            <div className="space-y-3">
+              <p className="text-sm text-orange-600">Your Stripe setup is incomplete. Finish onboarding to start receiving payouts.</p>
+              <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} variant="outline" className="w-full border-orange-200 text-orange-700 hover:bg-orange-50" data-testid="button-continue-stripe">
+                {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                Continue Setup
+              </Button>
+            </div>
+          ) : stripeStatusKey === "under_review" ? (
+            <p className="text-sm text-amber-700">Your account is under review by Stripe. You'll be able to receive payouts once approved.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-green-700 p-3 bg-green-50 rounded-lg border border-green-200">
+                <CheckCircle className="w-4 h-4" />Your account is active and ready to receive payouts.
+              </div>
+              <Button onClick={() => dashboardMutation.mutate()} disabled={dashboardMutation.isPending} variant="outline" className="w-full" data-testid="button-stripe-dashboard">
+                {dashboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                View Stripe Dashboard
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function ExpertSettings() {
@@ -93,8 +261,11 @@ export default function ExpertSettings() {
           <p className="text-gray-600 mt-1">Manage your preferences and account settings</p>
         </div>
 
-        <Tabs defaultValue="notifications" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs defaultValue="verification" className="w-full">
+          <TabsList className="grid w-full grid-cols-7">
+            <TabsTrigger value="verification" className="flex items-center gap-2" data-testid="tab-verification">
+              <ShieldCheck className="w-4 h-4" /> Verification
+            </TabsTrigger>
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="w-4 h-4" /> Notifications
             </TabsTrigger>
@@ -114,6 +285,11 @@ export default function ExpertSettings() {
               <Eye className="w-4 h-4" /> Leaderboard
             </TabsTrigger>
           </TabsList>
+
+          {/* Verification & Payouts Tab */}
+          <TabsContent value="verification" className="mt-6">
+            <VerificationPayoutsTab />
+          </TabsContent>
 
           {/* Notifications Tab */}
           <TabsContent value="notifications" className="mt-6">
