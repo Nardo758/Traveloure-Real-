@@ -5008,6 +5008,7 @@ export const bookings = pgTable("bookings", {
   refundedAt: timestamp("refunded_at"),
   specialRequests: text("special_requests"),
   metadata: jsonb("metadata").default({}),
+  bookingMetadata: jsonb("booking_metadata").default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

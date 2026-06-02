@@ -87,10 +87,15 @@ const VISA_TYPES = [
 ];
 
 function isVisaAssistanceService(item: CartItem): boolean {
+  // Primary: use the authoritative categorySlug resolved server-side from service_categories JOIN
+  const serverSlug: string = (item as any).service?.categorySlug ?? "";
+  if (serverSlug) {
+    return serverSlug === "visa-assistance";
+  }
+  // Fallback for items built outside the cart API (e.g. visa-help page direct booking)
   return (
     item.serviceCategory === "visa-assistance" ||
-    item.serviceCategory === "visa_assistance" ||
-    (item.metadata?.categorySlug ?? "").includes("visa")
+    item.serviceCategory === "visa_assistance"
   );
 }
 

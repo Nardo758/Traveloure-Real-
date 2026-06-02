@@ -306,19 +306,19 @@ class BookingService {
         const bookingTime = item.time || null;
         const totalAmountValue = finalPrice + feeBreakdown.platformFee;
         const providerPayout = finalPrice - feeBreakdown.providerDeduction;
-        const metadataJson = bookingMetadata ? JSON.stringify(bookingMetadata) : '{}';
+        const bookingMetadataJson = bookingMetadata ? JSON.stringify(bookingMetadata) : '{}';
         
         const booking = await db.execute(sql`
           INSERT INTO bookings (
             user_id, trip_id, provider_id, booking_type, status,
             title, booking_date, booking_time, travelers,
             service_amount, platform_fee, total_amount, provider_payout,
-            payment_method, deposit_amount, balance_amount, metadata, created_at
+            payment_method, deposit_amount, balance_amount, booking_metadata, created_at
           ) VALUES (
             ${userId}, ${item.tripId}, ${item.providerId || null}, ${'instant'}, ${'pending_payment'},
             ${item.title}, ${item.date}, ${bookingTime}, ${1},
             ${finalPrice}, ${feeBreakdown.platformFee}, ${totalAmountValue}, ${providerPayout},
-            ${paymentMethod}, ${depositAmount}, ${balanceAmount}, ${metadataJson}::jsonb, NOW()
+            ${paymentMethod}, ${depositAmount}, ${balanceAmount}, ${bookingMetadataJson}::jsonb, NOW()
           ) RETURNING id
         `);
 
