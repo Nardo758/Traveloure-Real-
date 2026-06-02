@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -97,14 +98,18 @@ const contractCategories = [
   },
 ];
 
-const recentContracts: Array<{
-  id: number; client: string; category: string; type: string;
-  value: number; status: string; dueDate: string;
-}> = [];
+interface RecentContract {
+  id: string; title: string; client?: string; value?: string;
+  status: string; isPaid?: boolean; createdAt?: string;
+}
 
 export default function ContractCategories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+
+  const { data: recentContracts = [] } = useQuery<RecentContract[]>({
+    queryKey: ["/api/expert/contracts/recent"],
+  });
 
   const filteredCategories = contractCategories.filter((cat) => {
     const matchesSearch = cat.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -325,16 +330,20 @@ export default function ContractCategories() {
                       <FileText className="w-5 h-5 text-gray-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">{contract.client}</p>
+                      <p className="font-medium text-gray-900">{contract.title}</p>
                       <p className="text-sm text-gray-600">
-                        {contract.category} - {contract.type}
+                        {contract.client ?? "—"} · {contract.isPaid ? "Paid" : "Unpaid"}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <p className="font-semibold text-gray-900">${contract.value.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500">Due: {contract.dueDate}</p>
+                      <p className="font-semibold text-gray-900">
+                        {contract.value ? `$${parseFloat(contract.value).toLocaleString()}` : "—"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {contract.createdAt ? new Date(contract.createdAt).toLocaleDateString() : "—"}
+                      </p>
                     </div>
                     <Badge
                       className={

@@ -14,14 +14,22 @@ import {
   Bot
 } from "lucide-react";
 
-export default function EATravel() {
-  const activeTrips: Array<{
-    id: number; executive: string; title: string; route: string; dates: string;
-    status: string; segments: Array<{ city: string; dates: string; hotel: string; hotelStatus: string; flight: string; flightStatus: string }>;
-    issue?: string;
-  }> = [];
+import { useQuery } from "@tanstack/react-query";
 
-  const upcomingTravel: Array<{ executive: string; destination: string; dates: string; status: string }> = [];
+interface EaTravelArrangement {
+  id: string; executiveName?: string; title: string; destination?: string;
+  startDate?: string; endDate?: string; status: string;
+  segments?: Array<{ city: string; dates: string; hotel: string; hotelStatus: string; flight: string; flightStatus: string }>;
+  notes?: string;
+}
+
+export default function EATravel() {
+  const { data: allTravel = [] } = useQuery<EaTravelArrangement[]>({
+    queryKey: ["/api/ea/travel"],
+  });
+
+  const activeTrips = allTravel.filter(t => ["confirmed", "pending_approval", "in_progress"].includes(t.status));
+  const upcomingTravel = allTravel.filter(t => t.status === "planning" || t.status === "pending");
 
   return (
     <EALayout title="Travel Coordination">
@@ -95,7 +103,7 @@ export default function EATravel() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-3">
-                      <p className="font-semibold text-gray-900">{trip.executive} ({trip.title})</p>
+                      <p className="font-semibold text-gray-900">{trip.executiveName ? `${trip.executiveName} — ` : ""}{trip.title}</p>
                       {trip.status === "confirmed" ? (
                         <Badge className="bg-green-100 text-green-700"><CheckCircle className="w-3 h-3 mr-1" /> Confirmed</Badge>
                       ) : (
@@ -103,10 +111,10 @@ export default function EATravel() {
                       )}
                     </div>
                     <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
-                      <MapPin className="w-4 h-4" /> {trip.route}
+                      <MapPin className="w-4 h-4" /> {trip.destination}
                     </p>
                     <p className="text-sm text-gray-500 flex items-center gap-2">
-                      <Calendar className="w-4 h-4" /> {trip.dates}
+                      <Calendar className="w-4 h-4" /> {trip.startDate} {trip.endDate ? `→ ${trip.endDate}` : ""}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -121,16 +129,16 @@ export default function EATravel() {
                   </div>
                 </div>
 
-                {trip.issue && (
+                {trip.notes && (
                   <p className="text-sm text-yellow-600 mb-4">
                     <AlertCircle className="w-4 h-4 inline mr-1" />
-                    {trip.issue}
+                    {trip.notes}
                   </p>
                 )}
 
                 {/* Segments */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {trip.segments.map((segment, idx) => (
+                  {(trip.segments ?? []).map((segment, idx) => (
                     <div key={idx} className="p-3 bg-white rounded-lg border border-gray-100">
                       <div className="flex items-center gap-2 mb-2">
                         <MapPin className="w-4 h-4 text-[#FF385C]" />
@@ -189,8 +197,8 @@ export default function EATravel() {
                   data-testid={`upcoming-travel-${idx}`}
                 >
                   <div>
-                    <p className="font-medium text-gray-900">{travel.executive}</p>
-                    <p className="text-sm text-gray-500">{travel.destination} • {travel.dates}</p>
+                    <p className="font-medium text-gray-900">{travel.executiveName}</p>
+                    <p className="text-sm text-gray-500">{travel.destination} {travel.startDate ? `• ${travel.startDate}` : ""}</p>
                   </div>
                   <Badge variant={travel.status === "confirmed" ? "default" : "outline"}>
                     {travel.status}

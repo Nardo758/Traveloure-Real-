@@ -16,12 +16,18 @@ import {
   Filter
 } from "lucide-react";
 
+import { useQuery } from "@tanstack/react-query";
+
+interface EaEvent {
+  id: string; title: string; executiveName?: string; type?: string;
+  date?: string; venue?: string; guests?: number; status: string;
+  notes?: string; giftNeeded?: boolean;
+}
+
 export default function EAEvents() {
-  const events: Array<{
-    id: number; title: string; executive: string; type: string;
-    date: string; venue?: string; guests?: number; status: string;
-    issue?: string; giftNeeded?: boolean;
-  }> = [];
+  const { data: events = [] } = useQuery<EaEvent[]>({
+    queryKey: ["/api/ea/events"],
+  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -156,7 +162,7 @@ export default function EAEvents() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
                       <p className="flex items-center gap-2">
-                        <Users className="w-4 h-4" /> {event.executive}
+                        <Users className="w-4 h-4" /> {event.executiveName}
                       </p>
                       <p className="flex items-center gap-2">
                         <Calendar className="w-4 h-4" /> {event.date}
@@ -170,10 +176,10 @@ export default function EAEvents() {
                         </p>
                       )}
                     </div>
-                    {event.issue && (
+                    {event.notes && (
                       <p className="text-sm text-red-600 mt-2">
                         <AlertCircle className="w-4 h-4 inline mr-1" />
-                        {event.issue}
+                        {event.notes}
                       </p>
                     )}
                   </div>

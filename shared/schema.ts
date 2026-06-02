@@ -5282,3 +5282,155 @@ export const eaClientRelationships = pgTable("ea_client_relationships", {
 export const insertEaClientRelationshipSchema = createInsertSchema(eaClientRelationships).omit({ id: true, createdAt: true, updatedAt: true });
 export type EaClientRelationship = typeof eaClientRelationships.$inferSelect;
 export type InsertEaClientRelationship = z.infer<typeof insertEaClientRelationshipSchema>;
+
+// === EA Executive Management ===
+
+export const eaExecutives = pgTable("ea_executives", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 150 }).notNull(),
+  title: varchar("title", { length: 150 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  status: varchar("status", { length: 20 }).default("active"),
+  preferences: jsonb("preferences").default({}),
+  family: jsonb("family").default({}),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEaExecutiveSchema = createInsertSchema(eaExecutives).omit({ id: true, createdAt: true, updatedAt: true });
+export type EaExecutive = typeof eaExecutives.$inferSelect;
+export type InsertEaExecutive = z.infer<typeof insertEaExecutiveSchema>;
+
+// === EA Event Coordination ===
+
+export const eaEvents = pgTable("ea_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  executiveId: varchar("executive_id").references(() => eaExecutives.id, { onDelete: "set null" }),
+  executiveName: varchar("executive_name", { length: 150 }),
+  title: varchar("title", { length: 255 }).notNull(),
+  type: varchar("type", { length: 50 }).default("meeting"),
+  date: timestamp("date"),
+  venue: varchar("venue", { length: 255 }),
+  guests: integer("guests").default(0),
+  status: varchar("status", { length: 30 }).default("pending"),
+  notes: text("notes"),
+  giftNeeded: boolean("gift_needed").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEaEventSchema = createInsertSchema(eaEvents).omit({ id: true, createdAt: true, updatedAt: true });
+export type EaEvent = typeof eaEvents.$inferSelect;
+export type InsertEaEvent = z.infer<typeof insertEaEventSchema>;
+
+// === EA Travel Arrangements ===
+
+export const eaTravelArrangements = pgTable("ea_travel_arrangements", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  executiveId: varchar("executive_id").references(() => eaExecutives.id, { onDelete: "set null" }),
+  executiveName: varchar("executive_name", { length: 150 }),
+  title: varchar("title", { length: 255 }).notNull(),
+  destination: varchar("destination", { length: 255 }),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  status: varchar("status", { length: 30 }).default("planning"),
+  segments: jsonb("segments").default([]),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEaTravelArrangementSchema = createInsertSchema(eaTravelArrangements).omit({ id: true, createdAt: true, updatedAt: true });
+export type EaTravelArrangement = typeof eaTravelArrangements.$inferSelect;
+export type InsertEaTravelArrangement = z.infer<typeof insertEaTravelArrangementSchema>;
+
+// === EA Gift Tracking ===
+
+export const eaGifts = pgTable("ea_gifts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  executiveId: varchar("executive_id").references(() => eaExecutives.id, { onDelete: "set null" }),
+  executiveName: varchar("executive_name", { length: 150 }),
+  occasion: varchar("occasion", { length: 150 }).notNull(),
+  occasionDate: date("occasion_date"),
+  recipient: varchar("recipient", { length: 150 }),
+  gift: varchar("gift", { length: 255 }),
+  amount: decimal("amount", { precision: 10, scale: 2 }),
+  status: varchar("status", { length: 30 }).default("pending"),
+  rating: integer("rating"),
+  giftNeeded: boolean("gift_needed").default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEaGiftSchema = createInsertSchema(eaGifts).omit({ id: true, createdAt: true });
+export type EaGift = typeof eaGifts.$inferSelect;
+export type InsertEaGift = z.infer<typeof insertEaGiftSchema>;
+
+// === EA Saved Venues ===
+
+export const eaSavedVenues = pgTable("ea_saved_venues", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 50 }).default("Restaurant"),
+  location: varchar("location", { length: 255 }),
+  rating: decimal("rating", { precision: 3, scale: 1 }),
+  priceRange: varchar("price_range", { length: 10 }),
+  notes: text("notes"),
+  favorite: boolean("favorite").default(false),
+  usedBy: text("used_by").array().default([]),
+  lastUsed: date("last_used"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEaSavedVenueSchema = createInsertSchema(eaSavedVenues).omit({ id: true, createdAt: true });
+export type EaSavedVenue = typeof eaSavedVenues.$inferSelect;
+export type InsertEaSavedVenue = z.infer<typeof insertEaSavedVenueSchema>;
+
+// === EA Communications Log ===
+
+export const eaCommunications = pgTable("ea_communications", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  executiveId: varchar("executive_id").references(() => eaExecutives.id, { onDelete: "set null" }),
+  executiveName: varchar("executive_name", { length: 150 }),
+  type: varchar("type", { length: 20 }).default("email"),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  recipient: varchar("recipient", { length: 255 }),
+  status: varchar("status", { length: 30 }).default("sent"),
+  body: text("body"),
+  sentAt: timestamp("sent_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEaCommunicationSchema = createInsertSchema(eaCommunications).omit({ id: true, createdAt: true });
+export type EaCommunication = typeof eaCommunications.$inferSelect;
+export type InsertEaCommunication = z.infer<typeof insertEaCommunicationSchema>;
+
+// === EA AI Tasks ===
+
+export const eaAiTasks = pgTable("ea_ai_tasks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eaUserId: varchar("ea_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 100 }).notNull(),
+  executiveName: varchar("executive_name", { length: 150 }),
+  task: text("task").notNull(),
+  status: varchar("status", { length: 20 }).default("pending"),
+  confidence: integer("confidence").default(90),
+  draft: text("draft"),
+  options: jsonb("options").default([]),
+  approvedAt: timestamp("approved_at"),
+  rejectedAt: timestamp("rejected_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEaAiTaskSchema = createInsertSchema(eaAiTasks).omit({ id: true, createdAt: true, updatedAt: true });
+export type EaAiTask = typeof eaAiTasks.$inferSelect;
+export type InsertEaAiTask = z.infer<typeof insertEaAiTaskSchema>;
