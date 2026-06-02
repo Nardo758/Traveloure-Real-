@@ -18,61 +18,14 @@ import {
 } from "lucide-react";
 
 export default function EACommunications() {
-  const recentComms = [
-    {
-      id: 1,
-      type: "email",
-      executive: "James Anderson",
-      subject: "Paris Dinner Confirmation",
-      recipient: "Le Jules Verne",
-      time: "2 hours ago",
-      status: "sent",
-    },
-    {
-      id: 2,
-      type: "message",
-      executive: "Sarah Chen",
-      subject: "Hotel Options for Tokyo",
-      recipient: "Sarah Chen",
-      time: "3 hours ago",
-      status: "read",
-    },
-    {
-      id: 3,
-      type: "email",
-      executive: "Michael Torres",
-      subject: "Anniversary Dinner Reservation",
-      recipient: "The Capital Grille",
-      time: "5 hours ago",
-      status: "sent",
-    },
-    {
-      id: 4,
-      type: "call",
-      executive: "Lisa Parker",
-      subject: "Board Meeting Setup",
-      recipient: "Internal - IT Department",
-      time: "Yesterday",
-      status: "completed",
-    },
-  ];
+  const recentComms: Array<{
+    id: number; type: string; executive: string; subject: string;
+    recipient: string; time: string; status: string;
+  }> = [];
 
-  const drafts = [
-    {
-      id: 1,
-      executive: "James Anderson",
-      type: "Thank You Note",
-      content: "Dear Mr. Smith, Thank you for joining us for dinner in Paris...",
-      aiGenerated: true,
-    },
-    {
-      id: 2,
-      executive: "Sarah Chen",
-      type: "Travel Itinerary",
-      content: "Your upcoming trip: London (Mar 15-17) → Tokyo (Mar 17-22)...",
-      aiGenerated: true,
-    },
-  ];
+  const drafts: Array<{
+    id: number; executive: string; type: string; content: string; aiGenerated: boolean;
+  }> = [];
 
   return (
     <EALayout title="Communications">
@@ -117,6 +70,12 @@ export default function EACommunications() {
               <CardContent>
                 <ScrollArea className="h-96">
                   <div className="space-y-3">
+                    {recentComms.length === 0 && (
+                      <div className="text-center py-12">
+                        <MessageSquare className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
+                        <p className="text-[#7A7A72] text-sm">No communications yet</p>
+                      </div>
+                    )}
                     {recentComms.map((comm) => (
                       <div 
                         key={comm.id} 
@@ -187,6 +146,11 @@ export default function EACommunications() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                {drafts.length === 0 && (
+                  <div className="text-center py-6">
+                    <p className="text-[#7A7A72] text-sm">No AI drafts pending</p>
+                  </div>
+                )}
                 {drafts.map((draft) => (
                   <div 
                     key={draft.id} 

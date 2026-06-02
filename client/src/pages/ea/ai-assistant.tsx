@@ -16,66 +16,22 @@ import {
 } from "lucide-react";
 
 export default function EAAIAssistant() {
-  const pendingTasks = [
-    {
-      id: 1,
-      type: "Hotel Research",
-      executive: "Sarah Chen",
-      task: "Find hotels in Tokyo for 3 nights (Mar 17-20)",
-      options: [
-        { name: "Park Hyatt Tokyo", rating: 4.9, price: "$650/night", matchScore: 98 },
-        { name: "Aman Tokyo", rating: 4.9, price: "$900/night", matchScore: 95 },
-        { name: "Four Seasons Tokyo", rating: 4.8, price: "$720/night", matchScore: 92 },
-      ],
-      confidence: 96,
-    },
-    {
-      id: 2,
-      type: "Draft Communication",
-      executive: "James Anderson",
-      task: "Thank you note for Paris dinner guests",
-      draft: `Dear Mr. Smith,
+  const pendingTasks: Array<{
+    id: number; type: string; executive: string; task: string;
+    confidence: number; draft?: string;
+    options?: Array<{ name: string; price: string; matchScore: number; rating?: number }>;
+  }> = [];
 
-Thank you for joining us for dinner at Le Jules Verne last evening. It was a pleasure discussing the partnership opportunities, and I look forward to our continued collaboration.
-
-Best regards,
-James Anderson`,
-      confidence: 94,
-    },
-    {
-      id: 3,
-      type: "Gift Recommendation",
-      executive: "Michael Torres",
-      task: "Anniversary gift for spouse (10th anniversary)",
-      options: [
-        { name: "Cartier Love Bracelet", price: "$6,900", matchScore: 95 },
-        { name: "Weekend at The Ritz-Carlton", price: "$3,500", matchScore: 92 },
-        { name: "Tiffany & Co. Necklace", price: "$4,200", matchScore: 88 },
-      ],
-      confidence: 91,
-    },
-  ];
-
-  const completedTasks = [
-    { text: "Researched 5 hotel options for Sarah's Tokyo leg", time: "1 hour ago" },
-    { text: "Drafted thank-you notes for James (3 clients)", time: "2 hours ago" },
-    { text: "Coordinated restaurant confirmation for Michael", time: "3 hours ago" },
-    { text: "Updated calendar conflicts for 4 executives", time: "5 hours ago" },
-    { text: "Researched anniversary gift options (15 curated)", time: "6 hours ago" },
-  ];
+  const completedTasks: Array<{ text: string; time: string }> = [];
 
   const aiStats = {
-    tasksDelegated: 245,
-    tasksCompleted: 238,
-    completionRate: 97,
-    timeSaved: 52,
-    avgQualityScore: 9.3,
-    editRate: 12,
-    topStrengths: [
-      { skill: "Vendor research", rate: 98 },
-      { skill: "Timeline optimization", rate: 95 },
-      { skill: "Client communication", rate: 92 },
-    ],
+    tasksDelegated: pendingTasks.length + completedTasks.length,
+    tasksCompleted: completedTasks.length,
+    completionRate: 0,
+    timeSaved: 0,
+    avgQualityScore: 0,
+    editRate: 0,
+    topStrengths: [] as Array<{ skill: string; rate: number }>,
   };
 
   return (
@@ -148,6 +104,13 @@ James Anderson`,
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {pendingTasks.length === 0 && (
+                  <div className="text-center py-8">
+                    <Bot className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
+                    <p className="font-medium text-[#1A1A18]">No tasks pending review</p>
+                    <p className="text-sm text-[#7A7A72] mt-1">Ask the AI assistant to research, draft, or recommend anything</p>
+                  </div>
+                )}
                 {pendingTasks.map((task) => (
                   <div key={task.id} className="p-4 rounded-lg border border-gray-200" data-testid={`pending-task-${task.id}`}>
                     <div className="flex items-start justify-between mb-3">
@@ -265,6 +228,9 @@ James Anderson`,
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
+                  {completedTasks.length === 0 && (
+                    <p className="text-center text-sm text-[#7A7A72] py-4">No completed tasks yet</p>
+                  )}
                   {completedTasks.map((task, index) => (
                     <div key={index} className="flex items-start gap-2 text-sm" data-testid={`completed-task-${index}`}>
                       <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />

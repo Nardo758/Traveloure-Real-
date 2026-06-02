@@ -15,60 +15,12 @@ import {
 } from "lucide-react";
 
 export default function EAVenues() {
-  const savedVenues = [
-    {
-      id: 1,
-      name: "Le Jules Verne",
-      type: "Restaurant",
-      location: "Paris, France",
-      rating: 4.9,
-      priceRange: "$$$$",
-      usedBy: ["James Anderson"],
-      lastUsed: "Today",
-      favorite: true,
-      notes: "Eiffel Tower location, requires 2-week advance booking",
-    },
-    {
-      id: 2,
-      name: "Park Hyatt Tokyo",
-      type: "Hotel",
-      location: "Tokyo, Japan",
-      rating: 4.9,
-      priceRange: "$$$$",
-      usedBy: ["Sarah Chen"],
-      favorite: true,
-      notes: "Executive prefers Park Suite, floors 42+",
-    },
-    {
-      id: 3,
-      name: "The Capital Grille",
-      type: "Restaurant",
-      location: "Multiple Locations",
-      rating: 4.7,
-      priceRange: "$$$",
-      usedBy: ["Michael Torres", "Lisa Parker"],
-      lastUsed: "Last Week",
-      notes: "Great for client dinners, private rooms available",
-    },
-    {
-      id: 4,
-      name: "Four Seasons Paris",
-      type: "Hotel",
-      location: "Paris, France",
-      rating: 4.9,
-      priceRange: "$$$$",
-      usedBy: ["James Anderson"],
-      favorite: true,
-      notes: "Preferred for European trips",
-    },
-  ];
+  const savedVenues: Array<{
+    id: number; name: string; type: string; location: string; rating: number;
+    priceRange: string; usedBy: string[]; lastUsed?: string; favorite?: boolean; notes?: string;
+  }> = [];
 
-  const recentSearches = [
-    "Fine dining Tokyo",
-    "Conference rooms London",
-    "Hotels Singapore CBD",
-    "Private dining Chicago",
-  ];
+  const recentSearches: string[] = [];
 
   return (
     <EALayout title="Venues">
@@ -101,7 +53,7 @@ export default function EAVenues() {
                 <Filter className="w-4 h-4 mr-2" /> Filter
               </Button>
             </div>
-            <div className="flex gap-2 mt-3">
+            {recentSearches.length > 0 && <div className="flex gap-2 mt-3">
               <span className="text-sm text-gray-500">Recent:</span>
               {recentSearches.map((search, idx) => (
                 <Badge 
@@ -119,28 +71,28 @@ export default function EAVenues() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="border border-gray-200" data-testid="stat-saved">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-saved">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">48</p>
-              <p className="text-sm text-gray-600">Saved Venues</p>
+              <p className="text-3xl font-bold text-[#1A1A18]">{savedVenues.length}</p>
+              <p className="text-sm text-[#7A7A72]">Saved Venues</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200" data-testid="stat-favorites">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-favorites">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-[#FF385C]">12</p>
-              <p className="text-sm text-gray-600">Favorites</p>
+              <p className="text-3xl font-bold text-[#FF385C]">{savedVenues.filter(v => v.favorite).length}</p>
+              <p className="text-sm text-[#7A7A72]">Favorites</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200" data-testid="stat-restaurants">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-restaurants">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">28</p>
-              <p className="text-sm text-gray-600">Restaurants</p>
+              <p className="text-3xl font-bold text-[#1A1A18]">{savedVenues.filter(v => v.type === "Restaurant").length}</p>
+              <p className="text-sm text-[#7A7A72]">Restaurants</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200" data-testid="stat-hotels">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-hotels">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">20</p>
-              <p className="text-sm text-gray-600">Hotels</p>
+              <p className="text-3xl font-bold text-[#1A1A18]">{savedVenues.filter(v => v.type === "Hotel").length}</p>
+              <p className="text-sm text-[#7A7A72]">Hotels</p>
             </CardContent>
           </Card>
         </div>
@@ -151,6 +103,13 @@ export default function EAVenues() {
             <CardTitle className="text-lg">Saved Venues</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {savedVenues.length === 0 && (
+              <div className="text-center py-8">
+                <MapPin className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
+                <p className="font-medium text-[#1A1A18]">No saved venues yet</p>
+                <p className="text-sm text-[#7A7A72] mt-1">Save venues your executives prefer for quick access</p>
+              </div>
+            )}
             {savedVenues.map((venue) => (
               <div 
                 key={venue.id} 

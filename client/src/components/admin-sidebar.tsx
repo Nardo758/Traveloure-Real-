@@ -1,14 +1,14 @@
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  Users, 
-  UserCheck, 
-  Building2, 
-  ClipboardList, 
-  DollarSign, 
-  BarChart3, 
-  Search, 
-  Bell, 
+import {
+  LayoutDashboard,
+  Users,
+  UserCheck,
+  Building2,
+  ClipboardList,
+  DollarSign,
+  BarChart3,
+  Search,
+  Bell,
   Settings,
   LogOut,
   ChevronLeft,
@@ -27,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
@@ -56,31 +57,40 @@ const bottomNavItems = [
 export function AdminSidebar() {
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useAuth();
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
 
+  const initials = user
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "AD"
+    : "AD";
+
+  const displayName = user
+    ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "Admin User"
+    : "Admin User";
+
   return (
-    <aside 
-      className={`h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+    <aside
+      className={`h-screen bg-white border-r border-[#E8E8E2] flex flex-col transition-all duration-300 ${
         collapsed ? "w-16" : "w-56"
       }`}
       data-testid="admin-sidebar"
     >
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="p-4 border-b border-[#E8E8E2] flex items-center justify-between">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#1A1A18] rounded-lg flex items-center justify-center">
               <Shield className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold text-gray-900">Admin</span>
+            <span className="font-semibold text-[#1A1A18]">Admin</span>
           </div>
         )}
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setCollapsed(!collapsed)}
           className={collapsed ? "mx-auto" : ""}
           data-testid="button-toggle-sidebar"
@@ -91,14 +101,14 @@ export function AdminSidebar() {
 
       {/* Admin Info */}
       {!collapsed && (
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-[#E8E8E2]">
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
-              <AvatarFallback className="bg-gray-900 text-white">AD</AvatarFallback>
+              <AvatarFallback className="bg-[#1A1A18] text-white">{initials}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">Admin User</p>
-              <p className="text-xs text-gray-500">Platform Administrator</p>
+              <p className="font-medium text-[#1A1A18] truncate">{displayName}</p>
+              <p className="text-xs text-[#7A7A72]">Platform Administrator</p>
             </div>
           </div>
         </div>
@@ -106,16 +116,16 @@ export function AdminSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-2 overflow-y-auto">
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {navItems.map((item) => {
             const isActive = location === item.href;
             return (
               <Link key={item.href} href={item.href}>
                 <div
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    isActive 
-                      ? "bg-gray-900 text-white" 
-                      : "text-gray-700 hover:bg-gray-100"
+                    isActive
+                      ? "bg-[#1A1A18] text-white"
+                      : "text-[#1A1A18] hover:bg-[#F3F3EE]"
                   } ${collapsed ? "justify-center" : ""}`}
                   data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
                 >
@@ -129,17 +139,17 @@ export function AdminSidebar() {
       </nav>
 
       {/* Bottom Navigation */}
-      <div className="p-2 border-t border-gray-200">
-        <div className="space-y-1">
+      <div className="p-2 border-t border-[#E8E8E2]">
+        <div className="space-y-0.5">
           {bottomNavItems.map((item) => {
             const isActive = location === item.href;
             return (
               <Link key={item.href} href={item.href}>
                 <div
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    isActive 
-                      ? "bg-gray-900 text-white" 
-                      : "text-gray-700 hover:bg-gray-100"
+                    isActive
+                      ? "bg-[#1A1A18] text-white"
+                      : "text-[#1A1A18] hover:bg-[#F3F3EE]"
                   } ${collapsed ? "justify-center" : ""}`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
@@ -151,7 +161,7 @@ export function AdminSidebar() {
           })}
           <button
             onClick={handleLogout}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors text-gray-700 hover:bg-gray-100 ${collapsed ? "justify-center" : ""}`}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors text-[#1A1A18] hover:bg-[#F3F3EE] ${collapsed ? "justify-center" : ""}`}
             data-testid="button-logout"
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />

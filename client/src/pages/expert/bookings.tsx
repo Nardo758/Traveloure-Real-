@@ -137,25 +137,31 @@ export default function ExpertBookings() {
           {/* Quick Stats */}
           <Card className="border border-gray-200">
             <CardHeader>
-              <CardTitle className="text-lg">This Week</CardTitle>
+              <CardTitle className="text-lg">All Bookings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-lg text-center" data-testid="stat-appointments">
-                  <p className="text-2xl font-bold text-gray-900">8</p>
-                  <p className="text-sm text-gray-600">Appointments</p>
+                <div className="p-3 bg-[#F3F3EE] rounded-lg text-center" data-testid="stat-total">
+                  <p className="text-2xl font-bold text-[#1A1A18]">{bookings?.length ?? 0}</p>
+                  <p className="text-sm text-[#7A7A72]">Total</p>
                 </div>
-                <div className="p-3 bg-gray-50 rounded-lg text-center" data-testid="stat-reservations">
-                  <p className="text-2xl font-bold text-gray-900">12</p>
-                  <p className="text-sm text-gray-600">Reservations</p>
+                <div className="p-3 bg-[#F3F3EE] rounded-lg text-center" data-testid="stat-pending">
+                  <p className="text-2xl font-bold text-amber-600">
+                    {bookings?.filter(b => b.status === "pending").length ?? 0}
+                  </p>
+                  <p className="text-sm text-[#7A7A72]">Pending</p>
                 </div>
-                <div className="p-3 bg-gray-50 rounded-lg text-center" data-testid="stat-confirmed">
-                  <p className="text-2xl font-bold text-green-600">15</p>
-                  <p className="text-sm text-gray-600">Confirmed</p>
+                <div className="p-3 bg-[#F3F3EE] rounded-lg text-center" data-testid="stat-confirmed">
+                  <p className="text-2xl font-bold text-green-600">
+                    {bookings?.filter(b => b.status === "confirmed").length ?? 0}
+                  </p>
+                  <p className="text-sm text-[#7A7A72]">Confirmed</p>
                 </div>
-                <div className="p-3 bg-gray-50 rounded-lg text-center" data-testid="stat-pending">
-                  <p className="text-2xl font-bold text-yellow-600">5</p>
-                  <p className="text-sm text-gray-600">Pending</p>
+                <div className="p-3 bg-[#F3F3EE] rounded-lg text-center" data-testid="stat-completed">
+                  <p className="text-2xl font-bold text-blue-600">
+                    {bookings?.filter(b => b.status === "completed").length ?? 0}
+                  </p>
+                  <p className="text-sm text-[#7A7A72]">Completed</p>
                 </div>
               </div>
             </CardContent>

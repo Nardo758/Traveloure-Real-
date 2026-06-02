@@ -43,8 +43,18 @@ export default function Payouts() {
     queryKey: ["/api/provider/bank-accounts"],
   });
 
-  const pendingBalance = 2847.50;
-  const totalEarnings = 12450.00;
+  const { data: earningsSummary } = useQuery<{
+    totalEarnings: number;
+    pendingPayout: number;
+    availableForPayout: number;
+    commissionRate: number;
+  }>({
+    queryKey: ["/api/provider/earnings/summary"],
+  });
+
+  const pendingBalance = earningsSummary?.availableForPayout ?? earningsSummary?.pendingPayout ?? 0;
+  const totalEarnings = earningsSummary?.totalEarnings ?? 0;
+  const commissionRate = earningsSummary?.commissionRate ? Math.round(earningsSummary.commissionRate * 100) : 15;
 
   return (
     <ProviderLayout title="Payouts & Payments">
@@ -97,7 +107,7 @@ export default function Payouts() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Commission Rate</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">15%</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{commissionRate}%</p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <CreditCard className="w-6 h-6 text-blue-600" />

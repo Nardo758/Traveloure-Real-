@@ -51,14 +51,14 @@ export function ExpertLayout({ children, title }: ExpertLayoutProps) {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full bg-gray-50">
+      <div className="flex h-screen w-full bg-[#FAFAF8]">
         <ExpertSidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between h-14 px-4 border-b border-gray-200 bg-white">
+          <header className="flex items-center justify-between h-14 px-4 border-b border-[#E8E8E2] bg-white">
             <div className="flex items-center gap-4">
               <SidebarTrigger data-testid="button-expert-sidebar-toggle" />
               {title && (
-                <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+                <h1 className="text-lg font-semibold text-[#1A1A18]">{title}</h1>
               )}
             </div>
             <div className="flex items-center gap-3">
