@@ -15,7 +15,7 @@ import {
 import { DynamicPricingEditor } from "@/components/shared/dynamic-pricing-editor";
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, CheckCircle } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,25 +40,33 @@ interface ServiceFormData {
   active: boolean;
 }
 
-const EMPTY_FORM: ServiceFormData = {
-  name: "",
-  category: "",
-  description: "",
-  basePrice: 0,
-  priceType: "Fixed",
-  duration: "",
-  deliveryMethod: "in-person",
-  revisionsIncluded: 0,
-  includesExpertNotes: false,
-  photos: [],
-  whatIncluded: [],
-  maxConcurrentClients: 1,
-  maxGroupSize: 4,
-  serviceArea: "",
-  pickupAvailable: false,
-  pickupRadius: 0,
-  active: true,
-};
+function getCategoryFromSearch(): string {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  return params.get("category") || "";
+}
+
+function buildEmptyForm(): ServiceFormData {
+  return {
+    name: "",
+    category: getCategoryFromSearch(),
+    description: "",
+    basePrice: 0,
+    priceType: "Fixed",
+    duration: "",
+    deliveryMethod: "in-person",
+    revisionsIncluded: 0,
+    includesExpertNotes: false,
+    photos: [],
+    whatIncluded: [],
+    maxConcurrentClients: 1,
+    maxGroupSize: 4,
+    serviceArea: "",
+    pickupAvailable: false,
+    pickupRadius: 0,
+    active: true,
+  };
+}
 
 function mapServiceToForm(s: any): ServiceFormData {
   return {
@@ -87,13 +95,14 @@ export default function ProviderServiceForm() {
   const isEditMode = !!params?.id;
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [creationSuccess, setCreationSuccess] = useState(false);
 
   const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
     queryKey: ["/api/provider/services", params?.id],
     enabled: isEditMode,
   });
 
-  const [formData, setFormData] = useState<ServiceFormData>(EMPTY_FORM);
+  const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm);
 
   useEffect(() => {
     if (existingService) {
@@ -127,8 +136,12 @@ export default function ProviderServiceForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
-      toast({ title: isEditMode ? "Service updated" : "Service created successfully" });
-      navigate("/provider/services");
+      if (isEditMode) {
+        toast({ title: "Service updated" });
+        navigate("/provider/services");
+      } else {
+        setCreationSuccess(true);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -150,11 +163,56 @@ export default function ProviderServiceForm() {
     setFormData({ ...formData, whatIncluded: formData.whatIncluded.filter((_, i) => i !== index) });
   };
 
+  const handleAddAnother = () => {
+    setCreationSuccess(false);
+    setFormData(buildEmptyForm());
+    setNewIncluded("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   if (isEditMode && loadingExisting) {
     return (
       <ProviderLayout title="Edit Service">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+        </div>
+      </ProviderLayout>
+    );
+  }
+
+  if (creationSuccess) {
+    return (
+      <ProviderLayout title="Service Created">
+        <div className="p-6 max-w-lg mx-auto">
+          <Card>
+            <CardContent className="p-10 text-center space-y-4">
+              <div className="flex justify-center">
+                <CheckCircle className="w-16 h-16 text-green-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900" data-testid="text-success-title">
+                Service published!
+              </h2>
+              <p className="text-gray-500 text-sm">
+                Your service is now live. You can add more services to build out your full catalog.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/provider/services")}
+                  data-testid="button-view-services"
+                >
+                  View My Services
+                </Button>
+                <Button
+                  className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                  onClick={handleAddAnother}
+                  data-testid="button-add-another"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Add Another Service
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </ProviderLayout>
     );
