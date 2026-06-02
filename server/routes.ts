@@ -18511,31 +18511,47 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
       }
 
-      // Check cache first (7-day TTL)
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const cached = await db
-        .select()
-        .from(visaRequirementsCache)
-        .where(
-          and(
-            eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
-            eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
-            sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
-          )
-        )
-        .limit(1)
-        .then((r) => r[0]);
+      const { forceRefresh } = req.body;
 
-      if (cached) {
-        return res.json({
-          visaRequired: cached.visaRequired,
-          visaTypes: cached.visaTypes,
-          requiredDocuments: cached.requiredDocuments,
-          processingTime: cached.processingTime,
-          feeRange: cached.feeRange,
-          disclaimer: cached.disclaimer,
-          fromCache: true,
-        });
+      // Check cache first (7-day TTL), unless force-refresh requested
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      if (forceRefresh) {
+        // Delete stale cache entry so we re-fetch fresh data
+        await db
+          .delete(visaRequirementsCache)
+          .where(
+            and(
+              eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+              eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+            )
+          );
+      } else {
+        const cached = await db
+          .select()
+          .from(visaRequirementsCache)
+          .where(
+            and(
+              eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+              eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+              sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
+            )
+          )
+          .limit(1)
+          .then((r) => r[0]);
+
+        if (cached) {
+          return res.json({
+            visaRequired: cached.visaRequired,
+            visaTypes: cached.visaTypes,
+            requiredDocuments: cached.requiredDocuments,
+            processingTime: cached.processingTime,
+            feeRange: cached.feeRange,
+            disclaimer: cached.disclaimer,
+            fromCache: true,
+            cachedAt: cached.cachedAt,
+          });
+        }
       }
 
       // Call Claude to get visa requirements
@@ -18567,6 +18583,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
       const parsed = JSON.parse(jsonMatch[0]);
 
       // Store in cache
+      const nowTs = new Date();
       await db.insert(visaRequirementsCache).values({
         passportCountry: passportCountry.toLowerCase(),
         destinationCountry: destinationCountry.toLowerCase(),
@@ -18586,6 +18603,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
         feeRange: parsed.fee_range,
         disclaimer: parsed.disclaimer,
         fromCache: false,
+        cachedAt: nowTs,
       });
     } catch (err) {
       console.error("[Visa] requirements error:", err);
