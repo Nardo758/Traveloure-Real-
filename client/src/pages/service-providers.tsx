@@ -38,6 +38,17 @@ import {
   Languages,
   Award,
   HelpCircle,
+  BedDouble,
+  Music,
+  Palette,
+  Package,
+  BookOpen,
+  Scissors,
+  Flower2,
+  Mic2,
+  Shield,
+  Bike,
+  Zap,
 } from "lucide-react";
 
 type ServiceCategory = {
@@ -52,38 +63,67 @@ type ServiceCategory = {
 type Service = {
   id: string;
   userId: string;
-  name: string;
-  description: string;
+  serviceName: string;
+  name?: string;
+  shortDescription?: string;
+  description?: string;
   categoryId: string;
-  basePrice: string;
-  duration: number;
-  location: string;
-  rating: string;
-  totalReviews: number;
+  price?: string;
+  basePrice?: string;
+  deliveryTimeframe?: string;
+  duration?: number;
+  location?: string;
+  averageRating?: string;
+  rating?: string;
+  reviewCount?: number;
+  totalReviews?: number;
+  isFeatured?: boolean;
   status: string;
 };
 
 const categoryIcons: Record<string, React.ElementType> = {
   "photography-videography": Camera,
   "transportation-logistics": Car,
+  "transportation-driving": Car,
   "food-culinary": UtensilsCrossed,
   "childcare-family": Baby,
   "tours-experiences": Compass,
   "personal-assistance": Briefcase,
+  "companionship-assistance": Briefcase,
   "taskrabbit-services": Wrench,
   "health-wellness": Heart,
+  "fitness-wellness": Heart,
   "beauty-styling": Sparkles,
+  "beauty-grooming": Sparkles,
   "pets-animals": Dog,
   "events-celebrations": PartyPopper,
   "technology-connectivity": Laptop,
   "language-translation": Languages,
   "specialty-services": Award,
+  "specialty-unique-services": Award,
   "custom-other": HelpCircle,
+  // New categories
+  "lodging-accommodation": BedDouble,
+  "music-performance": Music,
+  "music-services": Music,
+  "entertainment": Mic2,
+  "floral-decoration": Flower2,
+  "arts-crafts-instruction": Palette,
+  "arts-crafts": Palette,
+  "cultural-educational": BookOpen,
+  "attire-fashion": Scissors,
+  "rental-services": Package,
+  "safety-security": Shield,
+  "technical-services": Zap,
+  "business-professional": Briefcase,
+  "restaurants-dining": UtensilsCrossed,
 };
 
 function ServiceCard({ service }: { service: Service }) {
-  const rating = parseFloat(service.rating) || 0;
-  const price = parseFloat(service.basePrice) || 0;
+  const displayName = service.serviceName || service.name || "Untitled";
+  const rating = parseFloat(service.averageRating ?? service.rating ?? "0") || 0;
+  const price = parseFloat(service.price ?? service.basePrice ?? "0") || 0;
+  const reviews = service.reviewCount ?? service.totalReviews ?? 0;
 
   return (
     <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
@@ -93,28 +133,30 @@ function ServiceCard({ service }: { service: Service }) {
             <Avatar className="w-16 h-16 rounded-md">
               <AvatarImage src="" />
               <AvatarFallback className="rounded-md bg-muted">
-                {service.name.slice(0, 2).toUpperCase()}
+                {displayName.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <h3 
+              <h3
                 className="font-semibold text-foreground truncate"
                 data-testid={`text-service-name-${service.id}`}
               >
-                {service.name}
+                {displayName}
               </h3>
               <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                {service.description}
+                {service.shortDescription || service.description}
               </p>
               <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <MapPin className="w-3 h-3" />
                   <span>{service.location || "Remote"}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  <span>{service.duration} min</span>
-                </div>
+                {service.deliveryTimeframe && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{service.deliveryTimeframe}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -122,13 +164,11 @@ function ServiceCard({ service }: { service: Service }) {
             <div className="flex items-center gap-1">
               <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
               <span className="font-medium">{rating.toFixed(1)}</span>
-              <span className="text-muted-foreground text-sm">
-                ({service.totalReviews || 0})
-              </span>
+              <span className="text-muted-foreground text-sm">({reviews})</span>
             </div>
             <div className="flex items-center gap-1 font-semibold">
               <DollarSign className="w-4 h-4" />
-              <span>${price}</span>
+              <span>{price > 0 ? `$${price}` : "Custom"}</span>
             </div>
           </div>
         </CardContent>
@@ -196,7 +236,8 @@ export default function ServiceProviders() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (
-        !service.name.toLowerCase().includes(query) &&
+        !(service.serviceName || service.name || "").toLowerCase().includes(query) &&
+        !service.shortDescription?.toLowerCase().includes(query) &&
         !service.description?.toLowerCase().includes(query)
       ) {
         return false;
@@ -217,13 +258,13 @@ export default function ServiceProviders() {
   const sortedServices = [...(filteredServices || [])].sort((a, b) => {
     switch (sortBy) {
       case "rating":
-        return parseFloat(b.rating) - parseFloat(a.rating);
+        return parseFloat(b.averageRating ?? b.rating ?? "0") - parseFloat(a.averageRating ?? a.rating ?? "0");
       case "price_low":
-        return parseFloat(a.basePrice) - parseFloat(b.basePrice);
+        return parseFloat(a.price ?? a.basePrice ?? "0") - parseFloat(b.price ?? b.basePrice ?? "0");
       case "price_high":
-        return parseFloat(b.basePrice) - parseFloat(a.basePrice);
+        return parseFloat(b.price ?? b.basePrice ?? "0") - parseFloat(a.price ?? a.basePrice ?? "0");
       case "reviews":
-        return (b.totalReviews || 0) - (a.totalReviews || 0);
+        return (b.reviewCount ?? b.totalReviews ?? 0) - (a.reviewCount ?? a.totalReviews ?? 0);
       default:
         return 0;
     }
