@@ -12171,14 +12171,12 @@ export async function registerDiscoveryRoutes(app: Express) {
         { getFeverCommissions },
         { getBookingComCommissions },
         { getApiCostsSummary },
-        { revenueTrackingService },
       ] = await Promise.all([
         import("./services/travelpayouts/statistics.service"),
         import("./services/viator-commissions.service"),
         import("./services/fever-commissions.service"),
         import("./services/booking-com-commissions.service"),
         import("./services/api-costs.service"),
-        import("./services/revenue-tracking.service"),
       ]);
 
       // Compute period-specific date bounds for Stripe query
@@ -12203,8 +12201,28 @@ export async function registerDiscoveryRoutes(app: Express) {
         };
       })();
 
-      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary] = await Promise.all([
-        revenueTrackingService.getUnifiedDashboard().catch(() => null),
+      // Comparison (prior) period bounds for MoM badge
+      const priorPeriodBounds = (() => {
+        if (period === "last_month") {
+          return {
+            start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
+            end: new Date(now.getFullYear(), now.getMonth() - 1, 0, 23, 59, 59),
+          };
+        }
+        if (period === "last_90_days") {
+          return {
+            start: new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000),
+            end: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+          };
+        }
+        // this_month → compare against last calendar month
+        return {
+          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+        };
+      })();
+
+      const [travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary, stripePriorSummary] = await Promise.all([
         getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
         getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
@@ -12212,12 +12230,17 @@ export async function registerDiscoveryRoutes(app: Express) {
         getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
         // Fetch period-accurate Stripe total directly from DB
         storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
+        // Fetch prior period for MoM comparison
+        storage.getPlatformRevenueSummary(priorPeriodBounds.start, priorPeriodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
       ]);
 
-      const stripeThisMonth = stripe?.platform?.thisMonth || 0;
-      const stripeLastMonth = stripe?.platform?.lastMonth || 0;
+      const stripeThisMonth = stripePeriodSummary.totalPlatformFee;
+      const stripeLastMonth = stripePriorSummary.totalPlatformFee;
       // Use period-accurate DB query result (not all-time totalRevenue)
       const stripeTotal = stripePeriodSummary.totalPlatformFee;
+      const stripeGrowthPercent = stripeLastMonth > 0
+        ? Math.round(((stripeThisMonth - stripeLastMonth) / stripeLastMonth) * 1000) / 10
+        : 0;
 
       // Use only reconciliation-confirmed affiliate totals when available
       let confirmedAffiliateTotal = 0;
@@ -12250,7 +12273,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           lastMonth: stripeLastMonth,
           total: stripeTotal,
           currency: "USD",
-          growthPercent: stripe?.platform?.growthPercent || 0,
+          growthPercent: stripeGrowthPercent,
         },
         travelpayouts,
         viator,
