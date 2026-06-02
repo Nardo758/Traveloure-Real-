@@ -579,6 +579,9 @@ export const serviceBookings = pgTable("service_bookings", {
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   
+  // Visa / specialty service metadata collected during booking intake
+  bookingMetadata: jsonb("booking_metadata").default({}),
+
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
   completedAt: timestamp("completed_at"),
@@ -5508,3 +5511,22 @@ export const insertContentPlacementRuleSchema = createInsertSchema(contentPlacem
 
 export type ContentPlacementRule = typeof contentPlacementRules.$inferSelect;
 export type InsertContentPlacementRule = z.infer<typeof insertContentPlacementRuleSchema>;
+
+// === Visa Requirements Cache ===
+
+export const visaRequirementsCache = pgTable("visa_requirements_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  passportCountry: varchar("passport_country", { length: 100 }).notNull(),
+  destinationCountry: varchar("destination_country", { length: 100 }).notNull(),
+  visaRequired: boolean("visa_required").notNull(),
+  visaTypes: jsonb("visa_types").default([]),
+  requiredDocuments: jsonb("required_documents").default([]),
+  processingTime: varchar("processing_time", { length: 200 }),
+  feeRange: varchar("fee_range", { length: 200 }),
+  disclaimer: text("disclaimer"),
+  cachedAt: timestamp("cached_at").defaultNow().notNull(),
+});
+
+export const insertVisaRequirementsCacheSchema = createInsertSchema(visaRequirementsCache).omit({ id: true, cachedAt: true });
+export type VisaRequirementsCache = typeof visaRequirementsCache.$inferSelect;
+export type InsertVisaRequirementsCache = z.infer<typeof insertVisaRequirementsCacheSchema>;

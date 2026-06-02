@@ -171,6 +171,7 @@ const categoryIcons: Record<string, React.ElementType> = {
   "language-translation": Languages,
   "specialty-services": Award,
   "custom-other": HelpCircle,
+  "visa-assistance": Globe,
 };
 
 const tripCategories = [

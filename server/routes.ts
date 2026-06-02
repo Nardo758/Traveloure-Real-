@@ -18413,6 +18413,101 @@ export async function registerDiscoveryRoutes(app: Express) {
   // EXPERT CONTRACTS
   // ============================================================
 
+  // ============================================================
+  // VISA REQUIREMENTS
+  // ============================================================
+
+  app.post("/api/visa/requirements", async (req, res) => {
+    try {
+      const { passportCountry, destinationCountry } = req.body;
+      if (!passportCountry || !destinationCountry) {
+        return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
+      }
+
+      const { visaRequirementsCache } = await import("@shared/schema");
+
+      // Check cache first (7-day TTL)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const cached = await db
+        .select()
+        .from(visaRequirementsCache)
+        .where(
+          and(
+            eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+            eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+            sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
+          )
+        )
+        .limit(1)
+        .then((r) => r[0]);
+
+      if (cached) {
+        return res.json({
+          visaRequired: cached.visaRequired,
+          visaTypes: cached.visaTypes,
+          requiredDocuments: cached.requiredDocuments,
+          processingTime: cached.processingTime,
+          feeRange: cached.feeRange,
+          disclaimer: cached.disclaimer,
+          fromCache: true,
+        });
+      }
+
+      // Call Claude to get visa requirements
+      const prompt = `You are a visa information assistant. Provide visa requirements for a ${passportCountry} passport holder traveling to ${destinationCountry}.
+
+Return ONLY valid JSON in this exact structure (no additional text):
+{
+  "visa_required": true or false,
+  "visa_types": ["Tourist Visa", "Business Visa"],
+  "required_documents": ["Valid passport (6+ months validity)", "Completed visa application form", "Passport-sized photos", "Bank statements (last 3 months)", "Travel itinerary", "Hotel bookings"],
+  "processing_time": "5-10 business days",
+  "fee_range": "$50-$160 USD depending on visa type",
+  "disclaimer": "This information is for general guidance only. Requirements may change at any time. Always verify with the official embassy or consulate of ${destinationCountry} before traveling."
+}
+
+If no visa is required (visa-free or visa-on-arrival), set visa_required to false and explain in the disclaimer. Be specific and accurate based on commonly known visa policies.`;
+
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = (completion.content[0] as any).text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(500).json({ message: "Failed to parse AI response" });
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Store in cache
+      await db.insert(visaRequirementsCache).values({
+        passportCountry: passportCountry.toLowerCase(),
+        destinationCountry: destinationCountry.toLowerCase(),
+        visaRequired: Boolean(parsed.visa_required),
+        visaTypes: parsed.visa_types || [],
+        requiredDocuments: parsed.required_documents || [],
+        processingTime: parsed.processing_time || null,
+        feeRange: parsed.fee_range || null,
+        disclaimer: parsed.disclaimer || null,
+      });
+
+      res.json({
+        visaRequired: parsed.visa_required,
+        visaTypes: parsed.visa_types || [],
+        requiredDocuments: parsed.required_documents || [],
+        processingTime: parsed.processing_time,
+        feeRange: parsed.fee_range,
+        disclaimer: parsed.disclaimer,
+        fromCache: false,
+      });
+    } catch (err) {
+      console.error("[Visa] requirements error:", err);
+      res.status(500).json({ message: "Failed to fetch visa requirements" });
+    }
+  });
+
   app.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
