@@ -37,6 +37,7 @@ import {
   Brain,
   Target,
   Home,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -183,14 +184,15 @@ export default function ExpertsPage() {
     queryKey: ["/api/experience-types"],
   });
 
-  // Fetch experts from API with optional experience type and neighbourhood filter
+  // Fetch experts from API with optional experience type, destination, and neighbourhood filter
   const debouncedNeighbourhoodQuery = useDebounce(neighbourhoodQuery, 300);
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
-    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery],
+    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
       if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
+      if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
       const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
@@ -204,7 +206,7 @@ export default function ExpertsPage() {
     );
   };
 
-  // Filter experts by search and other criteria
+  // Filter experts by search and language (destination + neighbourhood are handled server-side)
   const filteredExperts = apiExperts.filter((expert: any) => {
     const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
     const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
@@ -214,20 +216,11 @@ export default function ExpertsPage() {
       expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
       neighbourhoods.some((n: string) => n.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesDestination =
-      selectedDestination === "All Destinations" ||
-      expert.expertForm?.destinations?.includes(selectedDestination);
-
     const matchesLanguage =
       selectedLanguage === "All Languages" ||
       expert.expertForm?.languages?.includes(selectedLanguage);
 
-    const nbhQuery = neighbourhoodQuery.toLowerCase().trim();
-    const matchesNeighbourhood =
-      nbhQuery.length === 0 ||
-      (nbhQuery.length >= 3 && neighbourhoods.some((n: string) => n.toLowerCase().includes(nbhQuery)));
-
-    return matchesSearch && matchesDestination && matchesLanguage && matchesNeighbourhood;
+    return matchesSearch && matchesLanguage;
   });
 
   const sortedExperts = [...filteredExperts].sort((a: any, b: any) => {
@@ -588,6 +581,55 @@ export default function ExpertsPage() {
               </Select>
             </div>
           </div>
+
+          {/* Active Filter Chips */}
+          {(selectedDestination !== "All Destinations" || neighbourhoodQuery.trim().length >= 2) && (
+            <div className="flex flex-wrap items-center gap-2 mb-5" data-testid="active-filter-chips">
+              <span className="text-sm text-[#6B7280] font-medium flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" />
+                Active:
+              </span>
+              {selectedDestination !== "All Destinations" && (
+                <Badge
+                  className="flex items-center gap-1 bg-[#FFF1F3] text-[#FF385C] border border-[#FECDD3] px-2.5 py-1 text-xs font-medium rounded-full"
+                  data-testid="chip-filter-destination"
+                >
+                  <MapPin className="w-3 h-3" />
+                  {selectedDestination}
+                  <button
+                    onClick={() => setSelectedDestination("All Destinations")}
+                    className="ml-0.5 hover:text-[#E23350] focus:outline-none"
+                    data-testid="button-clear-destination-chip"
+                    aria-label="Clear destination filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {neighbourhoodQuery.trim().length >= 2 && (
+                <Badge
+                  className="flex items-center gap-1 bg-[#EEF2FF] text-[#6366F1] border border-[#C7D2FE] px-2.5 py-1 text-xs font-medium rounded-full"
+                  data-testid="chip-filter-neighbourhood"
+                >
+                  <Home className="w-3 h-3" />
+                  {neighbourhoodQuery.trim()}
+                  <button
+                    onClick={() => setNeighbourhoodQuery("")}
+                    className="ml-0.5 hover:text-[#4F46E5] focus:outline-none"
+                    data-testid="button-clear-neighbourhood-chip"
+                    aria-label="Clear neighbourhood filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {selectedDestination !== "All Destinations" && neighbourhoodQuery.trim().length >= 2 && (
+                <span className="text-xs text-[#6B7280] italic" data-testid="text-combined-filter-hint">
+                  Experts covering {neighbourhoodQuery.trim()} in {selectedDestination}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Expert Cards Grid */}
           {isLoadingExperts ? (
