@@ -585,7 +585,6 @@ export default function TripDetails() {
                             role="owner"
                             stage="full"
                             trip={planCardTrip}
-                            days={planCardDays}
                           />
                         );
                       })()}

@@ -615,7 +615,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 tripId={trip.id}
                 tripDestination={trip.destination}
                 day={day}
-                allowActions={isOwner}
+                allowActions={role !== "viewer"}
               />
             )}
 

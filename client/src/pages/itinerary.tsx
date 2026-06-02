@@ -593,7 +593,6 @@ export default function ItineraryPage() {
               role="owner"
               stage="full"
               trip={planCardTrip}
-              days={planCardDays}
             />
           </div>
 
