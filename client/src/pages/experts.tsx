@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,6 +116,18 @@ export default function ExpertsPage() {
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [sortBy, setSortBy] = useState("recommended");
+  const neighbourhoodInputRef = useRef<HTMLInputElement>(null);
+
+  const handleNeighbourhoodChipClick = useCallback((neighbourhood: string) => {
+    setNeighbourhoodQuery(neighbourhood);
+    setTimeout(() => {
+      const el = neighbourhoodInputRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
+      el.select();
+    }, 50);
+  }, []);
   const [favorites, setFavorites] = useState<string[]>([]);
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
@@ -554,6 +566,7 @@ export default function ExpertsPage() {
               <div className="relative">
                 <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
+                  ref={neighbourhoodInputRef}
                   placeholder="Neighbourhood (e.g. Shimokitazawa)"
                   value={neighbourhoodQuery}
                   onChange={(e) => setNeighbourhoodQuery(e.target.value)}
@@ -650,6 +663,7 @@ export default function ExpertsPage() {
                     expert={expert} 
                     showServices={true}
                     experienceTypeFilter={selectedExperienceType || undefined}
+                    onNeighbourhoodClick={handleNeighbourhoodChipClick}
                   />
                 </motion.div>
               ))}
