@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,12 +28,30 @@ import {
   XCircle,
   Loader2,
   Package,
-  Star
+  Star,
+  Plane,
+  FileCheck,
+  Search,
+  ThumbsUp,
+  ThumbsDown,
+  AlertCircle
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+
+interface VisaBookingMetadata {
+  passportNationality?: string;
+  destinationCountry?: string;
+  travelStartDate?: string;
+  travelEndDate?: string;
+  visaType?: string;
+  specialCircumstances?: string;
+  visaApplicationStatus?: "pending" | "submitted" | "in_review" | "approved" | "rejected";
+  visaStatusNotes?: string;
+  visaStatusUpdatedAt?: string;
+}
 
 interface Booking {
   id: string;
@@ -46,6 +64,7 @@ interface Booking {
     notes?: string;
     quantity?: number;
   };
+  bookingMetadata?: VisaBookingMetadata;
   status: string;
   totalAmount: string;
   platformFee: string;
@@ -66,6 +85,109 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
 };
+
+const VISA_STATUS_STEPS: Array<{
+  key: VisaBookingMetadata["visaApplicationStatus"];
+  label: string;
+  description: string;
+  icon: any;
+  color: string;
+}> = [
+  { key: "pending", label: "Pending", description: "Your application is being reviewed by the expert", icon: Clock, color: "text-yellow-500" },
+  { key: "submitted", label: "Submitted", description: "Documents submitted to the embassy", icon: FileCheck, color: "text-blue-500" },
+  { key: "in_review", label: "Under Review", description: "Embassy is processing your application", icon: Search, color: "text-purple-500" },
+  { key: "approved", label: "Approved", description: "Your visa has been approved!", icon: ThumbsUp, color: "text-green-600" },
+  { key: "rejected", label: "Rejected", description: "Visa application was not approved", icon: ThumbsDown, color: "text-red-500" },
+];
+
+function isVisaBooking(booking: Booking): boolean {
+  const meta = booking.bookingMetadata;
+  return !!(meta && (meta.passportNationality || meta.destinationCountry || meta.visaType || meta.visaApplicationStatus));
+}
+
+function VisaStatusTimeline({ metadata }: { metadata: VisaBookingMetadata }) {
+  const currentStatus = metadata.visaApplicationStatus || "pending";
+  const isRejected = currentStatus === "rejected";
+
+  const stepsToShow = isRejected
+    ? VISA_STATUS_STEPS.filter(s => s.key !== "approved")
+    : VISA_STATUS_STEPS.filter(s => s.key !== "rejected");
+
+  const currentIdx = stepsToShow.findIndex(s => s.key === currentStatus);
+
+  return (
+    <div className="mt-4 border rounded-lg p-4 bg-muted/30" data-testid="visa-status-timeline">
+      <div className="flex items-center gap-2 mb-3">
+        <Plane className="w-4 h-4 text-[#FF385C]" />
+        <span className="text-sm font-semibold">Visa Application Status</span>
+        {metadata.visaStatusUpdatedAt && (
+          <span className="text-xs text-muted-foreground ml-auto">
+            Updated {format(new Date(metadata.visaStatusUpdatedAt), "MMM d, yyyy")}
+          </span>
+        )}
+      </div>
+
+      {(metadata.passportNationality || metadata.destinationCountry) && (
+        <div className="text-xs text-muted-foreground mb-3 flex gap-3">
+          {metadata.passportNationality && <span>Passport: <strong>{metadata.passportNationality}</strong></span>}
+          {metadata.destinationCountry && <span>Destination: <strong>{metadata.destinationCountry}</strong></span>}
+          {metadata.visaType && <span>Type: <strong className="capitalize">{metadata.visaType}</strong></span>}
+        </div>
+      )}
+
+      <div className="relative">
+        <div className="flex items-start gap-0" data-testid="visa-steps">
+          {stepsToShow.map((step, idx) => {
+            const isPast = idx < currentIdx;
+            const isCurrent = idx === currentIdx;
+            const StepIcon = step.icon;
+            return (
+              <div key={step.key} className="flex-1 flex flex-col items-center relative" data-testid={`visa-step-${step.key}`}>
+                {idx < stepsToShow.length - 1 && (
+                  <div
+                    className={`absolute top-4 left-1/2 w-full h-0.5 ${isPast || isCurrent ? "bg-[#FF385C]" : "bg-muted-foreground/20"}`}
+                    style={{ left: "50%", width: "100%" }}
+                  />
+                )}
+                <div
+                  className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors ${
+                    isCurrent
+                      ? isRejected
+                        ? "border-red-500 bg-red-50 text-red-500"
+                        : "border-[#FF385C] bg-[#FF385C] text-white"
+                      : isPast
+                      ? "border-[#FF385C] bg-[#FF385C]/10 text-[#FF385C]"
+                      : "border-muted-foreground/30 bg-background text-muted-foreground/40"
+                  }`}
+                >
+                  <StepIcon className="w-4 h-4" />
+                </div>
+                <span
+                  className={`mt-1 text-xs text-center font-medium leading-tight ${
+                    isCurrent ? (isRejected ? "text-red-500" : "text-[#FF385C]") : isPast ? "text-foreground" : "text-muted-foreground/50"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {metadata.visaStatusNotes && (
+        <div className="mt-3 flex gap-2 p-2 rounded bg-background border text-xs" data-testid="visa-status-notes">
+          <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground" />
+          <span className="text-muted-foreground">{metadata.visaStatusNotes}</span>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground mt-2 text-center">
+        {stepsToShow.find(s => s.key === currentStatus)?.description}
+      </p>
+    </div>
+  );
+}
 
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -201,6 +323,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
+  const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
@@ -212,6 +335,12 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 <StatusIcon className="w-3 h-3 mr-1" />
                 {status.label}
               </Badge>
+              {showVisaTimeline && (
+                <Badge variant="outline" className="text-[#FF385C] border-[#FF385C]/30" data-testid={`badge-visa-${booking.id}`}>
+                  <Plane className="w-3 h-3 mr-1" />
+                  Visa Application
+                </Badge>
+              )}
               {booking.hasReview && (
                 <Badge variant="outline" data-testid={`badge-reviewed-${booking.id}`}>
                   <Star className="w-3 h-3 mr-1 fill-current" />
@@ -236,6 +365,10 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 </p>
               )}
             </div>
+
+            {showVisaTimeline && booking.bookingMetadata && (
+              <VisaStatusTimeline metadata={booking.bookingMetadata} />
+            )}
           </div>
           
           <div className="text-right">

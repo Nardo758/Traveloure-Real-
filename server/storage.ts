@@ -205,6 +205,7 @@ export interface IStorage {
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
   updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined>;
+  updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
   getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
@@ -1077,6 +1078,17 @@ export class DatabaseStorage implements IStorage {
     });
     
     return newBooking;
+  }
+
+  async updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined> {
+    const prior = await this.getServiceBooking(id);
+    if (!prior) return undefined;
+    const merged = { ...(prior.bookingMetadata as Record<string, any> || {}), ...metadata };
+    const [updated] = await db.update(serviceBookings)
+      .set({ bookingMetadata: merged, updatedAt: new Date() })
+      .where(eq(serviceBookings.id, id))
+      .returning();
+    return updated;
   }
 
   async updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined> {
