@@ -514,7 +514,12 @@ export const providerServices = pgTable("provider_services", {
   // Expert-favorable split: floor 0.75, ceiling 0.85. Stored as decimal string in DB.
   // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
   revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
-  
+
+  // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug;
+  // populated by provider in listing form + admin backfill for legacy rows.
+  neighborhood: varchar("neighborhood", { length: 100 }),
+
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -2290,10 +2295,40 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   aiGenerated: boolean("ai_generated").default(false),
   aiGeneratedAt: timestamp("ai_generated_at"),
   
+  // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
+  // Backfilled from lat/lng via nearest-centroid match.
+  neighborhood: varchar("neighborhood", { length: 100 }),
+
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),
 });
+
+// === City Neighborhoods Lookup (v2 spec §5.1) ===
+// Explicit, denormalized neighborhood tagging is preferred over pure proximity:
+// stable, cheap to query, and lets the location-view ecosystem-unit roll up by name.
+// This table provides centroids so gems (which have lat/lng) can auto-backfill,
+// and powers the provider listing form's neighborhood picker per selected city.
+export const cityNeighborhoods = pgTable("city_neighborhoods", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull(),
+
+  // Centroid + radius for nearest-match backfill of items with lat/lng.
+  centroidLat: decimal("centroid_lat", { precision: 10, scale: 7 }).notNull(),
+  centroidLng: decimal("centroid_lng", { precision: 10, scale: 7 }).notNull(),
+  radiusKm: decimal("radius_km", { precision: 5, scale: 2 }).default("1.50"),
+
+  description: text("description"),
+  isFeatured: boolean("is_featured").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqCitySlug: unique("city_neighborhoods_city_country_slug_uniq").on(table.city, table.country, table.slug),
+}));
 
 // Live Activity Feed - Real-time traveler activity
 export const travelPulseLiveActivity = pgTable("travel_pulse_live_activity", {
