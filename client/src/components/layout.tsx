@@ -107,27 +107,7 @@ const navItems = [
       },
     ],
   },
-  {
-    name: "Partner With Us",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "OVERVIEW",
-        items: [
-          { name: "Partner With Us", href: "/partner-with-us", icon: Users, description: "Learn about partnership opportunities" },
-        ],
-      },
-      {
-        title: "BECOME A PARTNER",
-        items: [
-          { name: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/become-expert?type=local_expert", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
-        ],
-      },
-    ],
-  },
+  { name: "Partner With Us", href: "/partner-with-us" },
   { name: "Discover", href: "/discover" },
   {
     name: "Planning Tools",
@@ -137,7 +117,6 @@ const navItems = [
         title: "AI & EXPERTS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Find Local Experts", href: "/experts", icon: Users, description: "Connect with local destination experts" },
           { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
         ],
       },
