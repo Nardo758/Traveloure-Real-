@@ -5454,3 +5454,27 @@ export const eaAiTasks = pgTable("ea_ai_tasks", {
 export const insertEaAiTaskSchema = createInsertSchema(eaAiTasks).omit({ id: true, createdAt: true, updatedAt: true });
 export type EaAiTask = typeof eaAiTasks.$inferSelect;
 export type InsertEaAiTask = z.infer<typeof insertEaAiTaskSchema>;
+
+// === Local Expert Knowledge Nuggets ===
+
+export const knowledgeNuggetTypeEnum = ["tip", "warning", "recommendation", "cultural-note", "hidden-cost"] as const;
+export const knowledgeSeasonEnum = ["year-round", "spring", "summer", "fall", "winter"] as const;
+
+export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertUserId: varchar("expert_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  nuggetType: varchar("nugget_type", { length: 30 }).notNull().default("tip"), // knowledgeNuggetTypeEnum
+  city: varchar("city", { length: 150 }).notNull(),
+  linkedPoi: varchar("linked_poi", { length: 255 }),
+  linkedNeighbourhood: varchar("linked_neighbourhood", { length: 255 }),
+  insight: text("insight").notNull(),
+  targetAudience: text("target_audience"),
+  notFor: text("not_for"),
+  seasonality: jsonb("seasonality").default([]), // array of knowledgeSeasonEnum
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({ id: true, createdAt: true, updatedAt: true });
+export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
+export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;

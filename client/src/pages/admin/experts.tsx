@@ -14,7 +14,8 @@ import {
   XCircle,
   Eye,
   Clock,
-  Loader2
+  Loader2,
+  Brain,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -52,6 +53,10 @@ export default function AdminExperts() {
 
   const { data: applications = [], isLoading } = useQuery<ExpertApplication[]>({
     queryKey: ["/api/admin/expert-applications"],
+  });
+
+  const { data: nuggetCounts = {} } = useQuery<Record<string, number>>({
+    queryKey: ["/api/admin/local-experts/nugget-counts"],
   });
 
   const pendingApps = applications.filter(a => a.status === "pending");
@@ -348,11 +353,15 @@ export default function AdminExperts() {
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Expert</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Location</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Destinations</th>
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Knowledge Nuggets</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Approved</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredApproved.map((expert) => (
+                      {filteredApproved.map((expert) => {
+                        const nuggetCount = nuggetCounts[expert.userId] ?? 0;
+                        const isLocal = expert.expertType === "local_expert";
+                        return (
                         <tr key={expert.id} className="border-b border-gray-100 last:border-0" data-testid={`row-expert-${expert.id}`}>
                           <td className="py-3 px-2">
                             <div className="flex items-center gap-3">
@@ -382,11 +391,24 @@ export default function AdminExperts() {
                               ))}
                             </div>
                           </td>
+                          <td className="py-3 px-2" data-testid={`cell-nuggets-${expert.id}`}>
+                            {isLocal ? (
+                              <span className="flex items-center gap-1.5 text-sm">
+                                <Brain className="w-3.5 h-3.5 text-purple-500" />
+                                <span className={nuggetCount > 0 ? "font-semibold text-purple-700" : "text-gray-400"}>
+                                  {nuggetCount}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
                           <td className="py-3 px-2 text-sm text-gray-500">
                             {new Date(expert.createdAt).toLocaleDateString()}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
