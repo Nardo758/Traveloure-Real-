@@ -2743,27 +2743,35 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
     .orderBy(expertServiceOfferings.sortOrder);
 
-    if (rows.length > 0) {
-      return res.json(rows.map(o => ({
-        id:               o.id,
-        title:            o.name,
-        description:      o.description,
-        categoryId:       null,   // expertServiceCategories ≠ serviceCategories
-        serviceType:      null,
-        deliveryMethod:   null,
-        deliveryTimeframe: null,
-        suggestedPrice:   o.price,
-        requirements:     null,
-        whatIncluded:     null,
-        isActive:         o.isDefault ?? true,
-        sortOrder:        o.sortOrder,
-        createdAt:        o.createdAt,
-        category:         o.categoryName,
-      })));
+    const esoTemplates = rows.map(o => ({
+      id:               o.id,
+      title:            o.name,
+      description:      o.description,
+      categoryId:       null,   // expertServiceCategories ≠ serviceCategories
+      serviceType:      null,
+      deliveryMethod:   null,
+      deliveryTimeframe: null,
+      suggestedPrice:   o.price,
+      requirements:     null,
+      whatIncluded:     null,
+      isActive:         o.isDefault ?? true,
+      sortOrder:        o.sortOrder,
+      createdAt:        o.createdAt,
+      category:         o.categoryName,
+    }));
+
+    // If expert_service_offerings doesn't yet have all six (partial seed or clean DB),
+    // supplement with service_templates rows so the UI always shows the full set.
+    const missingNames = CANONICAL_NAMES.filter(n => !rows.some(r => r.name === n));
+    if (missingNames.length > 0) {
+      const stRows = await storage.getServiceTemplates();
+      const stFill = stRows
+        .filter((t: any) => missingNames.includes(t.title))
+        .map((t: any) => ({ ...t, suggestedPrice: t.suggestedPrice ?? t.price }));
+      return res.json([...esoTemplates, ...stFill]
+        .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)));
     }
-    // Fallback: seed hasn't run yet on this DB — return service_templates rows
-    const stRows = await storage.getServiceTemplates();
-    res.json(stRows);
+    res.json(esoTemplates);
   });
 
   // Get single template — tries expert_service_offerings first, falls back to service_templates
@@ -5832,22 +5840,42 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
-    
-    // Calculate totals — use booking_fee_configs default, falling back to PLATFORM_FEE_RATE
-    const subtotal = items.reduce((sum, item) => {
-      const price = parseFloat(item.service?.price || "0");
-      return sum + (price * (item.quantity || 1));
-    }, 0);
-    
-    const cartRates = await resolveCommissionRates("default");
-    const platformFee = subtotal * cartRates.platformFeeRate;
-    const total = subtotal + platformFee;
-    
+
+    // Per-item commission lookup — matches the logic in /api/checkout so the
+    // quoted fee never diverges from the charged fee.
+    const distinctIds = Array.from(new Set(
+      items.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+    ));
+    const cartCatMap = new Map<string, string>(); // categoryId → fee-config slug
+    if (distinctIds.length > 0) {
+      const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+        .from(serviceCategories)
+        .where(inArray(serviceCategories.id, distinctIds));
+      for (const row of catRows) {
+        cartCatMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+      }
+    }
+
+    const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
+
+    let subtotal = 0;
+    let platformFeeTotal = 0;
+    for (const item of items) {
+      const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
+      const feeCategory = item.service?.categoryId
+        ? (cartCatMap.get(item.service.categoryId) ?? "default")
+        : "default";
+      const rates = await resolveCommissionRates(feeCategory);
+      const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
+      subtotal += price;
+      platformFeeTotal += price * (1 - expertShare);
+    }
+
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
-      platformFee: platformFee.toFixed(2),
-      total: total.toFixed(2),
+      platformFee: platformFeeTotal.toFixed(2),
+      total: (subtotal + platformFeeTotal).toFixed(2),
       itemCount: items.length,
     });
   });
@@ -5969,9 +5997,9 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
       // Preload category slugs once to avoid N+1 queries in the item loops below.
       // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
-      const distinctCatIds = [...new Set(
+      const distinctCatIds = Array.from(new Set(
         cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
-      )];
+      ));
       const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
       if (distinctCatIds.length > 0) {
         const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
