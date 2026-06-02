@@ -55,6 +55,7 @@ import { generateKml } from "./services/kml-generator";
 import { generateGpx } from "./services/gpx-generator";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import instagramRoutes from "./routes/instagram";
+import identityRoutes from "./routes/identity.routes";
 import bookingsRoutes from "./routes/bookings";
 import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
@@ -264,6 +265,10 @@ export async function registerRoutes(
 
   // PlanCard routes - change tracking, comments, structured day data
   app.use(plancardRoutes);
+
+  // Identity verification routes (Stripe Identity + Persona KYB)
+  app.use("/api/identity", identityRoutes);
+  app.use("/api/webhooks", identityRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
@@ -1121,6 +1126,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       // Use the expertType from the form, default to "expert" for backwards compatibility
       const role = (updated as any).expertType || "expert";
       await db.update(users).set({ role }).where(eq(users.id, updated.userId));
+      // Notify the user to complete Stripe Connect setup
+      await db.insert(notifications).values({
+        userId: updated.userId,
+        type: "application_approved",
+        title: "Application Approved! 🎉",
+        message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
+        data: { link: "/expert/earnings" },
+      });
     }
     
     res.json(updated);
@@ -1255,9 +1268,153 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     // If approved, update user role to service_provider
     if (status === "approved") {
       await db.update(users).set({ role: "service_provider" }).where(eq(users.id, updated.userId));
+      // Notify the user to complete Stripe Connect setup
+      await db.insert(notifications).values({
+        userId: updated.userId,
+        type: "application_approved",
+        title: "Application Approved! 🎉",
+        message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
+        data: { link: "/provider/earnings" },
+      });
     }
     
     res.json(updated);
+  });
+
+  // GET /api/expert/application-status — user-facing live step status for expert applicants
+  app.get("/api/expert/application-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
+      const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
+
+      const steps = [
+        {
+          id: 1,
+          title: "Basic Information",
+          description: "Personal details and contact information",
+          status: form ? "completed" : "pending",
+          completedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : undefined,
+        },
+        {
+          id: 2,
+          title: "Expertise & Destinations",
+          description: "Your specialties and destination knowledge",
+          status: form && ((form.destinations as any[])?.length > 0 || (form.specialties as any[])?.length > 0) ? "completed" : form ? "in_progress" : "pending",
+        },
+        {
+          id: 3,
+          title: "Experience & Portfolio",
+          description: "Professional background and work samples",
+          status: form && (form.bio || (form as any).portfolio) ? "completed" : form ? "in_progress" : "pending",
+        },
+        {
+          id: 4,
+          title: "Identity Verification",
+          description: "Government ID and liveness check via Stripe Identity",
+          status: identityStatus === "verified" ? "completed" : identityStatus === "processing" ? "in_progress" : identityStatus === "failed" ? "failed" : form ? "in_progress" : "pending",
+          note: identityStatus === "pending" && form ? "Click 'Verify My Identity' above to begin" : undefined,
+        },
+        {
+          id: 5,
+          title: "Admin Review",
+          description: "Our team reviews your application — typically 2-3 business days",
+          status: form?.status === "approved" || form?.status === "rejected" ? "completed" : identityStatus === "verified" && form ? "in_progress" : "pending",
+        },
+        {
+          id: 6,
+          title: "Account Activation",
+          description: "Your expert account is activated and ready",
+          status: form?.status === "approved" ? "completed" : "pending",
+        },
+      ];
+
+      res.json({
+        steps,
+        overallStatus: form?.status ?? "pending",
+        identityVerificationStatus: identityStatus,
+        identityVerifiedAt: (form as any)?.identityVerifiedAt,
+        form: form ? { id: form.id, status: form.status, firstName: (form as any).firstName, createdAt: (form as any).createdAt } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/provider/application-status — user-facing live step status for provider applicants
+  app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
+      const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
+      const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
+
+      const steps = [
+        {
+          id: 1,
+          title: "Business Information",
+          description: "Business name, type, and contact details",
+          status: form ? "completed" : "pending",
+          completedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : undefined,
+        },
+        {
+          id: 2,
+          title: "Service Categories",
+          description: "Types of services you offer",
+          status: form && form.serviceType ? "completed" : form ? "in_progress" : "pending",
+        },
+        {
+          id: 3,
+          title: "Location & Documentation",
+          description: "Location, compliance, and supporting documents",
+          status: form && (form.country || form.province) ? "completed" : form ? "in_progress" : "pending",
+        },
+        {
+          id: 4,
+          title: "Owner Identity Verification",
+          description: "Government ID verification for the business owner",
+          status: identityStatus === "verified" ? "completed" : identityStatus === "processing" ? "in_progress" : identityStatus === "failed" ? "failed" : form ? "in_progress" : "pending",
+          note: identityStatus === "pending" && form ? "Click 'Verify Owner ID' above to begin" : undefined,
+        },
+        {
+          id: 5,
+          title: "Business Verification",
+          description: "Registry check against national business databases",
+          status: bizStatus === "verified" ? "completed" : bizStatus === "submitted" ? "in_progress" : bizStatus === "failed" ? "failed" : form ? "in_progress" : "pending",
+          note: bizStatus === "pending" && form ? "Enter your business details above to begin" : undefined,
+        },
+        {
+          id: 6,
+          title: "Admin Review",
+          description: "Our team reviews your application — typically 3-5 business days",
+          status: form?.status === "approved" || form?.status === "rejected" ? "completed" : (bizStatus === "verified" && identityStatus === "verified") ? "in_progress" : "pending",
+        },
+        {
+          id: 7,
+          title: "Account Activation",
+          description: "Your provider account is activated and ready",
+          status: form?.status === "approved" ? "completed" : "pending",
+        },
+      ];
+
+      res.json({
+        steps,
+        overallStatus: form?.status ?? "pending",
+        identityVerificationStatus: identityStatus,
+        identityVerifiedAt: (form as any)?.identityVerifiedAt,
+        businessVerificationStatus: bizStatus,
+        businessCountry: (form as any)?.businessCountry,
+        form: form ? {
+          id: form.id,
+          status: form.status,
+          businessName: form.businessName,
+          country: form.country,
+          createdAt: (form as any).createdAt,
+        } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // === Provider Services Routes ===

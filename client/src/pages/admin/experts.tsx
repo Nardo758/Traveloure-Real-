@@ -237,24 +237,42 @@ export default function AdminExperts() {
                       <p className="text-sm text-gray-600 italic">"{app.bio.slice(0, 150)}{app.bio.length > 150 ? "..." : ""}"</p>
                     )}
 
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        size="sm"
-                        onClick={() => updateStatusMutation.mutate({ id: app.id, status: "approved" })}
-                        disabled={updateStatusMutation.isPending}
-                        data-testid={`button-approve-${app.id}`}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => updateStatusMutation.mutate({ id: app.id, status: "rejected", rejectionMessage: "Does not meet requirements at this time." })}
-                        disabled={updateStatusMutation.isPending}
-                        data-testid={`button-reject-${app.id}`}
-                      >
-                        <XCircle className="w-4 h-4 mr-1" /> Reject
-                      </Button>
+                    <div className="space-y-2 pt-2">
+                      {/* Identity verification status badge */}
+                      <div className="flex flex-wrap gap-2">
+                        {(() => {
+                          const idStatus = (app as any).identityVerificationStatus ?? "pending";
+                          if (idStatus === "verified") return <Badge className="bg-green-100 text-green-700 text-xs">✓ ID Verified</Badge>;
+                          if (idStatus === "processing") return <Badge className="bg-blue-100 text-blue-700 text-xs">⏳ ID Processing</Badge>;
+                          if (idStatus === "failed") return <Badge className="bg-red-100 text-red-700 text-xs">✗ ID Failed</Badge>;
+                          return <Badge variant="outline" className="text-gray-500 text-xs">ID Not Submitted</Badge>;
+                        })()}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const idStatus = (app as any).identityVerificationStatus;
+                            if (idStatus !== "verified") {
+                              if (!window.confirm(`This applicant has not completed identity verification (status: ${idStatus || "not started"}). Approve anyway?`)) return;
+                            }
+                            updateStatusMutation.mutate({ id: app.id, status: "approved" });
+                          }}
+                          disabled={updateStatusMutation.isPending}
+                          data-testid={`button-approve-${app.id}`}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-1" /> Approve
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => updateStatusMutation.mutate({ id: app.id, status: "rejected", rejectionMessage: "Does not meet requirements at this time." })}
+                          disabled={updateStatusMutation.isPending}
+                          data-testid={`button-reject-${app.id}`}
+                        >
+                          <XCircle className="w-4 h-4 mr-1" /> Reject
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))
