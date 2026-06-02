@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
   Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2,
   AlertTriangle, Send, MessageSquare, Plus, Filter, Zap,
@@ -11,7 +12,10 @@ import {
   FileText, DollarSign, CheckCircle, Clock, LayoutTemplate,
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
+  Search, Star, MapPinned,
 } from "lucide-react";
+
+const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
 const P = "#FF385C";
 const G: Record<number, string> = {
@@ -331,9 +335,22 @@ export default function ExpertWorkspace() {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [addingItemDay, setAddingItemDay] = useState<number | null>(null);
+
+  // Browse / map search state
+  const [browseQuery, setBrowseQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [selectedPin, setSelectedPin] = useState<any | null>(null);
+  const [addToDay, setAddToDay] = useState<number>(1);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedQuery(browseQuery), 400);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [browseQuery]);
 
   // ── Data fetching ──
   const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({ queryKey: ["/api/expert/assigned-trips"] });
@@ -370,6 +387,56 @@ export default function ExpertWorkspace() {
       noteInitialized.current = true;
     }
   }, [expertNotesData]);
+
+  // ── Browse: geocode destination for map center ──
+  const destination = (trip as any)?.destination || "";
+  const { data: geocodeData } = useQuery<{ lat: number; lng: number }>({
+    queryKey: ["/api/geocode", destination],
+    queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(destination)}`).then(r => r.json()),
+    enabled: !!destination && rightTab === "browse",
+    staleTime: Infinity,
+  });
+
+  // ── Browse: live experience search ──
+  const searchEnabled = rightTab === "browse" && !!(debouncedQuery || destination);
+  const { data: searchData, isFetching: searchFetching } = useQuery<{ results: any[]; count: number }>({
+    queryKey: ["/api/search/experiences", debouncedQuery, destination, cat],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (destination) params.set("destination", destination);
+      if (cat && cat !== "all") params.set("category", cat);
+      return fetch(`/api/search/experiences?${params}`).then(r => r.json());
+    },
+    enabled: searchEnabled,
+    staleTime: 2 * 60 * 1000,
+  });
+  const searchResults = searchData?.results || [];
+  const mapCenter = geocodeData ?? { lat: 35.6762, lng: 139.6503 };
+
+  // ── Browse: add result to itinerary ──
+  const addFromSearchMutation = useMutation({
+    mutationFn: async (result: any) => {
+      const catToType: Record<string, string> = { dining: "dining", hotel: "hotel", culture: "culture", activity: "activity" };
+      const body = {
+        title: result.name,
+        itemType: catToType[result.category] || "activity",
+        dayNumber: addToDay,
+        locationName: result.address || result.name,
+        estimatedCost: result.priceLevel ? String(result.priceLevel * 30) : undefined,
+        notes: result.mapsUrl ? `Google Maps: ${result.mapsUrl}` : undefined,
+      };
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
+      return res.json();
+    },
+    onSuccess: (_, result) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
+      toast({ title: "Added to itinerary", description: `${result.name} → Day ${addToDay}` });
+      setSelectedPin(null);
+    },
+    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+  });
 
   // ── Mutations ──
   const advanceStatusMutation = useMutation({
@@ -416,14 +483,14 @@ export default function ExpertWorkspace() {
   const handleNoteChange = (text: string) => {
     setNoteText(text);
     setNoteSaveStatus("saving");
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current);
+    notesDebounceRef.current = setTimeout(() => {
       autoSaveNotesMutation.mutate(text);
     }, 1500);
   };
 
   useEffect(() => {
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => { if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current); };
   }, []);
 
   // ── beforeunload guard: warn on tab close / refresh while save is pending ──
@@ -812,51 +879,187 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {/* Browse Tab */}
+          {/* Browse Tab — Map-based live search */}
           {rightTab === "browse" && (
-            <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Providers</span>
-                  {trip?.destination && <span style={{ fontSize: 11, background: G[100], padding: "2px 7px", borderRadius: 99, color: G[500], display: "flex", alignItems: "center", gap: 3 }}><MapPin style={{ width: 10, height: 10 }} /> {trip.destination}</span>}
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Search bar + category chips */}
+              <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${G[100]}`, background: "white", flexShrink: 0 }}>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: G[400], pointerEvents: "none" }} />
+                  <input
+                    value={browseQuery}
+                    onChange={e => setBrowseQuery(e.target.value)}
+                    placeholder={`Search in ${destination || "destination"}…`}
+                    data-testid="input-browse-search"
+                    style={{ width: "100%", paddingLeft: 30, paddingRight: searchFetching ? 30 : 10, paddingTop: 7, paddingBottom: 7, borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, outline: "none", boxSizing: "border-box", background: G[50] }}
+                  />
+                  {searchFetching && <Loader2 style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: G[400] }} className="animate-spin" />}
                 </div>
-                <button style={{ background: "none", border: "none", cursor: "pointer", color: G[400] }}><Filter style={{ width: 14, height: 14 }} /></button>
+                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+                  {[{ k: "all", l: "All" }, { k: "dining", l: "🍽 Dining" }, { k: "activities", l: "🏛 Activities" }, { k: "hotels", l: "🏨 Hotels" }].map(c => (
+                    <Chip key={c.k} active={cat === c.k} onClick={() => { setCat(c.k); setSelectedPin(null); }}>{c.l}</Chip>
+                  ))}
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
-                {[{ k: "all", l: "All" }, { k: "dining", l: "🍽 Dining" }, { k: "activities", l: "🏛 Activities" }, { k: "hotels", l: "🏨 Hotels" }, { k: "transport", l: "🚌 Transport" }].map(c => (
-                  <Chip key={c.k} active={cat === c.k} onClick={() => setCat(c.k)}>{c.l}</Chip>
-                ))}
+
+              {/* Map */}
+              <div style={{ height: 220, flexShrink: 0, position: "relative" }}>
+                {MAPS_KEY ? (
+                  <APIProvider apiKey={MAPS_KEY}>
+                    <Map
+                      mapId="browse-map"
+                      defaultCenter={mapCenter}
+                      center={mapCenter}
+                      defaultZoom={13}
+                      gestureHandling="greedy"
+                      disableDefaultUI={true}
+                      style={{ width: "100%", height: "100%" }}
+                      onClick={() => setSelectedPin(null)}
+                    >
+                      {searchResults.filter(r => r.location?.lat).map((result: any) => {
+                        const catColor: Record<string, string> = { dining: "#EA580C", hotel: "#7C3AED", culture: "#2563EB", activity: P };
+                        const color = catColor[result.category] || P;
+                        return (
+                          <AdvancedMarker
+                            key={result.id}
+                            position={{ lat: result.location.lat, lng: result.location.lng }}
+                            onClick={() => setSelectedPin(result)}
+                          >
+                            <div style={{ background: color, color: "white", borderRadius: 20, padding: "3px 8px", fontSize: 11, fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", border: selectedPin?.id === result.id ? "2px solid white" : "none", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {result.name.length > 16 ? result.name.slice(0, 16) + "…" : result.name}
+                            </div>
+                          </AdvancedMarker>
+                        );
+                      })}
+
+                      {selectedPin && selectedPin.location?.lat && (
+                        <InfoWindow
+                          position={{ lat: selectedPin.location.lat, lng: selectedPin.location.lng }}
+                          onCloseClick={() => setSelectedPin(null)}
+                        >
+                          <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 180, maxWidth: 220 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: G[900], marginBottom: 3 }}>{selectedPin.name}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                              {selectedPin.rating && (
+                                <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, color: "#B45309", fontWeight: 600 }}>
+                                  <Star style={{ width: 11, height: 11, fill: "#B45309" }} /> {selectedPin.rating}
+                                  {selectedPin.reviewCount && <span style={{ color: G[400], fontWeight: 400 }}>({selectedPin.reviewCount.toLocaleString()})</span>}
+                                </span>
+                              )}
+                              {selectedPin.priceLabel && <span style={{ fontSize: 11, color: G[500], background: G[100], padding: "1px 5px", borderRadius: 4 }}>{selectedPin.priceLabel}</span>}
+                            </div>
+                            {selectedPin.address && <div style={{ fontSize: 11, color: G[500], marginBottom: 7, lineHeight: 1.4 }}>{selectedPin.address}</div>}
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7 }}>
+                              <span style={{ fontSize: 11, color: G[600] }}>Day:</span>
+                              <select
+                                value={addToDay}
+                                onChange={e => setAddToDay(Number(e.target.value))}
+                                data-testid="select-add-to-day"
+                                style={{ flex: 1, padding: "3px 6px", borderRadius: 6, border: `1px solid ${G[200]}`, fontSize: 12, background: "white" }}
+                              >
+                                {days.length > 0 ? days.map(d => (
+                                  <option key={d.dayNumber} value={d.dayNumber}>Day {d.dayNumber}</option>
+                                )) : [1,2,3,4,5,6,7].map(n => <option key={n} value={n}>Day {n}</option>)}
+                              </select>
+                            </div>
+                            <div style={{ display: "flex", gap: 5 }}>
+                              <button
+                                onClick={() => addFromSearchMutation.mutate(selectedPin)}
+                                disabled={addFromSearchMutation.isPending}
+                                data-testid={`button-add-from-map-${selectedPin.id}`}
+                                style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: P, color: "white", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                              >
+                                {addFromSearchMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Plus style={{ width: 11, height: 11 }} />}
+                                Add to Day {addToDay}
+                              </button>
+                              {selectedPin.mapsUrl && (
+                                <a href={selectedPin.mapsUrl} target="_blank" rel="noopener noreferrer">
+                                  <button data-testid={`button-maps-link-${selectedPin.id}`} style={{ padding: "5px 8px", borderRadius: 7, background: "white", color: G[600], border: `1px solid ${G[200]}`, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
+                                    <MapPinned style={{ width: 11, height: 11 }} />
+                                  </button>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </InfoWindow>
+                      )}
+                    </Map>
+                  </APIProvider>
+                ) : (
+                  <div style={{ height: "100%", background: G[100], display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
+                    <MapPin style={{ width: 24, height: 24, color: G[300] }} />
+                    <span style={{ fontSize: 12, color: G[400] }}>Map unavailable</span>
+                  </div>
+                )}
+                {/* Pin count badge */}
+                {searchResults.filter((r: any) => r.location?.lat).length > 0 && (
+                  <div style={{ position: "absolute", bottom: 8, left: 8, background: "white", borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 600, color: G[700], boxShadow: "0 1px 4px rgba(0,0,0,0.2)", zIndex: 10 }}>
+                    {searchResults.filter((r: any) => r.location?.lat).length} pins
+                  </div>
+                )}
               </div>
-              <div style={{ background: `${P}08`, border: `1px solid ${P}25`, borderRadius: 8, padding: "6px 10px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                <Sparkles style={{ width: 13, height: 13, color: P, flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: P }}>Filtered for {trip?.destination || "destination"} · {cat === "all" ? "all categories" : cat}</span>
-              </div>
-              {providers && providers.length > 0 ? (
-                providers.filter(p => cat === "all" || p.category?.toLowerCase().includes(cat) || p.serviceType?.toLowerCase().includes(cat)).slice(0, 8).map((p: any) => (
-                  <div key={p.id} data-testid={`card-provider-${p.id}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 10, border: `1px solid ${G[100]}`, background: "white", marginBottom: 7, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 8, background: G[100], flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🏢</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: G[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.serviceName}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-                        <span style={{ fontSize: 11, color: G[500] }}>{p.serviceType || p.category}</span>
-                        {p.price && <><span style={{ color: G[300] }}>·</span><span style={{ fontSize: 11, color: G[500] }}>${p.price}</span></>}
-                      </div>
+
+              {/* Results list */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                {searchFetching && searchResults.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[1,2,3].map(i => <div key={i} style={{ height: 56, borderRadius: 8, background: G[100] }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: G[400] }}>
+                    <Search style={{ width: 28, height: 28, color: G[300], margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                      {destination ? `Showing ${destination}` : "Type to search"}
                     </div>
-                    <button onClick={() => setAddingItemDay(daysWithDinnerGap[0] || 1)} data-testid={`button-add-provider-${p.id}`} style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                      <Plus style={{ width: 10, height: 10 }} /> Add
-                    </button>
+                    <div style={{ fontSize: 11, color: G[400] }}>Try "ramen", "temple", "rooftop bar"</div>
                   </div>
-                ))
-              ) : (
-                <div style={{ textAlign: "center", padding: "30px 0", color: G[400], fontSize: 13 }}>
-                  <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
-                  No platform providers found for this destination yet.
-                  <div style={{ marginTop: 10 }}>
-                    <button onClick={() => setBookingBrief({ provider: "Viator", bookingUrl: "https://www.viator.com" })} data-testid="button-browse-viator" style={{ padding: "6px 14px", borderRadius: 7, background: P, color: "white", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Browse Viator</button>
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${G[100]}`, textAlign: "center" }}><span style={{ fontSize: 10, color: G[400] }}>Powered by Traveloure · Viator · Google Places</span></div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, paddingLeft: 2 }}>
+                      {searchResults.length} results · click a pin or card to add
+                    </div>
+                    {searchResults.map((result: any) => {
+                      const catColor: Record<string, string> = { dining: "#EA580C", hotel: "#7C3AED", culture: "#2563EB", activity: P };
+                      const catEmoji: Record<string, string> = { dining: "🍽", hotel: "🏨", culture: "🏛", activity: "🎯" };
+                      const isSelected = selectedPin?.id === result.id;
+                      return (
+                        <div
+                          key={result.id}
+                          data-testid={`card-search-result-${result.id}`}
+                          onClick={() => setSelectedPin(isSelected ? null : result)}
+                          style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 9px", borderRadius: 9, border: isSelected ? `1.5px solid ${P}` : `1px solid ${G[100]}`, background: isSelected ? `${P}06` : "white", marginBottom: 6, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "border-color 0.15s" }}
+                        >
+                          <div style={{ width: 34, height: 34, borderRadius: 7, background: result.photoUrl ? "transparent" : `${catColor[result.category] || P}18`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>
+                            {result.photoUrl ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : catEmoji[result.category] || "📍"}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: G[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.name}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+                              <span style={{ fontSize: 10, color: catColor[result.category] || G[500], fontWeight: 600, textTransform: "capitalize" }}>{result.category}</span>
+                              {result.rating && <><span style={{ color: G[300], fontSize: 10 }}>·</span><span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 10, color: "#B45309" }}><Star style={{ width: 9, height: 9, fill: "#B45309" }} />{result.rating}</span></>}
+                              {result.priceLabel && <><span style={{ color: G[300], fontSize: 10 }}>·</span><span style={{ fontSize: 10, color: G[500] }}>{result.priceLabel}</span></>}
+                              {result.source === "platform" && <Bdg c="primary">Platform</Bdg>}
+                            </div>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); setSelectedPin(result); }}
+                            data-testid={`button-select-result-${result.id}`}
+                            style={{ padding: "4px 8px", borderRadius: 6, background: isSelected ? P : G[50], color: isSelected ? "white" : G[600], border: `1px solid ${isSelected ? P : G[200]}`, fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                          >
+                            {isSelected ? "✓" : "+"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ borderTop: `1px solid ${G[100]}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: G[400] }}>Powered by Google Places · Traveloure</span>
+              </div>
             </div>
           )}
 
