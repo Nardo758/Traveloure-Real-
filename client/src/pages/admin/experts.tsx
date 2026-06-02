@@ -239,6 +239,15 @@ export default function AdminExperts() {
                       </div>
                     </div>
 
+                    {app.expertType === "local_expert" && app.localityProof && (
+                      <div className="text-sm">
+                        <span className="text-gray-500 font-medium">How they're local: </span>
+                        <Badge variant="secondary" className="text-xs ml-1">
+                          {{ born_raised: "Born & raised", long_term_10yr: "Long-term resident (10+ yrs)", resident_5yr: "Resident (5+ yrs)", current_resident: "Current resident" }[app.localityProof] ?? app.localityProof}
+                        </Badge>
+                      </div>
+                    )}
+
                     {app.expertType === "local_expert" && (app.neighborhoods ?? []).length > 0 && (
                       <div className="text-sm">
                         <span className="text-gray-500 font-medium">Neighbourhoods: </span>

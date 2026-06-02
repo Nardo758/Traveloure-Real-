@@ -291,7 +291,7 @@ export default function TravelExpertsPage() {
         case 2:
           return !!(formData.city && formData.neighborhoods.length > 0 && formData.localityProof && formData.languages.length > 0);
         case 3:
-          return formData.knowledgeProofAnswers.every(a => a.trim().length >= 30);
+          return formData.knowledgeProofAnswers.every(a => a.trim().split(/\s+/).filter(w => w.length > 0).length >= 50);
         case 4:
           return formData.localSpecialties.length > 0;
         case 5:
@@ -868,13 +868,18 @@ export default function TravelExpertsPage() {
                       rows={5}
                       data-testid={`textarea-knowledge-proof-${i}`}
                     />
-                    <p className={cn(
-                      "text-xs mt-1 text-right",
-                      formData.knowledgeProofAnswers[i].trim().length >= 30 ? "text-green-600" : "text-[#9CA3AF]"
-                    )}>
-                      {formData.knowledgeProofAnswers[i].trim().length} characters
-                      {formData.knowledgeProofAnswers[i].trim().length < 30 && " (minimum 30)"}
-                    </p>
+                    {(() => {
+                      const words = formData.knowledgeProofAnswers[i].trim().split(/\s+/).filter(w => w.length > 0).length;
+                      const hasMinimum = words >= 50;
+                      return (
+                        <p className={cn("text-xs mt-1 text-right", hasMinimum ? "text-green-600" : "text-[#9CA3AF]")}>
+                          {words} words
+                          {!hasMinimum && " — minimum 50 words to continue"}
+                          {hasMinimum && words < 150 && " — aim for 150 words for best results"}
+                          {words >= 150 && " ✓ Great detail"}
+                        </p>
+                      );
+                    })()}
                   </div>
                 ))}
               </CardContent>
