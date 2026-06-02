@@ -5254,7 +5254,7 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   category: varchar("category", { length: 50 }).notNull().unique(),
   platformFeePercent: decimal("platform_fee_percent", { precision: 5, scale: 2 }).default("12.00"),
-  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("70.00"),
+  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("75.00"),
   aiKeeps100: boolean("ai_keeps_100").default(true),
   minFee: decimal("min_fee", { precision: 10, scale: 2 }),
   maxFee: decimal("max_fee", { precision: 10, scale: 2 }),

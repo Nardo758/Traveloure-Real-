@@ -58,7 +58,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -93,6 +93,71 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+
+// ─── Commission constants ─────────────────────────────────────────────────────
+// Expert-favorable split: expert keeps 75 %, platform keeps 25 %.
+// EXPERT_SHARE_RATE: used wherever revenueShareRate falls back to a default
+//   (shareRate = price * EXPERT_SHARE_RATE → expert earnings).
+// PLATFORM_FEE_RATE: used wherever the platform fee is added on-top of a price
+//   (platformFee = price * PLATFORM_FEE_RATE → platform cut).
+// A naive bulk-replace of the old 0.30 would invert one of these two meanings;
+// the named constants prevent that confusion.
+const EXPERT_SHARE_RATE = 0.75;
+const PLATFORM_FEE_RATE = 0.25;
+
+// ─── Service-category → booking_fee_configs category mapping ─────────────────
+// serviceCategories.slug values are detailed provider-category slugs (e.g.
+// "transportation-logistics"). booking_fee_configs.category uses broader domain
+// names ("transportation", "accommodation", …). This helper bridges the two.
+function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
+  if (!slug) return "default";
+  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
+  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
+  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
+  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
+  if (/flight|air|airline/.test(slug)) return "flights";
+  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
+  if (/insurance|safety|security/.test(slug)) return "insurance";
+  return "default";
+}
+
+// ─── Commission rate resolution ───────────────────────────────────────────────
+// Priority order:
+//  1. Per-service revenueShareRate column (caller applies this as final override)
+//  2. Category row in booking_fee_configs
+//  3. EXPERT_SHARE_RATE / PLATFORM_FEE_RATE constants (hardcoded fallback)
+interface CommissionRates {
+  expertShareRate: number;  // fraction of price that goes to the expert
+  platformFeeRate: number;  // fraction of price that goes to the platform
+}
+async function resolveCommissionRates(category?: string | null): Promise<CommissionRates> {
+  try {
+    const cat = category || "default";
+    const result = await db.execute(sql`
+      SELECT
+        CAST(expert_share_percent  AS FLOAT) AS expert_share_percent,
+        CAST(platform_fee_percent  AS FLOAT) AS platform_fee_percent
+      FROM booking_fee_configs
+      WHERE category = ${cat} AND is_active = true
+      LIMIT 1
+    `);
+    if (result.rows && result.rows.length > 0) {
+      const row = result.rows[0] as any;
+      const expertShare  = Number(row.expert_share_percent ?? 0);
+      const platformFee  = Number(row.platform_fee_percent ?? 0);
+      // booking_fee_configs stores percentages (e.g. 75 = 75%), convert to rate
+      if (expertShare > 0) {
+        return {
+          expertShareRate: expertShare / 100,
+          platformFeeRate: platformFee > 0 ? platformFee / 100 : 1 - expertShare / 100,
+        };
+      }
+    }
+  } catch (_err) {
+    // fall through to defaults
+  }
+  return { expertShareRate: EXPERT_SHARE_RATE, platformFeeRate: PLATFORM_FEE_RATE };
+}
 
 // Helper function to verify trip ownership
 async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
@@ -172,6 +237,171 @@ export async function registerRoutes(
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
   }
+
+  // ─── Seed canonical service templates (per-title idempotent) ───────────────
+  // The six templates previously hardcoded in the frontend are promoted to DB
+  // rows so there is a single canonical source. Each template is checked by
+  // title individually so partial/legacy DB state is handled correctly.
+  (async () => {
+    try {
+      const CANONICAL_TEMPLATES = [
+        {
+          title: "Quick Consultation",
+          description: "15-minute video call to answer quick travel questions and provide immediate guidance",
+          serviceType: "consultation",
+          deliveryMethod: "video",
+          deliveryTimeframe: "15 min",
+          suggestedPrice: "29",
+          requirements: JSON.stringify(["Travel question or topic to discuss"]),
+          whatIncluded: JSON.stringify(["15-min video call", "Personalized advice", "Follow-up summary email"]),
+          isActive: true,
+          sortOrder: 1,
+        },
+        {
+          title: "Cart Review & Optimization",
+          description: "Expert review of your travel cart to find savings and better alternatives",
+          serviceType: "review",
+          deliveryMethod: "document",
+          deliveryTimeframe: "24 hours",
+          suggestedPrice: "49",
+          requirements: JSON.stringify(["Cart link or selections", "Budget constraints"]),
+          whatIncluded: JSON.stringify(["Written recommendations", "Alternative suggestions", "Savings estimate"]),
+          isActive: true,
+          sortOrder: 2,
+        },
+        {
+          title: "Full Trip Planning",
+          description: "Comprehensive trip planning from start to finish with personalized itinerary",
+          serviceType: "planning",
+          deliveryMethod: "hybrid",
+          deliveryTimeframe: "3-5 days",
+          suggestedPrice: "249",
+          requirements: JSON.stringify(["Destination", "Dates", "Budget", "Interests", "Travel style"]),
+          whatIncluded: JSON.stringify(["Full itinerary", "Booking links", "Restaurant reservations", "Daily schedule", "Packing list"]),
+          isActive: true,
+          sortOrder: 3,
+        },
+        {
+          title: "Destination Deep Dive",
+          description: "In-depth guide to a specific destination with local insights and hidden gems",
+          serviceType: "custom",
+          deliveryMethod: "document",
+          deliveryTimeframe: "48 hours",
+          suggestedPrice: "79",
+          requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),
+          whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Insider tips", "Safety advice"]),
+          isActive: true,
+          sortOrder: 4,
+        },
+        {
+          title: "Honeymoon Planning Package",
+          description: "Romantic trip planning with special touches and memorable experiences",
+          serviceType: "planning",
+          deliveryMethod: "hybrid",
+          deliveryTimeframe: "5-7 days",
+          suggestedPrice: "399",
+          requirements: JSON.stringify(["Couple preferences", "Budget", "Dates", "Special requests"]),
+          whatIncluded: JSON.stringify(["Custom itinerary", "Romantic experiences", "Special arrangements", "Booking assistance"]),
+          isActive: true,
+          sortOrder: 5,
+        },
+        {
+          title: "Group Trip Coordinator",
+          description: "Organize and coordinate travel for groups with complex logistics",
+          serviceType: "planning",
+          deliveryMethod: "video",
+          deliveryTimeframe: "1 week",
+          suggestedPrice: "349",
+          requirements: JSON.stringify(["Group size", "Budget per person", "Destination preferences", "Special needs"]),
+          whatIncluded: JSON.stringify(["Group logistics", "Shared itinerary", "Booking coordination", "Communication support"]),
+          isActive: true,
+          sortOrder: 6,
+        },
+      ];
+
+      // Check each template by title individually (truly idempotent)
+      const existing = await storage.getServiceTemplates();
+      const existingTitles = new Set(existing.map((t: any) => t.title));
+      let inserted = 0;
+      for (const tpl of CANONICAL_TEMPLATES) {
+        if (!existingTitles.has(tpl.title)) {
+          await storage.createServiceTemplate(tpl as any);
+          inserted++;
+        }
+      }
+      if (inserted > 0) {
+        console.log(`[Seed] Inserted ${inserted} canonical service template(s) into DB.`);
+      }
+    } catch (err) {
+      console.warn("[Seed] Could not seed service templates:", err);
+    }
+  })();
+
+  // ─── Backfill booking_fee_configs expert_share_percent 70 → 75 (idempotent) ──
+  // Schema default was corrected; this fixes any rows inserted before the change.
+  (async () => {
+    try {
+      await db.execute(sql`
+        UPDATE booking_fee_configs
+        SET expert_share_percent = '75.00'
+        WHERE CAST(expert_share_percent AS NUMERIC) = 70
+      `);
+    } catch (err) {
+      console.warn("[Seed] Could not backfill booking_fee_configs:", err);
+    }
+  })();
+
+  // ─── Seed 6 canonical templates into expert_service_offerings (per-name idempotent) ──
+  // expert_service_offerings is the canonical template catalog. The 6 service
+  // creation templates are seeded here so the table is no longer disconnected
+  // from the template UI and from-template flow.
+  (async () => {
+    try {
+      // Resolve the category FK by name so this is safe on a clean DB.
+      // If "Itinerary Planning" doesn't exist yet, create it.
+      let categoryRow = await db.select({ id: expertServiceCategories.id })
+        .from(expertServiceCategories)
+        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
+        .then(r => r[0]);
+      if (!categoryRow) {
+        const [inserted] = await db.insert(expertServiceCategories)
+          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
+          .returning({ id: expertServiceCategories.id });
+        categoryRow = inserted;
+      }
+      const categoryId = categoryRow.id;
+
+      const CANONICAL_OFFERINGS = [
+        { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
+        { name: "Cart Review & Optimization", description: "Expert review of your travel cart to find savings and better alternatives",                   price: "49.00",  sortOrder: 102 },
+        { name: "Full Trip Planning",         description: "Comprehensive trip planning from start to finish with personalized itinerary",                price: "249.00", sortOrder: 103 },
+        { name: "Destination Deep Dive",      description: "In-depth guide to a specific destination with local insights and hidden gems",                price: "79.00",  sortOrder: 104 },
+        { name: "Honeymoon Planning Package", description: "Romantic trip planning with special touches and memorable experiences",                      price: "399.00", sortOrder: 105 },
+        { name: "Group Trip Coordinator",     description: "Organize and coordinate travel for groups with complex logistics",                           price: "349.00", sortOrder: 106 },
+      ];
+      const existingEso = await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings);
+      const existingEsoNames = new Set(existingEso.map((o: any) => o.name));
+      let esoInserted = 0;
+      for (const offering of CANONICAL_OFFERINGS) {
+        if (!existingEsoNames.has(offering.name)) {
+          await db.insert(expertServiceOfferings).values({
+            categoryId,
+            name: offering.name,
+            description: offering.description,
+            price: offering.price,
+            isDefault: true,
+            sortOrder: offering.sortOrder,
+          });
+          esoInserted++;
+        }
+      }
+      if (esoInserted > 0) {
+        console.log(`[Seed] Inserted ${esoInserted} canonical template(s) into expert_service_offerings.`);
+      }
+    } catch (err) {
+      console.warn("[Seed] Could not seed expert_service_offerings:", err);
+    }
+  })();
 
   // Health check aliases (main health is at /health via health router)
   app.get("/api/health", (_req, res) => {
@@ -580,7 +810,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Derive provider and pricing server-side — never trust client input
         const providerId = service.userId;
         const totalAmount = Number(service.price ?? 0);
-        const shareRate = Number(service.revenueShareRate ?? 0.30);
+        const shareRate = Number(service.revenueShareRate ?? EXPERT_SHARE_RATE);
         const platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
         const providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
 
@@ -2487,14 +2717,75 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // === Service Templates Routes (Admin manages, Experts browse) ===
   
   // Get all active service templates
-  app.get("/api/service-templates", async (req, res) => {
-    const categoryId = req.query.categoryId as string | undefined;
-    const templates = await storage.getServiceTemplates(categoryId);
-    res.json(templates);
+  // expert_service_offerings is the canonical template catalog.
+  // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
+  app.get("/api/service-templates", async (_req, res) => {
+    const CANONICAL_NAMES = [
+      "Quick Consultation",
+      "Cart Review & Optimization",
+      "Full Trip Planning",
+      "Destination Deep Dive",
+      "Honeymoon Planning Package",
+      "Group Trip Coordinator",
+    ];
+    const rows = await db.select({
+      id:           expertServiceOfferings.id,
+      name:         expertServiceOfferings.name,
+      description:  expertServiceOfferings.description,
+      price:        expertServiceOfferings.price,
+      isDefault:    expertServiceOfferings.isDefault,
+      sortOrder:    expertServiceOfferings.sortOrder,
+      createdAt:    expertServiceOfferings.createdAt,
+      categoryName: expertServiceCategories.name,
+    })
+    .from(expertServiceOfferings)
+    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
+    .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
+    .orderBy(expertServiceOfferings.sortOrder);
+
+    const esoTemplates = rows.map(o => ({
+      id:               o.id,
+      title:            o.name,
+      description:      o.description,
+      categoryId:       null,   // expertServiceCategories ≠ serviceCategories
+      serviceType:      null,
+      deliveryMethod:   null,
+      deliveryTimeframe: null,
+      suggestedPrice:   o.price,
+      requirements:     null,
+      whatIncluded:     null,
+      isActive:         o.isDefault ?? true,
+      sortOrder:        o.sortOrder,
+      createdAt:        o.createdAt,
+      category:         o.categoryName,
+    }));
+
+    // If expert_service_offerings doesn't yet have all six (partial seed or clean DB),
+    // supplement with service_templates rows so the UI always shows the full set.
+    const missingNames = CANONICAL_NAMES.filter(n => !rows.some(r => r.name === n));
+    if (missingNames.length > 0) {
+      const stRows = await storage.getServiceTemplates();
+      const stFill = stRows
+        .filter((t: any) => missingNames.includes(t.title))
+        .map((t: any) => ({ ...t, suggestedPrice: t.suggestedPrice ?? t.price }));
+      return res.json([...esoTemplates, ...stFill]
+        .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)));
+    }
+    res.json(esoTemplates);
   });
 
-  // Get single template
+  // Get single template — tries expert_service_offerings first, falls back to service_templates
   app.get("/api/service-templates/:id", async (req, res) => {
+    const esoRow = await db.select().from(expertServiceOfferings)
+      .where(eq(expertServiceOfferings.id, req.params.id)).then(r => r[0]);
+    if (esoRow) {
+      return res.json({
+        id: esoRow.id, title: esoRow.name, description: esoRow.description,
+        categoryId: null, serviceType: null, deliveryMethod: null, deliveryTimeframe: null,
+        suggestedPrice: esoRow.price, requirements: null, whatIncluded: null,
+        isActive: esoRow.isDefault ?? true, sortOrder: esoRow.sortOrder, createdAt: esoRow.createdAt,
+      });
+    }
     const template = await storage.getServiceTemplate(req.params.id);
     if (!template) {
       return res.status(404).json({ message: "Template not found" });
@@ -3284,10 +3575,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Calculate fees (platform takes 30%)
+      // Resolve commission rates from booking_fee_configs using template category (fallback: PLATFORM_FEE_RATE)
+      const templateRates = await resolveCommissionRates(template.category ?? null);
       const price = parseFloat(template.price as string);
-      const platformFee = price * 0.30;
-      const expertEarnings = price - platformFee;
+      const platformFee = price * templateRates.platformFeeRate;
+      const expertEarnings = price * templateRates.expertShareRate;
 
       // Create purchase record
       const purchase = await storage.createTemplatePurchase({
@@ -3417,7 +3709,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const effectiveRate = grossBookingTotal > 0
         ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : 0.30;
+        : EXPERT_SHARE_RATE;
 
       const lastPayout = payouts[0];
 
@@ -4415,26 +4707,56 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const template = await storage.getServiceTemplate(req.params.templateId);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+      const templateId = req.params.templateId;
+
+      // expert_service_offerings is the primary catalog; service_templates is legacy fallback
+      let serviceName: string;
+      let description: string | undefined;
+      let price: string;
+      let serviceType: string | undefined;
+      let deliveryMethod: string | undefined;
+      let deliveryTimeframe: string | undefined;
+      let requirements: string | undefined;
+      let whatIncluded: string | undefined;
+
+      const esoRow = await db.select().from(expertServiceOfferings)
+        .where(eq(expertServiceOfferings.id, templateId)).then(r => r[0]);
+
+      if (esoRow) {
+        // Primary: expert_service_offerings
+        serviceName     = esoRow.name;
+        description     = esoRow.description ?? undefined;
+        price           = esoRow.price;
+      } else {
+        // Fallback: service_templates (legacy / admin-created)
+        const stRow = await storage.getServiceTemplate(templateId);
+        if (!stRow) {
+          return res.status(404).json({ message: "Template not found" });
+        }
+        serviceName     = stRow.title;
+        description     = stRow.description ?? undefined;
+        price           = stRow.suggestedPrice ?? "0";
+        serviceType     = stRow.serviceType ?? undefined;
+        deliveryMethod  = stRow.deliveryMethod ?? undefined;
+        deliveryTimeframe = stRow.deliveryTimeframe ?? undefined;
+        requirements    = stRow.requirements as string | undefined;
+        whatIncluded    = stRow.whatIncluded as string | undefined;
       }
-      
-      // Create service from template
+
       const serviceData = {
         userId,
-        serviceName: template.title,
-        description: template.description,
-        categoryId: template.categoryId,
-        price: template.suggestedPrice || "0",
-        serviceType: template.serviceType,
-        deliveryMethod: template.deliveryMethod,
-        deliveryTimeframe: template.deliveryTimeframe,
-        requirements: template.requirements,
-        whatIncluded: template.whatIncluded,
+        serviceName,
+        description,
+        categoryId: null,
+        price: price || "0",
+        serviceType,
+        deliveryMethod,
+        deliveryTimeframe,
+        requirements,
+        whatIncluded,
         status: "draft",
       };
-      
+
       const service = await storage.createProviderService(serviceData as any);
       res.status(201).json(service);
     } catch (err) {
@@ -5518,21 +5840,42 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
-    
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => {
-      const price = parseFloat(item.service?.price || "0");
-      return sum + (price * (item.quantity || 1));
-    }, 0);
-    
-    const platformFee = subtotal * 0.30; // 30% platform fee
-    const total = subtotal + platformFee;
-    
+
+    // Per-item commission lookup — matches the logic in /api/checkout so the
+    // quoted fee never diverges from the charged fee.
+    const distinctIds = Array.from(new Set(
+      items.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+    ));
+    const cartCatMap = new Map<string, string>(); // categoryId → fee-config slug
+    if (distinctIds.length > 0) {
+      const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+        .from(serviceCategories)
+        .where(inArray(serviceCategories.id, distinctIds));
+      for (const row of catRows) {
+        cartCatMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+      }
+    }
+
+    const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
+
+    let subtotal = 0;
+    let platformFeeTotal = 0;
+    for (const item of items) {
+      const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
+      const feeCategory = item.service?.categoryId
+        ? (cartCatMap.get(item.service.categoryId) ?? "default")
+        : "default";
+      const rates = await resolveCommissionRates(feeCategory);
+      const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
+      subtotal += price;
+      platformFeeTotal += price * (1 - expertShare);
+    }
+
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
-      platformFee: platformFee.toFixed(2),
-      total: total.toFixed(2),
+      platformFee: platformFeeTotal.toFixed(2),
+      total: (subtotal + platformFeeTotal).toFixed(2),
       itemCount: items.length,
     });
   });
@@ -5646,12 +5989,46 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(400).json({ message: "Cart is empty" });
       }
       
-      // Calculate totals
-      const subtotal = cartData.reduce((sum, item) => {
-        const price = parseFloat(item.service?.price || "0");
-        return sum + (price * (item.quantity || 1));
-      }, 0);
-      const platformFee = subtotal * 0.30;
+      // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+
+      // Preload category slugs once to avoid N+1 queries in the item loops below.
+      // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
+      const distinctCatIds = Array.from(new Set(
+        cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+      ));
+      const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
+      if (distinctCatIds.length > 0) {
+        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+          .from(serviceCategories)
+          .where(inArray(serviceCategories.id, distinctCatIds));
+        for (const row of catRows) {
+          catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+        }
+      }
+
+      // Calculate totals — resolve per-item rates from booking_fee_configs then sum
+      let checkoutSubtotal = 0;
+      let checkoutPlatformFeeTotal = 0;
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        // Per-service revenueShareRate is the final override (takes priority over config)
+        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        checkoutSubtotal += itemPrice;
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare);
+      }
+      const subtotal = checkoutSubtotal;
+      // For Stripe total, charge subtotal + weighted-average platform fee
+      const platformFee = checkoutPlatformFeeTotal;
       const total = subtotal + platformFee;
       
       // Create bookings for each cart item
@@ -5660,13 +6037,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // safeParseRate: returns fallback (0.75) when value is missing, non-numeric, or outside [0,1]
-        const safeParseRate = (value: any, fallback: number): number => {
-          const n = parseFloat(value);
-          return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
-        };
-        const serviceRate = safeParseRate(item.service.revenueShareRate, 0.75);
-        const fee = price * serviceRate;
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory2 = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
+        const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
+        const expertEarningsAmt = price * expertShareRate;
+        const platformFeeAmt = price - expertEarningsAmt;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -5689,8 +6068,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
             quantity: item.quantity || 1,
           },
           totalAmount: price.toFixed(2),
-          platformFee: fee.toFixed(2),
-          providerEarnings: (price - fee).toFixed(2),
+          platformFee: platformFeeAmt.toFixed(2),
+          providerEarnings: expertEarningsAmt.toFixed(2),
           status: "pending",
         });
         
@@ -17545,7 +17924,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           id, category, platform_fee_percent, expert_share_percent,
           ai_keeps_100, min_fee, max_fee, is_active, updated_by, created_at, updated_at
         ) VALUES (
-          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 70},
+          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 75},
           ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
           ${userId}, NOW(), NOW()
         )
@@ -17594,7 +17973,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       };
       res.json({
         platform_fee_percent: defaults[category] ?? 12,
-        expert_share_percent: 70,
+        expert_share_percent: 75,
         ai_keeps_100: true,
         min_fee: null,
         max_fee: null,
