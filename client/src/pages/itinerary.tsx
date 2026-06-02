@@ -814,7 +814,10 @@ export default function ItineraryPage() {
 
             {/* Visa Help widget */}
             {(() => {
-              const country = itinerary.destination?.split(",")[0]?.trim() ?? "";
+              // Destinations are formatted as "City, Country" or just "Country".
+              // Extract the country by taking the LAST comma-separated segment.
+              const parts = (itinerary.destination ?? "").split(",").map((s: string) => s.trim()).filter(Boolean);
+              const country = parts.length > 1 ? parts[parts.length - 1] : parts[0] ?? "";
               return (
                 <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-100 dark:border-blue-800 p-3 space-y-2">
                   <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
