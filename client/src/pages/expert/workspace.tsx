@@ -734,10 +734,10 @@ export default function ExpertWorkspace() {
                 </div>
               )}
 
-              {/* AI gaps */}
+              {/* Schedule Check */}
               {daysWithDinnerGap.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>AI Gap Analysis</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Schedule Check</div>
                   <div style={{ background: "#FFFBEB", border: "1px solid #FEF3C7", borderRadius: 8, padding: "8px 10px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}><AlertTriangle style={{ width: 13, height: 13, color: "#D97706" }} /><span style={{ fontSize: 12, fontWeight: 700, color: "#B45309" }}>{daysWithDinnerGap.length} gap{daysWithDinnerGap.length > 1 ? "s" : ""} found</span></div>
                     {daysWithDinnerGap.map(d => <div key={d} style={{ display: "flex", gap: 5, marginBottom: 3 }}><span style={{ fontSize: 10, color: "#D97706", marginTop: 1 }}>•</span><span style={{ fontSize: 11, color: "#B45309" }}>Day {d} — no evening dining</span></div>)}
