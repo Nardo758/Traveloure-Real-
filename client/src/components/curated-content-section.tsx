@@ -86,6 +86,7 @@ function AddToTripDialog({
         title: item.title,
         description: item.description || "",
         itemType: item.contentCategory || "experience",
+        dayNumber: 1,
         status: "planned",
         estimatedCost: item.price || null,
         currency: "USD",
@@ -181,11 +182,21 @@ function CuratedCard({
   const trackClickMutation = useMutation({
     mutationFn: async () => {
       if (!isAffiliate) return;
+      // Build trackable identifiers: affiliate items use sourceId as productId,
+      // registry items with affiliate_url use partnerId from metadata if present
+      const trackPayload: Record<string, any> = { initiatedBy: "user" };
+      if (item.type === "affiliate") {
+        trackPayload.productId = item.sourceId;
+      } else if (item.metadata?.partnerId) {
+        trackPayload.partnerId = item.metadata.partnerId;
+      } else if (item.metadata?.partner_id) {
+        trackPayload.partnerId = item.metadata.partner_id;
+      } else {
+        // No trackable identifier — skip API call, just open link
+        return;
+      }
       try {
-        await apiRequest("POST", "/api/affiliate/track-click", {
-          productId: item.type === "affiliate" ? item.sourceId : undefined,
-          initiatedBy: "user",
-        });
+        await apiRequest("POST", "/api/affiliate/track-click", trackPayload);
       } catch {
         // Non-blocking — proceed even if tracking fails
       }
@@ -204,31 +215,20 @@ function CuratedCard({
     }
   };
 
-  const addToCartMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", "/api/cart", { serviceId: item.sourceId, quantity: 1 });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Added to cart",
-        description: `"${item.title}" is ready to book.`,
-      });
-      navigate("/cart");
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't add to cart",
-        description: "Use 'Add to Trip' to include this in your itinerary instead.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleBookNow = () => {
     if (isAffiliate) {
       handleBookViaTraveloure();
     } else {
-      addToCartMutation.mutate();
+      // For curated content_registry items without a direct affiliate URL,
+      // navigate to the experience planning flow with the destination pre-filled
+      const dest = item.city || item.country || "";
+      const planUrl = `/experiences/travel/new${dest ? `?destination=${encodeURIComponent(dest)}` : ""}`;
+      toast({
+        title: "Starting your trip plan…",
+        description: `Opening the travel planner for ${dest || "your destination"}.`,
+        duration: 2500,
+      });
+      navigate(planUrl);
     }
   };
 
@@ -329,17 +329,10 @@ function CuratedCard({
                 size="sm"
                 className="flex-1 text-xs h-8"
                 onClick={handleBookNow}
-                disabled={addToCartMutation.isPending}
                 data-testid={`button-book-now-${item.id}`}
               >
-                {addToCartMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <>
-                    <ShoppingCart className="w-3 h-3 mr-1" />
-                    Book Now
-                  </>
-                )}
+                <ShoppingCart className="w-3 h-3 mr-1" />
+                Book Now
               </Button>
             )}
           </div>
