@@ -35,7 +35,7 @@ import {
   ThumbsDown,
   Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -98,9 +98,15 @@ function VisaStatusDialog({
   booking: Booking | null;
 }) {
   const { toast } = useToast();
-  const currentStatus = booking?.bookingMetadata?.visaApplicationStatus || "pending";
-  const [selectedStatus, setSelectedStatus] = useState<string>(currentStatus);
-  const [notes, setNotes] = useState(booking?.bookingMetadata?.visaStatusNotes || "");
+  const [selectedStatus, setSelectedStatus] = useState<string>("pending");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (open && booking) {
+      setSelectedStatus(booking.bookingMetadata?.visaApplicationStatus || "pending");
+      setNotes(booking.bookingMetadata?.visaStatusNotes || "");
+    }
+  }, [open, booking]);
 
   const mutation = useMutation({
     mutationFn: ({ id, visaApplicationStatus, notes }: { id: string; visaApplicationStatus: string; notes: string }) =>
