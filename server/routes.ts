@@ -12086,6 +12086,107 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Unified revenue endpoint — fans out to all affiliate/payment streams in parallel
+  app.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const period = (req.query.period as string) || "this_month";
+      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      if (!validPeriods.includes(period)) {
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+      }
+
+      const [
+        { getTravelpayoutsStatistics },
+        { getViatorCommissions },
+        { getFeverCommissions },
+        { getBookingComCommissions },
+        { getApiCostsSummary },
+        { revenueTrackingService },
+      ] = await Promise.all([
+        import("./services/travelpayouts/statistics.service"),
+        import("./services/viator-commissions.service"),
+        import("./services/fever-commissions.service"),
+        import("./services/booking-com-commissions.service"),
+        import("./services/api-costs.service"),
+        import("./services/revenue-tracking.service"),
+      ]);
+
+      // Compute period-specific date bounds for Stripe query
+      const now = new Date();
+      const periodBounds = (() => {
+        if (period === "last_month") {
+          return {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+          };
+        }
+        if (period === "last_90_days") {
+          return {
+            start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+            end: now,
+          };
+        }
+        // this_month
+        return {
+          start: new Date(now.getFullYear(), now.getMonth(), 1),
+          end: now,
+        };
+      })();
+
+      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary] = await Promise.all([
+        revenueTrackingService.getUnifiedDashboard().catch(() => null),
+        getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
+        getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getBookingComCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
+        // Fetch period-accurate Stripe total directly from DB
+        storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
+      ]);
+
+      const stripeThisMonth = stripe?.platform?.thisMonth || 0;
+      const stripeLastMonth = stripe?.platform?.lastMonth || 0;
+      // Use period-accurate DB query result (not all-time totalRevenue)
+      const stripeTotal = stripePeriodSummary.totalPlatformFee;
+
+      const totalAffiliateRevenue =
+        (travelpayouts.total || 0) +
+        (viator.total || 0) +
+        (fever.total || 0) +
+        (bookingCom.total || 0);
+
+      const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
+
+      res.json({
+        period,
+        totalNetRevenue,
+        stripe: {
+          configured: true,
+          thisMonth: stripeThisMonth,
+          lastMonth: stripeLastMonth,
+          total: stripeTotal,
+          currency: "USD",
+          growthPercent: stripe?.platform?.growthPercent || 0,
+        },
+        travelpayouts,
+        viator,
+        fever,
+        bookingCom,
+        apiCosts,
+      });
+    } catch (error: any) {
+      console.error("[UnifiedRevenue] Error:", error);
+      res.status(500).json({ message: "Failed to get unified revenue data", error: error.message });
+    }
+  });
+
   // Provider earnings endpoints
   // Uses same auth pattern as /api/provider/services, /api/provider/bookings
   app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
