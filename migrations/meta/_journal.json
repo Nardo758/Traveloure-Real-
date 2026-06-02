@@ -8,6 +8,13 @@
       "when": 1780343069578,
       "tag": "0000_add_expert_notes_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780359830100,
+      "tag": "0003_add_identity_verification",
+      "breakpoints": true
     }
   ]
 }
