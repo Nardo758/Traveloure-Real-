@@ -11801,6 +11801,139 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // ============================================================
+  // ADMIN SERVICES REGISTRY
+  // ============================================================
+
+  app.get("/api/admin/services/summary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const all = await storage.getAllProviderServices();
+      const byStatus: Record<string, number> = {};
+      let totalRevenue = 0;
+      let totalBookings = 0;
+      let featuredCount = 0;
+      for (const s of all) {
+        byStatus[s.status] = (byStatus[s.status] || 0) + 1;
+        totalRevenue += parseFloat(s.totalRevenue ?? "0");
+        totalBookings += s.bookingsCount ?? 0;
+        if (s.isFeatured) featuredCount++;
+      }
+      res.json({
+        total: all.length,
+        byStatus,
+        totalRevenue,
+        totalBookings,
+        featuredCount,
+        averageRating: all.length > 0
+          ? all.reduce((sum, s) => sum + parseFloat(s.averageRating ?? "0"), 0) / all.filter(s => s.averageRating).length
+          : 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch services summary", error: err.message });
+    }
+  });
+
+  app.get("/api/admin/services", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { status, search, category } = req.query;
+      const all = await storage.getAllProviderServices();
+
+      const providerIds = [...new Set(all.map(s => s.userId))];
+      const providerRows = providerIds.length > 0
+        ? await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
+            .from(users).where(inArray(users.id, providerIds))
+        : [];
+      const providerMap = Object.fromEntries(providerRows.map(p => [p.id, p]));
+
+      let services = all.map(s => ({
+        ...s,
+        providerName: providerMap[s.userId]
+          ? `${providerMap[s.userId].firstName ?? ""} ${providerMap[s.userId].lastName ?? ""}`.trim() || providerMap[s.userId].email
+          : "Unknown",
+        providerEmail: providerMap[s.userId]?.email,
+      }));
+
+      if (status && status !== "all") services = services.filter(s => s.status === status);
+      if (category && category !== "all") services = services.filter(s => s.categoryId === category);
+      if (search) {
+        const q = (search as string).toLowerCase();
+        services = services.filter(s =>
+          s.serviceName.toLowerCase().includes(q) ||
+          (s.providerName as string).toLowerCase().includes(q) ||
+          s.trackingNumber?.toLowerCase().includes(q) ||
+          s.location?.toLowerCase().includes(q)
+        );
+      }
+
+      services.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+      res.json(services);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch services", error: err.message });
+    }
+  });
+
+  app.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { status } = req.body;
+      if (!["active", "paused", "draft", "suspended"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const [updated] = await db.update(providerServices)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(providerServices.id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Service not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update service status", error: err.message });
+    }
+  });
+
+  app.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { isFeatured } = req.body;
+      const [updated] = await db.update(providerServices)
+        .set({ isFeatured: Boolean(isFeatured), updatedAt: new Date() })
+        .where(eq(providerServices.id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Service not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update featured status", error: err.message });
+    }
+  });
+
+  app.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const [row] = await db.select().from(providerServices).where(eq(providerServices.id, req.params.id)).limit(1);
+      if (!row) return res.status(404).json({ message: "Service not found" });
+      await db.delete(providerServices).where(eq(providerServices.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete service", error: err.message });
+    }
+  });
+
   // === Content Invoices API ===
 
   // Create invoice for content

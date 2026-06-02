@@ -76,6 +76,7 @@ import AdminSystem from "@/pages/admin/system";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
+import AdminServices from "@/pages/admin/services";
 import AdminAICosts from "@/pages/admin/ai-costs";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
@@ -581,6 +582,9 @@ function Router() {
       </Route>
       <Route path="/admin/content-tracking">
         {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/services">
+        {() => <ProtectedRoute component={AdminServices} requiredRole="admin" />}
       </Route>
       <Route path="/admin/ai-costs">
         {() => <ProtectedRoute component={AdminAICosts} requiredRole="admin" />}
