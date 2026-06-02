@@ -3423,6 +3423,9 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   referrer: varchar("referrer", { length: 500 }),
   userAgent: varchar("user_agent", { length: 500 }),
   ipAddress: varchar("ip_address", { length: 50 }),
+  initiatedBy: varchar("initiated_by", { length: 20 }).default("user"), // user | ai_agent | expert
+  agentType: varchar("agent_type", { length: 20 }), // grok | claude | system | null
+  sessionId: varchar("session_id", { length: 255 }), // AI planning session trace ID
   clickedAt: timestamp("clicked_at").defaultNow(),
 });
 
@@ -3694,6 +3697,11 @@ export const affiliateEarnings = pgTable("affiliate_earnings", {
   providerShare: decimal("provider_share", { precision: 10, scale: 2 }).default("0.00"), // Provider's cut if applicable
   currency: varchar("currency", { length: 10 }).default("USD"),
   status: varchar("status", { length: 20 }).default("pending"), // pending, confirmed, paid
+  partnerReferenceId: varchar("partner_reference_id", { length: 255 }), // Partner's own booking/transaction ID
+  reconciliationStatus: varchar("reconciliation_status", { length: 20 }).default("unmatched"), // unmatched | matched | disputed | written_off
+  reconciledAt: timestamp("reconciled_at"),
+  reconciliationNotes: text("reconciliation_notes"),
+  externalReportData: jsonb("external_report_data"), // Raw line from partner report
   confirmedAt: timestamp("confirmed_at"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow(),
