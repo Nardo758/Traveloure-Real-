@@ -5,7 +5,7 @@ import { Polyline } from "@/components/ui/map-polyline";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
 import {
-  Layers, MapPin, Check, CalendarPlus,
+  Layers, MapPin, Check, CalendarPlus, MessageSquare,
 } from "lucide-react";
 import { openInMaps } from "@/lib/navigate";
 import {
@@ -90,7 +90,7 @@ function MapContent({
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
   destination: string;
-  layers: { activities: boolean; transport: boolean };
+  layers: { activities: boolean; transport: boolean; expertNotes: boolean };
   selectedPinId: string | null;
   onSelectPin: (id: string | null) => void;
   tripId: string;
@@ -176,7 +176,6 @@ function MapContent({
     return () => { cancelled = true; };
   }, [map, activities, destination]);
 
-  // Center on destination when no activities are geocoded yet
   useEffect(() => {
     if (!map || typeof google === "undefined" || !google.maps) return;
     if (geocodedActivities.length > 0) {
@@ -186,7 +185,6 @@ function MapContent({
       });
       map.fitBounds(bounds, 60);
     } else if (destination) {
-      // Fallback: geocode the destination itself so map centers on the city
       const geocoder = new google.maps.Geocoder();
       geocoder.geocode({ address: destination }).then((result) => {
         if (result.results[0]) {
@@ -197,6 +195,8 @@ function MapContent({
       }).catch(() => {});
     }
   }, [map, geocodedActivities, destination]);
+
+  const expertNoteActivities = geocodedActivities.filter(a => a.expertNote && a.expertNote.trim().length > 0);
 
   return (
     <>
@@ -271,9 +271,46 @@ function MapContent({
         );
       })}
 
+      {layers.expertNotes && expertNoteActivities.map((activity) => (
+        <AdvancedMarker
+          key={`note-${activity.id}`}
+          position={{ lat: activity.resolvedLat + 0.0002, lng: activity.resolvedLng + 0.0002 }}
+          onClick={() => onSelectPin(`note-${activity.id}`)}
+        >
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center shadow-md border-2 border-amber-400 bg-amber-50 dark:bg-amber-950"
+            title={`Expert tip: ${activity.expertNote}`}
+            data-testid={`map-expert-note-pin-${activity.id}`}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          </div>
+        </AdvancedMarker>
+      ))}
+
       {selectedPinId && (() => {
-        const pin = geocodedActivities.find((a) => a.id === selectedPinId);
+        const isNote = selectedPinId.startsWith("note-");
+        const actId = isNote ? selectedPinId.replace("note-", "") : selectedPinId;
+        const pin = geocodedActivities.find((a) => a.id === actId);
         if (!pin) return null;
+
+        if (isNote && pin.expertNote) {
+          return (
+            <InfoWindow
+              position={{ lat: pin.resolvedLat + 0.0002, lng: pin.resolvedLng + 0.0002 }}
+              onCloseClick={() => onSelectPin(null)}
+            >
+              <div className="p-1 min-w-[160px] max-w-[240px]" data-testid={`map-expert-note-window-${pin.id}-${tripId}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <MessageSquare className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                  <span className="font-bold text-sm text-amber-700">Expert Tip</span>
+                </div>
+                <div className="text-xs font-semibold text-gray-700 mb-0.5">{pin.name}</div>
+                <div className="text-xs text-gray-600 italic leading-snug">{pin.expertNote}</div>
+              </div>
+            </InfoWindow>
+          );
+        }
+
         const tc = TYPE_COLORS[pin.type] || TYPE_COLORS.attraction;
         return (
           <InfoWindow
@@ -298,6 +335,11 @@ function MapContent({
                   <span className="text-xs font-semibold" style={{ color: "#16a34a" }} data-testid={`map-info-cost-${pin.id}`}>${pin.cost}</span>
                 )}
               </div>
+              {pin.expertNote && (
+                <div className="mt-1.5 p-1.5 bg-amber-50 rounded text-[10px] text-amber-700 italic border border-amber-200">
+                  💡 {pin.expertNote}
+                </div>
+              )}
             </div>
           </InfoWindow>
         );
@@ -330,12 +372,12 @@ export function MapControlCenter({
   selectedDay,
   onSelectDay,
 }: MapControlCenterProps) {
-  const [layers, setLayers] = useState({ activities: true, transport: true });
+  const [layers, setLayers] = useState({ activities: true, transport: true, expertNotes: true });
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
 
   const day = days[selectedDay];
 
-  const toggleLayer = useCallback((key: "activities" | "transport") => {
+  const toggleLayer = useCallback((key: "activities" | "transport" | "expertNotes") => {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
@@ -435,6 +477,7 @@ export function MapControlCenter({
 
   const activitiesCount = day.activities?.length || 0;
   const transportsCount = day.transports?.length || 0;
+  const expertNotesCount = (day.activities || []).filter(a => a.expertNote && a.expertNote.trim()).length;
   const hasApiKey = MAPS_API_KEY.length > 0;
 
   return (
@@ -555,10 +598,10 @@ export function MapControlCenter({
           </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <button
             onClick={() => toggleLayer("activities")}
-            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 ${
+            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 min-w-[140px] ${
               layers.activities
                 ? "border-blue-500 bg-blue-500/10 dark:bg-blue-500/15"
                 : "border-border bg-muted/20 hover:bg-muted/40"
@@ -574,17 +617,17 @@ export function MapControlCenter({
             </div>
             <div className="text-left">
               <div className={`text-[13px] font-bold ${layers.activities ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`} data-testid={`text-activities-layer-${tripId}`}>
-                Activities Layer
+                Activities
               </div>
               <div className="text-[11px] text-muted-foreground" data-testid={`text-activities-count-${tripId}`}>
-                {activitiesCount} stop{activitiesCount !== 1 ? "s" : ""} - pins & details
+                {activitiesCount} stop{activitiesCount !== 1 ? "s" : ""}
               </div>
             </div>
           </button>
 
           <button
             onClick={() => toggleLayer("transport")}
-            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 ${
+            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 min-w-[140px] ${
               layers.transport
                 ? "border-green-500 bg-green-500/10 dark:bg-green-500/15"
                 : "border-border bg-muted/20 hover:bg-muted/40"
@@ -600,10 +643,36 @@ export function MapControlCenter({
             </div>
             <div className="text-left">
               <div className={`text-[13px] font-bold ${layers.transport ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`} data-testid={`text-transport-layer-${tripId}`}>
-                Transport Layer
+                Transport
               </div>
               <div className="text-[11px] text-muted-foreground" data-testid={`text-transport-count-${tripId}`}>
-                {transportsCount} leg{transportsCount !== 1 ? "s" : ""} - routes & modes
+                {transportsCount} leg{transportsCount !== 1 ? "s" : ""}
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => toggleLayer("expertNotes")}
+            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 min-w-[140px] ${
+              layers.expertNotes
+                ? "border-amber-500 bg-amber-500/10 dark:bg-amber-500/15"
+                : "border-border bg-muted/20 hover:bg-muted/40"
+            }`}
+            data-testid={`toggle-expert-notes-layer-${tripId}`}
+          >
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                layers.expertNotes ? "bg-amber-500 text-white" : "bg-muted-foreground/30 text-primary-foreground"
+              }`}
+            >
+              {layers.expertNotes ? <Check className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+            </div>
+            <div className="text-left">
+              <div className={`text-[13px] font-bold ${layers.expertNotes ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} data-testid={`text-expert-notes-layer-${tripId}`}>
+                Expert Notes
+              </div>
+              <div className="text-[11px] text-muted-foreground" data-testid={`text-expert-notes-count-${tripId}`}>
+                {expertNotesCount} tip{expertNotesCount !== 1 ? "s" : ""}
               </div>
             </div>
           </button>

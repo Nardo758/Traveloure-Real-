@@ -651,6 +651,7 @@ export default function ItineraryViewPage() {
               tripId={data.variant.id}
               tripDestination={destination}
               day={currentDay}
+              allowActions={false}
             />
           )}
 
