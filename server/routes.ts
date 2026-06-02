@@ -4740,6 +4740,38 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (notes !== undefined) metadata.visaStatusNotes = notes;
       metadata.visaStatusUpdatedAt = new Date().toISOString();
       const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+
+      // Send notification to the traveler about the visa status change
+      try {
+        const service = await storage.getProviderServiceById(booking.serviceId);
+        const serviceName = service?.title || "your visa application";
+        const statusMessages: Record<string, string> = {
+          pending: `Your visa application for ${serviceName} is being prepared.`,
+          submitted: `Your visa application for ${serviceName} has been submitted to the embassy.`,
+          in_review: `Your visa application for ${serviceName} is currently under review.`,
+          approved: `Great news! Your visa application for ${serviceName} has been approved.`,
+          rejected: `Your visa application for ${serviceName} has been rejected. Please contact your expert for next steps.`,
+        };
+        const statusTitles: Record<string, string> = {
+          pending: "Visa Application: Pending",
+          submitted: "Visa Application: Submitted",
+          in_review: "Visa Application: Under Review",
+          approved: "Visa Application: Approved",
+          rejected: "Visa Application: Rejected",
+        };
+        await storage.createNotification({
+          userId: booking.travelerId,
+          type: "visa_status_update",
+          title: statusTitles[visaApplicationStatus] || "Visa Application Update",
+          message: statusMessages[visaApplicationStatus] || `Your visa application status has been updated to: ${visaApplicationStatus}.`,
+          relatedId: booking.id,
+          relatedType: "booking",
+          data: { bookingId: booking.id, visaApplicationStatus, serviceName: service?.title },
+        });
+      } catch (notifErr) {
+        console.error("Failed to create visa status notification:", notifErr);
+      }
+
       res.json(updated);
     } catch (err) {
       console.error("Visa status update error:", err);
