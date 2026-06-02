@@ -117,8 +117,6 @@ function formatRelativeTime(date: Date): string {
 const STEPS = [
   { key: "draft", label: "Draft", icon: <FileText style={{ width: 11, height: 11 }} /> },
   { key: "in_review", label: "Expert Review", icon: <Eye style={{ width: 11, height: 11 }} /> },
-  { key: "notes", label: "Expert Notes", icon: <StickyNote style={{ width: 11, height: 11 }} /> },
-  { key: "pending", label: "Awaiting Approval", icon: <Clock style={{ width: 11, height: 11 }} /> },
   { key: "delivered", label: "Confirmed", icon: <CheckCircle style={{ width: 11, height: 11 }} /> },
 ];
 
