@@ -94,16 +94,13 @@ import {
   tripExpertAdvisors,
 } from "@shared/schema";
 
-// ─── Commission constants ─────────────────────────────────────────────────────
-// Expert-favorable split: expert keeps 75 %, platform keeps 25 %.
-// EXPERT_SHARE_RATE: used wherever revenueShareRate falls back to a default
-//   (shareRate = price * EXPERT_SHARE_RATE → expert earnings).
-// PLATFORM_FEE_RATE: used wherever the platform fee is added on-top of a price
-//   (platformFee = price * PLATFORM_FEE_RATE → platform cut).
-// A naive bulk-replace of the old 0.30 would invert one of these two meanings;
-// the named constants prevent that confusion.
-const EXPERT_SHARE_RATE = 0.75;
-const PLATFORM_FEE_RATE = 0.25;
+// ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
+import {
+  EXPERT_SHARE_RATE,
+  PLATFORM_FEE_RATE,
+  resolveCommissionRates,
+  type CommissionRates,
+} from "./services/commission";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -119,44 +116,6 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
   if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
   if (/insurance|safety|security/.test(slug)) return "insurance";
   return "default";
-}
-
-// ─── Commission rate resolution ───────────────────────────────────────────────
-// Priority order:
-//  1. Per-service revenueShareRate column (caller applies this as final override)
-//  2. Category row in booking_fee_configs
-//  3. EXPERT_SHARE_RATE / PLATFORM_FEE_RATE constants (hardcoded fallback)
-interface CommissionRates {
-  expertShareRate: number;  // fraction of price that goes to the expert
-  platformFeeRate: number;  // fraction of price that goes to the platform
-}
-async function resolveCommissionRates(category?: string | null): Promise<CommissionRates> {
-  try {
-    const cat = category || "default";
-    const result = await db.execute(sql`
-      SELECT
-        CAST(expert_share_percent  AS FLOAT) AS expert_share_percent,
-        CAST(platform_fee_percent  AS FLOAT) AS platform_fee_percent
-      FROM booking_fee_configs
-      WHERE category = ${cat} AND is_active = true
-      LIMIT 1
-    `);
-    if (result.rows && result.rows.length > 0) {
-      const row = result.rows[0] as any;
-      const expertShare  = Number(row.expert_share_percent ?? 0);
-      const platformFee  = Number(row.platform_fee_percent ?? 0);
-      // booking_fee_configs stores percentages (e.g. 75 = 75%), convert to rate
-      if (expertShare > 0) {
-        return {
-          expertShareRate: expertShare / 100,
-          platformFeeRate: platformFee > 0 ? platformFee / 100 : 1 - expertShare / 100,
-        };
-      }
-    }
-  } catch (_err) {
-    // fall through to defaults
-  }
-  return { expertShareRate: EXPERT_SHARE_RATE, platformFeeRate: PLATFORM_FEE_RATE };
 }
 
 // Helper function to verify trip ownership
@@ -337,17 +296,29 @@ export async function registerRoutes(
     }
   })();
 
-  // ─── Backfill booking_fee_configs expert_share_percent 70 → 75 (idempotent) ──
-  // Schema default was corrected; this fixes any rows inserted before the change.
+  // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
+  // Ensures the canonical default row (platform 25% / expert 75%) always exists,
+  // and backfills any legacy 70/30 rows that were inserted before the policy change.
   (async () => {
     try {
+      // 1. Upsert the 'default' row only if it doesn't already exist
+      await db.execute(sql`
+        INSERT INTO booking_fee_configs
+          (id, category, platform_fee_percent, expert_share_percent, ai_keeps_100, is_active, created_at, updated_at)
+        VALUES
+          (gen_random_uuid(), 'default', 25, 75, true, true, NOW(), NOW())
+        ON CONFLICT (category) DO NOTHING
+      `);
+      // 2. Backfill any rows that still carry the old 70/30 default
       await db.execute(sql`
         UPDATE booking_fee_configs
-        SET expert_share_percent = '75.00'
+        SET expert_share_percent = '75.00',
+            platform_fee_percent = '25.00'
         WHERE CAST(expert_share_percent AS NUMERIC) = 70
+          AND CAST(platform_fee_percent  AS NUMERIC) = 30
       `);
     } catch (err) {
-      console.warn("[Seed] Could not backfill booking_fee_configs:", err);
+      console.warn("[Seed] Could not seed/backfill booking_fee_configs:", err);
     }
   })();
 
@@ -3903,9 +3874,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const serviceSplit = revenueSplits.find((s) => s.type === 'service_booking');
       const templateSplit = revenueSplits.find((s) => s.type === 'template_sale');
 
-      // Calculate expert's share percentages
-      const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '85') / 100;
-      const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '80') / 100;
+      // Calculate expert's share percentages — policy: service/template 75%, affiliate 30%
+      const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '75') / 100;
+      const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '75') / 100;
       
       // Calculate real earnings breakdown - using expert's share after platform fees
       const publishedTemplates = templates.filter((t) => t.isPublished);
@@ -18534,9 +18505,8 @@ export async function registerDiscoveryRoutes(app: Express) {
         item.bookingStatus !== "cancelled"
       );
 
-      // Expert-favorable split policy: 75% floor, 85% ceiling. Do NOT lower DEFAULT_RATE
+      // Expert-favorable split policy: EXPERT_SHARE_RATE (75%) floor. Do NOT lower
       // without a product decision — it inverts the split in experts' disfavor.
-      const DEFAULT_RATE = 0.75;
       // safeParseRate: returns fallback when value is missing, non-numeric, NaN, Infinity, or outside [0,1]
       const safeParseRate = (value: any, fallback: number): number => {
         const n = parseFloat(value);
@@ -18545,8 +18515,8 @@ export async function registerDiscoveryRoutes(app: Express) {
       // Derive expert's revenue share rate from their active services (fallback DEFAULT_RATE)
       const expertServices = await storage.getProviderServicesByStatus(userId, "active");
       const expertRate = expertServices.length > 0
-        ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, DEFAULT_RATE), 0) / expertServices.length
-        : DEFAULT_RATE;
+        ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, EXPERT_SHARE_RATE), 0) / expertServices.length
+        : EXPERT_SHARE_RATE;
 
       let totalGross = 0;
       let expertShare = 0;
