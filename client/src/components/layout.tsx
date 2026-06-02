@@ -123,9 +123,7 @@ const navItems = [
           { name: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane, description: "Share your destination expertise" },
           { name: "Local Expert", href: "/become-expert?type=local_expert", icon: Globe, description: "Guide travelers in your city" },
           { name: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase, description: "Manage high-end clients" },
           { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
-          { name: "Influencer Program", href: "/become-expert?type=travel_expert&influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
         ],
       },
     ],
@@ -139,8 +137,8 @@ const navItems = [
         title: "AI & EXPERTS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Find Local Service Providers", href: "/vendors", icon: Users, description: "Connect with destination experts" },
-          { name: "Executive Assistant", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
+          { name: "Find Local Experts", href: "/experts", icon: Users, description: "Connect with local destination experts" },
+          { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
         ],
       },
       {
@@ -321,7 +319,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
                         { label: "Event Planner", desc: "Plan weddings, proposals & celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
                         { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
-                        { label: "Executive Assistant", desc: "Manage premium travel for high-end clients", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                       ].map(({ label, desc, href, icon: Icon }) => (
                         <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
                           <Link href={href} data-testid={`link-partner-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
@@ -454,7 +451,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
                       { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
                       { label: "Service Provider", href: "/become-provider", icon: Building2 },
-                      { label: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                     ].map(({ label, href, icon: Icon }) => (
                       <Link key={label} href={href} onClick={() => setIsMobileMenuOpen(false)}>
                         <Button variant="outline" className="w-full justify-start gap-2" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
