@@ -176,6 +176,7 @@ export async function populateBookingOptionsForLeg(
       ...opt,
     }))
   );
+
 }
 
 /**
