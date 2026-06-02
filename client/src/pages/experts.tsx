@@ -45,6 +45,15 @@ import { ExpertCard } from "@/components/expert-card";
 import { ExpertMatchCard } from "@/components/expert-match-card";
 import { format } from "date-fns";
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 const destinations = [
   "All Destinations",
   "Paris, France",
@@ -174,13 +183,15 @@ export default function ExpertsPage() {
     queryKey: ["/api/experience-types"],
   });
 
-  // Fetch experts from API with optional experience type filter
+  // Fetch experts from API with optional experience type and neighbourhood filter
+  const debouncedNeighbourhoodQuery = useDebounce(neighbourhoodQuery, 300);
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
-    queryKey: ["/api/experts", selectedExperienceType],
+    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery],
     queryFn: async () => {
-      const url = selectedExperienceType 
-        ? `/api/experts?experienceTypeId=${selectedExperienceType}`
-        : "/api/experts";
+      const params = new URLSearchParams();
+      if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
+      if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
+      const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
       return res.json();
