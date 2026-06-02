@@ -88,7 +88,7 @@ import {
   type ItineraryItem, type InsertItineraryItem,
   type ProviderSettings, type InsertProviderSettings,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray, asc } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 
@@ -1124,6 +1124,10 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Create earnings ledger entries only if amount > 0
+      // Earnings become available after the configurable hold period (default 7 days)
+      const EARNINGS_HOLD_DAYS = parseInt(process.env.EARNINGS_HOLD_DAYS || '7', 10);
+      const availableAt = new Date(Date.now() + EARNINGS_HOLD_DAYS * 24 * 60 * 60 * 1000);
+
       if (providerEarningsAmount > 0) {
         await this.createProviderEarning({
           providerId: updated.providerId,
@@ -1133,7 +1137,8 @@ export class DatabaseStorage implements IStorage {
           sourceId: updated.id,
           trackingNumber: updated.trackingNumber || undefined,
           description: `Earnings from booking ${updated.trackingNumber || id}`,
-          status: 'pending',
+          status: 'available',
+          availableAt,
         });
 
         // Also record in expert earnings ledger (provider may be an expert)
@@ -1144,7 +1149,8 @@ export class DatabaseStorage implements IStorage {
           referenceId: updated.id,
           referenceType: 'service_booking',
           description: `Service booking earnings from ${updated.trackingNumber || id}`,
-          status: 'pending',
+          status: 'available',
+          availableAt,
         });
       }
     }
@@ -2394,11 +2400,18 @@ export class DatabaseStorage implements IStorage {
 
   async getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
     const earnings = await this.getExpertEarnings(expertId);
+    const now = new Date();
     
+    // Earnings in hold period (status=available but availableAt is in the future) are shown as pending
+    const isHeld = (e: typeof earnings[0]) =>
+      e.status === 'available' && e.availableAt !== null && new Date(e.availableAt) > now;
+    const isReady = (e: typeof earnings[0]) =>
+      e.status === 'available' && (e.availableAt === null || new Date(e.availableAt) <= now);
+
     return {
       total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      pending: earnings.filter(e => e.status === 'pending').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      available: earnings.filter(e => e.status === 'available').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      pending: earnings.filter(e => e.status === 'pending' || isHeld(e)).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      available: earnings.filter(isReady).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
       paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
     };
   }
@@ -2589,11 +2602,18 @@ export class DatabaseStorage implements IStorage {
 
   async getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
     const earnings = await this.getProviderEarnings(providerId);
+    const now = new Date();
     
+    // Earnings in hold period (status=available but availableAt is in the future) are shown as pending
+    const isHeld = (e: typeof earnings[0]) =>
+      e.status === 'available' && e.availableAt !== null && new Date(e.availableAt) > now;
+    const isReady = (e: typeof earnings[0]) =>
+      e.status === 'available' && (e.availableAt === null || new Date(e.availableAt) <= now);
+
     return {
       total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      pending: earnings.filter(e => e.status === 'pending').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      available: earnings.filter(e => e.status === 'available').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      pending: earnings.filter(e => e.status === 'pending' || isHeld(e)).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      available: earnings.filter(isReady).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
       paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
     };
   }
