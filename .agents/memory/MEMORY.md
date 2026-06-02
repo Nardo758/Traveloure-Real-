@@ -1,0 +1,1 @@
+- [EA Client Delegation](ea-client-delegation.md) — lightweight delegation layer on top of existing EA console; clients table, push notifications, payment info storage (no raw card numbers).
