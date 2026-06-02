@@ -35,7 +35,7 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
@@ -59,7 +59,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -11534,6 +11534,382 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json({ product });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get product", error: error.message });
+    }
+  });
+
+  // Content Hub Discover endpoint — returns curated affiliate + registry items matched to a destination
+  app.get("/api/content/discover", async (req, res) => {
+    try {
+      const destination = (req.query.destination as string || "").trim();
+      const tabParam = (req.query.tab as string || "").trim();
+      // Support both ?content_types=foo,bar (string) and ?content_types[]=foo&content_types[]=bar (array)
+      const rawContentTypes = req.query.content_types;
+      const contentTypesParam: string = Array.isArray(rawContentTypes)
+        ? (rawContentTypes as string[]).join(",")
+        : (rawContentTypes as string || "").trim();
+
+      if (!destination) {
+        return res.json({ items: [], total: 0 });
+      }
+
+      // Extract city and country from destination string "City, Country"
+      const parts = destination.split(",");
+      const city = parts[0].trim();
+      const country = parts.length > 1 ? parts[parts.length - 1].trim() : city;
+
+      // Tab → content type filter for content_registry (covers all active template tabs)
+      const TAB_CONTENT_TYPE_MAP: Record<string, string[]> = {
+        venues: ["experience", "template", "service"],
+        venue: ["experience", "template", "service"],
+        dining: ["service", "experience"],
+        accommodations: ["service"],
+        "guest-accommodations": ["service"],
+        activities: ["experience", "template"],
+        photography: ["service"],
+        "photography-video": ["service", "media"],
+        transportation: ["service"],
+        transfers: ["service"],
+        entertainment: ["experience"],
+        wellness: ["service", "experience"],
+        "spa-wellness": ["service", "experience"],
+        shopping: ["experience"],
+        nightlife: ["experience"],
+        sports: ["experience"],
+        vendors: ["service"],
+        "team-activities": ["experience"],
+        services: ["service"],
+        events: ["experience", "template"],
+        catering: ["service", "experience"],
+        decor: ["service"],
+        "decor-setup": ["service"],
+        tickets: ["experience", "template"],
+        "vip-experiences": ["experience"],
+        "pre-game": ["experience", "service"],
+        "gifts-keepsakes": ["service", "experience"],
+        keepsakes: ["service", "experience"],
+      };
+
+      const allowedContentTypes = tabParam && TAB_CONTENT_TYPE_MAP[tabParam]
+        ? TAB_CONTENT_TYPE_MAP[tabParam]
+        : contentTypesParam
+          ? contentTypesParam.split(",").map(t => t.trim()).filter(Boolean)
+          : ["experience", "template", "service", "media", "other"];
+
+      // Tab → affiliate product category mapping (covers all active template tabs)
+      const TAB_AFFILIATE_CATEGORIES: Record<string, string[]> = {
+        venues: ["venue", "events", "conference"],
+        venue: ["venue", "events", "conference"],
+        dining: ["food", "restaurant", "dining", "culinary"],
+        accommodations: ["accommodation", "hotel", "lodging"],
+        "guest-accommodations": ["accommodation", "hotel", "lodging"],
+        activities: ["activity", "tour", "outdoor", "entertainment", "sport"],
+        photography: ["photography", "media"],
+        "photography-video": ["photography", "media", "video"],
+        transportation: ["transport", "transfer", "car", "train"],
+        transfers: ["transport", "transfer", "shuttle"],
+        entertainment: ["entertainment", "show", "concert", "theater"],
+        wellness: ["wellness", "spa", "fitness"],
+        "spa-wellness": ["wellness", "spa", "fitness"],
+        shopping: ["shopping", "retail", "market"],
+        nightlife: ["nightlife", "bar", "club"],
+        sports: ["sport", "outdoor", "adventure"],
+        vendors: ["service", "vendor"],
+        "team-activities": ["activity", "team", "group"],
+        services: ["service", "concierge", "planning"],
+        events: ["event", "conference", "festival", "show"],
+        catering: ["food", "catering", "dining", "culinary"],
+        decor: ["decor", "floral", "design"],
+        "decor-setup": ["decor", "setup", "floral", "design"],
+        tickets: ["ticket", "event", "attraction", "activity"],
+        "vip-experiences": ["vip", "luxury", "exclusive", "experience"],
+        "pre-game": ["dining", "activity", "sport", "entertainment"],
+        "gifts-keepsakes": ["gift", "souvenir", "keepsake", "shopping"],
+        keepsakes: ["gift", "souvenir", "keepsake"],
+      };
+      const affiliateCategoryFilter = tabParam && TAB_AFFILIATE_CATEGORIES[tabParam]
+        ? TAB_AFFILIATE_CATEGORIES[tabParam]
+        : null;
+
+      // Query affiliate_products matched to destination (+ optional category filter for tab)
+      const affiliateBaseCondition = and(
+        eq(affiliateProducts.isActive, true),
+        or(
+          ilike(affiliateProducts.city, `%${city}%`),
+          ilike(affiliateProducts.country, `%${country}%`),
+          ilike(affiliateProducts.location, `%${city}%`)
+        )
+      );
+      const affiliateCondition = affiliateCategoryFilter
+        ? and(affiliateBaseCondition, or(
+            ...affiliateCategoryFilter.map(cat => ilike(affiliateProducts.category, `%${cat}%`))
+          ))
+        : affiliateBaseCondition;
+
+      const affiliateItems = await db
+        .select()
+        .from(affiliateProducts)
+        .where(affiliateCondition)
+        .limit(20);
+
+      // Query content_registry for published items with location metadata matching destination
+      const registryItems = await db
+        .select()
+        .from(contentRegistry)
+        .where(
+          and(
+            eq(contentRegistry.status, "published"),
+            sql`(
+              ${contentRegistry.metadata}->>'location' ILIKE ${'%' + city + '%'}
+              OR ${contentRegistry.metadata}->>'city' ILIKE ${'%' + city + '%'}
+              OR ${contentRegistry.metadata}->>'country' ILIKE ${'%' + country + '%'}
+              OR ${contentRegistry.metadata}->>'destination' ILIKE ${'%' + city + '%'}
+            )`,
+            inArray(contentRegistry.contentType, allowedContentTypes as any)
+          )
+        )
+        .limit(20);
+
+      // Normalize affiliate products into unified card shape.
+      // tracking.productId is the affiliate_products.id (valid FK) — safe to send to /api/affiliate/track-click
+      const affiliateCards = affiliateItems.map((p: any) => ({
+        id: `affiliate-${p.id}`,
+        sourceId: p.id,
+        type: "affiliate" as const,
+        contentCategory: p.category || "experience",
+        title: p.name,
+        description: p.shortDescription || p.description || "",
+        cover_image: p.imageUrl || null,
+        price: p.price ? String(p.price) : null,
+        price_display: p.price
+          ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}`
+          : null,
+        affiliate_url: p.affiliateUrl || p.productUrl || null,
+        source: "Affiliate Partner",
+        rating: p.rating ? parseFloat(String(p.rating)) : null,
+        city: p.city || null,
+        country: p.country || null,
+        duration: p.duration || null,
+        highlights: p.highlights || [],
+        metadata: p.metadata || {},
+        // Explicit tracking identifiers safe to pass as FKs to affiliate_clicks
+        tracking: {
+          productId: p.id,       // FK → affiliate_products.id (valid)
+          partnerId: null as string | null,
+          isAffiliateTracked: true,
+        },
+      }));
+
+      // Normalize content_registry items into unified card shape.
+      // For registry items with affiliate_url, tracking uses metadata.partnerId (FK → affiliate_partners.id)
+      // if present; otherwise isAffiliateTracked = false (no valid FK available — skip track-click call).
+      const registryCards = registryItems.map((r: any) => {
+        const meta = r.metadata || {};
+        const affiliateUrl = meta.affiliate_url || null;
+        const metaPartnerId: string | null = meta.partnerId || meta.partner_id || null;
+        const isAffiliateTracked = !!(affiliateUrl && metaPartnerId);
+        return {
+          id: `registry-${r.id}`,
+          sourceId: r.id,
+          type: "curated" as const,
+          contentCategory: r.contentType,
+          title: r.title || "Curated Experience",
+          description: r.description || "",
+          cover_image: meta.cover_image || meta.imageUrl || meta.image_url || null,
+          price: meta.price ? String(meta.price) : null,
+          price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
+          affiliate_url: affiliateUrl,
+          source: "Traveloure Curated",
+          rating: meta.rating ? parseFloat(String(meta.rating)) : null,
+          city: meta.city || meta.location || city,
+          country: meta.country || country,
+          duration: meta.duration || null,
+          highlights: meta.highlights || [],
+          metadata: meta,
+          // Only track when a valid partnerId FK exists in affiliate_partners table
+          tracking: {
+            productId: null as string | null,
+            partnerId: metaPartnerId,
+            isAffiliateTracked,
+          },
+        };
+      });
+
+      const allItems = [...affiliateCards, ...registryCards];
+
+      res.json({ items: allItems, total: allItems.length });
+    } catch (err: any) {
+      console.error("Content discover error:", err);
+      res.status(500).json({ message: "Failed to fetch curated content", items: [], total: 0 });
+    }
+  });
+
+  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items.
+  // Price, title, and currency are resolved server-side from the DB record; client-supplied
+  // values are ignored to prevent price-tampering attacks.
+  app.post("/api/content/checkout", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const user = await storage.getUser(userId);
+      const userEmail = user?.email || undefined;
+
+      const { itemId, itemType } = req.body;
+      if (!itemId || !itemType) {
+        return res.status(400).json({ message: "itemId and itemType are required" });
+      }
+
+      // --- Server-side item resolution (price is NOT trusted from client) ---
+      let resolvedTitle: string;
+      let resolvedPrice: number;       // in whole currency units, e.g. 49.99
+      let resolvedCurrency: string;
+      let resolvedDestination: string;
+
+      if (itemType === "affiliate") {
+        const [product] = await db
+          .select()
+          .from(affiliateProducts)
+          .where(eq(affiliateProducts.id, itemId))
+          .limit(1);
+        if (!product) return res.status(404).json({ message: "Item not found" });
+        if (!product.price || parseFloat(String(product.price)) <= 0) {
+          return res.status(400).json({ message: "This item is not available for direct purchase" });
+        }
+        resolvedTitle = product.name;
+        resolvedPrice = parseFloat(String(product.price));
+        resolvedCurrency = (product.currency || "USD").toLowerCase();
+        resolvedDestination = product.city || product.country || "";
+      } else {
+        // content_registry
+        const [item] = await db
+          .select()
+          .from(contentRegistry)
+          .where(eq(contentRegistry.id, itemId))
+          .limit(1);
+        if (!item) return res.status(404).json({ message: "Item not found" });
+        const meta = (item.metadata as any) || {};
+        if (!meta.price || parseFloat(String(meta.price)) <= 0) {
+          return res.status(400).json({ message: "This item is not available for direct purchase" });
+        }
+        resolvedTitle = item.title || "Curated Experience";
+        resolvedPrice = parseFloat(String(meta.price));
+        resolvedCurrency = (meta.currency || "USD").toLowerCase();
+        resolvedDestination = meta.city || meta.destination || meta.location || "";
+      }
+
+      const { getBaseUrl } = await import("./services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      const baseUrl = getBaseUrl();
+      const amountCents = Math.round(resolvedPrice * 100);
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: resolvedCurrency,
+              product_data: {
+                name: resolvedTitle,
+                description: resolvedDestination
+                  ? `Curated experience in ${resolvedDestination}`
+                  : 'Curated Traveloure experience',
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          type: 'content_hub_purchase',
+          userId,
+          itemId: String(itemId),
+          itemType,
+        },
+        success_url: `${baseUrl}/discover?purchase=success`,
+        cancel_url: `${baseUrl}/discover?purchase=cancelled`,
+      });
+
+      res.json({ sessionId: session.id, url: session.url });
+    } catch (err: any) {
+      console.error("Content checkout error:", err);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Content Hub Affiliate Redirect — unified intermediary for ALL affiliate-linked content hub items.
+  // Routes through the established affiliateScraperService.trackClick() path so all content-hub
+  // affiliate clicks share the same tracking flow as other affiliate clicks.
+  // For affiliate_products rows: productId is passed (valid FK).
+  // For content_registry rows: partnerId from metadata is passed when present; otherwise neither
+  //   ID is set (both FK fields are nullable) — the service still inserts the tracking row,
+  //   then throws "not found" (expected); we catch it and return our locally-resolved URL.
+  app.post("/api/content/affiliate-redirect", async (req, res) => {
+    try {
+      const { itemId, itemType } = req.body;
+      if (!itemId || !itemType) {
+        return res.status(400).json({ message: "itemId and itemType are required" });
+      }
+
+      let affiliateUrl: string | null = null;
+      const trackPayload: Record<string, any> = {
+        initiatedBy: "user" as const,
+        referrer: req.headers.referer || undefined,
+        userAgent: req.headers["user-agent"] || undefined,
+        ipAddress: req.ip || undefined,
+      };
+      const authUserId = (req.user as any)?.claims?.sub || null;
+      if (authUserId) trackPayload.userId = authUserId;
+
+      if (itemType === "affiliate") {
+        const [product] = await db
+          .select()
+          .from(affiliateProducts)
+          .where(eq(affiliateProducts.id, itemId))
+          .limit(1);
+        if (!product) return res.status(404).json({ message: "Item not found" });
+        affiliateUrl = product.affiliateUrl || product.productUrl || null;
+        trackPayload.productId = product.id;  // valid FK → affiliate_products.id
+      } else {
+        // content_registry
+        const [item] = await db
+          .select()
+          .from(contentRegistry)
+          .where(eq(contentRegistry.id, itemId))
+          .limit(1);
+        if (!item) return res.status(404).json({ message: "Item not found" });
+        const meta = (item.metadata as any) || {};
+        affiliateUrl = meta.affiliate_url || null;
+        // Pass partnerId when metadata carries a valid affiliate_partners FK value
+        const metaPartnerId = meta.partnerId || meta.partner_id || null;
+        if (metaPartnerId) trackPayload.partnerId = metaPartnerId;
+      }
+
+      if (!affiliateUrl) {
+        return res.status(400).json({ message: "No affiliate URL available for this item" });
+      }
+
+      // Route through established service tracking path.
+      // For registry items without productId/partnerId the service inserts the row (both FK cols are
+      // nullable → null is valid), then throws "Product or partner not found" because it cannot look
+      // up a return URL. We catch that narrow error and use our already-resolved affiliateUrl.
+      const { affiliateScraperService } = await import("./services/affiliate-scraper.service");
+      try {
+        await affiliateScraperService.trackClick(trackPayload as any);
+      } catch (trackErr: any) {
+        if (trackErr?.message && !trackErr.message.includes("not found")) {
+          console.error("Affiliate click tracking error:", trackErr);
+        }
+        // Otherwise: expected for registry items with no partner/product FK — insert already committed
+      }
+
+      res.json({ url: affiliateUrl });
+    } catch (err: any) {
+      console.error("Affiliate redirect error:", err);
+      res.status(500).json({ message: "Failed to process affiliate redirect" });
     }
   });
 
