@@ -12320,81 +12320,140 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.send("\uFEFF" + csvContent); // BOM for Excel UTF-8
       }
 
-      // PDF: generate a self-contained HTML document that browsers can print/save as PDF
+      // PDF: generate a real PDF using pdfkit
+      const PDFDocument = (await import("pdfkit")).default;
       const periodTransactions = Array.isArray(transactions) ? transactions : [];
-      const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<title>Traveloure Revenue Report – ${periodLabel}</title>
-<style>
-  body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:40px;}
-  h1{font-size:20px;margin-bottom:4px;}
-  h2{font-size:14px;margin-top:24px;margin-bottom:6px;border-bottom:1px solid #ccc;padding-bottom:4px;}
-  p.meta{color:#555;font-size:11px;margin:0 0 16px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:12px;}
-  th{background:#f3f4f6;text-align:left;padding:6px 8px;border:1px solid #ddd;font-size:11px;}
-  td{padding:5px 8px;border:1px solid #ddd;font-size:11px;}
-  .total{font-weight:bold;background:#f9fafb;}
-  .net{font-weight:bold;color:#16a34a;font-size:16px;}
-  @media print{body{margin:20px;}}
-</style>
-</head>
-<body>
-<h1>Traveloure – Unified Revenue Report</h1>
-<p class="meta">Period: <strong>${periodLabel}</strong> &nbsp;|&nbsp; Exported: ${exportedAt}</p>
 
-<div class="net">Net Revenue: $${fmt(totalNetRevenue)} USD</div>
-
-<h2>Revenue Stream Totals</h2>
-<table>
-<thead><tr><th>Stream</th><th>This Month</th><th>Last Month</th><th>Period Total</th></tr></thead>
-<tbody>
-<tr><td>Stripe (Platform Fees)</td><td>$${fmt(stripe?.platform?.thisMonth || 0)}</td><td>$${fmt(stripe?.platform?.lastMonth || 0)}</td><td>$${fmt(stripeTotal)}</td></tr>
-<tr><td>Travelpayouts</td><td>$${fmt(travelpayouts.thisMonth || 0)}</td><td>$${fmt(travelpayouts.lastMonth || 0)}</td><td>$${fmt(travelpayouts.total || 0)}</td></tr>
-<tr><td>Viator</td><td>$${fmt(viator.thisMonth || 0)}</td><td>$${fmt(viator.lastMonth || 0)}</td><td>$${fmt(viator.total || 0)}</td></tr>
-<tr><td>Fever</td><td>$${fmt(fever.thisMonth || 0)}</td><td>$${fmt(fever.lastMonth || 0)}</td><td>$${fmt(fever.total || 0)}</td></tr>
-<tr><td>Booking.com</td><td>$${fmt(bookingCom.thisMonth || 0)}</td><td>$${fmt(bookingCom.lastMonth || 0)}</td><td>$${fmt(bookingCom.total || 0)}</td></tr>
-<tr><td>API Costs (deducted)</td><td></td><td></td><td>-$${fmt(apiCosts.totalCostDollars)}</td></tr>
-<tr class="total"><td>NET REVENUE</td><td></td><td></td><td>$${fmt(totalNetRevenue)}</td></tr>
-</tbody>
-</table>
-
-${(travelpayouts as any).byPartner?.length ? `
-<h2>Travelpayouts Partner Breakdown</h2>
-<table>
-<thead><tr><th>Partner</th><th>This Month</th><th>Last Month</th><th>Period Total</th></tr></thead>
-<tbody>
-${(travelpayouts as any).byPartner.map((p: any) => `<tr><td>${p.partnerLabel || p.partner}</td><td>$${fmt(p.thisMonth || 0)}</td><td>$${fmt(p.lastMonth || 0)}</td><td>$${fmt(p.total || 0)}</td></tr>`).join("")}
-</tbody>
-</table>` : ""}
-
-${apiCosts.entries?.length ? `
-<h2>API Cost Breakdown</h2>
-<table>
-<thead><tr><th>Provider</th><th>API Calls</th><th>Cost (USD)</th></tr></thead>
-<tbody>
-${apiCosts.entries.map((e: any) => `<tr><td>${e.provider}</td><td>${e.calls}</td><td>$${fmt(e.costDollars)}</td></tr>`).join("")}
-<tr class="total"><td colspan="2">Total API Costs</td><td>$${fmt(apiCosts.totalCostDollars)}</td></tr>
-</tbody>
-</table>` : ""}
-
-${periodTransactions.length ? `
-<h2>Transactions (${periodTransactions.length})</h2>
-<table>
-<thead><tr><th>Date</th><th>Source Type</th><th>Gross Amount</th><th>Platform Fee</th><th>Tracking #</th></tr></thead>
-<tbody>
-${periodTransactions.map((tx: any) => `<tr><td>${new Date(tx.date).toLocaleDateString("en-US")}</td><td>${tx.sourceType || ""}</td><td>$${fmt(tx.grossAmount || 0)}</td><td>$${fmt(tx.platformFee || 0)}</td><td>${tx.trackingNumber || ""}</td></tr>`).join("")}
-</tbody>
-</table>` : ""}
-
-</body>
-</html>`;
-
-      const filename = `traveloure-revenue-${period}-${now.toISOString().slice(0, 10)}.html`;
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      const filename = `traveloure-revenue-${period}-${now.toISOString().slice(0, 10)}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      return res.send(html);
+
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
+      doc.pipe(res);
+
+      const COL_GRAY = "#6b7280";
+      const COL_GREEN = "#16a34a";
+      const COL_BLACK = "#111827";
+      const COL_HEADER_BG = "#f3f4f6";
+
+      // Helper: sanitize string for PDF output (strip control chars)
+      const safe = (v: unknown) => String(v ?? "").replace(/[\x00-\x1F\x7F]/g, " ").slice(0, 200);
+
+      // Title
+      doc.fontSize(18).fillColor(COL_BLACK).font("Helvetica-Bold").text("Traveloure – Unified Revenue Report");
+      doc.fontSize(10).fillColor(COL_GRAY).font("Helvetica").text(`Period: ${periodLabel}   |   Exported: ${exportedAt}`);
+      doc.moveDown(0.5);
+
+      // Net Revenue highlight
+      doc.fontSize(13).fillColor(COL_GREEN).font("Helvetica-Bold").text(`Net Revenue: $${fmt(totalNetRevenue)} USD`);
+      doc.moveDown(1);
+
+      // Helper: draw a simple table
+      const drawTable = (headers: string[], colWidths: number[], rows: (string | number)[][], highlightLast = false) => {
+        const startX = doc.page.margins.left;
+        const rowH = 18;
+        let y = doc.y;
+
+        // Header row
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(COL_BLACK);
+        let x = startX;
+        headers.forEach((h, i) => {
+          doc.rect(x, y, colWidths[i], rowH).fill(COL_HEADER_BG).stroke("#d1d5db");
+          doc.fillColor(COL_BLACK).text(h, x + 4, y + 4, { width: colWidths[i] - 8, lineBreak: false });
+          x += colWidths[i];
+        });
+        y += rowH;
+
+        // Data rows
+        doc.font("Helvetica").fontSize(9);
+        rows.forEach((row, ri) => {
+          if (y + rowH > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+            y = doc.page.margins.top;
+          }
+          const isLast = highlightLast && ri === rows.length - 1;
+          x = startX;
+          row.forEach((cell, ci) => {
+            doc.rect(x, y, colWidths[ci], rowH).fill(isLast ? "#f9fafb" : "#ffffff").stroke("#e5e7eb");
+            doc.font(isLast ? "Helvetica-Bold" : "Helvetica").fillColor(COL_BLACK)
+              .text(safe(cell), x + 4, y + 4, { width: colWidths[ci] - 8, lineBreak: false });
+            x += colWidths[ci];
+          });
+          y += rowH;
+        });
+        doc.y = y;
+        doc.moveDown(1);
+      };
+
+      // Revenue Streams
+      doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("Revenue Stream Totals");
+      doc.moveDown(0.3);
+      drawTable(
+        ["Stream", "This Month", "Last Month", "Period Total"],
+        [210, 100, 100, 100],
+        [
+          ["Stripe (Platform Fees)", `$${fmt(stripe?.platform?.thisMonth || 0)}`, `$${fmt(stripe?.platform?.lastMonth || 0)}`, `$${fmt(stripeTotal)}`],
+          ["Travelpayouts", `$${fmt(travelpayouts.thisMonth || 0)}`, `$${fmt(travelpayouts.lastMonth || 0)}`, `$${fmt(travelpayouts.total || 0)}`],
+          ["Viator", `$${fmt(viator.thisMonth || 0)}`, `$${fmt(viator.lastMonth || 0)}`, `$${fmt(viator.total || 0)}`],
+          ["Fever", `$${fmt(fever.thisMonth || 0)}`, `$${fmt(fever.lastMonth || 0)}`, `$${fmt(fever.total || 0)}`],
+          ["Booking.com", `$${fmt(bookingCom.thisMonth || 0)}`, `$${fmt(bookingCom.lastMonth || 0)}`, `$${fmt(bookingCom.total || 0)}`],
+          ["API Costs (deducted)", "", "", `-$${fmt(apiCosts.totalCostDollars)}`],
+          ["NET REVENUE", "", "", `$${fmt(totalNetRevenue)}`],
+        ],
+        true
+      );
+
+      // Travelpayouts partner breakdown
+      const partners = (travelpayouts as any).byPartner ?? [];
+      if (partners.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("Travelpayouts Partner Breakdown");
+        doc.moveDown(0.3);
+        drawTable(
+          ["Partner", "This Month", "Last Month", "Period Total"],
+          [210, 100, 100, 100],
+          partners.map((p: any) => [
+            safe(p.partnerLabel || p.partner),
+            `$${fmt(p.thisMonth || 0)}`,
+            `$${fmt(p.lastMonth || 0)}`,
+            `$${fmt(p.total || 0)}`,
+          ])
+        );
+      }
+
+      // API costs breakdown
+      if (apiCosts.entries?.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("API Cost Breakdown");
+        doc.moveDown(0.3);
+        drawTable(
+          ["Provider", "API Calls", "Cost (USD)"],
+          [240, 130, 130],
+          [
+            ...apiCosts.entries.map((e: any) => [safe(e.provider), String(e.calls), `$${fmt(e.costDollars)}`]),
+            ["TOTAL API COSTS", "", `$${fmt(apiCosts.totalCostDollars)}`],
+          ],
+          true
+        );
+      }
+
+      // Transactions
+      if (periodTransactions.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text(`Transactions (${periodTransactions.length})`);
+        doc.moveDown(0.3);
+        drawTable(
+          ["Date", "Source Type", "Gross Amount", "Platform Fee", "Tracking #"],
+          [80, 140, 90, 90, 110],
+          periodTransactions.map((tx: any) => [
+            new Date(tx.date).toLocaleDateString("en-US"),
+            safe(tx.sourceType),
+            `$${fmt(tx.grossAmount || 0)}`,
+            `$${fmt(tx.platformFee || 0)}`,
+            safe(tx.trackingNumber || ""),
+          ])
+        );
+      }
+
+      doc.end();
+      return;
     } catch (error: any) {
       console.error("[RevenueExport] Error:", error);
       res.status(500).json({ message: "Failed to export revenue data", error: error.message });

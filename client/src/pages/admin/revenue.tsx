@@ -386,13 +386,13 @@ export default function AdminRevenue() {
                     const url = `/api/admin/revenue/unified/export?period=${period}&format=pdf`;
                     const a = document.createElement("a");
                     a.href = url;
-                    a.download = `traveloure-revenue-${period}.html`;
+                    a.download = `traveloure-revenue-${period}.pdf`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                   }}
                 >
-                  <FileText className="w-4 h-4 mr-2" /> Download Report (HTML/PDF)
+                  <FileText className="w-4 h-4 mr-2" /> Download PDF
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
