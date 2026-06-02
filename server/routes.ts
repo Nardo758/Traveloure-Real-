@@ -8392,6 +8392,19 @@ Respond with this exact JSON structure:
         metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
       });
 
+      // Record AI attribution: Grok generated these itinerary links on behalf of the user
+      try {
+        const { affiliateService: affSvc } = await import("./services/affiliate.service");
+        // Track one attribution event per major affiliate partner used in the generated itinerary
+        for (const partner of ["viator", "getyourguide", "booking"]) {
+          affSvc.trackLinkGenerated(partner, destination, {
+            initiatedBy: "ai_agent",
+            agentType: "grok",
+            sessionId: savedItinerary.id,
+          }).catch(() => {});
+        }
+      } catch (_) { /* attribution is non-critical */ }
+
       // NEW: Create comparison and trigger optimization
       const [comparison] = await db.insert(itineraryComparisons).values({
         userId,

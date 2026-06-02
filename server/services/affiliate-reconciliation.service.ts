@@ -32,8 +32,14 @@ export interface ReconciliationSummary {
   currency: string;
 }
 
+export interface MatchedPair {
+  internal: Record<string, unknown>;
+  external: ExternalCommission;
+}
+
 export interface ReconciliationResult {
   summary: ReconciliationSummary;
+  matchedPairs: MatchedPair[];
   internalEarnings: Array<Record<string, unknown>>;
   unmatchedExternal: ExternalCommission[];
 }
@@ -276,9 +282,11 @@ class AffiliateReconciliationService {
         if (consumed.has(row.id)) return false;
         if (row.reconciliation_status === "matched") return false;
 
-        // Partner must match by partnerId when we can resolve it
-        if (resolvedPartnerId && row.partner_id && row.partner_id !== resolvedPartnerId) {
-          return false;
+        // Strict partner match: when we can resolve the external partner to an
+        // internal partner_id, both sides MUST agree. Rows with a null partner_id
+        // are excluded to prevent cross-partner false positives.
+        if (resolvedPartnerId) {
+          if (!row.partner_id || row.partner_id !== resolvedPartnerId) return false;
         }
 
         // Date within ±3 days
@@ -348,6 +356,11 @@ class AffiliateReconciliationService {
     // Fetch external commissions again for the "unmatched external" list
     const external = await this.fetchExternalReports(period, partner && partner !== "all" ? partner : undefined);
 
+    // Build a lookup: partnerReferenceId → external commission row
+    const externalByRefId = new Map<string, ExternalCommission>(
+      external.map((e) => [e.partnerReferenceId, e])
+    );
+
     // Identify unmatched external rows (those whose partnerReferenceId isn't stored internally)
     const matchedRefIds = new Set(
       internalRows
@@ -357,6 +370,15 @@ class AffiliateReconciliationService {
     const unmatchedExternal = external.filter(
       (e) => !matchedRefIds.has(e.partnerReferenceId)
     );
+
+    // Build explicit matched pairs: each matched internal row paired with its external record
+    const matchedPairs: MatchedPair[] = internalRows
+      .filter((r) => r.reconciliation_status === "matched" && r.partner_reference_id)
+      .map((r) => {
+        const ext = externalByRefId.get(r.partner_reference_id as string);
+        return ext ? { internal: r, external: ext } : null;
+      })
+      .filter((pair): pair is MatchedPair => pair !== null);
 
     // Compute summary
     const totalExpected = internalRows.reduce(
@@ -378,6 +400,7 @@ class AffiliateReconciliationService {
         unmatchedCount,
         currency: "USD",
       },
+      matchedPairs,
       internalEarnings: internalRows,
       unmatchedExternal,
     };

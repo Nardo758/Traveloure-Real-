@@ -99,8 +99,14 @@ interface ExternalCommission {
   rawData: Record<string, unknown>;
 }
 
+interface MatchedPair {
+  internal: InternalEarning;
+  external: ExternalCommission;
+}
+
 interface ReconciliationData {
   summary: ReconciliationSummary;
+  matchedPairs: MatchedPair[];
   internalEarnings: InternalEarning[];
   unmatchedExternal: ExternalCommission[];
 }
@@ -594,6 +600,7 @@ function ReconciliationPanel() {
   });
 
   const summary = data?.summary;
+  const matchedPairs = data?.matchedPairs || [];
   const internalRows = data?.internalEarnings || [];
   const unmatchedExternal = data?.unmatchedExternal || [];
 
@@ -799,6 +806,67 @@ function ReconciliationPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* Matched pairs — explicit internal↔external audit view */}
+      {matchedPairs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Matched Pairs ({matchedPairs.length})
+            </CardTitle>
+            <CardDescription>
+              Internal earnings matched side-by-side with partner-reported commissions.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Partner</TableHead>
+                  <TableHead>Date (internal)</TableHead>
+                  <TableHead>Internal Commission</TableHead>
+                  <TableHead>Partner Ref ID</TableHead>
+                  <TableHead>Partner Reported Date</TableHead>
+                  <TableHead>Partner Amount</TableHead>
+                  <TableHead>Δ Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {matchedPairs.map((pair, idx) => {
+                  const internalAmt = parseFloat(pair.internal.total_commission);
+                  const externalAmt = pair.external.amount;
+                  const delta = internalAmt - externalAmt;
+                  return (
+                    <TableRow key={idx} data-testid={`row-pair-${pair.internal.id}`}>
+                      <TableCell className="font-medium capitalize">
+                        {pair.internal.partner_name || pair.external.partner}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(pair.internal.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="font-medium">${internalAmt.toFixed(2)}</TableCell>
+                      <TableCell className="text-sm font-mono">{pair.external.partnerReferenceId}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(pair.external.reportedAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>${externalAmt.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`text-xs font-medium ${Math.abs(delta) < 0.01 ? "text-green-600" : delta > 0 ? "text-amber-600" : "text-red-600"}`}
+                          data-testid={`text-pair-delta-${idx}`}
+                        >
+                          {delta >= 0 ? "+" : ""}${delta.toFixed(2)}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Unmatched external commissions */}
       {unmatchedExternal.length > 0 && (
