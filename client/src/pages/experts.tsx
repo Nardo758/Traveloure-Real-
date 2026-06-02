@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +37,7 @@ import {
   Brain,
   Target,
   Home,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -44,6 +45,15 @@ import { apiRequest } from "@/lib/queryClient";
 import { ExpertCard } from "@/components/expert-card";
 import { ExpertMatchCard } from "@/components/expert-match-card";
 import { format } from "date-fns";
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 const destinations = [
   "All Destinations",
@@ -106,6 +116,18 @@ export default function ExpertsPage() {
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [sortBy, setSortBy] = useState("recommended");
+  const neighbourhoodInputRef = useRef<HTMLInputElement>(null);
+
+  const handleNeighbourhoodChipClick = useCallback((neighbourhood: string) => {
+    setNeighbourhoodQuery(neighbourhood);
+    setTimeout(() => {
+      const el = neighbourhoodInputRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
+      el.select();
+    }, 50);
+  }, []);
   const [favorites, setFavorites] = useState<string[]>([]);
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
@@ -174,13 +196,16 @@ export default function ExpertsPage() {
     queryKey: ["/api/experience-types"],
   });
 
-  // Fetch experts from API with optional experience type filter
+  // Fetch experts from API with optional experience type, destination, and neighbourhood filter
+  const debouncedNeighbourhoodQuery = useDebounce(neighbourhoodQuery, 300);
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
-    queryKey: ["/api/experts", selectedExperienceType],
+    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination],
     queryFn: async () => {
-      const url = selectedExperienceType 
-        ? `/api/experts?experienceTypeId=${selectedExperienceType}`
-        : "/api/experts";
+      const params = new URLSearchParams();
+      if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
+      if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
+      if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
+      const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
       return res.json();
@@ -193,7 +218,7 @@ export default function ExpertsPage() {
     );
   };
 
-  // Filter experts by search and other criteria
+  // Filter experts by search and language (destination + neighbourhood are handled server-side)
   const filteredExperts = apiExperts.filter((expert: any) => {
     const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
     const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
@@ -203,19 +228,11 @@ export default function ExpertsPage() {
       expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
       neighbourhoods.some((n: string) => n.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesDestination =
-      selectedDestination === "All Destinations" ||
-      expert.expertForm?.destinations?.includes(selectedDestination);
-
     const matchesLanguage =
       selectedLanguage === "All Languages" ||
       expert.expertForm?.languages?.includes(selectedLanguage);
 
-    const matchesNeighbourhood =
-      neighbourhoodQuery.trim() === "" ||
-      neighbourhoods.some((n: string) => n.toLowerCase().includes(neighbourhoodQuery.toLowerCase()));
-
-    return matchesSearch && matchesDestination && matchesLanguage && matchesNeighbourhood;
+    return matchesSearch && matchesLanguage;
   });
 
   const sortedExperts = [...filteredExperts].sort((a: any, b: any) => {
@@ -549,6 +566,7 @@ export default function ExpertsPage() {
               <div className="relative">
                 <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
+                  ref={neighbourhoodInputRef}
                   placeholder="Neighbourhood (e.g. Shimokitazawa)"
                   value={neighbourhoodQuery}
                   onChange={(e) => setNeighbourhoodQuery(e.target.value)}
@@ -577,6 +595,55 @@ export default function ExpertsPage() {
             </div>
           </div>
 
+          {/* Active Filter Chips */}
+          {(selectedDestination !== "All Destinations" || neighbourhoodQuery.trim().length >= 2) && (
+            <div className="flex flex-wrap items-center gap-2 mb-5" data-testid="active-filter-chips">
+              <span className="text-sm text-[#6B7280] font-medium flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" />
+                Active:
+              </span>
+              {selectedDestination !== "All Destinations" && (
+                <Badge
+                  className="flex items-center gap-1 bg-[#FFF1F3] text-[#FF385C] border border-[#FECDD3] px-2.5 py-1 text-xs font-medium rounded-full"
+                  data-testid="chip-filter-destination"
+                >
+                  <MapPin className="w-3 h-3" />
+                  {selectedDestination}
+                  <button
+                    onClick={() => setSelectedDestination("All Destinations")}
+                    className="ml-0.5 hover:text-[#E23350] focus:outline-none"
+                    data-testid="button-clear-destination-chip"
+                    aria-label="Clear destination filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {neighbourhoodQuery.trim().length >= 2 && (
+                <Badge
+                  className="flex items-center gap-1 bg-[#EEF2FF] text-[#6366F1] border border-[#C7D2FE] px-2.5 py-1 text-xs font-medium rounded-full"
+                  data-testid="chip-filter-neighbourhood"
+                >
+                  <Home className="w-3 h-3" />
+                  {neighbourhoodQuery.trim()}
+                  <button
+                    onClick={() => setNeighbourhoodQuery("")}
+                    className="ml-0.5 hover:text-[#4F46E5] focus:outline-none"
+                    data-testid="button-clear-neighbourhood-chip"
+                    aria-label="Clear neighbourhood filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {selectedDestination !== "All Destinations" && neighbourhoodQuery.trim().length >= 2 && (
+                <span className="text-xs text-[#6B7280] italic" data-testid="text-combined-filter-hint">
+                  Experts covering {neighbourhoodQuery.trim()} in {selectedDestination}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Expert Cards Grid */}
           {isLoadingExperts ? (
             <div className="flex items-center justify-center py-16">
@@ -596,6 +663,7 @@ export default function ExpertsPage() {
                     expert={expert} 
                     showServices={true}
                     experienceTypeFilter={selectedExperienceType || undefined}
+                    onNeighbourhoodClick={handleNeighbourhoodChipClick}
                   />
                 </motion.div>
               ))}

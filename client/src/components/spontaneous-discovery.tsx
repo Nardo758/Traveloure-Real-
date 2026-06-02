@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CuratedContentSection } from "@/components/curated-content-section";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -473,6 +474,15 @@ export function SpontaneousDiscovery({
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Recommended by Traveloure — curated content hub items matched to the active city */}
+      {activeCity && (
+        <CuratedContentSection
+          destination={activeCity}
+          label="Recommended by Traveloure"
+          className="mt-4"
+        />
+      )}
 
       {data?.refreshedAt && (
         <p className="text-xs text-muted-foreground text-center">

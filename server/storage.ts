@@ -17,6 +17,8 @@ import {
   revenueSplits, expertTips, expertReferrals, affiliateEarnings, accessAuditLogs,
   providerEarnings, providerPayouts, platformRevenue, dailyRevenueSummary,
   contentRegistry, contentInvoices, contentVersions, contentFlags, contentAnalytics, trackingSequences,
+  contentPlacementRules,
+  type ContentPlacementRule, type InsertContentPlacementRule,
   type ContentRegistry, type InsertContentRegistry,
   type ContentInvoice, type InsertContentInvoice,
   type ContentVersion, type InsertContentVersion,
@@ -142,6 +144,7 @@ export interface IStorage {
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
+  updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
 
   // Service Provider Forms
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
@@ -713,6 +716,12 @@ export class DatabaseStorage implements IStorage {
   async updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void> {
     await db.update(localExpertForms)
       .set({ expertNotesStyle: notesStyle })
+      .where(eq(localExpertForms.userId, userId));
+  }
+
+  async updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void> {
+    await db.update(localExpertForms)
+      .set({ neighborhoods, localityProof })
       .where(eq(localExpertForms.userId, userId));
   }
 
@@ -3471,6 +3480,65 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tripExpertAdvisors.id, assignmentId))
       .returning();
     return updated;
+  }
+
+  // ─── Content Placement Rules ─────────────────────────────────────────────
+
+  async getContentPlacementRules(filters?: {
+    cityName?: string;
+    surface?: string;
+    contentSource?: string;
+    isActive?: boolean;
+  }): Promise<ContentPlacementRule[]> {
+    const conditions: any[] = [];
+    if (filters?.cityName) conditions.push(ilike(contentPlacementRules.cityName, `%${filters.cityName}%`));
+    if (filters?.surface) conditions.push(sql`${contentPlacementRules.surfaces} @> ${JSON.stringify([filters.surface])}::jsonb`);
+    if (filters?.contentSource) conditions.push(eq(contentPlacementRules.contentSource, filters.contentSource));
+    if (filters?.isActive !== undefined) conditions.push(eq(contentPlacementRules.isActive, filters.isActive));
+    return db.select().from(contentPlacementRules)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(contentPlacementRules.createdAt));
+  }
+
+  async createContentPlacementRule(rule: InsertContentPlacementRule): Promise<ContentPlacementRule> {
+    const [created] = await db.insert(contentPlacementRules).values(rule).returning();
+    return created;
+  }
+
+  async updateContentPlacementRule(id: string, updates: Partial<InsertContentPlacementRule>): Promise<ContentPlacementRule | undefined> {
+    const [updated] = await db.update(contentPlacementRules)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(contentPlacementRules.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteContentPlacementRule(id: string): Promise<void> {
+    await db.delete(contentPlacementRules).where(eq(contentPlacementRules.id, id));
+  }
+
+  async bulkUpsertContentPlacementRules(rules: InsertContentPlacementRule[]): Promise<number> {
+    if (!rules.length) return 0;
+    let upserted = 0;
+    for (const rule of rules) {
+      const existing = await db.select({ id: contentPlacementRules.id })
+        .from(contentPlacementRules)
+        .where(and(
+          eq(contentPlacementRules.contentSource, rule.contentSource),
+          eq(contentPlacementRules.sourceId, rule.sourceId),
+          ilike(contentPlacementRules.cityName, rule.cityName),
+        ))
+        .limit(1);
+      if (existing.length) {
+        await db.update(contentPlacementRules)
+          .set({ surfaces: rule.surfaces, updatedAt: new Date() })
+          .where(eq(contentPlacementRules.id, existing[0].id));
+      } else {
+        await db.insert(contentPlacementRules).values(rule);
+        upserted++;
+      }
+    }
+    return upserted;
   }
 }
 
