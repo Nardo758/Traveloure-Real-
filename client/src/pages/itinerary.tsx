@@ -812,6 +812,33 @@ export default function ItineraryPage() {
 
             <ESimSidebarWidget destination={itinerary.destination} />
 
+            {/* Visa Help widget */}
+            {(() => {
+              const country = itinerary.destination?.split(",")[0]?.trim() ?? "";
+              return (
+                <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-100 dark:border-blue-800 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Visa requirements
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    Check if you need a visa for {country || "your destination"} and apply through iVisa.
+                  </p>
+                  <Link href={`/visa-help${country ? `?destination=${encodeURIComponent(country)}` : ""}`}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-xs border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                      data-testid="button-visa-help-from-itinerary"
+                    >
+                      Check Visa Requirements
+                      <ExternalLink className="w-3 h-3 ml-1.5" />
+                    </Button>
+                  </Link>
+                </div>
+              );
+            })()}
+
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-4">
                 <div className="flex flex-col gap-3">

@@ -11294,6 +11294,18 @@ export async function seedDatabase() {
 export async function registerDiscoveryRoutes(app: Express) {
   const { grokDiscoveryService } = await import("./services/grok-discovery.service");
 
+  // Local admin guard (mirrors the one in registerRoutes)
+  const requireAdmin = async (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then((r: any[]) => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    next();
+  };
+
   // Trigger discovery for a destination
   app.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
     try {
@@ -11999,6 +12011,36 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Lightweight iVisa / generic partner affiliate click tracker.
+  // Unlike /api/affiliate/track-click this endpoint does NOT require a DB-stored productId/partnerId.
+  // It inserts directly into affiliate_clicks with those FKs as null and uses `sessionId` to
+  // record the partner name (e.g. "ivisa") so revenue reports can filter by it.
+  app.post("/api/affiliates/track", async (req, res) => {
+    try {
+      const { partner, destination, tripId, itineraryId } = req.body;
+      if (!partner) {
+        return res.status(400).json({ message: "partner is required" });
+      }
+      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      await db.insert(affiliateClicks).values({
+        productId: null,
+        partnerId: null,
+        userId: userId || null,
+        tripId: tripId || itineraryId || null,
+        referrer: req.headers.referer || null,
+        userAgent: (req.headers["user-agent"] as string) || null,
+        ipAddress: req.ip || null,
+        initiatedBy: "user",
+        agentType: null,
+        sessionId: [partner, destination].filter(Boolean).join(":") || partner,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error tracking affiliates click:", error);
+      res.status(500).json({ message: "Failed to track click" });
     }
   });
 

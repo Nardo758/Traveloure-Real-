@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   Globe,
   FileText,
@@ -101,8 +101,23 @@ const VISA_TYPES = [
 
 export default function VisaHelpPage() {
   const { toast } = useToast();
+  const searchString = useSearch();
   const [passportCountry, setPassportCountry] = useState("");
-  const [destinationCountry, setDestinationCountry] = useState("");
+
+  // Pre-fill destination from ?destination= query param (e.g. when arriving from an itinerary page)
+  const prefilledDestination = (() => {
+    const params = new URLSearchParams(searchString);
+    const raw = params.get("destination") || "";
+    return COUNTRIES.find((c) => c.toLowerCase() === raw.toLowerCase()) ?? "";
+  })();
+  const [destinationCountry, setDestinationCountry] = useState(prefilledDestination);
+
+  useEffect(() => {
+    if (prefilledDestination && !destinationCountry) {
+      setDestinationCountry(prefilledDestination);
+    }
+  }, [prefilledDestination]);
+
   const [result, setResult] = useState<VisaRequirements | null>(null);
 
   const [bookingService, setBookingService] = useState<Service | null>(null);
@@ -156,6 +171,17 @@ export default function VisaHelpPage() {
         specialCircumstances: intakeCircumstances,
       },
     });
+  };
+
+  const trackIVisaClick = async (destination: string) => {
+    try {
+      await apiRequest("POST", "/api/affiliates/track", {
+        partner: "ivisa",
+        destination: destination || undefined,
+      });
+    } catch {
+      // tracking errors are non-blocking
+    }
   };
 
   const requirementsMutation = useMutation<VisaRequirements, Error, { passportCountry: string; destinationCountry: string }>({
@@ -541,6 +567,7 @@ export default function VisaHelpPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   data-testid="button-ivisa-apply"
+                  onClick={() => trackIVisaClick(destinationCountry)}
                 >
                   <Button className="bg-white text-blue-700 hover:bg-blue-50 font-semibold whitespace-nowrap">
                     Apply Now on iVisa

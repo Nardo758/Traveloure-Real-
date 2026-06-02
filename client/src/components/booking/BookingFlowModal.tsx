@@ -461,6 +461,10 @@ export default function BookingFlowModal({
               totalAmount={total}
               travelers={tripData.travelers}
               userEmail={userEmail}
+              destination={(() => {
+                const dest = tripData.destinations?.[0];
+                return dest?.country || dest?.name || dest?.city || "";
+              })()}
               onClose={handleComplete}
             />
           )}
