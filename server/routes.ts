@@ -17729,49 +17729,79 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // POST /api/admin/routing-queue/:requestId/confirm — confirm assignment
-  app.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, async (req, res) => {
-    try {
-      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
-      if (!adminUser || adminUser.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
+  // Shared handler: confirm lead → workspace bridge (used by both route aliases below)
+  async function confirmLeadAssignmentHandler(requestId: string, req: any, res: any) {
+    const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
 
-      const { requestId } = req.params;
+    const queueResult = await db.execute(sql`
+      SELECT * FROM expert_requests WHERE id = ${requestId}
+    `);
+    const row = queueResult.rows?.[0] as any;
+    if (!row) return res.status(404).json({ error: "Routing request not found" });
+    if (!row.assigned_expert_id) return res.status(400).json({ error: "No expert assigned to this request" });
+    if (!row.trip_id) return res.status(400).json({ error: "Request has no associated trip" });
 
-      const queueResult = await db.execute(sql`
-        SELECT * FROM expert_requests WHERE id = ${requestId}
-      `);
-      const row = queueResult.rows?.[0] as any;
-      if (!row) return res.status(404).json({ error: "Routing request not found" });
-      if (!row.assigned_expert_id) return res.status(400).json({ error: "No expert assigned to this request" });
-      if (row.status === "assigned" || row.status === "confirmed") {
-        return res.status(200).json({ alreadyConfirmed: true, message: "Assignment was already confirmed — no change made." });
-      }
-      if (!row.trip_id) return res.status(400).json({ error: "Request has no associated trip" });
+    const assignment = await db.transaction(async (tx) => {
+      // Lock the expert_requests row to serialise concurrent confirms
+      await tx.execute(sql`SELECT id FROM expert_requests WHERE id = ${requestId} FOR UPDATE`);
 
-      const alreadyExists = await storage.isExpertAssignedToTrip(row.trip_id, row.assigned_expert_id);
-      if (alreadyExists) {
-        return res.status(200).json({ message: "Expert already assigned to this trip (no-op)", alreadyExists: true });
-      }
+      // Idempotency: return the existing advisor row if one already exists
+      const [existing] = await tx.select().from(tripExpertAdvisors)
+        .where(and(
+          eq(tripExpertAdvisors.tripId, row.trip_id),
+          eq(tripExpertAdvisors.localExpertId, row.assigned_expert_id),
+        ))
+        .limit(1);
 
-      const advisor = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(tripExpertAdvisors).values({
+      if (existing) return existing;
+
+      // Insert; ON CONFLICT DO NOTHING handles the rare concurrent-insert race
+      const [created] = await tx.insert(tripExpertAdvisors)
+        .values({
           tripId: row.trip_id,
           localExpertId: row.assigned_expert_id,
           status: "assigned",
           workspaceStatus: "draft",
           assignedAt: new Date(),
-        }).returning();
+        })
+        .onConflictDoNothing()
+        .returning();
 
-        await tx.execute(sql`
-          UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}
-        `);
+      // If concurrent insert won the race, fetch the winning row
+      const result = created ?? await tx.select().from(tripExpertAdvisors)
+        .where(and(
+          eq(tripExpertAdvisors.tripId, row.trip_id),
+          eq(tripExpertAdvisors.localExpertId, row.assigned_expert_id),
+        ))
+        .then(r => r[0]);
 
-        return created;
-      });
+      // Flip expert_requests status
+      await tx.execute(sql`
+        UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}
+      `);
 
-      res.json({ success: true, advisor });
+      return result;
+    });
+
+    return res.json({ assignment });
+  }
+
+  // POST /api/admin/leads/:expertRequestId/confirm — canonical endpoint (task spec)
+  app.post("/api/admin/leads/:expertRequestId/confirm", isAuthenticated, async (req, res) => {
+    try {
+      await confirmLeadAssignmentHandler(req.params.expertRequestId, req, res);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/routing-queue/:requestId/confirm — legacy alias (UI still uses this)
+  app.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, async (req, res) => {
+    try {
+      await confirmLeadAssignmentHandler(req.params.requestId, req, res);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

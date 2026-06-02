@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -110,7 +110,9 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
-});
+}, (table) => ({
+  uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
+}));
 
 export const tripSuggestions = pgTable("trip_suggestions", {
   id: uuid("id").primaryKey().defaultRandom(),
