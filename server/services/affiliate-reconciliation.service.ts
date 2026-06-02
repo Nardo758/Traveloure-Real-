@@ -380,14 +380,19 @@ class AffiliateReconciliationService {
       })
       .filter((pair): pair is MatchedPair => pair !== null);
 
-    // Compute summary
+    // Compute summary.
+    // totalExpected = sum of all internal commission records for the period.
+    // totalConfirmed = sum of PARTNER-REPORTED amounts for matched pairs,
+    //   not internal amounts — this is "confirmed by partners" semantics.
+    // variance = expected − confirmed (partner amounts are ground truth).
     const totalExpected = internalRows.reduce(
       (sum, r) => sum + parseFloat(r.total_commission || "0"),
       0
     );
-    const totalConfirmed = internalRows
-      .filter((r) => r.reconciliation_status === "matched")
-      .reduce((sum, r) => sum + parseFloat(r.total_commission || "0"), 0);
+    const totalConfirmed = matchedPairs.reduce(
+      (sum, pair) => sum + pair.external.amount,
+      0
+    );
     const unmatchedCount = internalRows.filter(
       (r) => r.reconciliation_status === "unmatched"
     ).length;

@@ -320,23 +320,26 @@ router.post(
         return res.status(400).json({ error: "No external URL for this option" });
       }
 
-      // Log click event for affiliate tracking
-      // Transport hub clicks are always user-initiated (the user taps a booking card)
+      // Log click event for affiliate tracking.
+      // Attribution is derived from how the option was generated:
+      //   "affiliate" options are produced by the AI transport planner (system agent) →
+      //     initiatedBy = "ai_agent", agentType = "system"
+      //   All other types (platform / deep_link / info_only) are user-chosen →
+      //     initiatedBy = "user"
       try {
+        const isAiGeneratedAffiliate = option.bookingType === "affiliate";
         await db.insert(affiliateClicks).values({
-          partnerId: option.source, // Use source as partner identifier
+          partnerId: option.source,
           userId: userId || undefined,
-          tripId: undefined, // Could be populated if we have access to trip context
           referrer: referrer || undefined,
           userAgent: userAgent || undefined,
-          ipAddress: (req.ip || "").split(":").pop(), // Extract IPv4 from IPv6 if needed
-          initiatedBy: "user",
-          agentType: null,
+          ipAddress: (req.ip || "").split(":").pop(),
+          initiatedBy: isAiGeneratedAffiliate ? "ai_agent" : "user",
+          agentType: isAiGeneratedAffiliate ? "system" : null,
           sessionId: null,
           clickedAt: new Date(),
         });
       } catch (clickError) {
-        // Log error but don't fail the request - affiliate tracking is secondary
         console.error("Error logging affiliate click:", clickError);
       }
 
