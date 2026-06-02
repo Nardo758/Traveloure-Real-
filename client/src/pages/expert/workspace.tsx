@@ -407,19 +407,26 @@ export default function ExpertWorkspace() {
   useEffect(() => {
     if (!tripId || energyCalcRef.current) return;
     energyCalcRef.current = true;
-    apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {}).catch(() => {});
+    apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+      .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+      .catch(() => {});
   }, [tripId]);
 
   const presetsAppliedRef = useRef(false);
   useEffect(() => {
     if (!tripId || presetsAppliedRef.current) return;
-    if (!workspaceConstraints) return;
-    if (workspaceConstraints.anchors.length > 0) { presetsAppliedRef.current = true; return; }
-    const slug = workspaceConstraints.tripExperienceType;
-    if (!slug) { presetsAppliedRef.current = true; return; }
-    presetsAppliedRef.current = true;
+    if (!workspaceConstraints || !trip) return;
+    // Gate on trip.start_date being available before deciding
     const startDate = trip?.start_date;
     if (!startDate) return;
+    // Already populated — nothing to do
+    const hasAnchors = workspaceConstraints.anchors.length > 0;
+    const hasBoundaries = workspaceConstraints.dayBoundaries.length > 0;
+    if (hasAnchors && hasBoundaries) { presetsAppliedRef.current = true; return; }
+    const slug = workspaceConstraints.tripExperienceType;
+    if (!slug) { presetsAppliedRef.current = true; return; }
+    // Mark applied only now that we're about to attempt (all guards passed)
+    presetsAppliedRef.current = true;
     apiRequest("POST", `/api/trips/${tripId}/generate-presets`, { templateSlug: slug, eventDate: startDate })
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => {});
