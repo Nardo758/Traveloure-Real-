@@ -13977,6 +13977,92 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // === Workspace Constraints Summary ===
+
+  app.get("/api/trips/:tripId/workspace-constraints", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
+
+      const [anchors, boundaries, energyRecords] = await Promise.all([
+        storage.getTemporalAnchors(req.params.tripId),
+        storage.getDayBoundaries(req.params.tripId),
+        storage.getEnergyTracking(req.params.tripId),
+      ]);
+
+      const { detectAnchorImpacts } = await import('./services/logistics-presets.service');
+      const anchorConflicts: Array<{
+        anchorId: string;
+        anchorType: string;
+        description: string;
+        impacts: Array<{ type: string; message: string; severity: 'warning' | 'critical' }>;
+      }> = [];
+      for (const anchor of anchors) {
+        const impacts = await detectAnchorImpacts(req.params.tripId, anchor.id);
+        if (impacts.length > 0) {
+          anchorConflicts.push({
+            anchorId: anchor.id,
+            anchorType: anchor.anchorType,
+            description: anchor.description || anchor.anchorType,
+            impacts,
+          });
+        }
+      }
+
+      let optimizerScores: Record<string, number> | null = null;
+      const comparisons = await db
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.tripId, req.params.tripId))
+        .orderBy(desc(itineraryComparisons.createdAt))
+        .limit(1);
+
+      if (comparisons.length > 0) {
+        const variants = await db
+          .select({ id: itineraryVariants.id })
+          .from(itineraryVariants)
+          .where(eq(itineraryVariants.comparisonId, comparisons[0].id))
+          .orderBy(desc(itineraryVariants.createdAt))
+          .limit(1);
+
+        if (variants.length > 0) {
+          const scoreMetrics = await db
+            .select()
+            .from(itineraryVariantMetrics)
+            .where(
+              and(
+                eq(itineraryVariantMetrics.variantId, variants[0].id),
+                inArray(itineraryVariantMetrics.metricKey, ['balance_score', 'wellness_score', 'pace_score', 'diversity_score'])
+              )
+            );
+          if (scoreMetrics.length > 0) {
+            optimizerScores = {};
+            for (const m of scoreMetrics) {
+              optimizerScores[m.metricKey] = parseFloat(m.value as string);
+            }
+          }
+        }
+      }
+
+      res.json({
+        anchors,
+        dayBoundaries: boundaries,
+        energyTracking: energyRecords,
+        anchorConflicts,
+        optimizerScores,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch workspace constraints", error: error.message });
+    }
+  });
+
   // === Logistics: Template Presets ===
 
   app.get("/api/logistics/presets/:templateSlug", async (req, res) => {
