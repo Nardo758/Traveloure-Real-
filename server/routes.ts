@@ -12264,6 +12264,279 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Admin unified revenue export (CSV or PDF)
+  app.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const period = (req.query.period as string) || "this_month";
+      const format = ((req.query.format as string) || "csv").toLowerCase();
+      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      if (!validPeriods.includes(period)) {
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+      }
+      if (!["csv", "pdf"].includes(format)) {
+        return res.status(400).json({ message: "Invalid format. Use: csv, pdf" });
+      }
+
+      const [
+        { getTravelpayoutsStatistics },
+        { getViatorCommissions },
+        { getFeverCommissions },
+        { getBookingComCommissions },
+        { getApiCostsSummary },
+        { revenueTrackingService },
+      ] = await Promise.all([
+        import("./services/travelpayouts/statistics.service"),
+        import("./services/viator-commissions.service"),
+        import("./services/fever-commissions.service"),
+        import("./services/booking-com-commissions.service"),
+        import("./services/api-costs.service"),
+        import("./services/revenue-tracking.service"),
+      ]);
+
+      const now = new Date();
+      const periodBounds = (() => {
+        if (period === "last_month") {
+          return {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+          };
+        }
+        if (period === "last_90_days") {
+          return {
+            start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+            end: now,
+          };
+        }
+        return {
+          start: new Date(now.getFullYear(), now.getMonth(), 1),
+          end: now,
+        };
+      })();
+
+      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary, transactions] = await Promise.all([
+        revenueTrackingService.getUnifiedDashboard().catch(() => null),
+        getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
+        getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getBookingComCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
+        storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
+        storage.getPlatformRevenue({ startDate: periodBounds.start, endDate: periodBounds.end }).catch(() => []),
+      ]);
+
+      const stripeTotal = stripePeriodSummary.totalPlatformFee;
+      const totalAffiliateRevenue = (travelpayouts.total || 0) + (viator.total || 0) + (fever.total || 0) + (bookingCom.total || 0);
+      const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
+
+      const periodLabel = period === "last_month" ? "Last Month" : period === "last_90_days" ? "Last 90 Days" : "This Month";
+      const exportedAt = now.toISOString();
+      const fmt = (n: number) => n.toFixed(2);
+
+      if (format === "csv") {
+        const rows: string[] = [];
+        const addRow = (...cols: (string | number)[]) => rows.push(cols.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","));
+        const addBlank = () => rows.push("");
+        const addHeader = (title: string) => { addBlank(); addRow(title); };
+
+        addRow("Traveloure - Unified Revenue Export");
+        addRow(`Period: ${periodLabel}`);
+        addRow(`Exported: ${exportedAt}`);
+
+        addHeader("REVENUE STREAM TOTALS");
+        addRow("Stream", "This Month (USD)", "Last Month (USD)", "Period Total (USD)");
+        addRow("Stripe (Platform Fees)", fmt(stripe?.platform?.thisMonth || 0), fmt(stripe?.platform?.lastMonth || 0), fmt(stripeTotal));
+        addRow("Travelpayouts", fmt(travelpayouts.thisMonth || 0), fmt(travelpayouts.lastMonth || 0), fmt(travelpayouts.total || 0));
+        addRow("Viator", fmt(viator.thisMonth || 0), fmt(viator.lastMonth || 0), fmt(viator.total || 0));
+        addRow("Fever", fmt(fever.thisMonth || 0), fmt(fever.lastMonth || 0), fmt(fever.total || 0));
+        addRow("Booking.com", fmt(bookingCom.thisMonth || 0), fmt(bookingCom.lastMonth || 0), fmt(bookingCom.total || 0));
+        addRow("API Costs (deducted)", "", "", `-${fmt(apiCosts.totalCostDollars)}`);
+        addRow("NET REVENUE", "", "", fmt(totalNetRevenue));
+
+        if ((travelpayouts as any).byPartner?.length) {
+          addHeader("TRAVELPAYOUTS PARTNER BREAKDOWN");
+          addRow("Partner", "This Month (USD)", "Last Month (USD)", "Period Total (USD)");
+          for (const p of (travelpayouts as any).byPartner) {
+            addRow(p.partnerLabel || p.partner, fmt(p.thisMonth || 0), fmt(p.lastMonth || 0), fmt(p.total || 0));
+          }
+        }
+
+        if (apiCosts.entries?.length) {
+          addHeader("API COST BREAKDOWN");
+          addRow("Provider", "API Calls", "Cost (USD)");
+          for (const e of apiCosts.entries) {
+            addRow(e.provider, e.calls, fmt(e.costDollars));
+          }
+          addRow("TOTAL API COSTS", "", fmt(apiCosts.totalCostDollars));
+        }
+
+        if (Array.isArray(transactions) && transactions.length) {
+          addHeader("RECENT TRANSACTIONS");
+          addRow("Date", "Source Type", "Gross Amount (USD)", "Platform Fee (USD)", "Tracking #");
+          for (const tx of transactions) {
+            addRow(
+              new Date(tx.date).toLocaleDateString("en-US"),
+              tx.sourceType || "",
+              fmt(tx.grossAmount || 0),
+              fmt(tx.platformFee || 0),
+              tx.trackingNumber || ""
+            );
+          }
+        }
+
+        const csvContent = rows.join("\r\n");
+        const filename = `traveloure-revenue-${period}-${now.toISOString().slice(0, 10)}.csv`;
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send("\uFEFF" + csvContent); // BOM for Excel UTF-8
+      }
+
+      // PDF: generate a real PDF using pdfkit
+      const PDFDocument = (await import("pdfkit")).default;
+      const periodTransactions = Array.isArray(transactions) ? transactions : [];
+
+      const filename = `traveloure-revenue-${period}-${now.toISOString().slice(0, 10)}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
+      doc.pipe(res);
+
+      const COL_GRAY = "#6b7280";
+      const COL_GREEN = "#16a34a";
+      const COL_BLACK = "#111827";
+      const COL_HEADER_BG = "#f3f4f6";
+
+      // Helper: sanitize string for PDF output (strip control chars)
+      const safe = (v: unknown) => String(v ?? "").replace(/[\x00-\x1F\x7F]/g, " ").slice(0, 200);
+
+      // Title
+      doc.fontSize(18).fillColor(COL_BLACK).font("Helvetica-Bold").text("Traveloure – Unified Revenue Report");
+      doc.fontSize(10).fillColor(COL_GRAY).font("Helvetica").text(`Period: ${periodLabel}   |   Exported: ${exportedAt}`);
+      doc.moveDown(0.5);
+
+      // Net Revenue highlight
+      doc.fontSize(13).fillColor(COL_GREEN).font("Helvetica-Bold").text(`Net Revenue: $${fmt(totalNetRevenue)} USD`);
+      doc.moveDown(1);
+
+      // Helper: draw a simple table
+      const drawTable = (headers: string[], colWidths: number[], rows: (string | number)[][], highlightLast = false) => {
+        const startX = doc.page.margins.left;
+        const rowH = 18;
+        let y = doc.y;
+
+        // Header row
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(COL_BLACK);
+        let x = startX;
+        headers.forEach((h, i) => {
+          doc.rect(x, y, colWidths[i], rowH).fill(COL_HEADER_BG).stroke("#d1d5db");
+          doc.fillColor(COL_BLACK).text(h, x + 4, y + 4, { width: colWidths[i] - 8, lineBreak: false });
+          x += colWidths[i];
+        });
+        y += rowH;
+
+        // Data rows
+        doc.font("Helvetica").fontSize(9);
+        rows.forEach((row, ri) => {
+          if (y + rowH > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+            y = doc.page.margins.top;
+          }
+          const isLast = highlightLast && ri === rows.length - 1;
+          x = startX;
+          row.forEach((cell, ci) => {
+            doc.rect(x, y, colWidths[ci], rowH).fill(isLast ? "#f9fafb" : "#ffffff").stroke("#e5e7eb");
+            doc.font(isLast ? "Helvetica-Bold" : "Helvetica").fillColor(COL_BLACK)
+              .text(safe(cell), x + 4, y + 4, { width: colWidths[ci] - 8, lineBreak: false });
+            x += colWidths[ci];
+          });
+          y += rowH;
+        });
+        doc.y = y;
+        doc.moveDown(1);
+      };
+
+      // Revenue Streams
+      doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("Revenue Stream Totals");
+      doc.moveDown(0.3);
+      drawTable(
+        ["Stream", "This Month", "Last Month", "Period Total"],
+        [210, 100, 100, 100],
+        [
+          ["Stripe (Platform Fees)", `$${fmt(stripe?.platform?.thisMonth || 0)}`, `$${fmt(stripe?.platform?.lastMonth || 0)}`, `$${fmt(stripeTotal)}`],
+          ["Travelpayouts", `$${fmt(travelpayouts.thisMonth || 0)}`, `$${fmt(travelpayouts.lastMonth || 0)}`, `$${fmt(travelpayouts.total || 0)}`],
+          ["Viator", `$${fmt(viator.thisMonth || 0)}`, `$${fmt(viator.lastMonth || 0)}`, `$${fmt(viator.total || 0)}`],
+          ["Fever", `$${fmt(fever.thisMonth || 0)}`, `$${fmt(fever.lastMonth || 0)}`, `$${fmt(fever.total || 0)}`],
+          ["Booking.com", `$${fmt(bookingCom.thisMonth || 0)}`, `$${fmt(bookingCom.lastMonth || 0)}`, `$${fmt(bookingCom.total || 0)}`],
+          ["API Costs (deducted)", "", "", `-$${fmt(apiCosts.totalCostDollars)}`],
+          ["NET REVENUE", "", "", `$${fmt(totalNetRevenue)}`],
+        ],
+        true
+      );
+
+      // Travelpayouts partner breakdown
+      const partners = (travelpayouts as any).byPartner ?? [];
+      if (partners.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("Travelpayouts Partner Breakdown");
+        doc.moveDown(0.3);
+        drawTable(
+          ["Partner", "This Month", "Last Month", "Period Total"],
+          [210, 100, 100, 100],
+          partners.map((p: any) => [
+            safe(p.partnerLabel || p.partner),
+            `$${fmt(p.thisMonth || 0)}`,
+            `$${fmt(p.lastMonth || 0)}`,
+            `$${fmt(p.total || 0)}`,
+          ])
+        );
+      }
+
+      // API costs breakdown
+      if (apiCosts.entries?.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("API Cost Breakdown");
+        doc.moveDown(0.3);
+        drawTable(
+          ["Provider", "API Calls", "Cost (USD)"],
+          [240, 130, 130],
+          [
+            ...apiCosts.entries.map((e: any) => [safe(e.provider), String(e.calls), `$${fmt(e.costDollars)}`]),
+            ["TOTAL API COSTS", "", `$${fmt(apiCosts.totalCostDollars)}`],
+          ],
+          true
+        );
+      }
+
+      // Transactions
+      if (periodTransactions.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text(`Transactions (${periodTransactions.length})`);
+        doc.moveDown(0.3);
+        drawTable(
+          ["Date", "Source Type", "Gross Amount", "Platform Fee", "Tracking #"],
+          [80, 140, 90, 90, 110],
+          periodTransactions.map((tx: any) => [
+            new Date(tx.date).toLocaleDateString("en-US"),
+            safe(tx.sourceType),
+            `$${fmt(tx.grossAmount || 0)}`,
+            `$${fmt(tx.platformFee || 0)}`,
+            safe(tx.trackingNumber || ""),
+          ])
+        );
+      }
+
+      doc.end();
+      return;
+    } catch (error: any) {
+      console.error("[RevenueExport] Error:", error);
+      res.status(500).json({ message: "Failed to export revenue data", error: error.message });
+    }
+  });
+
   // Provider earnings endpoints
   // Uses same auth pattern as /api/provider/services, /api/provider/bookings
   app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
