@@ -5,11 +5,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp,
@@ -18,7 +21,6 @@ import {
   Zap,
   MapPin,
   DollarSign,
-  Cloud,
   Sparkles,
   ArrowLeft,
   Gem,
@@ -29,11 +31,15 @@ import {
   Plus,
   Check,
   Wand2,
+  LogIn,
+  ChevronRight,
+  FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityDetailView } from "./CityDetailView";
 import { useTripQueue, QueuedCity } from "@/contexts/TripQueueContext";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface TravelPulseCity {
   id: string;
@@ -100,28 +106,36 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
   const [, navigate] = useLocation();
   const { addCity, removeCity, isInQueue } = useTripQueue();
   const { toast } = useToast();
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  
+  const { user, isAuthenticated } = useAuth();
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   const priceChange = parseFloat(city.priceChange || "0");
   const vibeTags = Array.isArray(city.vibeTags) ? city.vibeTags : [];
   const inQueue = isInQueue(city.id);
 
-  const handlePlanNow = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPopoverOpen(false);
-    // Navigate to AI Quick Start Itinerary page with city context
+  // Fetch user's trips when dialog is open and user is logged in
+  const { data: userTrips, isLoading: tripsLoading } = useQuery<any[]>({
+    queryKey: ["/api/trips"],
+    enabled: dialogOpen && isAuthenticated,
+  });
+
+  const handlePlanNow = () => {
+    setDialogOpen(false);
     navigate(`/quick-start?destination=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
   };
 
-  const handleAddToTrip = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPopoverOpen(false);
-    
+  const handleSelectTrip = (tripId: string) => {
+    setDialogOpen(false);
+    navigate(`/trip/${tripId}?addCity=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
+  };
+
+  const handleAddToQueue = () => {
+    setDialogOpen(false);
     if (inQueue) {
       removeCity(city.id);
       toast({
-        title: "Removed from trip",
-        description: `${city.cityName} has been removed from your trip queue.`,
+        title: "Removed from trip queue",
+        description: `${city.cityName} has been removed from your multi-city trip.`,
       });
     } else {
       const queuedCity: QueuedCity = {
@@ -136,8 +150,8 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
       };
       addCity(queuedCity);
       toast({
-        title: "Added to trip",
-        description: `${city.cityName} has been added to your trip queue.`,
+        title: "Added to trip queue",
+        description: `${city.cityName} added. Open "My Trip" to plan your multi-city adventure.`,
       });
     }
   };
@@ -341,59 +355,129 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
           </div>
 
           {/* Take me Here CTA */}
-          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-            <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button
-                className="w-full mt-3"
-                size="sm"
-                data-testid={`button-take-me-here-${citySlug}`}
-              >
-                <Plane className="h-4 w-4 mr-2" />
-                Take me Here
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-3" align="center" onClick={(e) => e.stopPropagation()}>
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">Plan your trip to {city.cityName}</h4>
-                <div className="space-y-2">
+          <Button
+            className="w-full mt-3"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); setDialogOpen(true); }}
+            data-testid={`button-take-me-here-${citySlug}`}
+          >
+            <Plane className="h-4 w-4 mr-2" />
+            Take me Here
+          </Button>
+
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-[#FF385C]" />
+                  Take me to {city.cityName}
+                </DialogTitle>
+                <DialogDescription>
+                  Add this destination to a trip or start planning from scratch.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 pt-2">
+                {/* ── Existing trips ── */}
+                {isAuthenticated ? (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Add to an existing trip
+                    </p>
+                    {tripsLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-14 w-full rounded-xl" />
+                        <Skeleton className="h-14 w-full rounded-xl" />
+                      </div>
+                    ) : userTrips && userTrips.length > 0 ? (
+                      <ScrollArea className="max-h-48">
+                        <div className="space-y-2 pr-1">
+                          {userTrips.map((trip: any) => (
+                            <button
+                              key={trip.id}
+                              onClick={() => handleSelectTrip(trip.id)}
+                              className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:border-[#FF385C] hover:bg-[#FF385C]/5 transition-all text-left group"
+                              data-testid={`button-select-trip-${trip.id}`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <FolderOpen className="h-4 w-4 text-primary" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate">{trip.title || "Untitled Trip"}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{trip.destination}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <Badge variant="outline" className="text-xs capitalize hidden sm:flex">
+                                  {trip.status}
+                                </Badge>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-[#FF385C] transition-colors" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-3 bg-muted/50 rounded-xl">
+                        No trips yet — start one below.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 py-4 bg-muted/50 rounded-xl">
+                    <LogIn className="h-8 w-8 text-muted-foreground" />
+                    <div className="text-center">
+                      <p className="text-sm font-medium">Sign in to access your trips</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Save cities and plan across multiple destinations
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => { setDialogOpen(false); navigate("/auth"); }}
+                      data-testid="button-sign-in-prompt"
+                    >
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Sign In
+                    </Button>
+                  </div>
+                )}
+
+                <div className="border-t pt-4 space-y-2">
+                  {/* ── New AI trip ── */}
                   <Button
-                    variant="default"
                     className="w-full justify-start"
-                    size="sm"
                     onClick={handlePlanNow}
                     data-testid={`button-plan-now-${citySlug}`}
                   >
                     <Wand2 className="h-4 w-4 mr-2" />
-                    Plan Now with AI
+                    Plan New Trip with AI
                   </Button>
+
+                  {/* ── Multi-city queue ── */}
                   <Button
                     variant={inQueue ? "secondary" : "outline"}
                     className="w-full justify-start"
-                    size="sm"
-                    onClick={handleAddToTrip}
-                    data-testid={`button-add-to-trip-${citySlug}`}
+                    onClick={handleAddToQueue}
+                    data-testid={`button-add-to-queue-${citySlug}`}
                   >
                     {inQueue ? (
                       <>
                         <Check className="h-4 w-4 mr-2" />
-                        Remove from Trip
+                        Remove from Multi-City Queue
                       </>
                     ) : (
                       <>
                         <Plus className="h-4 w-4 mr-2" />
-                        Add to Multi-City Trip
+                        Add to Multi-City Queue
                       </>
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {inQueue
-                    ? "This city is in your trip queue"
-                    : "Add multiple cities and plan them together"}
-                </p>
               </div>
-            </PopoverContent>
-          </Popover>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </motion.div>
