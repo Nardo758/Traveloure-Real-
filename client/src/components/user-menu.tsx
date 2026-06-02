@@ -134,21 +134,28 @@ export function UserMenu() {
         {isExpert && (
           <>
             <DropdownMenuItem asChild>
-              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-dashboard">
+              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
                 <LayoutDashboard className="w-4 h-4 mr-2" />
-                Expert Dashboard
+                Expert Console
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
+                <Briefcase className="w-4 h-4 mr-2" />
+                Provider Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
+                <User className="w-4 h-4 mr-2" />
+                User Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
                 <Map className="w-4 h-4 mr-2" />
                 My Trips
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/expert/profile" className="cursor-pointer" data-testid="link-user-expert-profile">
-                <User className="w-4 h-4 mr-2" />
-                Expert Profile
               </Link>
             </DropdownMenuItem>
           </>
@@ -158,21 +165,28 @@ export function UserMenu() {
         {isProvider && (
           <>
             <DropdownMenuItem asChild>
-              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-dashboard">
+              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
                 <LayoutDashboard className="w-4 h-4 mr-2" />
-                Provider Dashboard
+                Provider Console
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
+                <UserCheck className="w-4 h-4 mr-2" />
+                Expert Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
+                <User className="w-4 h-4 mr-2" />
+                User Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
                 <Map className="w-4 h-4 mr-2" />
                 My Trips
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/provider/profile" className="cursor-pointer" data-testid="link-user-provider-profile">
-                <Briefcase className="w-4 h-4 mr-2" />
-                Provider Profile
               </Link>
             </DropdownMenuItem>
           </>
@@ -198,6 +212,25 @@ export function UserMenu() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
+              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
+                <UserCheck className="w-4 h-4 mr-2" />
+                Expert Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
+                <Briefcase className="w-4 h-4 mr-2" />
+                Provider Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
+                <User className="w-4 h-4 mr-2" />
+                User Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
               <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
                 <Map className="w-4 h-4 mr-2" />
                 My Trips
@@ -210,15 +243,28 @@ export function UserMenu() {
         {isUser && (
           <>
             <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
-                <Map className="w-4 h-4 mr-2" />
-                My Trips
+              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
+                <User className="w-4 h-4 mr-2" />
+                User Console
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/profile" className="cursor-pointer" data-testid="link-user-profile">
-                <User className="w-4 h-4 mr-2" />
-                Profile
+              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
+                <UserCheck className="w-4 h-4 mr-2" />
+                Expert Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
+                <Briefcase className="w-4 h-4 mr-2" />
+                Provider Console
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
+                <Map className="w-4 h-4 mr-2" />
+                My Trips
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
