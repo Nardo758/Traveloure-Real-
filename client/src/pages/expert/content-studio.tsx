@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -73,6 +74,12 @@ import {
   ExternalLink,
   AlertCircle,
   Globe,
+  Brain,
+  Lightbulb,
+  TriangleAlert,
+  ThumbsUp,
+  BadgeDollarSign,
+  Landmark,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -110,6 +117,44 @@ const contentFormSchema = z.object({
 });
 
 type ContentFormData = z.infer<typeof contentFormSchema>;
+
+// === Knowledge Nuggets ===
+const nuggetTypes = [
+  { id: "tip", label: "Tip", icon: Lightbulb, color: "text-amber-500", bg: "bg-amber-50" },
+  { id: "warning", label: "Warning", icon: TriangleAlert, color: "text-red-500", bg: "bg-red-50" },
+  { id: "recommendation", label: "Recommendation", icon: ThumbsUp, color: "text-green-500", bg: "bg-green-50" },
+  { id: "cultural-note", label: "Cultural Note", icon: Landmark, color: "text-purple-500", bg: "bg-purple-50" },
+  { id: "hidden-cost", label: "Hidden Cost", icon: BadgeDollarSign, color: "text-orange-500", bg: "bg-orange-50" },
+] as const;
+
+const seasons = ["year-round", "spring", "summer", "fall", "winter"] as const;
+
+const nuggetFormSchema = z.object({
+  nuggetType: z.enum(["tip", "warning", "recommendation", "cultural-note", "hidden-cost"]).default("tip"),
+  city: z.string().min(2, "City is required"),
+  linkedPoi: z.string().optional().or(z.literal("")),
+  linkedNeighbourhood: z.string().optional().or(z.literal("")),
+  insight: z.string().min(10, "Insight must be at least 10 characters"),
+  targetAudience: z.string().optional().or(z.literal("")),
+  notFor: z.string().optional().or(z.literal("")),
+  seasonality: z.array(z.string()).default([]),
+});
+type NuggetFormData = z.infer<typeof nuggetFormSchema>;
+
+type LocalKnowledgeNugget = {
+  id: string;
+  expertUserId: string;
+  nuggetType: string;
+  city: string;
+  linkedPoi?: string | null;
+  linkedNeighbourhood?: string | null;
+  insight: string;
+  targetAudience?: string | null;
+  notFor?: string | null;
+  seasonality?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
 
 type ContentItem = {
   id: number;
@@ -195,17 +240,96 @@ function generateHashtags(destination: string, contentType: string): string {
 
 export default function ContentStudio() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isLocalExpert = user?.role === "local_expert";
   const [, setLocation] = useLocation();
   const searchParams = useSearch();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedContent, setSelectedContent] = useState<ContentItem | null>(null);
-  
+  const [pageSection, setPageSection] = useState<"content" | "knowledge">("content");
+  const [isNuggetDialogOpen, setIsNuggetDialogOpen] = useState(false);
+  const [editingNugget, setEditingNugget] = useState<LocalKnowledgeNugget | null>(null);
+  const [nuggetSearch, setNuggetSearch] = useState("");
+
   const { data: instagramStatus } = useQuery<{ connected: boolean }>({
     queryKey: ["/api/instagram/status"],
   });
   const isInstagramConnected = instagramStatus?.connected ?? false;
+
+  const { data: nuggets = [], isLoading: nuggetsLoading } = useQuery<LocalKnowledgeNugget[]>({
+    queryKey: ["/api/expert/knowledge-nuggets"],
+    enabled: isLocalExpert,
+  });
+
+  const nuggetForm = useForm<NuggetFormData>({
+    resolver: zodResolver(nuggetFormSchema),
+    defaultValues: { nuggetType: "tip", city: "", linkedPoi: "", linkedNeighbourhood: "", insight: "", targetAudience: "", notFor: "", seasonality: [] },
+  });
+
+  const createNuggetMutation = useMutation({
+    mutationFn: (data: NuggetFormData) => apiRequest("POST", "/api/expert/knowledge-nuggets", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/knowledge-nuggets"] });
+      toast({ title: "Nugget added!", description: "Your knowledge nugget has been saved." });
+      setIsNuggetDialogOpen(false);
+      nuggetForm.reset();
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save nugget", variant: "destructive" }),
+  });
+
+  const updateNuggetMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<NuggetFormData> }) =>
+      apiRequest("PATCH", `/api/expert/knowledge-nuggets/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/knowledge-nuggets"] });
+      toast({ title: "Nugget updated!" });
+      setIsNuggetDialogOpen(false);
+      setEditingNugget(null);
+      nuggetForm.reset();
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update nugget", variant: "destructive" }),
+  });
+
+  const deleteNuggetMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/expert/knowledge-nuggets/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/knowledge-nuggets"] });
+      toast({ title: "Nugget deleted" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to delete nugget", variant: "destructive" }),
+  });
+
+  const openEditNugget = (nugget: LocalKnowledgeNugget) => {
+    setEditingNugget(nugget);
+    nuggetForm.reset({
+      nuggetType: nugget.nuggetType as any,
+      city: nugget.city,
+      linkedPoi: nugget.linkedPoi || "",
+      linkedNeighbourhood: nugget.linkedNeighbourhood || "",
+      insight: nugget.insight,
+      targetAudience: nugget.targetAudience || "",
+      notFor: nugget.notFor || "",
+      seasonality: nugget.seasonality || [],
+    });
+    setIsNuggetDialogOpen(true);
+  };
+
+  const onNuggetSubmit = (data: NuggetFormData) => {
+    if (editingNugget) {
+      updateNuggetMutation.mutate({ id: editingNugget.id, data });
+    } else {
+      createNuggetMutation.mutate(data);
+    }
+  };
+
+  const filteredNuggets = nuggets.filter(n => {
+    if (!nuggetSearch) return true;
+    const q = nuggetSearch.toLowerCase();
+    return n.city.toLowerCase().includes(q) || n.insight.toLowerCase().includes(q) ||
+      (n.linkedPoi || "").toLowerCase().includes(q) || (n.linkedNeighbourhood || "").toLowerCase().includes(q);
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
@@ -326,6 +450,277 @@ export default function ContentStudio() {
   return (
     <ExpertLayout>
       <div className="p-6 space-y-6">
+        {/* Local Expert page section tabs */}
+        {isLocalExpert && (
+          <div className="flex gap-2 border-b pb-4">
+            <Button
+              variant={pageSection === "content" ? "default" : "ghost"}
+              onClick={() => setPageSection("content")}
+              className="gap-2"
+              data-testid="button-section-content"
+            >
+              <FileText className="w-4 h-4" />
+              Content Studio
+            </Button>
+            <Button
+              variant={pageSection === "knowledge" ? "default" : "ghost"}
+              onClick={() => setPageSection("knowledge")}
+              className="gap-2"
+              data-testid="button-section-knowledge"
+            >
+              <Brain className="w-4 h-4" />
+              Knowledge Base
+              {nuggets.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{nuggets.length}</Badge>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {/* Knowledge Base Section */}
+        {isLocalExpert && pageSection === "knowledge" ? (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold" data-testid="text-knowledge-base-title">Knowledge Base</h1>
+                <p className="text-muted-foreground">Add local insights that power AI recommendations for your city</p>
+              </div>
+              <Button onClick={() => { setEditingNugget(null); nuggetForm.reset(); setIsNuggetDialogOpen(true); }} data-testid="button-add-nugget">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Knowledge Nugget
+              </Button>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {nuggetTypes.map(type => {
+                const count = nuggets.filter(n => n.nuggetType === type.id).length;
+                return (
+                  <Card key={type.id}>
+                    <CardContent className="p-3 flex items-center gap-2">
+                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", type.bg)}>
+                        <type.icon className={cn("w-4 h-4", type.color)} />
+                      </div>
+                      <div>
+                        <p className="text-xl font-bold leading-none">{count}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{type.label}s</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by city, POI, neighbourhood, or insight…"
+                value={nuggetSearch}
+                onChange={(e) => setNuggetSearch(e.target.value)}
+                className="pl-10"
+                data-testid="input-search-nuggets"
+              />
+            </div>
+
+            {/* Nuggets list */}
+            {nuggetsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-40 rounded-xl" />)}
+              </div>
+            ) : filteredNuggets.length === 0 ? (
+              <Card className="p-12">
+                <div className="text-center">
+                  <Brain className="w-12 h-12 mx-auto text-muted-foreground/40 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    {nuggetSearch ? "No nuggets match your search" : "Your knowledge base is empty"}
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    {nuggetSearch ? "Try a different search term" : "Add your first local insight to help AI build better itineraries for your city"}
+                  </p>
+                  {!nuggetSearch && (
+                    <Button onClick={() => { setEditingNugget(null); nuggetForm.reset(); setIsNuggetDialogOpen(true); }} data-testid="button-add-first-nugget">
+                      <Plus className="w-4 h-4 mr-2" /> Add Your First Nugget
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredNuggets.map((nugget) => {
+                  const typeInfo = nuggetTypes.find(t => t.id === nugget.nuggetType) || nuggetTypes[0];
+                  return (
+                    <Card key={nugget.id} className="relative" data-testid={`card-nugget-${nugget.id}`}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", typeInfo.bg)}>
+                              <typeInfo.icon className={cn("w-4 h-4", typeInfo.color)} />
+                            </div>
+                            <div>
+                              <Badge variant="outline" className="text-xs">{typeInfo.label}</Badge>
+                              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                                <MapPin className="w-3 h-3" /> {nugget.city}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditNugget(nugget)} data-testid={`button-edit-nugget-${nugget.id}`}>
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteNuggetMutation.mutate(nugget.id)} disabled={deleteNuggetMutation.isPending} data-testid={`button-delete-nugget-${nugget.id}`}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <p className="text-sm">{nugget.insight}</p>
+                        {(nugget.linkedPoi || nugget.linkedNeighbourhood) && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {nugget.linkedPoi && (
+                              <Badge variant="secondary" className="text-xs gap-1"><MapPin className="w-2.5 h-2.5" />{nugget.linkedPoi}</Badge>
+                            )}
+                            {nugget.linkedNeighbourhood && (
+                              <Badge variant="secondary" className="text-xs gap-1"><Globe className="w-2.5 h-2.5" />{nugget.linkedNeighbourhood}</Badge>
+                            )}
+                          </div>
+                        )}
+                        {nugget.targetAudience && (
+                          <p className="text-xs text-muted-foreground"><span className="font-medium text-green-600">For:</span> {nugget.targetAudience}</p>
+                        )}
+                        {nugget.notFor && (
+                          <p className="text-xs text-muted-foreground"><span className="font-medium text-red-500">Not for:</span> {nugget.notFor}</p>
+                        )}
+                        {nugget.seasonality && nugget.seasonality.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {nugget.seasonality.map(s => (
+                              <Badge key={s} variant="outline" className="text-xs capitalize">{s}</Badge>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Nugget Dialog */}
+            <Dialog open={isNuggetDialogOpen} onOpenChange={(open) => { setIsNuggetDialogOpen(open); if (!open) { setEditingNugget(null); nuggetForm.reset(); } }}>
+              <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingNugget ? "Edit Knowledge Nugget" : "Add Knowledge Nugget"}</DialogTitle>
+                  <DialogDescription>Share a local insight tied to a specific place or neighbourhood</DialogDescription>
+                </DialogHeader>
+                <Form {...nuggetForm}>
+                  <form onSubmit={nuggetForm.handleSubmit(onNuggetSubmit)} className="space-y-4">
+                    {/* Type selector */}
+                    <FormField control={nuggetForm.control} name="nuggetType" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Type</FormLabel>
+                        <div className="grid grid-cols-5 gap-2">
+                          {nuggetTypes.map(type => (
+                            <button key={type.id} type="button" onClick={() => field.onChange(type.id)}
+                              className={cn("flex flex-col items-center gap-1 p-2 rounded-lg border text-xs transition-all", field.value === type.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}
+                              data-testid={`button-nugget-type-${type.id}`}>
+                              <type.icon className={cn("w-4 h-4", type.color)} />
+                              <span className="text-center leading-tight">{type.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <FormField control={nuggetForm.control} name="city" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City</FormLabel>
+                        <FormControl><Input placeholder="e.g., Tokyo" {...field} data-testid="input-nugget-city" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={nuggetForm.control} name="linkedPoi" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Linked POI <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                          <FormControl><Input placeholder="e.g., Senso-ji Temple" {...field} data-testid="input-nugget-poi" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={nuggetForm.control} name="linkedNeighbourhood" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Neighbourhood <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                          <FormControl><Input placeholder="e.g., Asakusa" {...field} data-testid="input-nugget-neighbourhood" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    <FormField control={nuggetForm.control} name="insight" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>The Insight</FormLabel>
+                        <FormControl><Textarea placeholder="Share your local knowledge…" rows={3} {...field} data-testid="textarea-nugget-insight" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={nuggetForm.control} name="targetAudience" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Who it's for <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                          <FormControl><Input placeholder="e.g., early risers, families" {...field} data-testid="input-nugget-for" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={nuggetForm.control} name="notFor" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Who it's NOT for <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                          <FormControl><Input placeholder="e.g., solo travelers" {...field} data-testid="input-nugget-not-for" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    {/* Seasonality */}
+                    <FormField control={nuggetForm.control} name="seasonality" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Seasonality</FormLabel>
+                        <div className="flex flex-wrap gap-2">
+                          {seasons.map(s => {
+                            const selected = (field.value || []).includes(s);
+                            return (
+                              <button key={s} type="button"
+                                onClick={() => {
+                                  const current = field.value || [];
+                                  field.onChange(selected ? current.filter(x => x !== s) : [...current, s]);
+                                }}
+                                className={cn("px-3 py-1 rounded-full text-xs border capitalize transition-all", selected ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/50")}
+                                data-testid={`button-season-${s}`}>
+                                {s}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <DialogFooter className="gap-2">
+                      <Button type="button" variant="outline" onClick={() => { setIsNuggetDialogOpen(false); setEditingNugget(null); nuggetForm.reset(); }} data-testid="button-nugget-cancel">Cancel</Button>
+                      <Button type="submit" disabled={createNuggetMutation.isPending || updateNuggetMutation.isPending} data-testid="button-nugget-save">
+                        {(createNuggetMutation.isPending || updateNuggetMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        {editingNugget ? "Save Changes" : "Add Nugget"}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        ) : (
+        <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-content-studio-title">Content Creator Studio</h1>
@@ -756,6 +1151,8 @@ export default function ContentStudio() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
+        )}
       </div>
     </ExpertLayout>
   );
