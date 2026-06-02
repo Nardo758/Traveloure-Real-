@@ -3267,19 +3267,17 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     try {
       const userId = (req.user as any).claims.sub;
 
-      // Fetch all service bookings for this provider and payout history
-      const [bookings, earnings, payouts] = await Promise.all([
+      // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
+      const [bookings, payouts, ledgerSummary] = await Promise.all([
         storage.getServiceBookings({ providerId: userId }),
-        storage.getExpertEarnings(userId),
         storage.getExpertPayouts(userId),
+        storage.getExpertEarningsSummary(userId),
       ]);
 
-      // Aggregate directly from service_bookings (never from expert_earnings ledger)
+      // Compute gross/fee totals and monthly figure from bookings for display context
       const now = new Date();
       let grossBookingTotal = 0;
       let platformFeeTotal = 0;
-      let totalEarnings = 0;
-      let pendingPayout = 0;
       let monthlyEarnings = 0;
 
       for (const b of bookings) {
@@ -3291,27 +3289,25 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         platformFeeTotal += fee;
 
         if (b.status === "completed") {
-          totalEarnings += earned;
           const completedAt = b.completedAt ? new Date(b.completedAt) : null;
           if (completedAt && completedAt.getMonth() === now.getMonth() && completedAt.getFullYear() === now.getFullYear()) {
             monthlyEarnings += earned;
           }
-        } else if (b.status === "pending" || b.status === "confirmed") {
-          pendingPayout += earned;
         }
       }
 
-      // Effective share rate from actual data; fall back to per-service rate or 0.30
       const effectiveRate = grossBookingTotal > 0
-        ? Number(((totalEarnings + pendingPayout) / grossBookingTotal).toFixed(4))
+        ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
         : 0.30;
 
       const lastPayout = payouts[0];
 
+      // Summary figures sourced from the expert_earnings ledger — same source used by payout request validation
       const summary = {
-        totalEarnings,
+        totalEarnings: ledgerSummary.total,
         monthlyEarnings,
-        pendingPayout,
+        pendingPayout: ledgerSummary.pending,
+        availableForPayout: ledgerSummary.available,
         lastPayout: lastPayout ? parseFloat(lastPayout.amount || '0') : 0,
         lastPayoutDate: lastPayout?.processedAt
           ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -3321,8 +3317,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         revenueShareRate: effectiveRate,
       };
 
-      // Build transactions from service_bookings so both summary and transactions are
-      // derived from the same canonical source (not the expert_earnings ledger)
+      // Build transactions from service_bookings for the activity feed
       const bookingTransactions = [...bookings]
         .sort((a, b) => new Date(b.createdAt as any || 0).getTime() - new Date(a.createdAt as any || 0).getTime())
         .slice(0, 20)
@@ -12139,16 +12134,25 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   app.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
+    const MINIMUM_PAYOUT = 25;
     try {
       const userId = (req.user as any).claims.sub;
       const { amount, payoutMethod } = req.body;
       if (!amount || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
+      if (amount < MINIMUM_PAYOUT) {
+        return res.status(400).json({ error: `Minimum payout amount is $${MINIMUM_PAYOUT}` });
+      }
+
+      const stripeAccount = await storage.getUserStripeAccount(userId);
+      if (!stripeAccount.stripeAccountId || stripeAccount.stripeAccountStatus !== 'active') {
+        return res.status(400).json({ error: "Stripe Connect account not active. Please complete onboarding before requesting a payout." });
+      }
 
       const summary = await storage.getProviderEarningsSummary(userId);
       if (amount > summary.available) {
-        return res.status(400).json({ error: "Insufficient available balance" });
+        return res.status(400).json({ error: `Insufficient available balance. Available: $${summary.available.toFixed(2)}` });
       }
 
       const payout = await storage.createProviderPayout({
@@ -12161,6 +12165,53 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json(payout);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to request payout", error: error.message });
+    }
+  });
+
+  // Expert payout request (mirrors provider payout request)
+  app.post("/api/expert/payouts/request", isAuthenticated, async (req, res) => {
+    const MINIMUM_PAYOUT = 25;
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { amount, payoutMethod } = req.body;
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Invalid payout amount" });
+      }
+      if (amount < MINIMUM_PAYOUT) {
+        return res.status(400).json({ error: `Minimum payout amount is $${MINIMUM_PAYOUT}` });
+      }
+
+      const stripeAccount = await storage.getUserStripeAccount(userId);
+      if (!stripeAccount.stripeAccountId || stripeAccount.stripeAccountStatus !== 'active') {
+        return res.status(400).json({ error: "Stripe Connect account not active. Please complete onboarding before requesting a payout." });
+      }
+
+      const summary = await storage.getExpertEarningsSummary(userId);
+      if (amount > summary.available) {
+        return res.status(400).json({ error: `Insufficient available balance. Available: $${summary.available.toFixed(2)}` });
+      }
+
+      const payout = await storage.createExpertPayout({
+        expertId: userId,
+        amount: String(amount),
+        payoutMethod: payoutMethod || 'bank_transfer',
+        status: 'pending',
+      });
+
+      res.json(payout);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to request payout", error: error.message });
+    }
+  });
+
+  // Get expert payouts
+  app.get("/api/expert/payouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const payouts = await storage.getExpertPayouts(userId);
+      res.json(payouts);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get expert payouts", error: error.message });
     }
   });
 
@@ -12333,14 +12384,31 @@ export async function registerDiscoveryRoutes(app: Express) {
         const recipientStripe = await storage.getUserStripeAccount(recipientId);
 
         if (recipientStripe.stripeAccountId && recipientStripe.canReceivePayments) {
-          try {
-            const { stripeConnectService } = await import('./services/stripe-connect.service');
-            const payoutAmount = requesterType === 'expert'
-              ? (await db.select({ amount: expertPayouts.amount }).from(expertPayouts).where(eq(expertPayouts.id, id)))[0]?.amount
-              : (await db.select({ amount: providerPayouts.amount }).from(providerPayouts).where(eq(providerPayouts.id, id)))[0]?.amount;
+          const { stripeConnectService } = await import('./services/stripe-connect.service');
+          const payoutAmount = requesterType === 'expert'
+            ? (await db.select({ amount: expertPayouts.amount }).from(expertPayouts).where(eq(expertPayouts.id, id)))[0]?.amount
+            : (await db.select({ amount: providerPayouts.amount }).from(providerPayouts).where(eq(providerPayouts.id, id)))[0]?.amount;
 
+          const payoutAmountNum = parseFloat(payoutAmount || '0');
+
+          // Check platform balance before initiating transfer
+          try {
+            const platformBalance = await stripeConnectService.getAccountBalance();
+            if (platformBalance.available < payoutAmountNum) {
+              return res.status(402).json({
+                error: `Insufficient platform balance. Available: $${platformBalance.available.toFixed(2)}, Required: $${payoutAmountNum.toFixed(2)}`,
+                platformAvailable: platformBalance.available,
+                required: payoutAmountNum,
+              });
+            }
+          } catch (balanceError: any) {
+            console.error('Failed to check platform balance:', balanceError);
+            return res.status(500).json({ error: "Failed to check platform balance before transfer" });
+          }
+
+          try {
             const transfer = await stripeConnectService.createTransfer(
-              parseFloat(payoutAmount || '0'),
+              payoutAmountNum,
               'usd',
               recipientStripe.stripeAccountId,
               `Traveloure ${requesterType} payout`,
@@ -12351,6 +12419,19 @@ export async function registerDiscoveryRoutes(app: Express) {
               updated = await storage.updateExpertPayoutStatus(id, 'completed', notes, transfer.transferId);
             } else {
               updated = await storage.updateProviderPayoutStatus(id, 'completed', notes, transfer.transferId);
+            }
+
+            // Send in-app notification to the recipient
+            try {
+              await storage.createNotification({
+                userId: recipientId,
+                type: 'payout_processed',
+                title: 'Payout Processed',
+                message: `Your payout of $${payoutAmountNum.toFixed(2)} has been processed and is on its way to your Stripe account.`,
+                data: { payoutId: id, amount: payoutAmountNum, transferId: transfer.transferId },
+              });
+            } catch (notifError) {
+              console.error('Failed to send payout notification:', notifError);
             }
           } catch (stripeError: any) {
             console.error('Stripe transfer failed:', stripeError);

@@ -11,8 +11,10 @@ import { Router } from "express";
 import Stripe from "stripe";
 import crypto from "crypto";
 import { db } from "../db";
-import { localExpertForms, serviceProviderForms } from "@shared/schema";
+import { localExpertForms, serviceProviderForms, expertPayouts, providerPayouts } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { storage } from "../storage";
+import { revenueTrackingService } from "../services/revenue-tracking.service";
 
 const router = Router();
 
@@ -135,6 +137,122 @@ router.post("/persona", async (req: any, res) => {
       .where(eq((serviceProviderForms as any).personaInquiryId, inquiryId));
   } catch (err) {
     console.error("Persona webhook processing error:", err);
+  }
+
+  res.json({ received: true });
+});
+
+// POST /api/webhooks/stripe
+// Handles Stripe Connect account events, transfer confirmations, and payment intents.
+// No auth middleware — verified via Stripe-Signature header using raw body.
+router.post("/stripe", async (req: any, res) => {
+  const sig = req.headers["stripe-signature"] as string | undefined;
+  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+  let event: Stripe.Event;
+
+  if (webhookSecret) {
+    if (!sig) {
+      return res.status(400).json({ message: "Missing Stripe-Signature header" });
+    }
+    if (!req.rawBody) {
+      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
+    }
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Stripe Connect webhook signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
+    }
+  } else {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(400).json({ message: "STRIPE_CONNECT_WEBHOOK_SECRET must be set in production" });
+    }
+    try {
+      event = typeof req.body === "object" ? req.body : JSON.parse(req.rawBody?.toString() ?? "{}");
+    } catch (err: any) {
+      return res.status(400).json({ message: "Invalid JSON body" });
+    }
+  }
+
+  try {
+    switch (event.type) {
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        const userId = account.metadata?.userId;
+        if (!userId) break;
+
+        let status = "onboarding_incomplete";
+        if (account.details_submitted && account.charges_enabled && account.payouts_enabled) {
+          status = "active";
+        } else if (account.details_submitted) {
+          status = "under_review";
+        }
+
+        await storage.updateUserStripeAccount(userId, account.id, status);
+        console.log(`Stripe account.updated: userId=${userId} status=${status}`);
+        break;
+      }
+
+      case "transfer.created":
+      case "transfer.paid": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const payoutId = transfer.metadata?.payoutId;
+        const requesterType = transfer.metadata?.requesterType;
+        if (!payoutId || !requesterType) break;
+
+        if (requesterType === "expert") {
+          await storage.updateExpertPayoutStatus(payoutId, "completed", undefined, transfer.id);
+        } else if (requesterType === "provider") {
+          await storage.updateProviderPayoutStatus(payoutId, "completed", undefined, transfer.id);
+        }
+        console.log(`Stripe ${event.type}: payoutId=${payoutId} transferId=${transfer.id}`);
+        break;
+      }
+
+      case "payment_intent.succeeded": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        const sourceType = paymentIntent.metadata?.sourceType as any;
+        const sourceId = paymentIntent.metadata?.sourceId;
+        const expertId = paymentIntent.metadata?.expertId;
+        const providerId = paymentIntent.metadata?.providerId;
+
+        // Only record if we have enough metadata and it hasn't been recorded already
+        if (sourceId && sourceType) {
+          const amount = paymentIntent.amount / 100;
+          const expertShare = expertId && paymentIntent.metadata?.expertShare
+            ? parseFloat(paymentIntent.metadata.expertShare)
+            : undefined;
+          const providerShare = providerId && paymentIntent.metadata?.providerShare
+            ? parseFloat(paymentIntent.metadata.providerShare)
+            : undefined;
+
+          try {
+            await revenueTrackingService.recordRevenueEvent({
+              sourceType: sourceType || "other",
+              sourceId,
+              grossAmount: amount,
+              expertId,
+              expertShare,
+              providerId,
+              providerShare,
+              description: `Payment intent ${paymentIntent.id}`,
+              metadata: { paymentIntentId: paymentIntent.id },
+            });
+            console.log(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId}`);
+          } catch (err: any) {
+            // Don't fail the webhook if revenue recording fails (idempotency)
+            console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
+          }
+        }
+        break;
+      }
+
+      default:
+        // Acknowledge unhandled event types without error
+        break;
+    }
+  } catch (err) {
+    console.error("Stripe Connect webhook processing error:", err);
   }
 
   res.json({ received: true });
