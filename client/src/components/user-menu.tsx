@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   ChevronDown,
   Map,
-  CreditCard,
   UserCheck,
   Building2,
   LogOut,
@@ -117,7 +116,6 @@ export function UserMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
-        {/* Identity header */}
         <DropdownMenuLabel className="font-normal pb-1">
           <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
           {user.email && (
@@ -153,13 +151,6 @@ export function UserMenu() {
                 Expert Profile
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/credits" className="cursor-pointer" data-testid="link-user-credits">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Credits & Billing
-              </Link>
-            </DropdownMenuItem>
           </>
         )}
 
@@ -184,33 +175,17 @@ export function UserMenu() {
                 Provider Profile
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/credits" className="cursor-pointer" data-testid="link-user-credits">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Credits & Billing
-              </Link>
-            </DropdownMenuItem>
           </>
         )}
 
         {/* ── Executive Assistant role ── */}
         {isEA && (
-          <>
-            <DropdownMenuItem asChild>
-              <Link href="/ea/dashboard" className="cursor-pointer" data-testid="link-user-ea-dashboard">
-                <CalendarClock className="w-4 h-4 mr-2" />
-                EA Dashboard
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/credits" className="cursor-pointer" data-testid="link-user-credits">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Credits & Billing
-              </Link>
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem asChild>
+            <Link href="/ea/dashboard" className="cursor-pointer" data-testid="link-user-ea-dashboard">
+              <CalendarClock className="w-4 h-4 mr-2" />
+              EA Dashboard
+            </Link>
+          </DropdownMenuItem>
         )}
 
         {/* ── Admin role ── */}
@@ -226,13 +201,6 @@ export function UserMenu() {
               <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
                 <Map className="w-4 h-4 mr-2" />
                 My Trips
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/credits" className="cursor-pointer" data-testid="link-user-credits">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Credits & Billing
               </Link>
             </DropdownMenuItem>
           </>
@@ -254,12 +222,6 @@ export function UserMenu() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/credits" className="cursor-pointer" data-testid="link-user-credits">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Credits & Billing
-              </Link>
-            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/expert-status" className="cursor-pointer" data-testid="link-user-expert-status">
                 <UserCheck className="w-4 h-4 mr-2" />
