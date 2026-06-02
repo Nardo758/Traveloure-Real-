@@ -28,6 +28,7 @@ import {
   Settings,
   Link2,
   ShieldCheck,
+  MapPin,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -42,6 +43,7 @@ function buildMenuGroups(expertType?: string | null) {
         { title: "Dashboard", href: "/expert/dashboard", icon: Home },
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
         { title: isEA ? "Executives" : "Clients", href: "/expert/clients", icon: Users },
+        { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
         { title: "Messages", href: "/expert/messages", icon: MessageSquare },
       ],
     },
