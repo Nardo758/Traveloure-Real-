@@ -58,7 +58,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -1741,8 +1741,24 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.status(204).send();
   });
 
+  // === City Neighborhoods (v2 spec §5.1) ===
+  // Public lookup powering the provider listing form's neighborhood picker
+  // and the location-view neighborhood-as-ecosystem unit (Phase 3).
+  app.get("/api/city-neighborhoods", async (_req, res) => {
+    try {
+      const rows = await db
+        .select()
+        .from(cityNeighborhoods)
+        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name);
+      res.json(rows);
+    } catch (err) {
+      console.error("Error fetching city neighborhoods:", err);
+      res.status(500).json({ message: "Failed to fetch neighborhoods" });
+    }
+  });
+
   // === Service Categories Routes ===
-  
+
   // Get all categories
   app.get("/api/service-categories", async (req, res) => {
     const categories = await storage.getServiceCategories();

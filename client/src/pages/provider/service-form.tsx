@@ -52,6 +52,7 @@ interface ServiceFormData {
   maxConcurrentClients: number;
   // Logistics
   serviceArea: string;
+  neighborhood: string; // v2 spec §5.1 — slug from city_neighborhoods, or "" for none
   meetingPoint: string;
   pickupAvailable: boolean;
   pickupAddress: string;
@@ -74,6 +75,7 @@ function buildEmptyForm(): ServiceFormData {
     whatIncluded: [],
     maxConcurrentClients: 1,
     serviceArea: "",
+    neighborhood: "",
     meetingPoint: "",
     pickupAvailable: false,
     pickupAddress: "",
@@ -97,6 +99,7 @@ function mapServiceToForm(s: any): ServiceFormData {
     whatIncluded: (s.whatIncluded as string[]) || [],
     maxConcurrentClients: s.maxConcurrentBookings || 1,
     serviceArea: s.location || "",
+    neighborhood: s.neighborhood || "",
     meetingPoint: s.meetingPoint || "",
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
@@ -122,6 +125,11 @@ export default function ProviderServiceForm() {
   const { data: subcategories = [] } = useQuery<ServiceSubcategory[]>({
     queryKey: ["/api/service-categories", formData.categoryId, "subcategories"],
     enabled: !!formData.categoryId,
+  });
+
+  // City neighborhoods for the optional neighborhood picker (v2 spec §5.1).
+  const { data: allNeighborhoods = [] } = useQuery<Array<{ id: string; city: string; country: string; name: string; slug: string }>>({
+    queryKey: ["/api/city-neighborhoods"],
   });
 
   const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
@@ -197,6 +205,7 @@ export default function ProviderServiceForm() {
         whatIncluded: formData.whatIncluded,
         maxConcurrentBookings: formData.maxConcurrentClients,
         location: formData.serviceArea || "Unknown",
+        neighborhood: formData.neighborhood || null,
         // logistics
         meetingPoint: formData.meetingPoint || null,
         pickupAvailable: formData.pickupAvailable,
@@ -541,6 +550,34 @@ export default function ProviderServiceForm() {
               />
               <p className="text-xs text-muted-foreground mt-1">The region or city your service covers.</p>
             </div>
+
+            {/* Neighborhood (optional) — v2 spec §5.1 */}
+            {allNeighborhoods.length > 0 && (
+              <div>
+                <Label htmlFor="neighborhood" className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" /> Neighborhood <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Select
+                  value={formData.neighborhood || "__none__"}
+                  onValueChange={(v) => set("neighborhood", v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger id="neighborhood" className="mt-2" data-testid="select-neighborhood">
+                    <SelectValue placeholder="Pick the neighborhood you serve" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None / not applicable —</SelectItem>
+                    {allNeighborhoods.map((n) => (
+                      <SelectItem key={n.id} value={n.slug} data-testid={`neighborhood-${n.slug}`}>
+                        {n.city} — {n.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Helps travellers find your service inside the location marketplace. Leave blank if you serve the whole city.
+                </p>
+              </div>
+            )}
 
             {/* Meeting Point — only shown for in-person / hybrid */}
             {needsMeetingPoint && (
