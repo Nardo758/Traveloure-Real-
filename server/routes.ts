@@ -59,7 +59,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry, affiliateClicks } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -11841,9 +11841,12 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   // Content Hub Affiliate Redirect — unified intermediary for ALL affiliate-linked content hub items.
-  // Records an affiliate_clicks row (productId for affiliate_products rows, both null for registry rows —
-  // both FK fields are nullable so null is valid), then returns the authoritative affiliate URL from the DB.
-  // The frontend never passes the URL — server resolves it, preventing URL tampering.
+  // Routes through the established affiliateScraperService.trackClick() path so all content-hub
+  // affiliate clicks share the same tracking flow as other affiliate clicks.
+  // For affiliate_products rows: productId is passed (valid FK).
+  // For content_registry rows: partnerId from metadata is passed when present; otherwise neither
+  //   ID is set (both FK fields are nullable) — the service still inserts the tracking row,
+  //   then throws "not found" (expected); we catch it and return our locally-resolved URL.
   app.post("/api/content/affiliate-redirect", async (req, res) => {
     try {
       const { itemId, itemType } = req.body;
@@ -11852,7 +11855,14 @@ export async function registerDiscoveryRoutes(app: Express) {
       }
 
       let affiliateUrl: string | null = null;
-      let productId: string | null = null;
+      const trackPayload: Record<string, any> = {
+        initiatedBy: "user" as const,
+        referrer: req.headers.referer || undefined,
+        userAgent: req.headers["user-agent"] || undefined,
+        ipAddress: req.ip || undefined,
+      };
+      const authUserId = (req.user as any)?.claims?.sub || null;
+      if (authUserId) trackPayload.userId = authUserId;
 
       if (itemType === "affiliate") {
         const [product] = await db
@@ -11862,7 +11872,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           .limit(1);
         if (!product) return res.status(404).json({ message: "Item not found" });
         affiliateUrl = product.affiliateUrl || product.productUrl || null;
-        productId = product.id;
+        trackPayload.productId = product.id;  // valid FK → affiliate_products.id
       } else {
         // content_registry
         const [item] = await db
@@ -11873,24 +11883,28 @@ export async function registerDiscoveryRoutes(app: Express) {
         if (!item) return res.status(404).json({ message: "Item not found" });
         const meta = (item.metadata as any) || {};
         affiliateUrl = meta.affiliate_url || null;
-        // partnerId intentionally left null — registry items may not have a valid affiliate_partners FK
+        // Pass partnerId when metadata carries a valid affiliate_partners FK value
+        const metaPartnerId = meta.partnerId || meta.partner_id || null;
+        if (metaPartnerId) trackPayload.partnerId = metaPartnerId;
       }
 
       if (!affiliateUrl) {
         return res.status(400).json({ message: "No affiliate URL available for this item" });
       }
 
-      // Insert tracking row — productId/partnerId are nullable FKs; null is valid for registry items
-      const userId = (req.user as any)?.claims?.sub || null;
-      await db.insert(affiliateClicks).values({
-        productId,
-        partnerId: null,
-        userId,
-        initiatedBy: "user",
-        referrer: req.headers.referer || null,
-        userAgent: req.headers["user-agent"] || null,
-        ipAddress: req.ip || null,
-      });
+      // Route through established service tracking path.
+      // For registry items without productId/partnerId the service inserts the row (both FK cols are
+      // nullable → null is valid), then throws "Product or partner not found" because it cannot look
+      // up a return URL. We catch that narrow error and use our already-resolved affiliateUrl.
+      const { affiliateScraperService } = await import("./services/affiliate-scraper.service");
+      try {
+        await affiliateScraperService.trackClick(trackPayload as any);
+      } catch (trackErr: any) {
+        if (trackErr?.message && !trackErr.message.includes("not found")) {
+          console.error("Affiliate click tracking error:", trackErr);
+        }
+        // Otherwise: expected for registry items with no partner/product FK — insert already committed
+      }
 
       res.json({ url: affiliateUrl });
     } catch (err: any) {
