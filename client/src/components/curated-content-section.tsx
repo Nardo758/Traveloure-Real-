@@ -64,6 +64,7 @@ interface Trip {
 interface CuratedContentSectionProps {
   destination: string;
   tab?: string;
+  surface?: string;
   className?: string;
   label?: string;
 }
@@ -386,6 +387,7 @@ function CuratedCard({
 export function CuratedContentSection({
   destination,
   tab,
+  surface,
   className = "",
   label = "Curated Experiences",
 }: CuratedContentSectionProps) {
@@ -395,9 +397,10 @@ export function CuratedContentSection({
 
   const params = new URLSearchParams({ destination });
   if (tab) params.set("tab", tab);
+  if (surface) params.set("surface", surface);
 
   const { data, isLoading } = useQuery<CuratedContentResponse>({
-    queryKey: ["/api/content/discover", destination, tab],
+    queryKey: ["/api/content/discover", destination, tab, surface],
     queryFn: async () => {
       const res = await fetch(`/api/content/discover?${params.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch curated content");

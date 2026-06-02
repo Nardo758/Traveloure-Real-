@@ -11546,11 +11546,15 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // Content Hub Discover endpoint — returns curated affiliate + registry items matched to a destination
+  // Content Hub Discover endpoint — returns curated affiliate + registry items matched to a destination.
+  // When a ?surface= param is provided (e.g. "travelpulse-discover"), explicit content_placement_rules
+  // for that surface + city are fetched first (pinned items float to the top). The normal ILIKE
+  // fallback still runs but excludes sourceIds already covered by explicit rules to avoid duplicates.
   app.get("/api/content/discover", async (req, res) => {
     try {
       const destination = (req.query.destination as string || "").trim();
       const tabParam = (req.query.tab as string || "").trim();
+      const surfaceParam = (req.query.surface as string || "").trim();
       // Support both ?content_types=foo,bar (string) and ?content_types[]=foo&content_types[]=bar (array)
       const rawContentTypes = req.query.content_types;
       const contentTypesParam: string = Array.isArray(rawContentTypes)
@@ -11577,7 +11581,65 @@ export async function registerDiscoveryRoutes(app: Express) {
         ? TAB_AFFILIATE_CATEGORIES[tabParam]
         : null;
 
-      // Query affiliate_products matched to destination (+ optional category filter for tab)
+      // ── Step 1: Explicit placement rules (when surface is provided) ───────────
+      // Fetch city's current pulse score so we can honour minPulseScore thresholds.
+      let cityPulseScore = 0;
+      if (surfaceParam) {
+        const pulseRow = await db
+          .select({ pulseScore: travelPulseCities.pulseScore })
+          .from(travelPulseCities)
+          .where(ilike(travelPulseCities.cityName, `%${city}%`))
+          .limit(1);
+        cityPulseScore = pulseRow[0]?.pulseScore ?? 0;
+      }
+
+      // Load active placement rules for this surface + city.
+      // A rule matches when isPinned=true OR cityPulseScore >= minPulseScore.
+      const placementRules = surfaceParam
+        ? await storage.getContentPlacementRules({
+            cityName: city,
+            surface: surfaceParam,
+            isActive: true,
+          })
+        : [];
+
+      const eligibleRules = placementRules.filter(
+        r => r.isPinned || (r.minPulseScore ?? 0) <= cityPulseScore
+      );
+
+      // Separate rules by source type and collect sourceIds
+      const pinnedAffiliateIds = eligibleRules
+        .filter(r => r.contentSource === "affiliate_product" && r.isPinned)
+        .map(r => r.sourceId).filter(Boolean) as string[];
+      const pinnedRegistryIds = eligibleRules
+        .filter(r => r.contentSource === "content_registry" && r.isPinned)
+        .map(r => r.sourceId).filter(Boolean) as string[];
+      const eligibleAffiliateIds = eligibleRules
+        .filter(r => r.contentSource === "affiliate_product")
+        .map(r => r.sourceId).filter(Boolean) as string[];
+      const eligibleRegistryIds = eligibleRules
+        .filter(r => r.contentSource === "content_registry")
+        .map(r => r.sourceId).filter(Boolean) as string[];
+
+      // Fetch explicitly-placed affiliate products
+      const placedAffiliate = eligibleAffiliateIds.length
+        ? await db.select().from(affiliateProducts)
+            .where(and(
+              eq(affiliateProducts.isActive, true),
+              inArray(affiliateProducts.id, eligibleAffiliateIds)
+            ))
+        : [];
+
+      // Fetch explicitly-placed registry items
+      const placedRegistry = eligibleRegistryIds.length
+        ? await db.select().from(contentRegistry)
+            .where(and(
+              eq(contentRegistry.status, "published"),
+              inArray(contentRegistry.id, eligibleRegistryIds)
+            ))
+        : [];
+
+      // ── Step 2: ILIKE fallback (excludes items already covered by rules) ─────
       const affiliateBaseCondition = and(
         eq(affiliateProducts.isActive, true),
         or(
@@ -11586,19 +11648,25 @@ export async function registerDiscoveryRoutes(app: Express) {
           ilike(affiliateProducts.location, `%${city}%`)
         )
       );
-      const affiliateCondition = affiliateCategoryFilter
+      const affiliateCategoryCondition = affiliateCategoryFilter
         ? and(affiliateBaseCondition, or(
             ...affiliateCategoryFilter.map(cat => ilike(affiliateProducts.category, `%${cat}%`))
           ))
         : affiliateBaseCondition;
 
+      // Use notInArray to safely exclude IDs already covered by placement rules
       const affiliateItems = await db
         .select()
         .from(affiliateProducts)
-        .where(affiliateCondition)
+        .where(
+          eligibleAffiliateIds.length
+            ? and(affiliateCategoryCondition, sql`${affiliateProducts.id}::text != ALL(ARRAY[${sql.raw(eligibleAffiliateIds.map(id => `'${id.replace(/'/g, "''")}'`).join(','))}]::text[])`)
+            : affiliateCategoryCondition
+        )
         .limit(20);
 
-      // Query content_registry for published items with location metadata matching destination
+      // Query content_registry for published items with location metadata matching destination.
+      // Exclude registry items already loaded via placement rules.
       const registryItems = await db
         .select()
         .from(contentRegistry)
@@ -11611,14 +11679,16 @@ export async function registerDiscoveryRoutes(app: Express) {
               OR ${contentRegistry.metadata}->>'country' ILIKE ${'%' + country + '%'}
               OR ${contentRegistry.metadata}->>'destination' ILIKE ${'%' + city + '%'}
             )`,
-            inArray(contentRegistry.contentType, allowedContentTypes as any)
+            inArray(contentRegistry.contentType, allowedContentTypes as any),
+            ...(eligibleRegistryIds.length
+              ? [sql`${contentRegistry.id}::text != ALL(ARRAY[${sql.raw(eligibleRegistryIds.map(id => `'${id.replace(/'/g, "''")}'`).join(','))}]::text[])`]
+              : [])
           )
         )
         .limit(20);
 
-      // Normalize affiliate products into unified card shape.
-      // tracking.productId is the affiliate_products.id (valid FK) — safe to send to /api/affiliate/track-click
-      const affiliateCards = affiliateItems.map((p: any) => ({
+      // ── Normalizer helpers ────────────────────────────────────────────────────
+      const normalizeAffiliate = (p: any, isPinned = false) => ({
         id: `affiliate-${p.id}`,
         sourceId: p.id,
         type: "affiliate" as const,
@@ -11627,9 +11697,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         description: p.shortDescription || p.description || "",
         cover_image: p.imageUrl || null,
         price: p.price ? String(p.price) : null,
-        price_display: p.price
-          ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}`
-          : null,
+        price_display: p.price ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}` : null,
         affiliate_url: p.affiliateUrl || p.productUrl || null,
         source: "Affiliate Partner",
         rating: p.rating ? parseFloat(String(p.rating)) : null,
@@ -11638,22 +11706,18 @@ export async function registerDiscoveryRoutes(app: Express) {
         duration: p.duration || null,
         highlights: p.highlights || [],
         metadata: p.metadata || {},
-        // Explicit tracking identifiers safe to pass as FKs to affiliate_clicks
+        isPinned,
         tracking: {
-          productId: p.id,       // FK → affiliate_products.id (valid)
+          productId: p.id,
           partnerId: null as string | null,
           isAffiliateTracked: true,
         },
-      }));
+      });
 
-      // Normalize content_registry items into unified card shape.
-      // For registry items with affiliate_url, tracking uses metadata.partnerId (FK → affiliate_partners.id)
-      // if present; otherwise isAffiliateTracked = false (no valid FK available — skip track-click call).
-      const registryCards = registryItems.map((r: any) => {
+      const normalizeRegistry = (r: any, isPinned = false) => {
         const meta = r.metadata || {};
         const affiliateUrl = meta.affiliate_url || null;
         const metaPartnerId: string | null = meta.partnerId || meta.partner_id || null;
-        const isAffiliateTracked = !!(affiliateUrl && metaPartnerId);
         return {
           id: `registry-${r.id}`,
           sourceId: r.id,
@@ -11672,16 +11736,38 @@ export async function registerDiscoveryRoutes(app: Express) {
           duration: meta.duration || null,
           highlights: meta.highlights || [],
           metadata: meta,
-          // Only track when a valid partnerId FK exists in affiliate_partners table
+          isPinned,
           tracking: {
             productId: null as string | null,
             partnerId: metaPartnerId,
-            isAffiliateTracked,
+            isAffiliateTracked: !!(affiliateUrl && metaPartnerId),
           },
         };
-      });
+      };
 
-      const allItems = [...affiliateCards, ...registryCards];
+      // ── Assemble final list ───────────────────────────────────────────────────
+      // Order: pinned placed items → other placed items → ILIKE fallback items
+      const placedAffiliateCards = placedAffiliate.map(p =>
+        normalizeAffiliate(p, pinnedAffiliateIds.includes(p.id))
+      );
+      const placedRegistryCards = placedRegistry.map(r =>
+        normalizeRegistry(r, pinnedRegistryIds.includes(r.id))
+      );
+
+      const pinnedItems = [
+        ...placedAffiliateCards.filter(c => c.isPinned),
+        ...placedRegistryCards.filter(c => c.isPinned),
+      ];
+      const placedItems = [
+        ...placedAffiliateCards.filter(c => !c.isPinned),
+        ...placedRegistryCards.filter(c => !c.isPinned),
+      ];
+      const fallbackItems = [
+        ...affiliateItems.map(p => normalizeAffiliate(p)),
+        ...registryItems.map(r => normalizeRegistry(r)),
+      ];
+
+      const allItems = [...pinnedItems, ...placedItems, ...fallbackItems];
 
       res.json({ items: allItems, total: allItems.length });
     } catch (err: any) {
