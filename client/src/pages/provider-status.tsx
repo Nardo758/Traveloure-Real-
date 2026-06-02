@@ -74,6 +74,23 @@ const COUNTRY_REGISTRATION_LABELS: Record<string, { label: string; placeholder: 
   TH: { label: "Tax ID Number", placeholder: "e.g. 0105562123456" },
 };
 
+const COUNTRY_REQUIRED_DOCS: Record<string, string[]> = {
+  IN: ["Certificate of Incorporation", "GST Registration Certificate", "PAN Card (business)"],
+  JP: ["Company Registration Certificate (登記事項証明書)"],
+  CO: ["Cámara de Comercio certificate", "RUT (tax registry)"],
+  GB: ["Companies House confirmation statement", "Certificate of Incorporation"],
+  US: ["Articles of Incorporation or LLC Operating Agreement", "EIN confirmation letter (CP 575)"],
+  DE: ["Handelsregisterauszug (commercial register extract)"],
+  AU: ["ABN registration confirmation", "ASIC company extract"],
+  BR: ["Cartão CNPJ", "Contrato Social or Ato Constitutivo"],
+  SG: ["ACRA Business Profile", "Certificate of Incorporation"],
+  MX: ["Constancia de Situación Fiscal", "Acta Constitutiva"],
+  FR: ["Extrait Kbis (SIREN/SIRET)"],
+  ES: ["Certificado de situación censal", "Escritura de constitución"],
+  ID: ["NIB (Business Identification Number)", "NPWP certificate"],
+  TH: ["DBD company registration certificate", "VAT registration (Por Por 20)"],
+};
+
 const COUNTRY_LIST = [
   { code: "IN", name: "India" },
   { code: "JP", name: "Japan" },
@@ -319,6 +336,20 @@ export default function ProviderStatusPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {bizCountry && COUNTRY_REQUIRED_DOCS[bizCountry] && (
+                    <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 p-3">
+                      <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Required documents for {COUNTRY_LIST.find(c => c.code === bizCountry)?.name}:</p>
+                      <ul className="space-y-1">
+                        {COUNTRY_REQUIRED_DOCS[bizCountry].map((doc, i) => (
+                          <li key={i} className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                            <CheckCircle2 className="w-3 h-3 shrink-0 text-blue-500" />
+                            {doc}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-blue-500 mt-2">Paste a link to one of these documents in the field below, or your previously uploaded business license will be used.</p>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="biz-reg">{regInfo.label}</Label>
                     <Input
