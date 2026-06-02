@@ -12137,8 +12137,9 @@ export async function registerDiscoveryRoutes(app: Express) {
     const MINIMUM_PAYOUT = 25;
     try {
       const userId = (req.user as any).claims.sub;
-      const { amount, payoutMethod } = req.body;
-      if (!amount || amount <= 0) {
+      const { payoutMethod } = req.body;
+      const amount = Number(req.body.amount);
+      if (!isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
       if (amount < MINIMUM_PAYOUT) {
@@ -12173,8 +12174,9 @@ export async function registerDiscoveryRoutes(app: Express) {
     const MINIMUM_PAYOUT = 25;
     try {
       const userId = (req.user as any).claims.sub;
-      const { amount, payoutMethod } = req.body;
-      if (!amount || amount <= 0) {
+      const { payoutMethod } = req.body;
+      const amount = Number(req.body.amount);
+      if (!isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
       if (amount < MINIMUM_PAYOUT) {

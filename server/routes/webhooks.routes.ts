@@ -11,8 +11,8 @@ import { Router } from "express";
 import Stripe from "stripe";
 import crypto from "crypto";
 import { db } from "../db";
-import { localExpertForms, serviceProviderForms, expertPayouts, providerPayouts } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { localExpertForms, serviceProviderForms, expertPayouts, providerPayouts, platformRevenue } from "@shared/schema";
+import { eq, and, sql as drizzleSql } from "drizzle-orm";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 
@@ -218,6 +218,17 @@ router.post("/stripe", async (req: any, res) => {
 
         // Only record if we have enough metadata and it hasn't been recorded already
         if (sourceId && sourceType) {
+          // Idempotency check: skip if this payment intent has already been recorded
+          const existing = await db.select({ id: platformRevenue.id })
+            .from(platformRevenue)
+            .where(drizzleSql`${platformRevenue.metadata}->>'paymentIntentId' = ${paymentIntent.id}`)
+            .limit(1);
+
+          if (existing.length > 0) {
+            console.log(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
+            break;
+          }
+
           const amount = paymentIntent.amount / 100;
           const expertShare = expertId && paymentIntent.metadata?.expertShare
             ? parseFloat(paymentIntent.metadata.expertShare)
@@ -238,9 +249,8 @@ router.post("/stripe", async (req: any, res) => {
               description: `Payment intent ${paymentIntent.id}`,
               metadata: { paymentIntentId: paymentIntent.id },
             });
-            console.log(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId}`);
+            console.log(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId} paymentIntentId=${paymentIntent.id}`);
           } catch (err: any) {
-            // Don't fail the webhook if revenue recording fails (idempotency)
             console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
           }
         }
