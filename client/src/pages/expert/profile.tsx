@@ -23,26 +23,42 @@ import {
   X,
   Save,
   StickyNote,
-  Lock
+  Lock,
+  Home
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 
+const LOCALITY_PROOF_OPTIONS = [
+  { value: "born_raised", label: "Born & raised here" },
+  { value: "long_term_10yr", label: "Long-term resident (10+ years)" },
+  { value: "resident_5yr", label: "Resident (5+ years)" },
+  { value: "current_resident", label: "Current resident (1–5 years)" },
+];
+
 export default function ExpertProfile() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [newSpecialty, setNewSpecialty] = useState("");
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>([]);
   const [expertNotesStyle, setExpertNotesStyle] = useState("");
+  const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
+  const [newNeighborhood, setNewNeighborhood] = useState("");
+  const [localityProof, setLocalityProof] = useState("");
 
   const { data: expertProfile, isLoading: profileLoading } = useQuery({
     queryKey: ["/api/experts", user?.id],
     enabled: !!user?.id,
+  });
+
+  const { data: neighborhoodsData, isLoading: neighborhoodsLoading } = useQuery({
+    queryKey: ["/api/expert/neighborhoods"],
   });
 
   const { data: selectedServices, isLoading: servicesLoading } = useQuery({
@@ -78,6 +94,14 @@ export default function ExpertProfile() {
     }
   }, [expertProfile]);
 
+  // Sync neighborhoods + localityProof from loaded data
+  React.useEffect(() => {
+    if (neighborhoodsData) {
+      setNeighborhoods((neighborhoodsData as any).neighborhoods || []);
+      setLocalityProof((neighborhoodsData as any).localityProof || "");
+    }
+  }, [neighborhoodsData]);
+
   const saveNotesMutation = useMutation({
     mutationFn: (notesStyle: string) =>
       apiRequest("PATCH", "/api/expert/profile-notes", { notesStyle }),
@@ -88,6 +112,30 @@ export default function ExpertProfile() {
       toast({ title: "Failed to save", variant: "destructive" });
     },
   });
+
+  const saveNeighborhoodsMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", "/api/expert/neighborhoods", { neighborhoods, localityProof }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/neighborhoods"] });
+      toast({ title: "Neighbourhood coverage saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save neighbourhood coverage", variant: "destructive" });
+    },
+  });
+
+  const handleAddNeighborhood = () => {
+    const trimmed = newNeighborhood.trim();
+    if (trimmed && !neighborhoods.includes(trimmed)) {
+      setNeighborhoods([...neighborhoods, trimmed]);
+      setNewNeighborhood("");
+    }
+  };
+
+  const handleRemoveNeighborhood = (name: string) => {
+    setNeighborhoods(neighborhoods.filter((n) => n !== name));
+  };
 
   const handleAddSpecialty = () => {
     if (newSpecialty.trim() && !specialties.includes(newSpecialty.trim())) {
@@ -259,6 +307,111 @@ export default function ExpertProfile() {
                   </Select>
                 )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* My Neighbourhoods */}
+        <Card className="border border-gray-200">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Home className="w-5 h-5 text-gray-500" />
+              My Neighbourhoods
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-500">
+              List the neighbourhoods you know well. These appear on your public profile and help travellers find the right local expert for their area.
+            </p>
+
+            {/* Locality proof */}
+            <div className="space-y-2">
+              <Label htmlFor="localityProof">My connection to these areas</Label>
+              {neighborhoodsLoading ? (
+                <Skeleton className="h-10 rounded" />
+              ) : (
+                <Select
+                  value={localityProof}
+                  onValueChange={setLocalityProof}
+                >
+                  <SelectTrigger data-testid="select-locality-proof">
+                    <SelectValue placeholder="Select your connection…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOCALITY_PROOF_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Neighbourhood tags */}
+            {neighborhoodsLoading ? (
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-8 w-28 rounded-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {neighborhoods.length > 0 ? (
+                  neighborhoods.map((name) => (
+                    <Badge
+                      key={name}
+                      variant="secondary"
+                      className="pl-3 pr-1 py-1.5 flex items-center gap-1"
+                      data-testid={`badge-neighbourhood-${name}`}
+                    >
+                      {name}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => handleRemoveNeighborhood(name)}
+                        data-testid={`button-remove-neighbourhood-${name}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No neighbourhoods added yet</p>
+                )}
+              </div>
+            )}
+
+            {/* Add neighbourhood input */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g. Shinjuku, Montmartre, Brooklyn Heights…"
+                value={newNeighborhood}
+                onChange={(e) => setNewNeighborhood(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddNeighborhood()}
+                data-testid="input-new-neighbourhood"
+              />
+              <Button
+                variant="outline"
+                onClick={handleAddNeighborhood}
+                data-testid="button-add-neighbourhood"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                className="bg-[#FF385C] hover:bg-[#e0324f] text-white"
+                disabled={saveNeighborhoodsMutation.isPending || neighborhoodsLoading}
+                onClick={() => saveNeighborhoodsMutation.mutate()}
+                data-testid="button-save-neighbourhoods"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveNeighborhoodsMutation.isPending ? "Saving…" : "Save Neighbourhoods"}
+              </Button>
             </div>
           </CardContent>
         </Card>
