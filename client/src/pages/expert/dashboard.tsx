@@ -76,6 +76,10 @@ interface AssignedTrip {
 export default function ExpertDashboard() {
   const [selectedTripId, setSelectedTripId] = useState("");
 
+  const { data: stripeStatus } = useQuery<{ connected: boolean; status: string }>({
+    queryKey: ["/api/stripe/connect/status"],
+  });
+
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsDashboard>({
     queryKey: ["/api/expert/analytics/dashboard"],
   });
@@ -136,6 +140,24 @@ export default function ExpertDashboard() {
           </h1>
           <p className="text-gray-600 mt-1">{analytics?.summary?.pendingBookings || 0} active clients • Top Destination Expert</p>
         </div>
+
+        {/* Stripe Connect Setup Banner */}
+        {stripeStatus && !stripeStatus.connected && (
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-center justify-between gap-4" data-testid="banner-stripe-connect">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-full flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+              </div>
+              <div>
+                <p className="font-semibold text-amber-900">Complete your payout setup</p>
+                <p className="text-sm text-amber-700">Connect a Stripe account to receive client payments and earn on bookings.</p>
+              </div>
+            </div>
+            <a href="/expert/earnings" className="flex-shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors" data-testid="link-setup-payouts">
+              Set Up Payouts →
+            </a>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
