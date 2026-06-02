@@ -81,6 +81,7 @@ import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { trackSearchEvent } from "@/lib/analytics";
+import { CuratedContentSection } from "@/components/curated-content-section";
 
 type ServiceCategory = {
   id: string;
@@ -1436,6 +1437,15 @@ export default function DiscoverPage() {
                       </div>
                     )}
                   </motion.div>
+                )}
+
+                {/* Curated Content Hub — shows affiliate + platform-curated items matching destination */}
+                {locationFilter && (
+                  <CuratedContentSection
+                    destination={locationFilter}
+                    label="Curated Experiences"
+                    className="mb-6"
+                  />
                 )}
 
                 <div className="flex flex-col lg:flex-row gap-6">
