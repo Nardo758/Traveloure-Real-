@@ -211,9 +211,10 @@ export default function ExpertsPage() {
       selectedLanguage === "All Languages" ||
       expert.expertForm?.languages?.includes(selectedLanguage);
 
+    const nbhQuery = neighbourhoodQuery.toLowerCase().trim();
     const matchesNeighbourhood =
-      neighbourhoodQuery.trim() === "" ||
-      neighbourhoods.some((n: string) => n.toLowerCase().includes(neighbourhoodQuery.toLowerCase()));
+      nbhQuery.length === 0 ||
+      (nbhQuery.length >= 3 && neighbourhoods.some((n: string) => n.toLowerCase().includes(nbhQuery)));
 
     return matchesSearch && matchesDestination && matchesLanguage && matchesNeighbourhood;
   });

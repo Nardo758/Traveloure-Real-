@@ -2772,10 +2772,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       });
     }
 
-    // Filter by neighbourhood name (partial match against local expert neighborhoods array)
+    // Filter by neighbourhood name (case-insensitive substring match, minimum 3 chars to avoid noise)
     if (neighbourhood) {
-      const nbh = neighbourhood.toLowerCase();
+      const nbh = neighbourhood.toLowerCase().trim();
       filtered = filtered.filter((expert: any) => {
+        if (nbh.length < 3) return false;
         const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
         return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
       });
