@@ -32,6 +32,7 @@ import {
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
   expertSelectedServices,
+  localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -17838,6 +17839,119 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("[EA] deleteAiTask error:", err);
       res.status(500).json({ message: "Failed to delete AI task" });
+    }
+  });
+
+  // ============================================================
+  // LOCAL EXPERT KNOWLEDGE NUGGETS
+  // ============================================================
+
+  // GET /api/expert/knowledge-nuggets — list own nuggets
+  app.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const nuggets = await db
+        .select()
+        .from(localKnowledgeNuggets)
+        .where(eq(localKnowledgeNuggets.expertUserId, expertId))
+        .orderBy(desc(localKnowledgeNuggets.createdAt));
+      res.json(nuggets);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] list error:", err);
+      res.status(500).json({ message: "Failed to fetch knowledge nuggets" });
+    }
+  });
+
+  // POST /api/expert/knowledge-nuggets — create nugget
+  app.post("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const parsed = insertLocalKnowledgeNuggetSchema.safeParse({ ...req.body, expertUserId: expertId });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const [nugget] = await db.insert(localKnowledgeNuggets).values(parsed.data).returning();
+      res.status(201).json(nugget);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] create error:", err);
+      res.status(500).json({ message: "Failed to create knowledge nugget" });
+    }
+  });
+
+  // PATCH /api/expert/knowledge-nuggets/:id — update own nugget
+  app.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { id } = req.params;
+      const existing = await db.select().from(localKnowledgeNuggets)
+        .where(and(eq(localKnowledgeNuggets.id, id), eq(localKnowledgeNuggets.expertUserId, expertId)))
+        .limit(1);
+      if (!existing.length) return res.status(404).json({ message: "Nugget not found" });
+      const allowed = ["nuggetType", "city", "linkedPoi", "linkedNeighbourhood", "insight", "targetAudience", "notFor", "seasonality"] as const;
+      const updates: Record<string, any> = {};
+      for (const key of allowed) {
+        if (key in req.body) updates[key] = req.body[key];
+      }
+      updates.updatedAt = new Date();
+      const [updated] = await db.update(localKnowledgeNuggets)
+        .set(updates)
+        .where(eq(localKnowledgeNuggets.id, id))
+        .returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] update error:", err);
+      res.status(500).json({ message: "Failed to update knowledge nugget" });
+    }
+  });
+
+  // DELETE /api/expert/knowledge-nuggets/:id — delete own nugget
+  app.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { id } = req.params;
+      const existing = await db.select().from(localKnowledgeNuggets)
+        .where(and(eq(localKnowledgeNuggets.id, id), eq(localKnowledgeNuggets.expertUserId, expertId)))
+        .limit(1);
+      if (!existing.length) return res.status(404).json({ message: "Nugget not found" });
+      await db.delete(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.id, id));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[Knowledge Nuggets] delete error:", err);
+      res.status(500).json({ message: "Failed to delete knowledge nugget" });
+    }
+  });
+
+  // GET /api/admin/local-experts/nugget-counts — nugget count per local expert
+  app.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req, res) => {
+    try {
+      const rows = await db
+        .select({ expertUserId: localKnowledgeNuggets.expertUserId, count: count() })
+        .from(localKnowledgeNuggets)
+        .groupBy(localKnowledgeNuggets.expertUserId);
+      const map: Record<string, number> = {};
+      for (const r of rows) map[r.expertUserId] = Number(r.count);
+      res.json(map);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] admin counts error:", err);
+      res.status(500).json({ message: "Failed to fetch nugget counts" });
+    }
+  });
+
+  // GET /api/knowledge-nuggets/city — for AI to pull nuggets by city
+  app.get("/api/knowledge-nuggets/city", isAuthenticated, async (req, res) => {
+    try {
+      const city = (req.query.city as string || "").trim();
+      if (!city) return res.status(400).json({ message: "city query param required" });
+      const nuggets = await db
+        .select()
+        .from(localKnowledgeNuggets)
+        .where(like(localKnowledgeNuggets.city, `%${city}%`))
+        .orderBy(desc(localKnowledgeNuggets.createdAt))
+        .limit(50);
+      res.json(nuggets);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] city search error:", err);
+      res.status(500).json({ message: "Failed to fetch city nuggets" });
     }
   });
 
