@@ -105,6 +105,22 @@ import {
 const EXPERT_SHARE_RATE = 0.75;
 const PLATFORM_FEE_RATE = 0.25;
 
+// ─── Service-category → booking_fee_configs category mapping ─────────────────
+// serviceCategories.slug values are detailed provider-category slugs (e.g.
+// "transportation-logistics"). booking_fee_configs.category uses broader domain
+// names ("transportation", "accommodation", …). This helper bridges the two.
+function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
+  if (!slug) return "default";
+  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
+  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
+  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
+  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
+  if (/flight|air|airline/.test(slug)) return "flights";
+  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
+  if (/insurance|safety|security/.test(slug)) return "insurance";
+  return "default";
+}
+
 // ─── Commission rate resolution ───────────────────────────────────────────────
 // Priority order:
 //  1. Per-service revenueShareRate column (caller applies this as final override)
@@ -341,8 +357,20 @@ export async function registerRoutes(
   // from the template UI and from-template flow.
   (async () => {
     try {
-      // "Itinerary Planning" category already seeded (from expertServiceCategories seed)
-      const ITINERARY_CATEGORY_ID = "0b8b0e25-845a-44fa-83a3-b065d7f23070";
+      // Resolve the category FK by name so this is safe on a clean DB.
+      // If "Itinerary Planning" doesn't exist yet, create it.
+      let categoryRow = await db.select({ id: expertServiceCategories.id })
+        .from(expertServiceCategories)
+        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
+        .then(r => r[0]);
+      if (!categoryRow) {
+        const [inserted] = await db.insert(expertServiceCategories)
+          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
+          .returning({ id: expertServiceCategories.id });
+        categoryRow = inserted;
+      }
+      const categoryId = categoryRow.id;
+
       const CANONICAL_OFFERINGS = [
         { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
         { name: "Cart Review & Optimization", description: "Expert review of your travel cart to find savings and better alternatives",                   price: "49.00",  sortOrder: 102 },
@@ -357,7 +385,7 @@ export async function registerRoutes(
       for (const offering of CANONICAL_OFFERINGS) {
         if (!existingEsoNames.has(offering.name)) {
           await db.insert(expertServiceOfferings).values({
-            categoryId: ITINERARY_CATEGORY_ID,
+            categoryId,
             name: offering.name,
             description: offering.description,
             price: offering.price,
@@ -2715,23 +2743,27 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
     .orderBy(expertServiceOfferings.sortOrder);
 
-    const templates = rows.map(o => ({
-      id:               o.id,
-      title:            o.name,
-      description:      o.description,
-      categoryId:       null,   // expertServiceCategories ≠ serviceCategories
-      serviceType:      null,
-      deliveryMethod:   null,
-      deliveryTimeframe: null,
-      suggestedPrice:   o.price,
-      requirements:     null,
-      whatIncluded:     null,
-      isActive:         o.isDefault ?? true,
-      sortOrder:        o.sortOrder,
-      createdAt:        o.createdAt,
-      category:         o.categoryName,
-    }));
-    res.json(templates);
+    if (rows.length > 0) {
+      return res.json(rows.map(o => ({
+        id:               o.id,
+        title:            o.name,
+        description:      o.description,
+        categoryId:       null,   // expertServiceCategories ≠ serviceCategories
+        serviceType:      null,
+        deliveryMethod:   null,
+        deliveryTimeframe: null,
+        suggestedPrice:   o.price,
+        requirements:     null,
+        whatIncluded:     null,
+        isActive:         o.isDefault ?? true,
+        sortOrder:        o.sortOrder,
+        createdAt:        o.createdAt,
+        category:         o.categoryName,
+      })));
+    }
+    // Fallback: seed hasn't run yet on this DB — return service_templates rows
+    const stRows = await storage.getServiceTemplates();
+    res.json(stRows);
   });
 
   // Get single template — tries expert_service_offerings first, falls back to service_templates
@@ -5935,16 +5967,32 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
       };
 
+      // Preload category slugs once to avoid N+1 queries in the item loops below.
+      // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
+      const distinctCatIds = [...new Set(
+        cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+      )];
+      const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
+      if (distinctCatIds.length > 0) {
+        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+          .from(serviceCategories)
+          .where(inArray(serviceCategories.id, distinctCatIds));
+        for (const row of catRows) {
+          catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+        }
+      }
+
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
       let checkoutPlatformFeeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // item.service.categoryId is a UUID (FK to serviceCategories), not a
-        // booking_fee_configs slug ("accommodation", "activities", …).
-        // Passing null resolves to the "default" config row correctly.
-        const itemCategoryRates = await resolveCommissionRates(null);
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates = await resolveCommissionRates(feeCategory);
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -5961,8 +6009,11 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // item.service.categoryId is a UUID, not a booking_fee_configs slug — use null → "default"
-        const itemCategoryRates2 = await resolveCommissionRates(null);
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory2 = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;
