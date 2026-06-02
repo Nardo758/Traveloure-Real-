@@ -14,13 +14,7 @@ import {
 export default function EACalendar() {
   const weekDays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
   
-  const executives = [
-    { name: "James A.", events: ["D", "", "G", "B", "", "W", ""] },
-    { name: "Sarah C.", events: ["", "", "F", "", "", "", ""] },
-    { name: "Michael T.", events: ["", "C", "", "C", "D", "", ""] },
-    { name: "Lisa P.", events: ["M", "", "", "P", "", "", ""] },
-    { name: "Robert K.", events: ["", "", "T", "", "", "", ""] },
-  ];
+  const executives: Array<{ name: string; events: string[] }> = [];
 
   const legend = [
     { code: "D", meaning: "Dinner" },
@@ -34,46 +28,11 @@ export default function EACalendar() {
     { code: "T", meaning: "Travel" },
   ];
 
-  const todayEvents = [
-    {
-      id: 1,
-      time: "6:00 PM",
-      executive: "James Anderson",
-      event: "Paris Client Dinner",
-      venue: "Le Jules Verne (Eiffel Tower)",
-      guests: 4,
-      issue: "Menu change needed (dietary restriction discovered)",
-      status: "Awaiting restaurant confirmation",
-      urgent: true,
-    },
-    {
-      id: 2,
-      time: "10:00 AM",
-      executive: "Lisa Parker",
-      event: "Monthly Board Presentation Prep",
-      task: "Review slides, prepare materials",
-      status: "Complete",
-      done: true,
-    },
-    {
-      id: 3,
-      time: "2:00 PM",
-      executive: "Michael Torres",
-      event: "Client Call",
-      task: "Dial-in details sent, briefing document prepared",
-      status: "Ready",
-      done: true,
-    },
-    {
-      id: 4,
-      time: "4:00 PM",
-      executive: "Sarah Chen",
-      event: "Hotel Approval Deadline",
-      trip: "London → Tokyo → Singapore",
-      status: "Pending your review (3 options per city)",
-      needsReview: true,
-    },
-  ];
+  const todayEvents: Array<{
+    id: number; time: string; executive: string; event: string;
+    venue?: string; guests?: number; issue?: string; task?: string;
+    trip?: string; status: string; urgent?: boolean; done?: boolean; needsReview?: boolean;
+  }> = [];
 
   return (
     <EALayout title="Multi-Event Coordination">
@@ -109,8 +68,9 @@ export default function EACalendar() {
                 </Button>
               </div>
               <div className="flex items-center gap-4 text-sm">
-                <Badge className="bg-red-100 text-red-700">3 conflicts detected</Badge>
-                <Badge className="bg-yellow-100 text-yellow-700">5 items need approval</Badge>
+                {executives.length > 0 && (
+                  <Badge className="bg-yellow-100 text-yellow-700">{executives.length} executives</Badge>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -128,6 +88,13 @@ export default function EACalendar() {
                   </tr>
                 </thead>
                 <tbody>
+                  {executives.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8 text-[#7A7A72] text-sm">
+                        No executives added yet — add executives to see their calendars here
+                      </td>
+                    </tr>
+                  )}
                   {executives.map((exec, idx) => (
                     <tr key={idx} className="border-b hover:bg-gray-50" data-testid={`calendar-row-${idx}`}>
                       <td className="p-3 text-sm font-medium text-gray-900">{exec.name}</td>
@@ -172,6 +139,13 @@ export default function EACalendar() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {todayEvents.length === 0 && (
+              <div className="text-center py-8">
+                <CalendarIcon className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
+                <p className="font-medium text-[#1A1A18]">No events today</p>
+                <p className="text-sm text-[#7A7A72] mt-1">Today's events will appear here</p>
+              </div>
+            )}
             {todayEvents.map((event) => (
               <div 
                 key={event.id} 

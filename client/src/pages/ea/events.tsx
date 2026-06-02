@@ -17,60 +17,11 @@ import {
 } from "lucide-react";
 
 export default function EAEvents() {
-  const events = [
-    {
-      id: 1,
-      title: "Paris Client Dinner",
-      executive: "James Anderson (CEO)",
-      type: "Dinner",
-      date: "Today, 6:00 PM",
-      venue: "Le Jules Verne (Eiffel Tower)",
-      guests: 4,
-      status: "urgent",
-      issue: "Menu change needed",
-    },
-    {
-      id: 2,
-      title: "Board Meeting",
-      executive: "James Anderson (CEO)",
-      type: "Meeting",
-      date: "Thursday, 9:00 AM",
-      venue: "Company HQ - Board Room",
-      guests: 12,
-      status: "confirmed",
-    },
-    {
-      id: 3,
-      title: "London-Tokyo-Singapore Trip",
-      executive: "Sarah Chen (COO)",
-      type: "Travel",
-      date: "Wednesday - Next Saturday",
-      venue: "Multiple cities",
-      status: "pending",
-      issue: "Hotel approvals needed",
-    },
-    {
-      id: 4,
-      title: "Anniversary Dinner",
-      executive: "Michael Torres (VP Sales)",
-      type: "Personal",
-      date: "Friday, 7:30 PM",
-      venue: "The Capital Grille",
-      guests: 2,
-      status: "confirmed",
-      giftNeeded: true,
-    },
-    {
-      id: 5,
-      title: "Client Presentation",
-      executive: "Lisa Parker (VP Marketing)",
-      type: "Meeting",
-      date: "Thursday, 2:00 PM",
-      venue: "Client Office - Downtown",
-      guests: 6,
-      status: "confirmed",
-    },
-  ];
+  const events: Array<{
+    id: number; title: string; executive: string; type: string;
+    date: string; venue?: string; guests?: number; status: string;
+    issue?: string; giftNeeded?: boolean;
+  }> = [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -177,6 +128,15 @@ export default function EAEvents() {
 
         {/* Events List */}
         <div className="space-y-4">
+          {events.length === 0 && (
+            <Card className="border border-[#E8E8E2]">
+              <CardContent className="p-12 text-center">
+                <Calendar className="w-12 h-12 text-[#AEAEA6] mx-auto mb-3" />
+                <p className="font-medium text-[#1A1A18]">No events yet</p>
+                <p className="text-sm text-[#7A7A72] mt-1">Events you create will appear here</p>
+              </CardContent>
+            </Card>
+          )}
           {events.map((event) => (
             <Card 
               key={event.id} 

@@ -338,29 +338,33 @@ export default function ExpertDashboard() {
                 <CardTitle className="text-lg">Recent Bookings</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {[
-                  { service: "Full Expert Service", client: "Sarah Mitchell", amount: 499, date: "Mar 28", status: "confirmed" },
-                  { service: "AI + Expert Review", client: "David Chen", amount: 49.99, date: "Mar 22", status: "confirmed" },
-                  { service: "Full Expert Service", client: "Emma Laurent", amount: 399, date: "Mar 15", status: "confirmed" },
-                ].map((booking, idx) => (
-                  <div key={idx} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:pb-0 last:border-0">
+                {bookings && bookings.length > 0 ? bookings.slice(0, 3).map((booking) => (
+                  <div key={booking.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:pb-0 last:border-0">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-gray-900 text-sm">{booking.service}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{booking.client}</p>
-                          <p className="text-xs text-gray-400 mt-1">{booking.date}</p>
-                        </div>
-                      </div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {booking.serviceName || booking.tripDestination || "Booking"}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {booking.traveler?.displayName || booking.travelerName || "Client"}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {booking.createdAt ? new Date(booking.createdAt).toLocaleDateString() : ""}
+                      </p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <span className="text-sm font-bold text-emerald-700">${booking.amount}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${booking.status === "confirmed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                      {booking.totalAmount && (
+                        <span className="text-sm font-bold text-emerald-700">
+                          ${parseFloat(booking.totalAmount).toLocaleString()}
+                        </span>
+                      )}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${booking.status === "confirmed" || booking.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
                         {booking.status}
                       </span>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <p className="text-sm text-gray-500 text-center py-4">No bookings yet</p>
+                )}
               </CardContent>
             </Card>
 
@@ -464,22 +468,26 @@ export default function ExpertDashboard() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
-                  <CardTitle className="text-lg">Market Insights</CardTitle>
+                  <CardTitle className="text-lg">Your Stats</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600">Experts in City</span>
-                    <span className="font-semibold text-gray-900">847</span>
+                    <span className="text-gray-600">Total Bookings</span>
+                    <span className="font-semibold text-gray-900">{bookings?.length ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600">Avg Booking Rate</span>
-                    <span className="font-semibold text-gray-900">68%</span>
+                    <span className="text-gray-600">Confirmed</span>
+                    <span className="font-semibold text-emerald-700">
+                      {bookings?.filter(b => b.status === "confirmed" || b.status === "completed").length ?? 0}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Your Ranking</span>
-                    <span className="font-semibold text-amber-600">#12</span>
+                    <span className="text-gray-600">Pending Review</span>
+                    <span className="font-semibold text-amber-600">
+                      {bookings?.filter(b => b.status === "pending").length ?? 0}
+                    </span>
                   </div>
                 </div>
                 <Link href="/expert/analytics">

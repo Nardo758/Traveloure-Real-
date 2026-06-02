@@ -97,44 +97,10 @@ const contractCategories = [
   },
 ];
 
-const recentContracts = [
-  {
-    id: 1,
-    client: "Sarah & Mike",
-    category: "Romantic Events",
-    type: "Honeymoon Planning",
-    value: 4500,
-    status: "active",
-    dueDate: "Feb 15, 2026",
-  },
-  {
-    id: 2,
-    client: "Tech Innovations Inc",
-    category: "Corporate",
-    type: "Retreat Planning",
-    value: 15000,
-    status: "pending",
-    dueDate: "Mar 1, 2026",
-  },
-  {
-    id: 3,
-    client: "Johnson Family",
-    category: "Celebrations",
-    type: "50th Birthday",
-    value: 2800,
-    status: "completed",
-    dueDate: "Jan 5, 2026",
-  },
-  {
-    id: 4,
-    client: "Adventure Seekers Group",
-    category: "Vacation Planning",
-    type: "Safari Trip",
-    value: 8200,
-    status: "active",
-    dueDate: "Apr 10, 2026",
-  },
-];
+const recentContracts: Array<{
+  id: number; client: string; category: string; type: string;
+  value: number; status: string; dueDate: string;
+}> = [];
 
 export default function ContractCategories() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -342,6 +308,12 @@ export default function ContractCategories() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {recentContracts.length === 0 && (
+                <div className="text-center py-6">
+                  <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-500 text-sm">No recent contracts</p>
+                </div>
+              )}
               {recentContracts.map((contract) => (
                 <div
                   key={contract.id}

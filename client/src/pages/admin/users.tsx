@@ -93,7 +93,13 @@ export default function AdminUsers() {
           </Card>
           <Card data-testid="card-stat-new">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">28</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {usersData?.users?.filter(u => {
+                  const joined = new Date(u.joined);
+                  const today = new Date();
+                  return joined.toDateString() === today.toDateString();
+                }).length ?? 0}
+              </p>
               <p className="text-sm text-gray-500">New Today</p>
             </CardContent>
           </Card>
