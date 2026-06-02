@@ -18620,8 +18620,17 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
 
   // ─── Content Placement Rules (Admin) ────────────────────────────────────────
 
+  // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
+  const requireAdminLocal = async (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
+    const user = await db.select({ role: users.role }).from(users)
+      .where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    next();
+  };
+
   // GET /api/admin/content-placement-rules — list with optional filters
-  app.get("/api/admin/content-placement-rules", requireAdmin, async (req, res) => {
+  app.get("/api/admin/content-placement-rules", requireAdminLocal, async (req, res) => {
     try {
       const { cityName, surface, contentSource } = req.query as Record<string, string>;
       const rules = await storage.getContentPlacementRules({
@@ -18637,7 +18646,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
   });
 
   // POST /api/admin/content-placement-rules — create a rule
-  app.post("/api/admin/content-placement-rules", requireAdmin, async (req, res) => {
+  app.post("/api/admin/content-placement-rules", requireAdminLocal, async (req, res) => {
     try {
       const rule = await storage.createContentPlacementRule(req.body as InsertContentPlacementRule);
       res.status(201).json(rule);
@@ -18647,7 +18656,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
   });
 
   // PATCH /api/admin/content-placement-rules/:id — update a rule
-  app.patch("/api/admin/content-placement-rules/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/content-placement-rules/:id", requireAdminLocal, async (req, res) => {
     try {
       const rule = await storage.updateContentPlacementRule(req.params.id, req.body);
       if (!rule) return res.status(404).json({ message: "Rule not found" });
@@ -18658,7 +18667,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
   });
 
   // DELETE /api/admin/content-placement-rules/:id — delete a rule
-  app.delete("/api/admin/content-placement-rules/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/content-placement-rules/:id", requireAdminLocal, async (req, res) => {
     try {
       await storage.deleteContentPlacementRule(req.params.id);
       res.json({ success: true });
@@ -18670,7 +18679,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
   // POST /api/admin/content-placement-rules/auto-index
   // Scans affiliate_products and content_registry, matches them to active TravelPulse
   // cities by city/country name, and upserts placement rules with appropriate surfaces.
-  app.post("/api/admin/content-placement-rules/auto-index", requireAdmin, async (req, res) => {
+  app.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, async (req, res) => {
     try {
       // 1. Load all TravelPulse cities
       const cities = await db.select({
