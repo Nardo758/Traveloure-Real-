@@ -92,7 +92,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
 
     const days = dayNumbers.map(dayNum => {
       const dayItems = items.filter(i => i.dayNumber === dayNum);
-      const dayLegs = variantLegs.filter(l => l.dayNumber === dayNum);
+      const dayLegs = variantLegs.filter(l => l.dayNumber === dayNum && l.userSelectedMode !== "dismissed");
 
       const dayDate = new Date(startDate);
       dayDate.setDate(dayDate.getDate() + dayNum - 1);
@@ -206,8 +206,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       stats: {
         totalDays: fallbackDays || days.length,
         totalActivities: fallbackActivityCount,
-        totalLegs: variantLegs.length,
-        totalTransitMinutes: variantLegs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0),
+        totalLegs: variantLegs.filter(l => l.userSelectedMode !== "dismissed").length,
+        totalTransitMinutes: variantLegs.filter(l => l.userSelectedMode !== "dismissed").reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0),
         confirmedActivities: items.filter(i => i.status === "confirmed" || i.status === "planned").length,
         pendingExpertChanges: changes.filter(c => c.role === "expert" && c.changeType === "suggest").length,
       },
@@ -357,30 +357,49 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
       return res.status(400).json({ error: "status and tripId are required" });
     }
 
-    const allowed = ["confirmed", "dismissed", "suggested", "pending"];
+    const allowed = ["confirmed", "dismissed"];
     if (!allowed.includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
     }
 
+    // Verify trip ownership
     const trip = await storage.getTrip(tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    await db.update(transportLegs)
-      .set({ userSelectedMode: status === "dismissed" ? null : undefined } as any)
-      .where(eq(transportLegs.id, legId));
-
-    if (status === "dismissed") {
-      await db.update(transportLegs)
-        .set({ legOrder: -1 } as any)
-        .where(eq(transportLegs.id, legId));
+    // Verify that the leg belongs to a variant linked to this trip (prevent cross-trip mutations)
+    const leg = await db.query.transportLegs.findFirst({
+      where: eq(transportLegs.id, legId),
+    });
+    if (!leg) {
+      return res.status(404).json({ error: "Transport leg not found" });
     }
+
+    const variant = await db.query.itineraryVariants.findFirst({
+      where: eq(itineraryVariants.id, leg.variantId),
+    });
+    if (!variant) {
+      return res.status(404).json({ error: "Variant not found" });
+    }
+
+    const comparison = await db.query.itineraryComparisons.findFirst({
+      where: eq(itineraryComparisons.id, variant.comparisonId),
+    });
+    if (!comparison || comparison.tripId !== tripId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Use "dismissed" as a sentinel value in userSelectedMode so the plancard GET
+    // can filter it out. This avoids a schema migration while making dismissal durable.
+    await db.update(transportLegs)
+      .set({ userSelectedMode: status === "dismissed" ? "dismissed" : null })
+      .where(eq(transportLegs.id, legId));
 
     await logChange(
       tripId,
       userName,
-      status === "dismissed" ? "Declined suggested transport leg" : `Updated transport leg status to ${status}`,
+      status === "dismissed" ? "Declined suggested transport leg" : `Confirmed transport leg`,
       status === "dismissed" ? "decline" : "edit",
       "owner",
     );
