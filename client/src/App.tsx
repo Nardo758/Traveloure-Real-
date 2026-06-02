@@ -76,6 +76,7 @@ import AdminSystem from "@/pages/admin/system";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
+import AdminContentMapping from "@/pages/admin/content-mapping";
 import AdminServices from "@/pages/admin/services";
 import AdminAICosts from "@/pages/admin/ai-costs";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
@@ -604,6 +605,9 @@ function Router() {
       </Route>
       <Route path="/admin/platform-providers">
         {() => <ProtectedRoute component={AdminPlatformProviders} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/content-mapping">
+        {() => <ProtectedRoute component={AdminContentMapping} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

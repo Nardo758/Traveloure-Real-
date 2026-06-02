@@ -35,6 +35,7 @@ import {
   Percent,
   PlugZap,
   Package,
+  Layers,
 } from "lucide-react";
 
 const menuGroups = [
@@ -62,6 +63,7 @@ const menuGroups = [
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
+      { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
     ],
   },

@@ -33,7 +33,16 @@ import {
   userAndExpertContracts,
   expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
+  contentPlacementRules,
+  type InsertContentPlacementRule,
 } from "@shared/schema";
+import {
+  TAB_CONTENT_TYPE_MAP,
+  TAB_AFFILIATE_CATEGORIES,
+  SURFACE_DEFAULT_CONTENT_TYPES,
+  SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
+  SURFACE_SLUGS,
+} from "@shared/content-surface-map";
 import { db } from "./db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -11557,75 +11566,13 @@ export async function registerDiscoveryRoutes(app: Express) {
       const city = parts[0].trim();
       const country = parts.length > 1 ? parts[parts.length - 1].trim() : city;
 
-      // Tab → content type filter for content_registry (covers all active template tabs)
-      const TAB_CONTENT_TYPE_MAP: Record<string, string[]> = {
-        venues: ["experience", "template", "service"],
-        venue: ["experience", "template", "service"],
-        dining: ["service", "experience"],
-        accommodations: ["service"],
-        "guest-accommodations": ["service"],
-        activities: ["experience", "template"],
-        photography: ["service"],
-        "photography-video": ["service", "media"],
-        transportation: ["service"],
-        transfers: ["service"],
-        entertainment: ["experience"],
-        wellness: ["service", "experience"],
-        "spa-wellness": ["service", "experience"],
-        shopping: ["experience"],
-        nightlife: ["experience"],
-        sports: ["experience"],
-        vendors: ["service"],
-        "team-activities": ["experience"],
-        services: ["service"],
-        events: ["experience", "template"],
-        catering: ["service", "experience"],
-        decor: ["service"],
-        "decor-setup": ["service"],
-        tickets: ["experience", "template"],
-        "vip-experiences": ["experience"],
-        "pre-game": ["experience", "service"],
-        "gifts-keepsakes": ["service", "experience"],
-        keepsakes: ["service", "experience"],
-      };
-
+      // Tab → content type and affiliate category mappings (from shared/content-surface-map.ts)
       const allowedContentTypes = tabParam && TAB_CONTENT_TYPE_MAP[tabParam]
         ? TAB_CONTENT_TYPE_MAP[tabParam]
         : contentTypesParam
           ? contentTypesParam.split(",").map(t => t.trim()).filter(Boolean)
           : ["experience", "template", "service", "media", "other"];
 
-      // Tab → affiliate product category mapping (covers all active template tabs)
-      const TAB_AFFILIATE_CATEGORIES: Record<string, string[]> = {
-        venues: ["venue", "events", "conference"],
-        venue: ["venue", "events", "conference"],
-        dining: ["food", "restaurant", "dining", "culinary"],
-        accommodations: ["accommodation", "hotel", "lodging"],
-        "guest-accommodations": ["accommodation", "hotel", "lodging"],
-        activities: ["activity", "tour", "outdoor", "entertainment", "sport"],
-        photography: ["photography", "media"],
-        "photography-video": ["photography", "media", "video"],
-        transportation: ["transport", "transfer", "car", "train"],
-        transfers: ["transport", "transfer", "shuttle"],
-        entertainment: ["entertainment", "show", "concert", "theater"],
-        wellness: ["wellness", "spa", "fitness"],
-        "spa-wellness": ["wellness", "spa", "fitness"],
-        shopping: ["shopping", "retail", "market"],
-        nightlife: ["nightlife", "bar", "club"],
-        sports: ["sport", "outdoor", "adventure"],
-        vendors: ["service", "vendor"],
-        "team-activities": ["activity", "team", "group"],
-        services: ["service", "concierge", "planning"],
-        events: ["event", "conference", "festival", "show"],
-        catering: ["food", "catering", "dining", "culinary"],
-        decor: ["decor", "floral", "design"],
-        "decor-setup": ["decor", "setup", "floral", "design"],
-        tickets: ["ticket", "event", "attraction", "activity"],
-        "vip-experiences": ["vip", "luxury", "exclusive", "experience"],
-        "pre-game": ["dining", "activity", "sport", "entertainment"],
-        "gifts-keepsakes": ["gift", "souvenir", "keepsake", "shopping"],
-        keepsakes: ["gift", "souvenir", "keepsake"],
-      };
       const affiliateCategoryFilter = tabParam && TAB_AFFILIATE_CATEGORIES[tabParam]
         ? TAB_AFFILIATE_CATEGORIES[tabParam]
         : null;
@@ -18400,6 +18347,179 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("[Expert] getContracts error:", err);
       res.status(500).json({ message: "Failed to fetch contracts" });
+    }
+  });
+
+  // ─── Content Placement Rules (Admin) ────────────────────────────────────────
+
+  // GET /api/admin/content-placement-rules — list with optional filters
+  app.get("/api/admin/content-placement-rules", requireAdmin, async (req, res) => {
+    try {
+      const { cityName, surface, contentSource } = req.query as Record<string, string>;
+      const rules = await storage.getContentPlacementRules({
+        cityName: cityName || undefined,
+        surface: surface || undefined,
+        contentSource: contentSource || undefined,
+        isActive: undefined,
+      });
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch placement rules", error: err.message });
+    }
+  });
+
+  // POST /api/admin/content-placement-rules — create a rule
+  app.post("/api/admin/content-placement-rules", requireAdmin, async (req, res) => {
+    try {
+      const rule = await storage.createContentPlacementRule(req.body as InsertContentPlacementRule);
+      res.status(201).json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to create placement rule", error: err.message });
+    }
+  });
+
+  // PATCH /api/admin/content-placement-rules/:id — update a rule
+  app.patch("/api/admin/content-placement-rules/:id", requireAdmin, async (req, res) => {
+    try {
+      const rule = await storage.updateContentPlacementRule(req.params.id, req.body);
+      if (!rule) return res.status(404).json({ message: "Rule not found" });
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update placement rule", error: err.message });
+    }
+  });
+
+  // DELETE /api/admin/content-placement-rules/:id — delete a rule
+  app.delete("/api/admin/content-placement-rules/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteContentPlacementRule(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete placement rule", error: err.message });
+    }
+  });
+
+  // POST /api/admin/content-placement-rules/auto-index
+  // Scans affiliate_products and content_registry, matches them to active TravelPulse
+  // cities by city/country name, and upserts placement rules with appropriate surfaces.
+  app.post("/api/admin/content-placement-rules/auto-index", requireAdmin, async (req, res) => {
+    try {
+      // 1. Load all TravelPulse cities
+      const cities = await db.select({
+        cityName: travelPulseCities.cityName,
+        country: travelPulseCities.country,
+        pulseScore: travelPulseCities.pulseScore,
+      }).from(travelPulseCities).limit(200);
+
+      if (!cities.length) {
+        return res.json({ created: 0, message: "No TravelPulse cities found. Seed city data first." });
+      }
+
+      // Build a fast lookup: lowercase city name → city data
+      const cityLookup = new Map(cities.map(c => [c.cityName.toLowerCase(), c]));
+
+      const rulesToUpsert: InsertContentPlacementRule[] = [];
+
+      // 2. Scan affiliate_products
+      const products = await db.select({
+        id: affiliateProducts.id,
+        name: affiliateProducts.name,
+        city: affiliateProducts.city,
+        country: affiliateProducts.country,
+        category: affiliateProducts.category,
+      }).from(affiliateProducts)
+        .where(eq(affiliateProducts.isActive, true))
+        .limit(2000);
+
+      for (const p of products) {
+        const cityKey = (p.city ?? "").toLowerCase();
+        const cityData = cityLookup.get(cityKey) ||
+          [...cityLookup.values()].find(c =>
+            cityKey.includes(c.cityName.toLowerCase()) ||
+            c.cityName.toLowerCase().includes(cityKey)
+          );
+        if (!cityData) continue;
+
+        // Determine which surfaces this product's category matches
+        const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
+          const cats = SURFACE_DEFAULT_AFFILIATE_CATEGORIES[slug as keyof typeof SURFACE_DEFAULT_AFFILIATE_CATEGORIES] ?? [];
+          const pCat = (p.category ?? "").toLowerCase();
+          return cats.some(c => pCat.includes(c) || c.includes(pCat));
+        });
+        if (!surfaces.length) surfaces.push("travelpulse-discover");
+
+        rulesToUpsert.push({
+          contentSource: "affiliate_product",
+          sourceId: p.id,
+          contentLabel: p.name,
+          cityName: cityData.cityName,
+          country: cityData.country,
+          surfaces,
+          minPulseScore: 0,
+          isPinned: false,
+          isAutoTagged: true,
+          isActive: true,
+          notes: `Auto-indexed from affiliate_products`,
+        });
+      }
+
+      // 3. Scan content_registry (published only, with location metadata)
+      const registryItems = await db.select({
+        id: contentRegistry.id,
+        title: contentRegistry.title,
+        contentType: contentRegistry.contentType,
+        metadata: contentRegistry.metadata,
+      }).from(contentRegistry)
+        .where(eq(contentRegistry.status, "published"))
+        .limit(2000);
+
+      for (const r of registryItems) {
+        const meta = (r.metadata ?? {}) as Record<string, any>;
+        const rawCity: string = meta.city ?? meta.location ?? meta.destination ?? "";
+        if (!rawCity) continue;
+
+        const cityKey = rawCity.toLowerCase().split(",")[0].trim();
+        const cityData = cityLookup.get(cityKey) ||
+          [...cityLookup.values()].find(c =>
+            cityKey.includes(c.cityName.toLowerCase()) ||
+            c.cityName.toLowerCase().includes(cityKey)
+          );
+        if (!cityData) continue;
+
+        // Determine surfaces from content type
+        const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
+          const types = SURFACE_DEFAULT_CONTENT_TYPES[slug as keyof typeof SURFACE_DEFAULT_CONTENT_TYPES] ?? [];
+          return types.includes(r.contentType as any);
+        });
+        if (!surfaces.length) surfaces.push("travelpulse-discover");
+
+        rulesToUpsert.push({
+          contentSource: "content_registry",
+          sourceId: r.id,
+          contentLabel: r.title ?? undefined,
+          cityName: cityData.cityName,
+          country: cityData.country,
+          surfaces,
+          minPulseScore: 0,
+          isPinned: false,
+          isAutoTagged: true,
+          isActive: true,
+          notes: `Auto-indexed from content_registry`,
+        });
+      }
+
+      const created = await storage.bulkUpsertContentPlacementRules(rulesToUpsert);
+      res.json({
+        created,
+        total: rulesToUpsert.length,
+        cities: cities.length,
+        affiliateScanned: products.length,
+        registryScanned: registryItems.length,
+        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities`,
+      });
+    } catch (err: any) {
+      console.error("[ContentMap] auto-index error:", err);
+      res.status(500).json({ message: "Auto-index failed", error: err.message });
     }
   });
 
