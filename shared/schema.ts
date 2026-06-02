@@ -306,6 +306,11 @@ export const localExpertForms = pgTable("local_expert_forms", {
   experienceTypes: jsonb("experience_types").default([]),
   specializations: jsonb("specializations").default([]),
   selectedServices: jsonb("selected_services").default([]),
+  // Local Expert specific fields
+  neighborhoods: jsonb("neighborhoods").default([]),
+  localityProof: varchar("locality_proof", { length: 30 }),
+  knowledgeProofAnswers: jsonb("knowledge_proof_answers").default([]),
+  localSpecialties: jsonb("local_specialties").default([]),
   // Experience
   yearsOfExperience: varchar("years_of_experience", { length: 50 }),
   bio: text("bio"),

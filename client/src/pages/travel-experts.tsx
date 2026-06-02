@@ -37,13 +37,48 @@ import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
-const steps = [
+const defaultSteps = [
   { id: 1, title: "Basic Info" },
   { id: 2, title: "Expertise" },
   { id: 3, title: "Services" },
   { id: 4, title: "Experience" },
   { id: 5, title: "Availability" },
   { id: 6, title: "Review" },
+];
+
+const localExpertSteps = [
+  { id: 1, title: "Basic Info" },
+  { id: 2, title: "Your Locality" },
+  { id: 3, title: "Knowledge Proof" },
+  { id: 4, title: "Specialties" },
+  { id: 5, title: "Availability" },
+  { id: 6, title: "Review" },
+];
+
+const KNOWLEDGE_PROOF_QUESTIONS = [
+  "Name your top pick for a local meal near a popular tourist area in your city. Where do you send the traveler — and where do you steer them away from, and why?",
+  "What's one mistake almost every first-time visitor to your city makes? What's the local move instead?",
+  "Describe a neighbourhood or experience in your city that guidebooks consistently miss. Who is it best for, and what makes it worth knowing?",
+];
+
+const localityProofOptions = [
+  { value: "born_raised", label: "Born & raised here" },
+  { value: "long_term_10yr", label: "Long-term resident (10+ years)" },
+  { value: "resident_5yr", label: "Resident (5+ years)" },
+  { value: "current_resident", label: "Current resident (1–5 years)" },
+];
+
+const localSpecialtyOptions = [
+  { value: "food_drink", label: "Food & Drink", emoji: "🍜" },
+  { value: "safety_navigation", label: "Safety & Navigation", emoji: "🧭" },
+  { value: "cultural_interpretation", label: "Cultural Interpretation", emoji: "🎭" },
+  { value: "nightlife", label: "Nightlife", emoji: "🌙" },
+  { value: "family_travel", label: "Family Travel", emoji: "👨‍👩‍👧" },
+  { value: "lgbtq_friendly", label: "LGBTQ+ Friendly", emoji: "🏳️‍🌈" },
+  { value: "budget_tips", label: "Budget Tips", emoji: "💰" },
+  { value: "luxury_access", label: "Luxury Access", emoji: "✨" },
+  { value: "photography_spots", label: "Photography Spots", emoji: "📸" },
+  { value: "hidden_gems", label: "Hidden Gems", emoji: "💎" },
 ];
 
 const expertSpecializationOptions = [
@@ -117,6 +152,7 @@ export default function TravelExpertsPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialAuthConnected, setSocialAuthConnected] = useState(false);
+  const [neighborhoodInput, setNeighborhoodInput] = useState("");
   
   // Check for influencer, auth, and expert type query parameters
   const urlParams = new URLSearchParams(window.location.search);
@@ -125,6 +161,9 @@ export default function TravelExpertsPage() {
   const expertTypeFromUrl = urlParams.get('type') || 'travel_expert';
   
   // Map expert type to display title
+  const isLocalExpert = expertTypeFromUrl === "local_expert";
+  const steps = isLocalExpert ? localExpertSteps : defaultSteps;
+
   const expertTypeTitles: Record<string, string> = {
     travel_expert: "Travel Expert",
     local_expert: "Local Expert",
@@ -155,6 +194,11 @@ export default function TravelExpertsPage() {
     hourlyRate: "",
     expertType: expertTypeFromUrl,
     agreeToTerms: false,
+    // Local Expert specific fields
+    neighborhoods: [] as string[],
+    localityProof: "",
+    knowledgeProofAnswers: ["", "", ""] as string[],
+    localSpecialties: [] as string[],
     // Influencer fields
     isInfluencer: influencerFromUrl,
     instagramLink: "",
@@ -240,6 +284,24 @@ export default function TravelExpertsPage() {
   };
 
   const canProceed = () => {
+    if (isLocalExpert) {
+      switch (currentStep) {
+        case 1:
+          return formData.firstName && formData.lastName && formData.email && formData.phone;
+        case 2:
+          return !!(formData.city && formData.neighborhoods.length > 0 && formData.localityProof && formData.languages.length > 0);
+        case 3:
+          return formData.knowledgeProofAnswers.every(a => a.trim().length >= 30);
+        case 4:
+          return formData.localSpecialties.length > 0;
+        case 5:
+          return !!(formData.availability && formData.responseTime && formData.hourlyRate);
+        case 6:
+          return formData.agreeToTerms;
+        default:
+          return true;
+      }
+    }
     switch (currentStep) {
       case 1:
         return formData.firstName && formData.lastName && formData.email && formData.phone;
@@ -320,6 +382,14 @@ export default function TravelExpertsPage() {
         availability: formData.availability,
         responseTime: formData.responseTime,
         hourlyRate: formData.hourlyRate,
+        // Local Expert specific fields
+        neighborhoods: formData.neighborhoods,
+        localityProof: formData.localityProof,
+        knowledgeProofAnswers: KNOWLEDGE_PROOF_QUESTIONS.map((q, i) => ({
+          question: q,
+          answer: formData.knowledgeProofAnswers[i] || "",
+        })),
+        localSpecialties: formData.localSpecialties,
         // Influencer fields
         isInfluencer: formData.isInfluencer,
         instagramLink: formData.instagramLink,
@@ -644,8 +714,236 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
+          {/* Step 2 (Local Expert): Your Locality */}
+          {isLocalExpert && currentStep === 2 && (
+            <Card className="border-[#E5E7EB]">
+              <CardHeader>
+                <CardTitle className="text-2xl text-[#111827]">Your Local Knowledge</CardTitle>
+                <p className="text-[#6B7280] text-sm mt-1">
+                  Tell us exactly where your expertise lives — not just the city, but the neighbourhoods you know block by block.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* City */}
+                <div>
+                  <Label className="text-[#374151]">Primary City of Expertise <span className="text-red-500">*</span></Label>
+                  <Input
+                    value={formData.city}
+                    onChange={(e) => updateFormData("city", e.target.value)}
+                    placeholder="e.g. Tokyo, Barcelona, Mumbai"
+                    className="mt-2 h-12 border-[#E5E7EB]"
+                    data-testid="input-local-city"
+                  />
+                </div>
+
+                {/* Neighbourhoods tag input */}
+                <div>
+                  <Label className="text-[#374151] mb-1 block">
+                    Neighbourhoods You Know Deeply <span className="text-red-500">*</span>
+                  </Label>
+                  <p className="text-xs text-[#6B7280] mb-2">
+                    Be specific — not "Tokyo" but "Shimokitazawa, Kōenji, Yanaka". Press <kbd className="px-1 py-0.5 rounded bg-gray-100 text-xs">Enter</kbd> or comma to add each one.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {formData.neighborhoods.map((n) => (
+                      <Badge key={n} className="bg-[#FF385C] text-white gap-1 pr-1" data-testid={`badge-neighborhood-${n}`}>
+                        {n}
+                        <button
+                          type="button"
+                          onClick={() => updateFormData("neighborhoods", formData.neighborhoods.filter(x => x !== n))}
+                          className="ml-1 rounded-full hover:bg-white/20 p-0.5"
+                          aria-label={`Remove ${n}`}
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  <Input
+                    value={neighborhoodInput}
+                    onChange={(e) => setNeighborhoodInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.key === "Enter" || e.key === ",") && neighborhoodInput.trim()) {
+                        e.preventDefault();
+                        const val = neighborhoodInput.trim().replace(/,$/, "");
+                        if (val && !formData.neighborhoods.includes(val)) {
+                          updateFormData("neighborhoods", [...formData.neighborhoods, val]);
+                        }
+                        setNeighborhoodInput("");
+                      }
+                    }}
+                    onBlur={() => {
+                      if (neighborhoodInput.trim()) {
+                        const val = neighborhoodInput.trim().replace(/,$/, "");
+                        if (val && !formData.neighborhoods.includes(val)) {
+                          updateFormData("neighborhoods", [...formData.neighborhoods, val]);
+                        }
+                        setNeighborhoodInput("");
+                      }
+                    }}
+                    placeholder="Type a neighbourhood and press Enter…"
+                    className="h-12 border-[#E5E7EB]"
+                    data-testid="input-neighborhood"
+                  />
+                </div>
+
+                {/* How are you local? */}
+                <div>
+                  <Label className="text-[#374151] mb-3 block">
+                    How are you local? <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {localityProofOptions.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => updateFormData("localityProof", opt.value)}
+                        className={cn(
+                          "px-4 py-3 rounded-lg border text-sm text-left transition-colors",
+                          formData.localityProof === opt.value
+                            ? "border-[#FF385C] bg-[#FFE3E8] text-[#FF385C] font-medium"
+                            : "border-[#E5E7EB] hover:border-[#FF385C] text-[#374151]"
+                        )}
+                        data-testid={`button-locality-${opt.value}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Languages */}
+                <div>
+                  <Label className="text-[#374151] mb-3 block">
+                    <Languages className="w-4 h-4 inline mr-2" />
+                    Languages You Speak <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {languages.map((lang) => (
+                      <Badge
+                        key={lang}
+                        variant={formData.languages.includes(lang) ? "default" : "outline"}
+                        className={cn(
+                          "cursor-pointer px-3 py-2",
+                          formData.languages.includes(lang)
+                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                        )}
+                        onClick={() => toggleArrayItem("languages", lang)}
+                        data-testid={`badge-language-${lang.toLowerCase()}`}
+                      >
+                        {lang}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 3 (Local Expert): Knowledge Proof */}
+          {isLocalExpert && currentStep === 3 && (
+            <Card className="border-[#E5E7EB]">
+              <CardHeader>
+                <CardTitle className="text-2xl text-[#111827]">Knowledge Proof</CardTitle>
+                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                  <strong>Be specific.</strong> Vague answers that could come from a guidebook won't pass review. Our team is looking for the kind of insight only a real local can give — including where to avoid and why.
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {KNOWLEDGE_PROOF_QUESTIONS.map((question, i) => (
+                  <div key={i}>
+                    <Label className="text-[#374151] mb-2 block font-medium">
+                      {i + 1}. {question}
+                    </Label>
+                    <Textarea
+                      value={formData.knowledgeProofAnswers[i]}
+                      onChange={(e) => {
+                        const updated = [...formData.knowledgeProofAnswers];
+                        updated[i] = e.target.value;
+                        updateFormData("knowledgeProofAnswers", updated);
+                      }}
+                      placeholder="Write your answer here — be specific, name real places, and explain your reasoning…"
+                      className="border-[#E5E7EB]"
+                      rows={5}
+                      data-testid={`textarea-knowledge-proof-${i}`}
+                    />
+                    <p className={cn(
+                      "text-xs mt-1 text-right",
+                      formData.knowledgeProofAnswers[i].trim().length >= 30 ? "text-green-600" : "text-[#9CA3AF]"
+                    )}>
+                      {formData.knowledgeProofAnswers[i].trim().length} characters
+                      {formData.knowledgeProofAnswers[i].trim().length < 30 && " (minimum 30)"}
+                    </p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 4 (Local Expert): Specialties */}
+          {isLocalExpert && currentStep === 4 && (
+            <Card className="border-[#E5E7EB]">
+              <CardHeader>
+                <CardTitle className="text-2xl text-[#111827]">Your Local Specialties</CardTitle>
+                <p className="text-[#6B7280] text-sm mt-1">
+                  Select the areas where you have genuine insider knowledge. These feed directly into how travellers find you.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <Label className="text-[#374151] mb-3 block">Knowledge Areas <span className="text-red-500">*</span></Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {localSpecialtyOptions.map((opt) => {
+                      const selected = formData.localSpecialties.includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => toggleArrayItem("localSpecialties", opt.value)}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-3 rounded-xl border text-sm transition-colors",
+                            selected
+                              ? "border-[#FF385C] bg-[#FFE3E8] text-[#FF385C] font-medium"
+                              : "border-[#E5E7EB] hover:border-[#FF385C] text-[#374151]"
+                          )}
+                          data-testid={`button-local-specialty-${opt.value}`}
+                        >
+                          <span className="text-xl">{opt.emoji}</span>
+                          <span className="text-xs text-center leading-tight">{opt.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-[#374151] mb-3 block">Traveller Types You Serve Best</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {["Solo travellers", "Couples", "Families", "Groups", "Business travellers"].map((type) => (
+                      <Badge
+                        key={type}
+                        variant={formData.experienceTypes.includes(type) ? "default" : "outline"}
+                        className={cn(
+                          "cursor-pointer px-3 py-2",
+                          formData.experienceTypes.includes(type)
+                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                        )}
+                        onClick={() => toggleArrayItem("experienceTypes", type)}
+                        data-testid={`badge-traveller-type-${type.toLowerCase().replace(/\s/g, "-")}`}
+                      >
+                        {type}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Step 2: Expertise */}
-          {currentStep === 2 && (
+          {!isLocalExpert && currentStep === 2 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Your Expertise</CardTitle>
@@ -780,7 +1078,7 @@ export default function TravelExpertsPage() {
           )}
 
           {/* Step 3: Services */}
-          {currentStep === 3 && (
+          {!isLocalExpert && currentStep === 3 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Services You Offer</CardTitle>
@@ -818,7 +1116,7 @@ export default function TravelExpertsPage() {
           )}
 
           {/* Step 4: Experience */}
-          {currentStep === 4 && (
+          {!isLocalExpert && currentStep === 4 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Your Experience</CardTitle>
@@ -976,27 +1274,61 @@ export default function TravelExpertsPage() {
                   </div>
                 </div>
 
-                <div>
-                  <span className="text-[#6B7280] text-sm">Destinations:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {formData.destinations.map((d) => (
-                      <Badge key={d} variant="secondary" className="text-xs">
-                        {d}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[#6B7280] text-sm">Specialties:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {formData.specialties.map((s) => (
-                      <Badge key={s} variant="secondary" className="text-xs">
-                        {s}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                {isLocalExpert ? (
+                  <>
+                    <div>
+                      <span className="text-[#6B7280] text-sm">Neighbourhoods:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {formData.neighborhoods.map((n) => (
+                          <Badge key={n} variant="secondary" className="text-xs">{n}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[#6B7280] text-sm">Local Specialties:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {formData.localSpecialties.map((s) => {
+                          const opt = localSpecialtyOptions.find(o => o.value === s);
+                          return (
+                            <Badge key={s} variant="secondary" className="text-xs">
+                              {opt?.emoji} {opt?.label ?? s}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <span className="text-[#6B7280] text-sm block">Knowledge Proof (summary):</span>
+                      {formData.knowledgeProofAnswers.map((ans, i) => (
+                        ans.trim().length > 0 && (
+                          <div key={i} className="p-3 bg-gray-50 rounded-lg text-sm">
+                            <p className="font-medium text-[#374151] mb-1">Q{i + 1}: {KNOWLEDGE_PROOF_QUESTIONS[i].slice(0, 60)}…</p>
+                            <p className="text-[#6B7280] italic">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <span className="text-[#6B7280] text-sm">Destinations:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {formData.destinations.map((d) => (
+                          <Badge key={d} variant="secondary" className="text-xs">{d}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[#6B7280] text-sm">Specialties:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {formData.specialties.map((s) => (
+                          <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="p-4 bg-[#F3F4F6] rounded-lg">
                   <h4 className="font-medium text-[#111827] mb-2">Benefits You'll Get:</h4>
