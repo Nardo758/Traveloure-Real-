@@ -14,11 +14,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DynamicPricingEditor } from "@/components/shared/dynamic-pricing-editor";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle,
-  MapPin, Navigation, Truck, Radius, Info,
+  MapPin, Navigation, Truck, Radius, Info, ArrowLeft,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -114,6 +114,30 @@ export default function ProviderServiceForm() {
   });
 
   const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm);
+  const categoryPreSelected = useRef(false);
+
+  // Pre-select category from ?category= URL param once categories are loaded
+  useEffect(() => {
+    if (!isEditMode && categories.length > 0 && !categoryPreSelected.current) {
+      const raw = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("category") || ""
+        : "";
+      if (raw) {
+        const lower = raw.toLowerCase();
+        const match = categories.find(
+          (c) =>
+            c.name.toLowerCase() === lower ||
+            c.slug.toLowerCase() === lower ||
+            c.name.toLowerCase().includes(lower) ||
+            lower.includes(c.name.toLowerCase())
+        );
+        if (match) {
+          setFormData((prev) => ({ ...prev, categoryId: match.id }));
+          categoryPreSelected.current = true;
+        }
+      }
+    }
+  }, [categories, isEditMode]);
 
   useEffect(() => {
     if (existingService) {
@@ -237,6 +261,22 @@ export default function ProviderServiceForm() {
   return (
     <ProviderLayout title={isEditMode ? "Edit Service" : "New Service"}>
       <div className="p-6 max-w-3xl space-y-6">
+
+        {/* ── Breadcrumb / Back ── */}
+        <div className="flex items-center gap-2 text-sm">
+          <button
+            onClick={() => navigate("/provider/services")}
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="button-back-to-services"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            My Services
+          </button>
+          <span className="text-muted-foreground">/</span>
+          <span className="text-foreground font-medium">
+            {isEditMode ? "Edit Service" : "New Service"}
+          </span>
+        </div>
 
         {/* ── Basic Information ── */}
         <Card>
