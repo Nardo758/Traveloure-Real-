@@ -40,6 +40,7 @@ import ExpertCustomServices from "@/pages/expert/custom-services";
 import ExpertAssignedTrips from "@/pages/expert/assigned-trips";
 import EADashboard from "@/pages/ea/dashboard";
 import EAExecutives from "@/pages/ea/executives";
+import EAClients from "@/pages/ea/clients";
 import EACalendar from "@/pages/ea/calendar";
 import EAEvents from "@/pages/ea/events";
 import EACommunications from "@/pages/ea/communications";
@@ -459,6 +460,9 @@ function Router() {
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
       <Route path="/ea/dashboard">
         {() => <ProtectedRoute component={EADashboard} requiredRole="executive_assistant" />}
+      </Route>
+      <Route path="/ea/clients">
+        {() => <ProtectedRoute component={EAClients} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/executives">
         {() => <ProtectedRoute component={EAExecutives} requiredRole="executive_assistant" />}
