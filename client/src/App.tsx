@@ -111,6 +111,7 @@ import ExpertTemplates from "@/pages/expert/templates";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
 import ExpertSettings from "@/pages/expert/settings";
+import ExpertVerification from "@/pages/expert/verification";
 import ExpertServiceForm from "@/pages/expert/service-form";
 import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
@@ -441,6 +442,9 @@ function Router() {
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/verification">
+        {() => <ProtectedRoute component={ExpertVerification} requiredRole="expert" />}
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
