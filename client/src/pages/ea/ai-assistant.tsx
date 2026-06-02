@@ -15,19 +15,39 @@ import {
   Star
 } from "lucide-react";
 
-export default function EAAIAssistant() {
-  const pendingTasks: Array<{
-    id: number; type: string; executive: string; task: string;
-    confidence: number; draft?: string;
-    options?: Array<{ name: string; price: string; matchScore: number; rating?: number }>;
-  }> = [];
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
-  const completedTasks: Array<{ text: string; time: string }> = [];
+interface EaAiTask {
+  id: string; type: string; executiveName?: string; task: string;
+  status: string; confidence?: number; draft?: string;
+  options?: Array<{ name: string; price: string; matchScore: number; rating?: number }>;
+  createdAt?: string; approvedAt?: string;
+}
+
+export default function EAAIAssistant() {
+  const { data: allTasks = [] } = useQuery<EaAiTask[]>({
+    queryKey: ["/api/ea/ai-tasks"],
+  });
+
+  const pendingTasks = allTasks.filter(t => t.status === "pending");
+  const completedTasks = allTasks
+    .filter(t => t.status === "approved" || t.status === "rejected")
+    .map(t => ({
+      text: `${t.type}: ${t.task}`,
+      time: t.approvedAt ? new Date(t.approvedAt).toLocaleDateString() : "recently",
+    }));
+
+  const updateTask = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/ea/ai-tasks/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/ea/ai-tasks"] }),
+  });
 
   const aiStats = {
-    tasksDelegated: pendingTasks.length + completedTasks.length,
-    tasksCompleted: completedTasks.length,
-    completionRate: 0,
+    tasksDelegated: allTasks.length,
+    tasksCompleted: allTasks.filter(t => t.status === "approved").length,
+    completionRate: allTasks.length > 0 ? Math.round(allTasks.filter(t => t.status === "approved").length / allTasks.length * 100) : 0,
     timeSaved: 0,
     avgQualityScore: 0,
     editRate: 0,
@@ -116,7 +136,7 @@ export default function EAAIAssistant() {
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <Badge variant="outline" className="mb-2">{task.type}</Badge>
-                        <p className="font-medium text-gray-900">{task.executive}</p>
+                        <p className="font-medium text-gray-900">{task.executiveName}</p>
                         <p className="text-sm text-gray-600">{task.task}</p>
                       </div>
                       <Badge className="bg-blue-100 text-blue-700">

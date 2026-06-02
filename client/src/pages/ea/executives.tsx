@@ -19,19 +19,22 @@ import {
   ChevronUp
 } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+interface EaExecutive {
+  id: string; name: string; title?: string; status: string;
+  email?: string; phone?: string;
+  preferences?: Record<string, string>;
+  family?: { spouse?: string; anniversary?: string; children?: string; importantDates?: Array<{ label: string; date: string }> };
+  notes?: string;
+}
 
 export default function EAExecutives() {
-  const [expandedId, setExpandedId] = useState<number | null>(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const executives: Array<{
-    id: number; name: string; title: string; status: string;
-    email: string; phone: string; activeEvents: number; upcoming: number;
-    preferences?: Record<string, string>;
-    family?: { spouse?: string; anniversary?: string; children?: string; importantDates?: Array<{ label: string; date: string }> };
-    giftHistory?: Array<{ event: string; gift: string; amount: string }>;
-    activeEventsList?: Array<{ event: string; status?: string; date: string }>;
-    currentTrip?: string; attention?: string;
-  }> = [];
+  const { data: executives = [] } = useQuery<EaExecutive[]>({
+    queryKey: ["/api/ea/executives"],
+  });
 
   return (
     <EALayout title="Executive Management">
@@ -94,11 +97,11 @@ export default function EAExecutives() {
                         <Badge className="bg-green-100 text-green-700">Active</Badge>
                       </div>
                       <p className="text-sm text-gray-500">
-                        Active Events: {exec.activeEvents} | Upcoming: {exec.upcoming}
-                        {exec.attention && (
+                        Status: {exec.status}
+                        {exec.notes && (
                           <span className="text-yellow-600 ml-2">
                             <AlertCircle className="w-3 h-3 inline mr-1" />
-                            {exec.attention}
+                            {exec.notes}
                           </span>
                         )}
                       </p>
@@ -166,7 +169,7 @@ export default function EAExecutives() {
                         <p>Spouse: {exec.family.spouse} (Anniversary: {exec.family.anniversary})</p>
                         <p>Children: {exec.family.children}</p>
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {exec.family.importantDates.map((date, idx) => (
+                          {(exec.family?.importantDates ?? []).map((date, idx) => (
                             <Badge key={idx} variant="outline" className="text-xs">
                               {date.label}: {date.date}
                             </Badge>
@@ -176,42 +179,13 @@ export default function EAExecutives() {
                     </div>
                   )}
 
-                  {/* Gift History */}
-                  {exec.giftHistory && (
+                  {/* Notes */}
+                  {exec.notes && (
                     <div>
                       <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                        <Gift className="w-4 h-4" /> Gift History
+                        <Gift className="w-4 h-4" /> Notes
                       </h3>
-                      <div className="space-y-2">
-                        {exec.giftHistory.map((gift, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded-lg">
-                            <div>
-                              <span className="font-medium">{gift.event}:</span> {gift.gift}
-                            </div>
-                            <span className="text-gray-500">{gift.amount}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Active Events */}
-                  {exec.activeEventsList && (
-                    <div>
-                      <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                        <Calendar className="w-4 h-4" /> Active Events
-                      </h3>
-                      <div className="space-y-2">
-                        {exec.activeEventsList.map((event, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-sm">
-                            <span className={event.status === "URGENT" ? "text-red-600 font-medium" : "text-gray-700"}>
-                              {event.event}
-                              {event.status && <Badge className="ml-2 bg-red-500 text-white text-xs">{event.status}</Badge>}
-                            </span>
-                            <span className="text-gray-500">{event.date}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">{exec.notes}</p>
                     </div>
                   )}
 

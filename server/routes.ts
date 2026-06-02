@@ -22,7 +22,15 @@ import {
   temporalAnchors, itineraryItems, generatedItineraries,
   userAndExpertChats, insertUserAndExpertChatSchema,
   expertPayouts, providerPayouts,
-  eaClientRelationships
+  eaClientRelationships,
+  eaExecutives, insertEaExecutiveSchema,
+  eaEvents, insertEaEventSchema,
+  eaTravelArrangements, insertEaTravelArrangementSchema,
+  eaGifts, insertEaGiftSchema,
+  eaSavedVenues, insertEaSavedVenueSchema,
+  eaCommunications, insertEaCommunicationSchema,
+  eaAiTasks, insertEaAiTaskSchema,
+  userAndExpertContracts,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -12204,7 +12212,14 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const userId = (req.user as any).claims.sub;
       const summary = await storage.getProviderEarningsSummary(userId);
-      res.json(summary);
+      // Return both legacy field names and the names the payouts UI expects
+      res.json({
+        ...summary,
+        totalEarnings: summary.total,
+        availableForPayout: summary.available,
+        pendingPayout: summary.pending,
+        commissionRate: summary.total > 0 ? (summary.paidOut / summary.total) : 0,
+      });
     } catch (error: any) {
       console.error("Provider earnings summary error:", error);
       res.status(500).json({ message: "Failed to get provider earnings summary", error: error.message });
@@ -16906,6 +16921,424 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("[EA] pushNotification error:", err);
       res.status(500).json({ message: "Failed to send notification" });
+    }
+  });
+
+  // ============================================================
+  // EA EXECUTIVE MANAGEMENT
+  // ============================================================
+
+  app.get("/api/ea/executives", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db.select().from(eaExecutives)
+        .where(eq(eaExecutives.eaUserId, eaUserId))
+        .orderBy(asc(eaExecutives.name));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getExecutives error:", err);
+      res.status(500).json({ message: "Failed to fetch executives" });
+    }
+  });
+
+  app.post("/api/ea/executives", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaExecutiveSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaExecutives).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createExecutive error:", err);
+      res.status(400).json({ message: "Failed to create executive" });
+    }
+  });
+
+  app.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaExecutives)
+        .where(and(eq(eaExecutives.id, req.params.id), eq(eaExecutives.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "Executive not found" });
+      const [updated] = await db.update(eaExecutives)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(eaExecutives.id, req.params.id)).returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateExecutive error:", err);
+      res.status(500).json({ message: "Failed to update executive" });
+    }
+  });
+
+  app.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaExecutives)
+        .where(and(eq(eaExecutives.id, req.params.id), eq(eaExecutives.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "Executive not found" });
+      await db.delete(eaExecutives).where(eq(eaExecutives.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteExecutive error:", err);
+      res.status(500).json({ message: "Failed to delete executive" });
+    }
+  });
+
+  // ============================================================
+  // EA EVENTS
+  // ============================================================
+
+  app.get("/api/ea/events", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db.select().from(eaEvents)
+        .where(eq(eaEvents.eaUserId, eaUserId))
+        .orderBy(desc(eaEvents.date));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getEvents error:", err);
+      res.status(500).json({ message: "Failed to fetch events" });
+    }
+  });
+
+  app.post("/api/ea/events", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaEventSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaEvents).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createEvent error:", err);
+      res.status(400).json({ message: "Failed to create event" });
+    }
+  });
+
+  app.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaEvents)
+        .where(and(eq(eaEvents.id, req.params.id), eq(eaEvents.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "Event not found" });
+      const [updated] = await db.update(eaEvents)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(eaEvents.id, req.params.id)).returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateEvent error:", err);
+      res.status(500).json({ message: "Failed to update event" });
+    }
+  });
+
+  app.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      await db.delete(eaEvents)
+        .where(and(eq(eaEvents.id, req.params.id), eq(eaEvents.eaUserId, eaUserId)));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteEvent error:", err);
+      res.status(500).json({ message: "Failed to delete event" });
+    }
+  });
+
+  // ============================================================
+  // EA TRAVEL ARRANGEMENTS
+  // ============================================================
+
+  app.get("/api/ea/travel", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db.select().from(eaTravelArrangements)
+        .where(eq(eaTravelArrangements.eaUserId, eaUserId))
+        .orderBy(desc(eaTravelArrangements.createdAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getTravel error:", err);
+      res.status(500).json({ message: "Failed to fetch travel arrangements" });
+    }
+  });
+
+  app.post("/api/ea/travel", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaTravelArrangements).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createTravel error:", err);
+      res.status(400).json({ message: "Failed to create travel arrangement" });
+    }
+  });
+
+  app.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaTravelArrangements)
+        .where(and(eq(eaTravelArrangements.id, req.params.id), eq(eaTravelArrangements.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "Travel arrangement not found" });
+      const [updated] = await db.update(eaTravelArrangements)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(eaTravelArrangements.id, req.params.id)).returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateTravel error:", err);
+      res.status(500).json({ message: "Failed to update travel arrangement" });
+    }
+  });
+
+  app.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      await db.delete(eaTravelArrangements)
+        .where(and(eq(eaTravelArrangements.id, req.params.id), eq(eaTravelArrangements.eaUserId, eaUserId)));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteTravel error:", err);
+      res.status(500).json({ message: "Failed to delete travel arrangement" });
+    }
+  });
+
+  // ============================================================
+  // EA GIFTS
+  // ============================================================
+
+  app.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db.select().from(eaGifts)
+        .where(eq(eaGifts.eaUserId, eaUserId))
+        .orderBy(desc(eaGifts.createdAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getGifts error:", err);
+      res.status(500).json({ message: "Failed to fetch gifts" });
+    }
+  });
+
+  app.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaGiftSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaGifts).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createGift error:", err);
+      res.status(400).json({ message: "Failed to create gift" });
+    }
+  });
+
+  app.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaGifts)
+        .where(and(eq(eaGifts.id, req.params.id), eq(eaGifts.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "Gift not found" });
+      const [updated] = await db.update(eaGifts)
+        .set(req.body)
+        .where(eq(eaGifts.id, req.params.id)).returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateGift error:", err);
+      res.status(500).json({ message: "Failed to update gift" });
+    }
+  });
+
+  app.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      await db.delete(eaGifts)
+        .where(and(eq(eaGifts.id, req.params.id), eq(eaGifts.eaUserId, eaUserId)));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteGift error:", err);
+      res.status(500).json({ message: "Failed to delete gift" });
+    }
+  });
+
+  // ============================================================
+  // EA SAVED VENUES
+  // ============================================================
+
+  app.get("/api/ea/venues", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db.select().from(eaSavedVenues)
+        .where(eq(eaSavedVenues.eaUserId, eaUserId))
+        .orderBy(desc(eaSavedVenues.favorite), asc(eaSavedVenues.name));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getVenues error:", err);
+      res.status(500).json({ message: "Failed to fetch venues" });
+    }
+  });
+
+  app.post("/api/ea/venues", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaSavedVenueSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaSavedVenues).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createVenue error:", err);
+      res.status(400).json({ message: "Failed to save venue" });
+    }
+  });
+
+  app.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaSavedVenues)
+        .where(and(eq(eaSavedVenues.id, req.params.id), eq(eaSavedVenues.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "Venue not found" });
+      const [updated] = await db.update(eaSavedVenues)
+        .set(req.body)
+        .where(eq(eaSavedVenues.id, req.params.id)).returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateVenue error:", err);
+      res.status(500).json({ message: "Failed to update venue" });
+    }
+  });
+
+  app.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      await db.delete(eaSavedVenues)
+        .where(and(eq(eaSavedVenues.id, req.params.id), eq(eaSavedVenues.eaUserId, eaUserId)));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteVenue error:", err);
+      res.status(500).json({ message: "Failed to delete venue" });
+    }
+  });
+
+  // ============================================================
+  // EA COMMUNICATIONS
+  // ============================================================
+
+  app.get("/api/ea/communications", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db.select().from(eaCommunications)
+        .where(eq(eaCommunications.eaUserId, eaUserId))
+        .orderBy(desc(eaCommunications.sentAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getCommunications error:", err);
+      res.status(500).json({ message: "Failed to fetch communications" });
+    }
+  });
+
+  app.post("/api/ea/communications", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaCommunicationSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaCommunications).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createCommunication error:", err);
+      res.status(400).json({ message: "Failed to log communication" });
+    }
+  });
+
+  app.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      await db.delete(eaCommunications)
+        .where(and(eq(eaCommunications.id, req.params.id), eq(eaCommunications.eaUserId, eaUserId)));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteCommunication error:", err);
+      res.status(500).json({ message: "Failed to delete communication" });
+    }
+  });
+
+  // ============================================================
+  // EA AI TASKS
+  // ============================================================
+
+  app.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { status } = req.query;
+      const conditions = [eq(eaAiTasks.eaUserId, eaUserId)];
+      if (status) conditions.push(eq(eaAiTasks.status, status as string));
+      const rows = await db.select().from(eaAiTasks)
+        .where(and(...conditions))
+        .orderBy(desc(eaAiTasks.createdAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getAiTasks error:", err);
+      res.status(500).json({ message: "Failed to fetch AI tasks" });
+    }
+  });
+
+  app.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const body = insertEaAiTaskSchema.parse({ ...req.body, eaUserId });
+      const [created] = await db.insert(eaAiTasks).values(body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createAiTask error:", err);
+      res.status(400).json({ message: "Failed to create AI task" });
+    }
+  });
+
+  app.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const [row] = await db.select().from(eaAiTasks)
+        .where(and(eq(eaAiTasks.id, req.params.id), eq(eaAiTasks.eaUserId, eaUserId))).limit(1);
+      if (!row) return res.status(404).json({ message: "AI task not found" });
+      const updates: Record<string, any> = { ...req.body, updatedAt: new Date() };
+      if (req.body.status === "approved") updates.approvedAt = new Date();
+      if (req.body.status === "rejected") updates.rejectedAt = new Date();
+      const [updated] = await db.update(eaAiTasks)
+        .set(updates)
+        .where(eq(eaAiTasks.id, req.params.id)).returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[EA] updateAiTask error:", err);
+      res.status(500).json({ message: "Failed to update AI task" });
+    }
+  });
+
+  app.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      await db.delete(eaAiTasks)
+        .where(and(eq(eaAiTasks.id, req.params.id), eq(eaAiTasks.eaUserId, eaUserId)));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[EA] deleteAiTask error:", err);
+      res.status(500).json({ message: "Failed to delete AI task" });
+    }
+  });
+
+  // ============================================================
+  // EXPERT CONTRACTS
+  // ============================================================
+
+  app.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
+      const rows = await db.select({
+        id: userAndExpertContracts.id,
+        title: userAndExpertContracts.title,
+        client: userAndExpertContracts.tripTo,
+        value: userAndExpertContracts.amount,
+        status: userAndExpertContracts.status,
+        isPaid: userAndExpertContracts.isPaid,
+        createdAt: userAndExpertContracts.createdAt,
+      })
+        .from(userAndExpertContracts)
+        .orderBy(desc(userAndExpertContracts.createdAt))
+        .limit(limit);
+      res.json(rows);
+    } catch (err) {
+      console.error("[Expert] getContracts error:", err);
+      res.status(500).json({ message: "Failed to fetch contracts" });
     }
   });
 

@@ -15,10 +15,23 @@ import {
   ShoppingCart
 } from "lucide-react";
 
+import { useQuery } from "@tanstack/react-query";
+
+interface EaGift {
+  id: string; executiveName?: string; occasion: string; occasionDate?: string;
+  recipient?: string; gift?: string; amount?: string; status: string;
+  rating?: number; giftNeeded?: boolean; notes?: string;
+  createdAt?: string;
+}
+
 export default function EAGifts() {
-  const upcomingOccasions: Array<{ id: number; executive: string; occasion: string; date: string; giftNeeded: boolean }> = [];
+  const { data: allGifts = [] } = useQuery<EaGift[]>({
+    queryKey: ["/api/ea/gifts"],
+  });
+
+  const upcomingOccasions = allGifts.filter(g => g.giftNeeded !== false && !g.gift);
   const aiSuggestions: Array<{ id: number; for: string; options: Array<{ name: string; price: string; matchScore: number }> }> = [];
-  const giftHistory: Array<{ id: number; executive: string; occasion: string; gift: string; amount: string; date: string; rating: number }> = [];
+  const giftHistory = allGifts.filter(g => g.gift && g.status === "sent" || g.rating);
 
   return (
     <EALayout title="Gifts">
@@ -94,14 +107,14 @@ export default function EAGifts() {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-gray-900">{occasion.executive}</p>
+                          <p className="font-medium text-gray-900">{occasion.executiveName}</p>
                           {occasion.giftNeeded && (
                             <Badge className="bg-yellow-100 text-yellow-700">Gift Needed</Badge>
                           )}
                         </div>
                         <p className="text-sm text-gray-600">{occasion.occasion}</p>
                         <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                          <Clock className="w-3 h-3" /> {occasion.date}
+                          <Clock className="w-3 h-3" /> {occasion.occasionDate}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -184,7 +197,7 @@ export default function EAGifts() {
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <User className="w-4 h-4 text-gray-400" />
-                    <span className="font-medium text-gray-900">{gift.executive}</span>
+                    <span className="font-medium text-gray-900">{gift.executiveName}</span>
                   </div>
                   <p className="text-sm text-gray-600">{gift.occasion}</p>
                   <p className="text-sm text-gray-900 font-medium mt-1">{gift.gift}</p>
@@ -196,7 +209,7 @@ export default function EAGifts() {
                       ))}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{gift.date}</p>
+                  <p className="text-xs text-gray-400 mt-1">{gift.occasionDate ?? gift.createdAt}</p>
                 </div>
               ))}
               <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-view-all-history">
