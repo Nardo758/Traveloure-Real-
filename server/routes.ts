@@ -11645,7 +11645,8 @@ export async function registerDiscoveryRoutes(app: Express) {
         )
         .limit(20);
 
-      // Normalize affiliate products into unified card shape
+      // Normalize affiliate products into unified card shape.
+      // tracking.productId is the affiliate_products.id (valid FK) — safe to send to /api/affiliate/track-click
       const affiliateCards = affiliateItems.map((p: any) => ({
         id: `affiliate-${p.id}`,
         sourceId: p.id,
@@ -11666,11 +11667,22 @@ export async function registerDiscoveryRoutes(app: Express) {
         duration: p.duration || null,
         highlights: p.highlights || [],
         metadata: p.metadata || {},
+        // Explicit tracking identifiers safe to pass as FKs to affiliate_clicks
+        tracking: {
+          productId: p.id,       // FK → affiliate_products.id (valid)
+          partnerId: null as string | null,
+          isAffiliateTracked: true,
+        },
       }));
 
-      // Normalize content_registry items into unified card shape
+      // Normalize content_registry items into unified card shape.
+      // For registry items with affiliate_url, tracking uses metadata.partnerId (FK → affiliate_partners.id)
+      // if present; otherwise isAffiliateTracked = false (no valid FK available — skip track-click call).
       const registryCards = registryItems.map((r: any) => {
         const meta = r.metadata || {};
+        const affiliateUrl = meta.affiliate_url || null;
+        const metaPartnerId: string | null = meta.partnerId || meta.partner_id || null;
+        const isAffiliateTracked = !!(affiliateUrl && metaPartnerId);
         return {
           id: `registry-${r.id}`,
           sourceId: r.id,
@@ -11681,7 +11693,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           cover_image: meta.cover_image || meta.imageUrl || meta.image_url || null,
           price: meta.price ? String(meta.price) : null,
           price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
-          affiliate_url: meta.affiliate_url || null,
+          affiliate_url: affiliateUrl,
           source: "Traveloure Curated",
           rating: meta.rating ? parseFloat(String(meta.rating)) : null,
           city: meta.city || meta.location || city,
@@ -11689,6 +11701,12 @@ export async function registerDiscoveryRoutes(app: Express) {
           duration: meta.duration || null,
           highlights: meta.highlights || [],
           metadata: meta,
+          // Only track when a valid partnerId FK exists in affiliate_partners table
+          tracking: {
+            productId: null as string | null,
+            partnerId: metaPartnerId,
+            isAffiliateTracked,
+          },
         };
       });
 

@@ -40,6 +40,11 @@ interface CuratedItem {
   duration: string | null;
   highlights: string[];
   metadata: Record<string, any>;
+  tracking: {
+    productId: string | null;
+    partnerId: string | null;
+    isAffiliateTracked: boolean;
+  };
 }
 
 interface CuratedContentResponse {
@@ -182,17 +187,14 @@ function CuratedCard({
   const trackClickMutation = useMutation({
     mutationFn: async () => {
       if (!isAffiliate) return;
-      // Always pass productId using sourceId as stable tracking identifier.
-      // For affiliate_products rows sourceId is the affiliate product id;
-      // for registry rows it's the content_registry id — both work as
-      // opaque tracking keys that satisfy the backend's productId||partnerId check.
-      const trackPayload: Record<string, any> = {
-        productId: String(item.sourceId),
-        initiatedBy: "user",
-      };
-      // Additionally surface partnerId from metadata when present
-      if (item.metadata?.partnerId) trackPayload.partnerId = item.metadata.partnerId;
-      else if (item.metadata?.partner_id) trackPayload.partnerId = item.metadata.partner_id;
+      // Use only validated FK-backed identifiers from the API response.
+      // affiliate_products items supply productId (FK → affiliate_products.id).
+      // content_registry items supply partnerId from metadata (FK → affiliate_partners.id)
+      // only when present; otherwise isAffiliateTracked=false and we skip the API call.
+      if (!item.tracking?.isAffiliateTracked) return;
+      const trackPayload: Record<string, any> = { initiatedBy: "user" };
+      if (item.tracking.productId) trackPayload.productId = item.tracking.productId;
+      if (item.tracking.partnerId) trackPayload.partnerId = item.tracking.partnerId;
       try {
         await apiRequest("POST", "/api/affiliate/track-click", trackPayload);
       } catch {
