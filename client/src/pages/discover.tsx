@@ -183,104 +183,6 @@ const tripCategories = [
   { id: "family", label: "Family", icon: Users },
 ];
 
-const preResearchedTrips = [
-  {
-    id: 1,
-    title: "Discover Kyoto's Ancient Temples",
-    destination: "Kyoto, Japan",
-    duration: "7 days",
-    travelers: "2-4",
-    category: "cultural",
-    rating: 4.9,
-    reviews: 234,
-    price: 2499,
-    originalPrice: 2999,
-    highlights: ["Fushimi Inari Shrine", "Traditional Tea Ceremony", "Bamboo Grove Walk"],
-    expertPick: true,
-    imageUrl: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600&q=80",
-    vibeTags: ["cultural", "peaceful", "historic"],
-  },
-  {
-    id: 2,
-    title: "Amalfi Coast Dream Escape",
-    destination: "Amalfi, Italy",
-    duration: "5 days",
-    travelers: "2",
-    category: "romantic",
-    rating: 4.8,
-    reviews: 189,
-    price: 3299,
-    originalPrice: 3899,
-    highlights: ["Positano Beach Day", "Limoncello Tasting", "Sunset Boat Cruise"],
-    expertPick: true,
-    imageUrl: "https://images.unsplash.com/photo-1455587734955-081b22074882?w=600&q=80",
-    vibeTags: ["romantic", "coastal", "luxury"],
-  },
-  {
-    id: 3,
-    title: "Bali Wellness Retreat",
-    destination: "Ubud, Bali",
-    duration: "6 days",
-    travelers: "1-2",
-    category: "relaxation",
-    rating: 4.9,
-    reviews: 312,
-    price: 1899,
-    originalPrice: 2299,
-    highlights: ["Yoga Sessions", "Rice Terrace Walks", "Spa Treatments"],
-    expertPick: false,
-    imageUrl: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80",
-    vibeTags: ["wellness", "nature", "spiritual"],
-  },
-  {
-    id: 4,
-    title: "Costa Rica Adventure Week",
-    destination: "Costa Rica",
-    duration: "8 days",
-    travelers: "2-6",
-    category: "adventure",
-    rating: 4.7,
-    reviews: 156,
-    price: 2199,
-    originalPrice: 2699,
-    highlights: ["Zip-lining", "Volcano Hiking", "Wildlife Safari"],
-    expertPick: false,
-    imageUrl: "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?w=600&q=80",
-    vibeTags: ["adventure", "nature", "wildlife"],
-  },
-  {
-    id: 5,
-    title: "Paris Family Discovery",
-    destination: "Paris, France",
-    duration: "5 days",
-    travelers: "4-6",
-    category: "family",
-    rating: 4.8,
-    reviews: 278,
-    price: 2799,
-    originalPrice: 3299,
-    highlights: ["Eiffel Tower", "Disneyland Paris", "Seine River Cruise"],
-    expertPick: true,
-    imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=600&q=80",
-    vibeTags: ["family", "iconic", "cultural"],
-  },
-  {
-    id: 6,
-    title: "Moroccan Desert Adventure",
-    destination: "Marrakech, Morocco",
-    duration: "6 days",
-    travelers: "2-4",
-    category: "adventure",
-    rating: 4.6,
-    reviews: 98,
-    price: 1599,
-    originalPrice: 1999,
-    highlights: ["Sahara Camping", "Medina Tour", "Camel Trek"],
-    expertPick: false,
-    imageUrl: "https://images.unsplash.com/photo-1489749798305-4fea3ae63d43?w=600&q=80",
-    vibeTags: ["adventure", "exotic", "cultural"],
-  },
-];
 
 const influencerContent = [
   {
@@ -879,7 +781,7 @@ export default function DiscoverPage() {
 
   // Map trending cities to trip package format for the Trip Packages tab
   const trendingTrips = useMemo(() => {
-    if (!trendingCitiesData?.cities?.length) return preResearchedTrips;
+    if (!trendingCitiesData?.cities?.length) return [];
     return trendingCitiesData.cities.map((city: any, idx: number) => ({
       id: idx + 1,
       title: `Discover ${city.cityName}`,
@@ -1702,23 +1604,50 @@ export default function DiscoverPage() {
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
                 {/* Expert Itinerary Templates Section */}
-                {(expertTemplates && expertTemplates.length > 0) && (
-                  <div className="mb-10">
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <h2 className="text-xl font-semibold flex items-center gap-2">
-                          <Award className="w-5 h-5 text-primary" />
-                          Expert Itinerary Templates
-                        </h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Purchase ready-made travel plans crafted by verified local experts
-                        </p>
-                      </div>
+                <div className="mb-10">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Award className="w-5 h-5 text-primary" />
+                        Expert Itinerary Templates
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Purchase ready-made travel plans crafted by verified local experts
+                      </p>
+                    </div>
+                    {expertTemplates && expertTemplates.length > 0 && (
                       <Badge variant="secondary">
                         {expertTemplates.length} Available
                       </Badge>
+                    )}
+                  </div>
+
+                  {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
+                      <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+                      <h3 className="font-semibold text-gray-700 mb-1">No templates published yet</h3>
+                      <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
+                        Verified experts can publish ready-made itinerary packages here for travelers to purchase.
+                      </p>
+                      {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
+                        <Link href="/expert/templates">
+                          <Button size="sm" data-testid="button-create-first-template">
+                            Create your first template
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Link href="/expert-status">
+                          <Button size="sm" variant="outline" data-testid="button-become-expert">
+                            Become an expert
+                          </Button>
+                        </Link>
+                      )}
                     </div>
-                    
+                  )}
+
+                  {(expertTemplates && expertTemplates.length > 0) && (
+                    <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {expertTemplates.slice(0, 6).map((template, idx) => (
                         <motion.div
@@ -1830,8 +1759,9 @@ export default function DiscoverPage() {
                     )}
 
                     <div className="border-t my-8" />
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
 
                 {templatesLoading && (
                   <div className="mb-10">
@@ -1992,12 +1922,22 @@ export default function DiscoverPage() {
                   ))}
                 </div>
 
-                {filteredTrips.length === 0 && (
+                {filteredTrips.length === 0 && trendingTrips.length === 0 && !trendingLoading && (
+                  <div className="text-center py-16">
+                    <Globe className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Destination intelligence loading</h3>
+                    <p className="text-muted-foreground max-w-sm mx-auto">
+                      Trending destination data is generated daily by TravelPulse. Check back soon, or browse expert templates above.
+                    </p>
+                  </div>
+                )}
+
+                {filteredTrips.length === 0 && trendingTrips.length > 0 && (
                   <div className="text-center py-16">
                     <Search className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No trips found</h3>
+                    <h3 className="text-lg font-semibold mb-2">No destinations match your filters</h3>
                     <p className="text-muted-foreground mb-4">
-                      Try adjusting your search or filters
+                      Try adjusting your search or category
                     </p>
                     <Button
                       variant="outline"
