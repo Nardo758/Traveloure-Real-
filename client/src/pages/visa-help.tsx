@@ -100,9 +100,9 @@ export default function VisaHelpPage() {
   });
 
   const { data: expertsData, isLoading: expertsLoading } = useQuery<DiscoverResult>({
-    queryKey: ["/api/services", { category: "visa-assistance" }],
+    queryKey: ["/api/visa/experts"],
     queryFn: async () => {
-      const res = await fetch("/api/services?category=visa-assistance&limit=6");
+      const res = await fetch("/api/visa/experts?limit=6");
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },

@@ -58,7 +58,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -18417,14 +18417,30 @@ export async function registerDiscoveryRoutes(app: Express) {
   // VISA REQUIREMENTS
   // ============================================================
 
+  // Simple in-memory rate limiter for visa requirements (max 10 req / IP / minute)
+  const visaRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  function visaRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = visaRateLimitMap.get(ip);
+    if (!entry || now > entry.resetAt) {
+      visaRateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
+      return false;
+    }
+    if (entry.count >= 10) return true;
+    entry.count++;
+    return false;
+  }
+
   app.post("/api/visa/requirements", async (req, res) => {
     try {
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (visaRateLimit(ip)) {
+        return res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
+      }
       const { passportCountry, destinationCountry } = req.body;
       if (!passportCountry || !destinationCountry) {
         return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
       }
-
-      const { visaRequirementsCache } = await import("@shared/schema");
 
       // Check cache first (7-day TTL)
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -18505,6 +18521,30 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
     } catch (err) {
       console.error("[Visa] requirements error:", err);
       res.status(500).json({ message: "Failed to fetch visa requirements" });
+    }
+  });
+
+  // GET /api/visa/experts — returns visa-assistance services for the visa-help page
+  app.get("/api/visa/experts", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string || "6"), 20);
+      const cat = await db
+        .select({ id: serviceCategories.id })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.slug, "visa-assistance"))
+        .limit(1)
+        .then((r) => r[0]);
+      if (!cat) return res.json({ services: [], total: 0 });
+      const services = await db
+        .select()
+        .from(providerServices)
+        .where(and(eq(providerServices.categoryId, cat.id), eq(providerServices.status, "active")))
+        .orderBy(desc(providerServices.bookingsCount))
+        .limit(limit);
+      res.json({ services, total: services.length });
+    } catch (err) {
+      console.error("[Visa] experts error:", err);
+      res.status(500).json({ message: "Failed to fetch visa experts" });
     }
   });
 
