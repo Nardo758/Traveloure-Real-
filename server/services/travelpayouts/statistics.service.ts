@@ -85,6 +85,9 @@ async function fetchBalanceData(): Promise<{ balance: number; currency: string }
   }
 }
 
+/**
+ * Fetch payments for a date range and group the totals by partner/program key.
+ */
 async function fetchPartnerAmounts(from: string, to: string): Promise<Record<string, number>> {
   try {
     const data = await tpFetch("/v1/statistics/payments", { from, to });
@@ -94,7 +97,10 @@ async function fetchPartnerAmounts(from: string, to: string): Promise<Record<str
       const partner = (payment.partner || payment.program || "other")
         .toLowerCase()
         .replace(/\s+/g, "_");
-      const n = typeof payment.amount === "number" ? payment.amount : parseFloat(payment.amount || "0");
+      const n =
+        typeof payment.amount === "number"
+          ? payment.amount
+          : parseFloat(payment.amount || "0");
       byPartner[partner] = (byPartner[partner] || 0) + (isNaN(n) ? 0 : n);
     }
     return byPartner;
@@ -122,59 +128,67 @@ export async function getTravelpayoutsStatistics(period: string): Promise<Travel
   const lastRange = getLastMonthRange();
   const selectedRange = getPeriodRange(period);
 
-  // Always fetch this-month and last-month separately (for MoM display and partner breakdown)
-  // Also fetch the selected period total when it differs from this/last month
-  const needsSeparateFetch =
-    period === "last_90_days" || // 90-day range ≠ this month + last month
-    (period === "this_month" && false); // already covered
+  // Always fetch this-month and last-month amounts separately (for MoM display).
+  // For the selected period total: use the exact range so 90-day isn't approximated.
+  // For partner breakdown: fetch all three ranges to populate all three columns accurately.
+  const needsThirdFetch = period === "last_90_days";
 
-  const fetchSelectedTotal = period === "last_90_days";
+  const fetches: Promise<any>[] = [
+    fetchAmountForRange(thisRange.from, thisRange.to),      // 0: this month total
+    fetchAmountForRange(lastRange.from, lastRange.to),      // 1: last month total
+    fetchBalanceData(),                                      // 2: balance
+    fetchPartnerAmounts(thisRange.from, thisRange.to),      // 3: this month per-partner
+    fetchPartnerAmounts(lastRange.from, lastRange.to),      // 4: last month per-partner
+  ];
 
-  const [thisMonthTotal, lastMonthTotal, balanceData, thisMonthPartners, lastMonthPartners] =
-    await Promise.all([
-      fetchAmountForRange(thisRange.from, thisRange.to),
-      fetchAmountForRange(lastRange.from, lastRange.to),
-      fetchBalanceData(),
-      fetchPartnerAmounts(thisRange.from, thisRange.to),
-      fetchPartnerAmounts(lastRange.from, lastRange.to),
-    ]);
-
-  // For 90-day total, query the actual range; otherwise use already-fetched values
-  let total: number;
-  if (period === "this_month") {
-    total = thisMonthTotal;
-  } else if (period === "last_month") {
-    total = lastMonthTotal;
-  } else {
-    // last_90_days: fetch the actual 90-day range total
-    total = await fetchAmountForRange(selectedRange.from, selectedRange.to);
+  if (needsThirdFetch) {
+    // 5: actual 90-day total
+    fetches.push(fetchAmountForRange(selectedRange.from, selectedRange.to));
+    // 6: actual 90-day per-partner breakdown
+    fetches.push(fetchPartnerAmounts(selectedRange.from, selectedRange.to));
   }
 
-  // Build partner breakdown with accurate this-month and last-month columns
+  const results = await Promise.all(fetches);
+
+  const thisMonthTotal = results[0] as number;
+  const lastMonthTotal = results[1] as number;
+  const balanceData = results[2] as { balance: number; currency: string };
+  const thisMonthPartners = results[3] as Record<string, number>;
+  const lastMonthPartners = results[4] as Record<string, number>;
+
+  let total: number;
+  let selectedRangePartners: Record<string, number>;
+
+  if (period === "this_month") {
+    total = thisMonthTotal;
+    selectedRangePartners = thisMonthPartners;
+  } else if (period === "last_month") {
+    total = lastMonthTotal;
+    selectedRangePartners = lastMonthPartners;
+  } else {
+    // last_90_days: use actual fetched values — no approximation
+    total = results[5] as number;
+    selectedRangePartners = results[6] as Record<string, number>;
+  }
+
+  // Build partner breakdown: union of partners seen in any range.
+  // thisMonth / lastMonth columns always reflect calendar-month actuals.
+  // total column reflects the selected period exactly.
   const allPartners = new Set([
     ...Object.keys(thisMonthPartners),
     ...Object.keys(lastMonthPartners),
+    ...Object.keys(selectedRangePartners),
   ]);
 
-  const byPartner: PartnerCommission[] = Array.from(allPartners).map((partner) => {
-    const thisMonthAmt = thisMonthPartners[partner] || 0;
-    const lastMonthAmt = lastMonthPartners[partner] || 0;
-    const rowTotal =
-      period === "this_month"
-        ? thisMonthAmt
-        : period === "last_month"
-        ? lastMonthAmt
-        : thisMonthAmt + lastMonthAmt; // approximation for 90-day view
-
-    return {
-      partner,
-      partnerLabel: PARTNER_LABELS[partner] || partner.charAt(0).toUpperCase() + partner.slice(1),
-      thisMonth: thisMonthAmt,
-      lastMonth: lastMonthAmt,
-      total: rowTotal,
-      currency: balanceData.currency,
-    };
-  });
+  const byPartner: PartnerCommission[] = Array.from(allPartners).map((partner) => ({
+    partner,
+    partnerLabel:
+      PARTNER_LABELS[partner] || partner.charAt(0).toUpperCase() + partner.slice(1),
+    thisMonth: thisMonthPartners[partner] || 0,
+    lastMonth: lastMonthPartners[partner] || 0,
+    total: selectedRangePartners[partner] || 0,
+    currency: balanceData.currency,
+  }));
 
   byPartner.sort((a, b) => b.total - a.total);
 

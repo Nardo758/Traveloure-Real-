@@ -12122,18 +12122,43 @@ export async function registerDiscoveryRoutes(app: Express) {
         import("./services/revenue-tracking.service"),
       ]);
 
-      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts] = await Promise.all([
+      // Compute period-specific date bounds for Stripe query
+      const now = new Date();
+      const periodBounds = (() => {
+        if (period === "last_month") {
+          return {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+          };
+        }
+        if (period === "last_90_days") {
+          return {
+            start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+            end: now,
+          };
+        }
+        // this_month
+        return {
+          start: new Date(now.getFullYear(), now.getMonth(), 1),
+          end: now,
+        };
+      })();
+
+      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary] = await Promise.all([
         revenueTrackingService.getUnifiedDashboard().catch(() => null),
         getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
         getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getBookingComCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
+        // Fetch period-accurate Stripe total directly from DB
+        storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
       ]);
 
       const stripeThisMonth = stripe?.platform?.thisMonth || 0;
       const stripeLastMonth = stripe?.platform?.lastMonth || 0;
-      const stripeTotal = period === "this_month" ? stripeThisMonth : period === "last_month" ? stripeLastMonth : (stripe?.platform?.totalRevenue || 0);
+      // Use period-accurate DB query result (not all-time totalRevenue)
+      const stripeTotal = stripePeriodSummary.totalPlatformFee;
 
       const totalAffiliateRevenue =
         (travelpayouts.total || 0) +

@@ -547,7 +547,7 @@ export default function AdminRevenue() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Expert Earnings</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Expert Earnings (All Time)</p>
                   <p className="text-2xl font-bold">
                     {formatCurrency(dashboard?.experts.totalPaid || 0)}
                   </p>
@@ -566,7 +566,7 @@ export default function AdminRevenue() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Provider Earnings</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Provider Earnings (All Time)</p>
                   <p className="text-2xl font-bold">
                     {formatCurrency(dashboard?.providers.totalPaid || 0)}
                   </p>
@@ -835,47 +835,57 @@ export default function AdminRevenue() {
             </Card>
           </TabsContent>
 
-          {/* Daily Trends tab */}
+          {/* Daily Trends tab — filtered to selected period */}
           <TabsContent value="trends" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-green-600" />
-                  Daily Revenue Trends (Last 30 Days)
+                  Daily Revenue Trends · {periodLabel}
                 </CardTitle>
-                <CardDescription>Platform revenue recorded each day</CardDescription>
+                <CardDescription>
+                  Platform revenue recorded each day within {startDate} – {endDate}
+                  {" "}(DB tracks last 30 days; older dates will show $0)
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {(dashboard?.dailyTrend || []).slice(-14).map((day, index) => {
-                  const maxRevenue = Math.max(
-                    ...(dashboard?.dailyTrend || []).map((d) => d.platformRevenue),
-                    1
-                  );
-                  const percentage = (day.platformRevenue / maxRevenue) * 100;
-                  return (
-                    <div key={day.date} className="space-y-1" data-testid={`trend-${index}`}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">
-                          {formatDate(day.date)}
-                        </span>
-                        <span className="font-medium">
-                          {formatCurrency(day.platformRevenue)}
-                        </span>
+                {(() => {
+                  const from = new Date(startDate);
+                  const to = new Date(endDate);
+                  const filtered = (dashboard?.dailyTrend || []).filter((d) => {
+                    const dt = new Date(d.date);
+                    return dt >= from && dt <= to;
+                  });
+                  if (filtered.length === 0) {
+                    return (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        No daily trend data for {periodLabel}.
+                      </p>
+                    );
+                  }
+                  const maxRevenue = Math.max(...filtered.map((d) => d.platformRevenue), 1);
+                  return filtered.map((day, index) => {
+                    const percentage = (day.platformRevenue / maxRevenue) * 100;
+                    return (
+                      <div key={day.date} className="space-y-1" data-testid={`trend-${index}`}>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">
+                            {formatDate(day.date)}
+                          </span>
+                          <span className="font-medium">
+                            {formatCurrency(day.platformRevenue)}
+                          </span>
+                        </div>
+                        <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-green-500 rounded-full transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-green-500 rounded-full transition-all"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-                {(dashboard?.dailyTrend || []).length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No daily trend data available yet.
-                  </p>
-                )}
+                    );
+                  });
+                })()}
               </CardContent>
             </Card>
           </TabsContent>
