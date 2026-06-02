@@ -3880,6 +3880,25 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json(service);
   });
 
+  // Public provider verification status (for service detail page badge)
+  app.get("/api/providers/:userId/public-verification", async (req, res) => {
+    try {
+      const [form] = await db.select({
+        identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+        businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+      }).from(serviceProviderForms)
+        .where(eq(serviceProviderForms.userId, req.params.userId))
+        .limit(1);
+      if (!form) return res.json({ identityVerified: false, businessVerified: false });
+      res.json({
+        identityVerified: form.identityVerificationStatus === "verified",
+        businessVerified: form.businessVerificationStatus === "verified",
+      });
+    } catch {
+      res.json({ identityVerified: false, businessVerified: false });
+    }
+  });
+
   // Browse all active services (public marketplace)
   app.get("/api/services", async (req, res) => {
     const categoryId = req.query.categoryId as string | undefined;

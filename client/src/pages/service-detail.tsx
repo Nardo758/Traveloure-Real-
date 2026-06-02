@@ -17,7 +17,9 @@ import {
   MessageSquare,
   CheckCircle,
   Loader2,
-  User
+  User,
+  ShieldCheck,
+  Building2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -56,6 +58,11 @@ interface Review {
   createdAt: string;
 }
 
+interface ProviderVerification {
+  identityVerified: boolean;
+  businessVerified: boolean;
+}
+
 export default function ServiceDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -69,6 +76,11 @@ export default function ServiceDetailPage() {
   const { data: reviews, isLoading: reviewsLoading } = useQuery<Review[]>({
     queryKey: ["/api/services", id, "reviews"],
     enabled: !!id,
+  });
+
+  const { data: providerVerification } = useQuery<ProviderVerification>({
+    queryKey: ["/api/providers", service?.userId, "public-verification"],
+    enabled: !!service?.userId,
   });
 
   const addToCartMutation = useMutation({
@@ -123,9 +135,23 @@ export default function ServiceDetailPage() {
             </Link>
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold" data-testid="text-service-name">
-              {service.serviceName}
-            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold" data-testid="text-service-name">
+                {service.serviceName}
+              </h1>
+              {providerVerification?.identityVerified && (
+                <Badge className="bg-blue-600 text-white text-xs" title="Provider identity verified" data-testid="badge-identity-verified">
+                  <ShieldCheck className="w-3 h-3 mr-1" />
+                  ID Verified
+                </Badge>
+              )}
+              {providerVerification?.businessVerified && (
+                <Badge className="bg-purple-600 text-white text-xs" title="Provider business verified" data-testid="badge-business-verified">
+                  <Building2 className="w-3 h-3 mr-1" />
+                  Business Verified
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
               <div className="flex items-center gap-1">
                 <MapPin className="w-4 h-4" />
