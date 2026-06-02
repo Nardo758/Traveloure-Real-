@@ -11466,7 +11466,7 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Track affiliate click
   app.post("/api/affiliate/track-click", async (req, res) => {
     try {
-      const { productId, partnerId, userId, tripId, itineraryItemId } = req.body;
+      const { productId, partnerId, userId, tripId, itineraryItemId, initiatedBy, agentType, sessionId } = req.body;
       
       if (!productId && !partnerId) {
         return res.status(400).json({ message: "productId or partnerId is required" });
@@ -11481,11 +11481,66 @@ export async function registerDiscoveryRoutes(app: Express) {
         referrer: req.headers.referer,
         userAgent: req.headers["user-agent"],
         ipAddress: req.ip,
+        initiatedBy: initiatedBy || "user",
+        agentType: agentType || null,
+        sessionId: sessionId || null,
       });
 
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Admin: Affiliate reconciliation
+  app.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const period = (req.query.period as string) || "this_month";
+      const partner = (req.query.partner as string) || undefined;
+      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      if (!validPeriods.includes(period)) {
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+      }
+
+      const { affiliateReconciliationService } = await import("./services/affiliate-reconciliation.service");
+      const result = await affiliateReconciliationService.getReconciliationView(period, partner);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Reconciliation] Error:", error);
+      res.status(500).json({ message: "Failed to get reconciliation data", error: error.message });
+    }
+  });
+
+  // Admin: Update reconciliation status for an earnings row
+  app.patch("/api/admin/affiliate/reconciliation/:earningId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { earningId } = req.params;
+      const { status, notes, partnerReferenceId } = req.body;
+      const validStatuses = ["unmatched", "matched", "disputed", "written_off"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const { affiliateReconciliationService } = await import("./services/affiliate-reconciliation.service");
+      await affiliateReconciliationService.updateReconciliationStatus(earningId, status, notes, partnerReferenceId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Reconciliation] Update error:", error);
+      res.status(500).json({ message: "Failed to update reconciliation status", error: error.message });
     }
   });
 
@@ -12164,11 +12219,25 @@ export async function registerDiscoveryRoutes(app: Express) {
       // Use period-accurate DB query result (not all-time totalRevenue)
       const stripeTotal = stripePeriodSummary.totalPlatformFee;
 
-      const totalAffiliateRevenue =
+      // Use only reconciliation-confirmed affiliate totals when available
+      let confirmedAffiliateTotal = 0;
+      try {
+        const { affiliateReconciliationService } = await import("./services/affiliate-reconciliation.service");
+        confirmedAffiliateTotal = await affiliateReconciliationService.getConfirmedAffiliateTotal(
+          periodBounds.start,
+          periodBounds.end
+        );
+      } catch (_) { /* ignore — fallback to raw totals */ }
+
+      const rawAffiliateRevenue =
         (travelpayouts.total || 0) +
         (viator.total || 0) +
         (fever.total || 0) +
         (bookingCom.total || 0);
+
+      // Always use confirmed (matched) totals; raw affiliate numbers are for context only.
+      // If reconciliation has never run, confirmed will be 0 — that is the correct conservative figure.
+      const totalAffiliateRevenue = confirmedAffiliateTotal;
 
       const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
 
