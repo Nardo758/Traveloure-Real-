@@ -427,10 +427,9 @@ export default function ExpertWorkspace() {
     // Gate on trip.start_date being available before deciding
     const startDate = trip?.start_date;
     if (!startDate) return;
-    // Already populated — nothing to do
+    // Already populated — skip if any anchors exist (idempotency guard)
     const hasAnchors = workspaceConstraints.anchors.length > 0;
-    const hasBoundaries = workspaceConstraints.dayBoundaries.length > 0;
-    if (hasAnchors && hasBoundaries) { presetsAppliedRef.current = true; return; }
+    if (hasAnchors) { presetsAppliedRef.current = true; return; }
     const slug = workspaceConstraints.tripExperienceType;
     if (!slug) { presetsAppliedRef.current = true; return; }
     // Mark applied only now that we're about to attempt (all guards passed)
