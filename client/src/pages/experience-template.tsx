@@ -3121,6 +3121,7 @@ export default function ExperienceTemplatePage() {
             <CuratedContentSection
               destination={destination}
               tab={activeTab}
+              surface="experience-template"
               label="Recommended by Traveloure"
               className="mb-6"
             />

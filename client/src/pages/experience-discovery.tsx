@@ -321,6 +321,7 @@ export default function ExperienceDiscovery() {
               {destination && (
                 <CuratedContentSection
                   destination={destination}
+                  surface="experience-discovery"
                   label="Curated Experiences"
                   className="mb-6"
                 />
