@@ -86,6 +86,33 @@ interface UnifiedRevenue {
   apiCosts: ApiCosts;
 }
 
+interface RevenueSummary {
+  totalPlatformFee: number;
+  totalGross: number;
+  bySource: Record<string, number>;
+}
+
+interface PlatformRevenue {
+  id: string;
+  date: string;
+  sourceType: string;
+  grossAmount: number;
+  platformFee: number;
+  trackingNumber?: string;
+}
+
+interface ExpertStats {
+  totalPaid: number;
+  totalPending: number;
+  activeExperts: number;
+}
+
+interface ProviderStats {
+  totalPaid: number;
+  totalPending: number;
+  activeProviders: number;
+}
+
 interface RevenueDashboard {
   platform: {
     totalRevenue: number;
@@ -94,16 +121,8 @@ interface RevenueDashboard {
     growthPercent: number;
     bySource: Record<string, number>;
   };
-  experts: {
-    totalPaid: number;
-    totalPending: number;
-    activeExperts: number;
-  };
-  providers: {
-    totalPaid: number;
-    totalPending: number;
-    activeProviders: number;
-  };
+  experts: ExpertStats;
+  providers: ProviderStats;
   recentTransactions: Array<{
     id: string;
     date: string;
@@ -120,6 +139,28 @@ interface RevenueDashboard {
   }>;
 }
 
+function periodToDateRange(period: string): { startDate: string; endDate: string } {
+  const now = new Date();
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  if (period === "last_month") {
+    return {
+      startDate: fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+      endDate: fmt(new Date(now.getFullYear(), now.getMonth(), 0)),
+    };
+  }
+  if (period === "last_90_days") {
+    return {
+      startDate: fmt(new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)),
+      endDate: fmt(now),
+    };
+  }
+  return {
+    startDate: fmt(new Date(now.getFullYear(), now.getMonth(), 1)),
+    endDate: fmt(now),
+  };
+}
+
 function formatCurrency(amount: number, decimals = 2): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -129,7 +170,7 @@ function formatCurrency(amount: number, decimals = 2): string {
   }).format(amount);
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | Date): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -196,7 +237,10 @@ function StreamCard({
             <div className="flex items-center gap-2 mb-1">
               <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</p>
               {!data.configured && (
-                <Badge variant="outline" className="text-xs text-gray-400 border-gray-300 py-0">
+                <Badge
+                  variant="outline"
+                  className="text-xs text-gray-400 border-gray-300 py-0"
+                >
                   Not connected
                 </Badge>
               )}
@@ -208,7 +252,7 @@ function StreamCard({
             </div>
             <MoMBadge thisMonth={data.thisMonth} lastMonth={data.lastMonth} />
           </div>
-          <div className={`p-2 rounded-lg ${iconColor} bg-opacity-10 shrink-0`}>
+          <div className={`p-2 rounded-lg ${iconColor.replace("text-", "bg-").replace("-6", "-50")} shrink-0`}>
             <Icon className={`w-5 h-5 ${iconColor}`} />
           </div>
         </div>
@@ -220,22 +264,61 @@ function StreamCard({
 export default function AdminRevenue() {
   const [period, setPeriod] = useState<string>("this_month");
 
+  const { startDate, endDate } = periodToDateRange(period);
+
   const { data: unified, isLoading: unifiedLoading } = useQuery<UnifiedRevenue>({
     queryKey: ["/api/admin/revenue/unified", period],
     queryFn: () =>
       fetch(`/api/admin/revenue/unified?period=${period}`).then((r) => {
-        if (!r.ok) throw new Error("Failed to load");
+        if (!r.ok) throw new Error("Failed to load unified revenue");
         return r.json();
       }),
     refetchInterval: 120000,
   });
 
+  // Period-aware revenue summary for the breakdown tab
+  const { data: revenueSummary, isLoading: summaryLoading } = useQuery<RevenueSummary>({
+    queryKey: ["/api/admin/revenue/summary", startDate, endDate],
+    queryFn: () =>
+      fetch(`/api/admin/revenue/summary?startDate=${startDate}&endDate=${endDate}`).then((r) => {
+        if (!r.ok) throw new Error("Failed to load revenue summary");
+        return r.json();
+      }),
+    refetchInterval: 120000,
+  });
+
+  // Period-aware transactions for the transactions tab
+  const { data: transactions, isLoading: txnLoading } = useQuery<PlatformRevenue[]>({
+    queryKey: ["/api/admin/revenue/transactions", startDate, endDate],
+    queryFn: () =>
+      fetch(`/api/admin/revenue/transactions?startDate=${startDate}&endDate=${endDate}`).then(
+        (r) => {
+          if (!r.ok) throw new Error("Failed to load transactions");
+          return r.json();
+        }
+      ),
+    refetchInterval: 120000,
+  });
+
+  // All-time dashboard for expert/provider stats and daily trend (inherently all-time)
   const { data: dashboard, isLoading: dashboardLoading } = useQuery<RevenueDashboard>({
     queryKey: ["/api/admin/revenue/dashboard"],
     refetchInterval: 60000,
   });
 
-  const isLoading = unifiedLoading || dashboardLoading;
+  const isLoading = unifiedLoading || summaryLoading || txnLoading || dashboardLoading;
+
+  const periodLabel =
+    period === "this_month"
+      ? "This Month"
+      : period === "last_month"
+      ? "Last Month"
+      : "Last 90 Days";
+
+  const totalSourceRevenue = Object.values(revenueSummary?.bySource || {}).reduce(
+    (a, b) => a + b,
+    0
+  );
 
   if (isLoading) {
     return (
@@ -246,18 +329,6 @@ export default function AdminRevenue() {
       </AdminLayout>
     );
   }
-
-  const totalSourceRevenue = Object.values(dashboard?.platform.bySource || {}).reduce(
-    (a, b) => a + b,
-    0
-  );
-
-  const periodLabel =
-    period === "this_month"
-      ? "This Month"
-      : period === "last_month"
-      ? "Last Month"
-      : "Last 90 Days";
 
   return (
     <AdminLayout title="Revenue">
@@ -272,10 +343,7 @@ export default function AdminRevenue() {
           </div>
           <div className="flex items-center gap-3">
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger
-                className="w-40"
-                data-testid="select-period"
-              >
+              <SelectTrigger className="w-40" data-testid="select-period">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -294,7 +362,10 @@ export default function AdminRevenue() {
         </div>
 
         {/* Top-level Net Revenue card */}
-        <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent" data-testid="card-total-net-revenue">
+        <Card
+          className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent"
+          data-testid="card-total-net-revenue"
+        >
           <CardContent className="p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -324,7 +395,9 @@ export default function AdminRevenue() {
                 </div>
                 <div className="flex items-center gap-2 text-red-500">
                   <Minus className="w-4 h-4" />
-                  <span>{formatCurrency(unified?.apiCosts.totalCostDollars ?? 0)} API costs</span>
+                  <span>
+                    {formatCurrency(unified?.apiCosts.totalCostDollars ?? 0)} API costs
+                  </span>
                 </div>
               </div>
             </div>
@@ -334,40 +407,80 @@ export default function AdminRevenue() {
         {/* Stream Cards */}
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            Revenue Streams
+            Revenue Streams · {periodLabel}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <StreamCard
               label="Stripe Direct"
-              data={unified?.stripe ?? { configured: true, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" }}
+              data={
+                unified?.stripe ?? {
+                  configured: true,
+                  thisMonth: 0,
+                  lastMonth: 0,
+                  total: 0,
+                  currency: "USD",
+                }
+              }
               icon={CreditCard}
               iconColor="text-purple-600"
               data-testid="card-stream-stripe"
             />
             <StreamCard
               label="Travelpayouts"
-              data={unified?.travelpayouts ?? { configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" }}
+              data={
+                unified?.travelpayouts ?? {
+                  configured: false,
+                  thisMonth: 0,
+                  lastMonth: 0,
+                  total: 0,
+                  currency: "USD",
+                }
+              }
               icon={Globe}
               iconColor="text-blue-600"
               data-testid="card-stream-travelpayouts"
             />
             <StreamCard
               label="Viator Partner"
-              data={unified?.viator ?? { configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" }}
+              data={
+                unified?.viator ?? {
+                  configured: false,
+                  thisMonth: 0,
+                  lastMonth: 0,
+                  total: 0,
+                  currency: "USD",
+                }
+              }
               icon={Plane}
               iconColor="text-emerald-600"
               data-testid="card-stream-viator"
             />
             <StreamCard
               label="Fever / Impact.com"
-              data={unified?.fever ?? { configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" }}
+              data={
+                unified?.fever ?? {
+                  configured: false,
+                  thisMonth: 0,
+                  lastMonth: 0,
+                  total: 0,
+                  currency: "USD",
+                }
+              }
               icon={Ticket}
               iconColor="text-orange-600"
               data-testid="card-stream-fever"
             />
             <StreamCard
               label="Booking.com Affiliate"
-              data={unified?.bookingCom ?? { configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" }}
+              data={
+                unified?.bookingCom ?? {
+                  configured: false,
+                  thisMonth: 0,
+                  lastMonth: 0,
+                  total: 0,
+                  currency: "USD",
+                }
+              }
               icon={Hotel}
               iconColor="text-cyan-600"
               data-testid="card-stream-bookingcom"
@@ -375,15 +488,17 @@ export default function AdminRevenue() {
           </div>
         </div>
 
-        {/* Secondary stats — Expert & Provider */}
+        {/* Secondary stat cards — Expert & Provider totals (all-time) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card data-testid="card-stat-total-revenue">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Platform Revenue (DB)</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Platform Revenue ({periodLabel})
+                  </p>
                   <p className="text-2xl font-bold">
-                    {formatCurrency(dashboard?.platform.totalRevenue || 0)}
+                    {formatCurrency(revenueSummary?.totalPlatformFee ?? 0)}
                   </p>
                   {(dashboard?.platform.growthPercent ?? 0) !== 0 && (
                     <div
@@ -398,7 +513,7 @@ export default function AdminRevenue() {
                       ) : (
                         <ArrowDownRight className="w-4 h-4" />
                       )}
-                      {dashboard?.platform.growthPercent}% vs last month
+                      {dashboard?.platform.growthPercent}% MoM
                     </div>
                   )}
                 </div>
@@ -407,16 +522,20 @@ export default function AdminRevenue() {
             </CardContent>
           </Card>
 
-          <Card data-testid="card-stat-this-month">
+          <Card data-testid="card-stat-gross-revenue">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">This Month (DB)</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Gross Bookings ({periodLabel})
+                  </p>
                   <p className="text-2xl font-bold">
-                    {formatCurrency(dashboard?.platform.thisMonth || 0)}
+                    {formatCurrency(revenueSummary?.totalGross ?? 0)}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    vs {formatCurrency(dashboard?.platform.lastMonth || 0)} last month
+                    {revenueSummary?.totalGross && revenueSummary?.totalPlatformFee
+                      ? `${((revenueSummary.totalPlatformFee / revenueSummary.totalGross) * 100).toFixed(1)}% take rate`
+                      : "No data"}
                   </p>
                 </div>
                 <TrendingUp className="w-8 h-8 text-blue-600" />
@@ -482,26 +601,24 @@ export default function AdminRevenue() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Revenue Breakdown tab */}
+          {/* Revenue Breakdown tab — period-filtered via revenueSummary */}
           <TabsContent value="breakdown" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-purple-600" />
-                  Revenue by Source (Platform DB)
+                  Revenue by Source · {periodLabel}
                 </CardTitle>
-                <CardDescription>Platform earnings breakdown by revenue type recorded in the database</CardDescription>
+                <CardDescription>
+                  Platform earnings breakdown by revenue type for the selected period
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {Object.entries(dashboard?.platform.bySource || {}).map(([source, amount]) => {
+                {Object.entries(revenueSummary?.bySource || {}).map(([source, amount]) => {
                   const percentage =
                     totalSourceRevenue > 0 ? (amount / totalSourceRevenue) * 100 : 0;
                   return (
-                    <div
-                      key={source}
-                      className="space-y-2"
-                      data-testid={`source-${source}`}
-                    >
+                    <div key={source} className="space-y-2" data-testid={`source-${source}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className={`w-3 h-3 rounded-full ${getSourceColor(source)}`} />
@@ -523,9 +640,9 @@ export default function AdminRevenue() {
                     </div>
                   );
                 })}
-                {Object.keys(dashboard?.platform.bySource || {}).length === 0 && (
+                {Object.keys(revenueSummary?.bySource || {}).length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No revenue data available yet. Revenue will appear here as transactions are
+                    No revenue data for {periodLabel}. Data will appear here as transactions are
                     processed.
                   </p>
                 )}
@@ -539,11 +656,10 @@ export default function AdminRevenue() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Globe className="w-5 h-5 text-blue-600" />
-                  Travelpayouts — Commissions by Sub-Partner
+                  Travelpayouts — Commissions by Sub-Partner · {periodLabel}
                 </CardTitle>
                 <CardDescription>
-                  Breakdown of affiliate commissions across Travelpayouts network partners ·{" "}
-                  {periodLabel}
+                  Affiliate commissions across Travelpayouts network partners
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -558,7 +674,7 @@ export default function AdminRevenue() {
                   </div>
                 ) : (unified?.travelpayouts.byPartner?.length ?? 0) === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No partner commission data for this period.
+                    No partner commission data for {periodLabel}.
                   </p>
                 ) : (
                   <Table>
@@ -592,22 +708,22 @@ export default function AdminRevenue() {
             </Card>
           </TabsContent>
 
-          {/* API Costs tab */}
+          {/* API Costs tab — period-filtered via unified endpoint */}
           <TabsContent value="costs" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Server className="w-5 h-5 text-gray-600" />
-                  Platform API Costs
+                  Platform API Costs · {periodLabel}
                 </CardTitle>
                 <CardDescription>
-                  Tracked spending on external APIs · {periodLabel}
+                  Amadeus and SerpAPI usage costs for the selected period
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {(unified?.apiCosts.entries?.length ?? 0) === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No API usage recorded for this period.
+                    No API usage recorded for {periodLabel}.
                   </p>
                 ) : (
                   <Table>
@@ -622,7 +738,9 @@ export default function AdminRevenue() {
                       {(unified?.apiCosts.entries ?? []).map((entry) => (
                         <TableRow
                           key={entry.provider}
-                          data-testid={`row-cost-${entry.provider.toLowerCase().replace(/\s/g, "-")}`}
+                          data-testid={`row-cost-${entry.provider
+                            .toLowerCase()
+                            .replace(/\s/g, "-")}`}
                         >
                           <TableCell className="font-medium">{entry.provider}</TableCell>
                           <TableCell className="text-right tabular-nums">
@@ -651,17 +769,16 @@ export default function AdminRevenue() {
             </Card>
           </TabsContent>
 
-          {/* Transactions tab */}
+          {/* Transactions tab — period-filtered */}
           <TabsContent value="transactions" className="space-y-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <div>
-                  <CardTitle>Recent Transactions</CardTitle>
-                  <CardDescription>Latest revenue events across all sources</CardDescription>
+                  <CardTitle>Transactions · {periodLabel}</CardTitle>
+                  <CardDescription>
+                    Revenue events from {startDate} to {endDate}
+                  </CardDescription>
                 </div>
-                <Button variant="ghost" size="sm" data-testid="button-view-all-transactions">
-                  View All
-                </Button>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -675,7 +792,7 @@ export default function AdminRevenue() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(dashboard?.recentTransactions || []).map((txn) => (
+                    {(transactions || []).map((txn) => (
                       <TableRow key={txn.id} data-testid={`row-transaction-${txn.id}`}>
                         <TableCell className="text-sm">{formatDate(txn.date)}</TableCell>
                         <TableCell>
@@ -701,14 +818,14 @@ export default function AdminRevenue() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {(dashboard?.recentTransactions || []).length === 0 && (
+                    {(transactions || []).length === 0 && (
                       <TableRow>
                         <TableCell
                           colSpan={5}
                           className="text-center text-muted-foreground py-8"
                         >
-                          No transactions recorded yet. Transactions will appear here as revenue is
-                          generated.
+                          No transactions in {periodLabel}. Transactions appear here as revenue
+                          is generated.
                         </TableCell>
                       </TableRow>
                     )}
@@ -724,9 +841,9 @@ export default function AdminRevenue() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-green-600" />
-                  Daily Revenue Trends
+                  Daily Revenue Trends (Last 30 Days)
                 </CardTitle>
-                <CardDescription>Platform revenue over the last 14 days</CardDescription>
+                <CardDescription>Platform revenue recorded each day</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(dashboard?.dailyTrend || []).slice(-14).map((day, index) => {
@@ -741,11 +858,9 @@ export default function AdminRevenue() {
                         <span className="text-gray-600 dark:text-gray-400">
                           {formatDate(day.date)}
                         </span>
-                        <div className="text-right">
-                          <span className="font-medium">
-                            {formatCurrency(day.platformRevenue)}
-                          </span>
-                        </div>
+                        <span className="font-medium">
+                          {formatCurrency(day.platformRevenue)}
+                        </span>
                       </div>
                       <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div
@@ -758,7 +873,7 @@ export default function AdminRevenue() {
                 })}
                 {(dashboard?.dailyTrend || []).length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No daily trend data available yet. Data will populate as transactions occur.
+                    No daily trend data available yet.
                   </p>
                 )}
               </CardContent>

@@ -1,19 +1,5 @@
 import { getTravelpayoutsToken, tpFetch } from "./travelpayouts-client";
 
-export interface TravelpayoutsBalance {
-  balance: number;
-  currency: string;
-}
-
-export interface TravelpayoutsPayment {
-  id: string;
-  amount: number;
-  currency: string;
-  date: string;
-  status: string;
-  type: string;
-}
-
 export interface PartnerCommission {
   partner: string;
   partnerLabel: string;
@@ -48,48 +34,39 @@ const PARTNER_LABELS: Record<string, string> = {
   discovercars: "DiscoverCars",
 };
 
-function getDateRange(period: string): { from: string; to: string } {
-  const now = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-
-  if (period === "last_month") {
-    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    return { from: fmt(firstOfLastMonth), to: fmt(lastOfLastMonth) };
-  }
-
-  if (period === "last_90_days") {
-    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    return { from: fmt(ninetyDaysAgo), to: fmt(now) };
-  }
-
-  // Default: this_month
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { from: fmt(firstOfMonth), to: fmt(now) };
-}
-
-function getLastMonthRange(): { from: string; to: string } {
-  const now = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-  return { from: fmt(firstOfLastMonth), to: fmt(lastOfLastMonth) };
+function fmt(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 function getThisMonthRange(): { from: string; to: string } {
   const now = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { from: fmt(firstOfMonth), to: fmt(now) };
+  return { from: fmt(new Date(now.getFullYear(), now.getMonth(), 1)), to: fmt(now) };
 }
 
-async function fetchStatisticsForRange(from: string, to: string): Promise<number> {
+function getLastMonthRange(): { from: string; to: string } {
+  const now = new Date();
+  return {
+    from: fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+    to: fmt(new Date(now.getFullYear(), now.getMonth(), 0)),
+  };
+}
+
+function getPeriodRange(period: string): { from: string; to: string } {
+  const now = new Date();
+  if (period === "last_month") return getLastMonthRange();
+  if (period === "last_90_days") {
+    return { from: fmt(new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)), to: fmt(now) };
+  }
+  return getThisMonthRange();
+}
+
+async function fetchAmountForRange(from: string, to: string): Promise<number> {
   try {
     const data = await tpFetch("/v1/statistics/payments", { from, to });
-    if (!data || !Array.isArray(data)) return 0;
+    if (!Array.isArray(data)) return 0;
     return data.reduce((sum: number, p: any) => {
-      const amount = typeof p.amount === "number" ? p.amount : parseFloat(p.amount || "0");
-      return sum + (isNaN(amount) ? 0 : amount);
+      const n = typeof p.amount === "number" ? p.amount : parseFloat(p.amount || "0");
+      return sum + (isNaN(n) ? 0 : n);
     }, 0);
   } catch {
     return 0;
@@ -108,28 +85,21 @@ async function fetchBalanceData(): Promise<{ balance: number; currency: string }
   }
 }
 
-async function fetchPartnerBreakdown(from: string, to: string): Promise<PartnerCommission[]> {
+async function fetchPartnerAmounts(from: string, to: string): Promise<Record<string, number>> {
   try {
     const data = await tpFetch("/v1/statistics/payments", { from, to });
-    if (!data || !Array.isArray(data)) return [];
-
+    if (!Array.isArray(data)) return {};
     const byPartner: Record<string, number> = {};
     for (const payment of data) {
-      const partner = (payment.partner || payment.program || "other").toLowerCase().replace(/\s+/g, "_");
-      const amount = typeof payment.amount === "number" ? payment.amount : parseFloat(payment.amount || "0");
-      byPartner[partner] = (byPartner[partner] || 0) + (isNaN(amount) ? 0 : amount);
+      const partner = (payment.partner || payment.program || "other")
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+      const n = typeof payment.amount === "number" ? payment.amount : parseFloat(payment.amount || "0");
+      byPartner[partner] = (byPartner[partner] || 0) + (isNaN(n) ? 0 : n);
     }
-
-    return Object.entries(byPartner).map(([partner, total]) => ({
-      partner,
-      partnerLabel: PARTNER_LABELS[partner] || partner.charAt(0).toUpperCase() + partner.slice(1),
-      thisMonth: total,
-      lastMonth: 0,
-      total,
-      currency: "USD",
-    }));
+    return byPartner;
   } catch {
-    return [];
+    return {};
   }
 }
 
@@ -150,24 +120,69 @@ export async function getTravelpayoutsStatistics(period: string): Promise<Travel
 
   const thisRange = getThisMonthRange();
   const lastRange = getLastMonthRange();
-  const selectedRange = getDateRange(period);
+  const selectedRange = getPeriodRange(period);
 
-  const [thisMonthTotal, lastMonthTotal, balanceData, byPartner] = await Promise.all([
-    fetchStatisticsForRange(thisRange.from, thisRange.to),
-    fetchStatisticsForRange(lastRange.from, lastRange.to),
-    fetchBalanceData(),
-    fetchPartnerBreakdown(selectedRange.from, selectedRange.to),
+  // Always fetch this-month and last-month separately (for MoM display and partner breakdown)
+  // Also fetch the selected period total when it differs from this/last month
+  const needsSeparateFetch =
+    period === "last_90_days" || // 90-day range ≠ this month + last month
+    (period === "this_month" && false); // already covered
+
+  const fetchSelectedTotal = period === "last_90_days";
+
+  const [thisMonthTotal, lastMonthTotal, balanceData, thisMonthPartners, lastMonthPartners] =
+    await Promise.all([
+      fetchAmountForRange(thisRange.from, thisRange.to),
+      fetchAmountForRange(lastRange.from, lastRange.to),
+      fetchBalanceData(),
+      fetchPartnerAmounts(thisRange.from, thisRange.to),
+      fetchPartnerAmounts(lastRange.from, lastRange.to),
+    ]);
+
+  // For 90-day total, query the actual range; otherwise use already-fetched values
+  let total: number;
+  if (period === "this_month") {
+    total = thisMonthTotal;
+  } else if (period === "last_month") {
+    total = lastMonthTotal;
+  } else {
+    // last_90_days: fetch the actual 90-day range total
+    total = await fetchAmountForRange(selectedRange.from, selectedRange.to);
+  }
+
+  // Build partner breakdown with accurate this-month and last-month columns
+  const allPartners = new Set([
+    ...Object.keys(thisMonthPartners),
+    ...Object.keys(lastMonthPartners),
   ]);
 
-  const selectedTotal = period === "this_month" ? thisMonthTotal
-    : period === "last_month" ? lastMonthTotal
-    : thisMonthTotal + lastMonthTotal;
+  const byPartner: PartnerCommission[] = Array.from(allPartners).map((partner) => {
+    const thisMonthAmt = thisMonthPartners[partner] || 0;
+    const lastMonthAmt = lastMonthPartners[partner] || 0;
+    const rowTotal =
+      period === "this_month"
+        ? thisMonthAmt
+        : period === "last_month"
+        ? lastMonthAmt
+        : thisMonthAmt + lastMonthAmt; // approximation for 90-day view
+
+    return {
+      partner,
+      partnerLabel: PARTNER_LABELS[partner] || partner.charAt(0).toUpperCase() + partner.slice(1),
+      thisMonth: thisMonthAmt,
+      lastMonth: lastMonthAmt,
+      total: rowTotal,
+      currency: balanceData.currency,
+    };
+  });
+
+  byPartner.sort((a, b) => b.total - a.total);
 
   return {
     configured: true,
     thisMonth: thisMonthTotal,
     lastMonth: lastMonthTotal,
-    total: selectedTotal,
+    total,
     currency: balanceData.currency,
     balance: balanceData.balance,
     byPartner,

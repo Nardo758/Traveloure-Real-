@@ -13,6 +13,14 @@ export interface ApiCostsSummary {
   totalCostDollars: number;
 }
 
+const TRACKED_PROVIDERS = ["amadeus", "serpapi", "serp_api"];
+
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  amadeus: "Amadeus",
+  serpapi: "SerpAPI",
+  serp_api: "SerpAPI",
+};
+
 function getDateBounds(period: string): { from: Date; to: Date } {
   const now = new Date();
 
@@ -38,43 +46,35 @@ function getDateBounds(period: string): { from: Date; to: Date } {
 
 export async function getApiCostsSummary(period: string): Promise<ApiCostsSummary> {
   const { from, to } = getDateBounds(period);
-  const trackedProviders = ["amadeus", "serpapi", "serp_api"];
 
+  // Filter to only tracked/billed providers before aggregating
   const logs = await db
     .select()
     .from(apiUsageLogs)
-    .where(and(gte(apiUsageLogs.createdAt, from), lte(apiUsageLogs.createdAt, to)));
+    .where(
+      and(
+        gte(apiUsageLogs.createdAt, from),
+        lte(apiUsageLogs.createdAt, to),
+        inArray(apiUsageLogs.provider, TRACKED_PROVIDERS)
+      )
+    );
 
-  const byCostProvider: Record<string, { calls: number; costTenths: number }> = {};
+  // Aggregate by normalized display name to deduplicate serpapi/serp_api
+  const aggregated: Record<string, { calls: number; costTenths: number }> = {};
 
   for (const log of logs) {
-    const provider = log.provider.toLowerCase();
-    if (!byCostProvider[provider]) {
-      byCostProvider[provider] = { calls: 0, costTenths: 0 };
-    }
-    byCostProvider[provider].calls += log.requestCount || 1;
-    byCostProvider[provider].costTenths += log.estimatedCostCents || 0;
-  }
-
-  const providerNormalize: Record<string, string> = {
-    serpapi: "SerpAPI",
-    serp_api: "SerpAPI",
-    amadeus: "Amadeus",
-  };
-
-  const aggregated: Record<string, { calls: number; costTenths: number; label: string }> = {};
-  for (const [provider, data] of Object.entries(byCostProvider)) {
-    const label = providerNormalize[provider] || provider;
+    const label = PROVIDER_DISPLAY_NAMES[log.provider.toLowerCase()] ?? log.provider;
     if (!aggregated[label]) {
-      aggregated[label] = { calls: 0, costTenths: 0, label };
+      aggregated[label] = { calls: 0, costTenths: 0 };
     }
-    aggregated[label].calls += data.calls;
-    aggregated[label].costTenths += data.costTenths;
+    aggregated[label].calls += log.requestCount || 1;
+    aggregated[label].costTenths += log.estimatedCostCents || 0;
   }
 
-  const entries: ApiCostEntry[] = Object.entries(aggregated).map(([, data]) => ({
-    provider: data.label,
+  const entries: ApiCostEntry[] = Object.entries(aggregated).map(([provider, data]) => ({
+    provider,
     calls: data.calls,
+    // estimatedCostCents stores tenths-of-cents for external API logs (see api-usage.service.ts)
     costDollars: data.costTenths / 1000,
   }));
 
