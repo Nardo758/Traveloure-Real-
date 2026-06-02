@@ -1,0 +1,22 @@
+The key reframe here: for Traveloure, the application isn't a profile form — it's a knowledge-extraction instrument. The local knowledge is the product, so the application should double as (1) a vetting gate and (2) the first deposit into a structured, machine-readable knowledge base that Gronk and the matching engine can actually query. Most marketplaces fail here by capturing a bio paragraph, which is useless to an AI and indistinguishable from a tourist's.
+Here's how I'd structure it.
+Split it into two layers
+Don't try to capture everything at application time — experts abandon long forms. Use a short application to vet + seed, then capture the bulk progressively after acceptance (gamified, with the AI Content Assistant drafting from their answers). This mirrors the profile-completion follow-up cadence already in your playbook.
+Application stage (short, ~5–8 min) — vet and seed
+
+Identity & locality: market, specific neighborhoods of deep familiarity (multi-select, not "Tokyo" but "Shimokitazawa, Kōenji"), years lived there, languages, "how are you local" (born/raised/lived 10yr/etc.).
+Knowledge proof — this is your differentiator. Instead of "describe your expertise," ask 2–3 specific questions only a real local can answer and that are hard to fake from a guidebook. e.g. "A traveler wants the best ramen near Shibuya — where do you send them, where do you steer them away from, and why?" This simultaneously vets credibility and captures your first consultative knowledge nuggets.
+Specialties as structured tags (food, safety/navigation, cultural interpretation, nightlife, family, LGBTQ+, budget, luxury, photography), plus traveler types served. These feed AI matching directly.
+
+Ongoing knowledge capture — the actual asset
+The unit to capture is not prose but the knowledge nugget: an atomic, attributable, queryable record. Schema something like:
+
+type: tip / warning / recommendation / cultural-note / hidden-cost
+entity: linked POI, neighborhood, or "general"
+insight: the actual knowledge
+who_its_for / who_its_NOT_for
+seasonality / confidence
+expert_id (powers your "via ExpertName" attribution)
+
+This structure is what makes the consultative positioning real — it forces capture of what's wrong with an option and hidden costs, not just "this place is great." It's the difference between an expert and a listing. And because each nugget is tied to an entity and an expert, Gronk can blend it with SERP/native inventory and surface it with attribution.
+One design principle to enforce: every free-text answer should resolve to structured fields the engine can use. If an answer can't be tagged to an entity, a traveler type, or a specialty, it doesn't earn its place in the matching layer — it's just a bio.

@@ -19,13 +19,13 @@ const router = Router();
  */
 router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
-    const { userId, cartItems, paymentMethod = 'full' } = req.body;
+    const { userId, cartItems, paymentMethod = 'full', bookingMetadata } = req.body;
 
     if (!userId || !cartItems || !Array.isArray(cartItems)) {
       return res.status(400).json({ error: 'Invalid request' });
     }
 
-    const result = await bookingService.processCart(userId, cartItems, paymentMethod);
+    const result = await bookingService.processCart(userId, cartItems, paymentMethod, bookingMetadata);
 
     res.json({
       success: true,

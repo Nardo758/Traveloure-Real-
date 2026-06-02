@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -110,7 +110,9 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
-});
+}, (table) => ({
+  uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
+}));
 
 export const tripSuggestions = pgTable("trip_suggestions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -306,6 +308,11 @@ export const localExpertForms = pgTable("local_expert_forms", {
   experienceTypes: jsonb("experience_types").default([]),
   specializations: jsonb("specializations").default([]),
   selectedServices: jsonb("selected_services").default([]),
+  // Local Expert specific fields
+  neighborhoods: jsonb("neighborhoods").default([]),
+  localityProof: varchar("locality_proof", { length: 30 }),
+  knowledgeProofAnswers: jsonb("knowledge_proof_answers").default([]),
+  localSpecialties: jsonb("local_specialties").default([]),
   // Experience
   yearsOfExperience: varchar("years_of_experience", { length: 50 }),
   bio: text("bio"),
@@ -462,7 +469,8 @@ export const providerServices = pgTable("provider_services", {
   description: text("description"),
   serviceType: varchar("service_type", { length: 50 }).default("planning"), // consultation, planning, action, concierge, experience, specialty
   categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "set null" }),
-  
+  subcategoryId: varchar("subcategory_id").references(() => serviceSubcategories.id, { onDelete: "set null" }),
+
   // Pricing
   price: decimal("price", { precision: 10, scale: 2 }),
   priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote
@@ -503,7 +511,9 @@ export const providerServices = pgTable("provider_services", {
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
   reviewCount: integer("review_count").default(0),
-  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.30"),
+  // Expert-favorable split: floor 0.75, ceiling 0.85. Stored as decimal string in DB.
+  // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
+  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -573,6 +583,9 @@ export const serviceBookings = pgTable("service_bookings", {
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   
+  // Visa / specialty service metadata collected during booking intake
+  bookingMetadata: jsonb("booking_metadata").default({}),
+
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
   completedAt: timestamp("completed_at"),
@@ -4999,6 +5012,7 @@ export const bookings = pgTable("bookings", {
   refundedAt: timestamp("refunded_at"),
   specialRequests: text("special_requests"),
   metadata: jsonb("metadata").default({}),
+  bookingMetadata: jsonb("booking_metadata").default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -5240,7 +5254,7 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   category: varchar("category", { length: 50 }).notNull().unique(),
   platformFeePercent: decimal("platform_fee_percent", { precision: 5, scale: 2 }).default("12.00"),
-  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("70.00"),
+  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("75.00"),
   aiKeeps100: boolean("ai_keeps_100").default(true),
   minFee: decimal("min_fee", { precision: 10, scale: 2 }),
   maxFee: decimal("max_fee", { precision: 10, scale: 2 }),
@@ -5448,3 +5462,76 @@ export const eaAiTasks = pgTable("ea_ai_tasks", {
 export const insertEaAiTaskSchema = createInsertSchema(eaAiTasks).omit({ id: true, createdAt: true, updatedAt: true });
 export type EaAiTask = typeof eaAiTasks.$inferSelect;
 export type InsertEaAiTask = z.infer<typeof insertEaAiTaskSchema>;
+
+// === Local Expert Knowledge Nuggets ===
+
+export const knowledgeNuggetTypeEnum = ["tip", "warning", "recommendation", "cultural-note", "hidden-cost"] as const;
+export const knowledgeSeasonEnum = ["year-round", "spring", "summer", "fall", "winter"] as const;
+
+export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertUserId: varchar("expert_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  nuggetType: varchar("nugget_type", { length: 30 }).notNull().default("tip"), // knowledgeNuggetTypeEnum
+  city: varchar("city", { length: 150 }).notNull(),
+  linkedPoi: varchar("linked_poi", { length: 255 }),
+  linkedNeighbourhood: varchar("linked_neighbourhood", { length: 255 }),
+  insight: text("insight").notNull(),
+  targetAudience: text("target_audience"),
+  notFor: text("not_for"),
+  seasonality: jsonb("seasonality").default([]), // array of knowledgeSeasonEnum
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({ id: true, createdAt: true, updatedAt: true });
+export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
+export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;
+
+// ─── Content Placement Rules ──────────────────────────────────────────────────
+// Explicit mapping: content item → cities → surfaces → pulse threshold.
+// Created manually by admins or auto-generated by the TravelPulse indexer.
+
+export const contentPlacementRules = pgTable("content_placement_rules", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  contentSource: varchar("content_source", { length: 30 }).notNull(), // 'affiliate_product' | 'content_registry'
+  sourceId: varchar("source_id", { length: 255 }).notNull(),           // ID in source table
+  contentLabel: varchar("content_label", { length: 500 }),             // Display name for UI
+  cityName: varchar("city_name", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  surfaces: jsonb("surfaces").default([]).$type<string[]>(),           // Array of SurfaceSlug
+  minPulseScore: integer("min_pulse_score").default(0),                // City pulse score threshold
+  isPinned: boolean("is_pinned").default(false),                       // Ignore pulse threshold
+  isAutoTagged: boolean("is_auto_tagged").default(false),              // Created by auto-indexer
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertContentPlacementRuleSchema = createInsertSchema(contentPlacementRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type ContentPlacementRule = typeof contentPlacementRules.$inferSelect;
+export type InsertContentPlacementRule = z.infer<typeof insertContentPlacementRuleSchema>;
+
+// === Visa Requirements Cache ===
+
+export const visaRequirementsCache = pgTable("visa_requirements_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  passportCountry: varchar("passport_country", { length: 100 }).notNull(),
+  destinationCountry: varchar("destination_country", { length: 100 }).notNull(),
+  visaRequired: boolean("visa_required").notNull(),
+  visaTypes: jsonb("visa_types").default([]),
+  requiredDocuments: jsonb("required_documents").default([]),
+  processingTime: varchar("processing_time", { length: 200 }),
+  feeRange: varchar("fee_range", { length: 200 }),
+  disclaimer: text("disclaimer"),
+  cachedAt: timestamp("cached_at").defaultNow().notNull(),
+});
+
+export const insertVisaRequirementsCacheSchema = createInsertSchema(visaRequirementsCache).omit({ id: true, cachedAt: true });
+export type VisaRequirementsCache = typeof visaRequirementsCache.$inferSelect;
+export type InsertVisaRequirementsCache = z.infer<typeof insertVisaRequirementsCacheSchema>;

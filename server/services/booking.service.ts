@@ -175,7 +175,8 @@ class BookingService {
   async processCart(
     userId: string,
     cartItems: CartItem[],
-    paymentMethod: 'full' | 'deposit' = 'full'
+    paymentMethod: 'full' | 'deposit' = 'full',
+    bookingMetadata?: Record<string, any>
   ): Promise<ProcessCartResult> {
     const results: ProcessCartResult = {
       instantBookings: [],
@@ -212,7 +213,8 @@ class BookingService {
         const instantResult = await this.processInstantBookings(
           userId,
           instantItems,
-          paymentMethod
+          paymentMethod,
+          bookingMetadata
         );
         results.instantBookings = instantResult.bookings;
         results.paymentRequired = instantResult.totalAmount;
@@ -249,7 +251,8 @@ class BookingService {
   private async processInstantBookings(
     userId: string,
     cartItems: CartItem[],
-    paymentMethod: 'full' | 'deposit'
+    paymentMethod: 'full' | 'deposit',
+    bookingMetadata?: Record<string, any>
   ) {
     const bookings: any[] = [];
     let totalAmount = 0;
@@ -285,7 +288,7 @@ class BookingService {
           : item.price;
 
         // Calculate fees
-        const feeBreakdown = pricingService.calculatePlatformFees(
+        const feeBreakdown = await pricingService.calculatePlatformFees(
           finalPrice,
           item.itemType
         );
@@ -303,18 +306,19 @@ class BookingService {
         const bookingTime = item.time || null;
         const totalAmountValue = finalPrice + feeBreakdown.platformFee;
         const providerPayout = finalPrice - feeBreakdown.providerDeduction;
+        const bookingMetadataJson = bookingMetadata ? JSON.stringify(bookingMetadata) : '{}';
         
         const booking = await db.execute(sql`
           INSERT INTO bookings (
             user_id, trip_id, provider_id, booking_type, status,
             title, booking_date, booking_time, travelers,
             service_amount, platform_fee, total_amount, provider_payout,
-            payment_method, deposit_amount, balance_amount, created_at
+            payment_method, deposit_amount, balance_amount, booking_metadata, created_at
           ) VALUES (
             ${userId}, ${item.tripId}, ${item.providerId || null}, ${'instant'}, ${'pending_payment'},
             ${item.title}, ${item.date}, ${bookingTime}, ${1},
             ${finalPrice}, ${feeBreakdown.platformFee}, ${totalAmountValue}, ${providerPayout},
-            ${paymentMethod}, ${depositAmount}, ${balanceAmount}, NOW()
+            ${paymentMethod}, ${depositAmount}, ${balanceAmount}, ${bookingMetadataJson}::jsonb, NOW()
           ) RETURNING id
         `);
 

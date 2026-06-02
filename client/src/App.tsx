@@ -76,6 +76,7 @@ import AdminSystem from "@/pages/admin/system";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
+import AdminContentMapping from "@/pages/admin/content-mapping";
 import AdminServices from "@/pages/admin/services";
 import AdminAICosts from "@/pages/admin/ai-costs";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
@@ -103,6 +104,7 @@ import ExpertContractCategories from "@/pages/expert/contract-categories";
 import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
+import AdminRoutingQueue from "@/pages/admin/routing-queue";
 import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
 import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
@@ -110,6 +112,7 @@ import ExpertTemplates from "@/pages/expert/templates";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
 import ExpertSettings from "@/pages/expert/settings";
+import ExpertVerification from "@/pages/expert/verification";
 import ExpertServiceForm from "@/pages/expert/service-form";
 import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
@@ -138,6 +141,7 @@ import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import ItineraryViewPage from "@/pages/itinerary-view";
 import SharedTripPage from "@/pages/shared-trip";
+import VisaHelpPage from "@/pages/visa-help";
 import { Loader2 } from "lucide-react";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
@@ -321,6 +325,9 @@ function Router() {
       <Route path="/booking-demo">
         <BookingDemo />
       </Route>
+      <Route path="/visa-help">
+        <Layout><VisaHelpPage /></Layout>
+      </Route>
       
       {/* Application pages for becoming an expert or provider */}
       <Route path="/become-expert">
@@ -439,6 +446,9 @@ function Router() {
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/verification">
+        {() => <ProtectedRoute component={ExpertVerification} requiredRole="expert" />}
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
@@ -598,6 +608,12 @@ function Router() {
       </Route>
       <Route path="/admin/platform-providers">
         {() => <ProtectedRoute component={AdminPlatformProviders} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/content-mapping">
+        {() => <ProtectedRoute component={AdminContentMapping} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/routing-queue">
+        {() => <ProtectedRoute component={AdminRoutingQueue} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

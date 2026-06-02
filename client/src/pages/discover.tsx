@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { DashboardLayout } from "@/components/dashboard-layout";
+import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,7 @@ import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { trackSearchEvent } from "@/lib/analytics";
+import { CuratedContentSection } from "@/components/curated-content-section";
 
 type ServiceCategory = {
   id: string;
@@ -170,6 +171,7 @@ const categoryIcons: Record<string, React.ElementType> = {
   "language-translation": Languages,
   "specialty-services": Award,
   "custom-other": HelpCircle,
+  "visa-assistance": Globe,
 };
 
 const tripCategories = [
@@ -181,104 +183,6 @@ const tripCategories = [
   { id: "family", label: "Family", icon: Users },
 ];
 
-const preResearchedTrips = [
-  {
-    id: 1,
-    title: "Discover Kyoto's Ancient Temples",
-    destination: "Kyoto, Japan",
-    duration: "7 days",
-    travelers: "2-4",
-    category: "cultural",
-    rating: 4.9,
-    reviews: 234,
-    price: 2499,
-    originalPrice: 2999,
-    highlights: ["Fushimi Inari Shrine", "Traditional Tea Ceremony", "Bamboo Grove Walk"],
-    expertPick: true,
-    imageUrl: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600&q=80",
-    vibeTags: ["cultural", "peaceful", "historic"],
-  },
-  {
-    id: 2,
-    title: "Amalfi Coast Dream Escape",
-    destination: "Amalfi, Italy",
-    duration: "5 days",
-    travelers: "2",
-    category: "romantic",
-    rating: 4.8,
-    reviews: 189,
-    price: 3299,
-    originalPrice: 3899,
-    highlights: ["Positano Beach Day", "Limoncello Tasting", "Sunset Boat Cruise"],
-    expertPick: true,
-    imageUrl: "https://images.unsplash.com/photo-1455587734955-081b22074882?w=600&q=80",
-    vibeTags: ["romantic", "coastal", "luxury"],
-  },
-  {
-    id: 3,
-    title: "Bali Wellness Retreat",
-    destination: "Ubud, Bali",
-    duration: "6 days",
-    travelers: "1-2",
-    category: "relaxation",
-    rating: 4.9,
-    reviews: 312,
-    price: 1899,
-    originalPrice: 2299,
-    highlights: ["Yoga Sessions", "Rice Terrace Walks", "Spa Treatments"],
-    expertPick: false,
-    imageUrl: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80",
-    vibeTags: ["wellness", "nature", "spiritual"],
-  },
-  {
-    id: 4,
-    title: "Costa Rica Adventure Week",
-    destination: "Costa Rica",
-    duration: "8 days",
-    travelers: "2-6",
-    category: "adventure",
-    rating: 4.7,
-    reviews: 156,
-    price: 2199,
-    originalPrice: 2699,
-    highlights: ["Zip-lining", "Volcano Hiking", "Wildlife Safari"],
-    expertPick: false,
-    imageUrl: "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?w=600&q=80",
-    vibeTags: ["adventure", "nature", "wildlife"],
-  },
-  {
-    id: 5,
-    title: "Paris Family Discovery",
-    destination: "Paris, France",
-    duration: "5 days",
-    travelers: "4-6",
-    category: "family",
-    rating: 4.8,
-    reviews: 278,
-    price: 2799,
-    originalPrice: 3299,
-    highlights: ["Eiffel Tower", "Disneyland Paris", "Seine River Cruise"],
-    expertPick: true,
-    imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=600&q=80",
-    vibeTags: ["family", "iconic", "cultural"],
-  },
-  {
-    id: 6,
-    title: "Moroccan Desert Adventure",
-    destination: "Marrakech, Morocco",
-    duration: "6 days",
-    travelers: "2-4",
-    category: "adventure",
-    rating: 4.6,
-    reviews: 98,
-    price: 1599,
-    originalPrice: 1999,
-    highlights: ["Sahara Camping", "Medina Tour", "Camel Trek"],
-    expertPick: false,
-    imageUrl: "https://images.unsplash.com/photo-1489749798305-4fea3ae63d43?w=600&q=80",
-    vibeTags: ["adventure", "exotic", "cultural"],
-  },
-];
 
 function ServiceCard({ 
   service, 
@@ -799,7 +703,7 @@ export default function DiscoverPage() {
 
   // Map trending cities to trip package format for the Trip Packages tab
   const trendingTrips = useMemo(() => {
-    if (!trendingCitiesData?.cities?.length) return preResearchedTrips;
+    if (!trendingCitiesData?.cities?.length) return [];
     return trendingCitiesData.cities.map((city: any, idx: number) => ({
       id: idx + 1,
       title: `Discover ${city.cityName}`,
@@ -975,7 +879,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <DashboardLayout>
+    <Layout>
       <SEOHead 
         title="Discover Services & Experiences"
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
@@ -1346,6 +1250,56 @@ export default function DiscoverPage() {
                   </motion.div>
                 )}
 
+                {/* Quick Category Chips */}
+                {categories && categories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    <Button
+                      key="all"
+                      variant={selectedCategory === "all" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedCategory("all")}
+                      data-testid="button-quick-cat-all"
+                    >
+                      All Services
+                    </Button>
+                    {[
+                      "tours-experiences",
+                      "food-culinary",
+                      "photography-videography",
+                      "transportation-logistics",
+                      "health-wellness",
+                      "visa-assistance",
+                    ]
+                      .map((slug) => categories.find((c: any) => c.slug === slug))
+                      .filter(Boolean)
+                      .map((cat: any) => {
+                        const Icon = categoryIcons[cat.slug] || Globe;
+                        return (
+                          <Button
+                            key={cat.id}
+                            variant={selectedCategory === cat.id ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedCategory(cat.id)}
+                            data-testid={`button-quick-cat-${cat.slug}`}
+                          >
+                            <Icon className="w-3.5 h-3.5 mr-1.5" />
+                            {cat.name}
+                          </Button>
+                        );
+                      })}
+                  </div>
+                )}
+
+                {/* Curated Content Hub — shows affiliate + platform-curated items matching destination */}
+                {locationFilter && (
+                  <CuratedContentSection
+                    destination={locationFilter}
+                    surface="travelpulse-discover"
+                    label="Curated Experiences"
+                    className="mb-6"
+                  />
+                )}
+
                 <div className="flex flex-col lg:flex-row gap-6">
                   {/* Desktop Filters Sidebar */}
                   <aside className="hidden lg:block lg:w-72 flex-shrink-0">
@@ -1555,6 +1509,474 @@ export default function DiscoverPage() {
                 </div>
               </TabsContent>
 
+              {/* Trip Packages Tab */}
+              <TabsContent value="packages">
+                {/* Expert Itinerary Templates Section */}
+                <div className="mb-10">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Award className="w-5 h-5 text-primary" />
+                        Expert Itinerary Templates
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Purchase ready-made travel plans crafted by verified local experts
+                      </p>
+                    </div>
+                    {expertTemplates && expertTemplates.length > 0 && (
+                      <Badge variant="secondary">
+                        {expertTemplates.length} Available
+                      </Badge>
+                    )}
+                  </div>
+
+                  {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
+                      <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+                      <h3 className="font-semibold text-gray-700 mb-1">No templates published yet</h3>
+                      <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
+                        Verified experts can publish ready-made itinerary packages here for travelers to purchase.
+                      </p>
+                      {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
+                        <Link href="/expert/templates">
+                          <Button size="sm" data-testid="button-create-first-template">
+                            Create your first template
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Link href="/expert-status">
+                          <Button size="sm" variant="outline" data-testid="button-become-expert">
+                            Become an expert
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
+                  )}
+
+                  {(expertTemplates && expertTemplates.length > 0) && (
+                    <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {expertTemplates.slice(0, 6).map((template, idx) => (
+                        <motion.div
+                          key={template.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                        >
+                          <Card
+                            className="hover-elevate overflow-hidden group h-full"
+                            data-testid={`card-template-${template.id}`}
+                          >
+                            <CardContent className="p-0 flex flex-col h-full">
+                              <div className="relative h-40 bg-gradient-to-br from-primary/10 to-primary/5">
+                                {template.coverImage ? (
+                                  <img 
+                                    src={template.coverImage} 
+                                    alt={template.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="absolute inset-0 flex items-center justify-center text-primary/30">
+                                    <BookOpen className="w-16 h-16" />
+                                  </div>
+                                )}
+                                
+                                {template.isFeatured && (
+                                  <div className="absolute top-3 left-3">
+                                    <Badge>
+                                      <Star className="w-3 h-3 mr-1 fill-current" />
+                                      Featured
+                                    </Badge>
+                                  </div>
+                                )}
+
+                                <div className="absolute bottom-3 right-3 bg-background px-3 py-1.5 rounded-lg shadow-sm">
+                                  <span className="font-bold text-lg">
+                                    ${template.price}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="p-4 flex-1 flex flex-col">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                                  <MapPin className="w-4 h-4" />
+                                  <span>{template.destination}</span>
+                                </div>
+
+                                <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
+                                  {template.title}
+                                </h3>
+
+                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3 flex-1">
+                                  {template.shortDescription || template.description}
+                                </p>
+
+                                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-3">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-4 h-4" />
+                                    {template.duration} days
+                                  </span>
+                                  {template.averageRating && parseFloat(template.averageRating) > 0 && (
+                                    <span className="flex items-center gap-1">
+                                      <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                                      {parseFloat(template.averageRating).toFixed(1)} ({template.reviewCount || 0})
+                                    </span>
+                                  )}
+                                  {template.salesCount && template.salesCount > 0 && (
+                                    <span className="flex items-center gap-1">
+                                      <Users className="w-4 h-4" />
+                                      {template.salesCount} sold
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap gap-1 mb-4">
+                                  {template.highlights?.slice(0, 2).map((h) => (
+                                    <Badge key={h} variant="secondary" className="text-xs">
+                                      {h}
+                                    </Badge>
+                                  ))}
+                                  {template.highlights && template.highlights.length > 2 && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      +{template.highlights.length - 2} more
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                <Link href={`/expert-templates/${template.id}`}>
+                                  <Button className="w-full" data-testid={`button-view-template-${template.id}`}>
+                                    View & Purchase
+                                    <ArrowRight className="w-4 h-4 ml-2" />
+                                  </Button>
+                                </Link>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      ))}
+                    </div>
+
+                    {expertTemplates.length > 6 && (
+                      <div className="text-center mt-6">
+                        <Button variant="outline" data-testid="button-view-all-templates">
+                          View All {expertTemplates.length} Templates
+                          <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                      </div>
+                    )}
+
+                    <div className="border-t my-8" />
+                    </>
+                  )}
+                </div>
+
+                {templatesLoading && (
+                  <div className="mb-10">
+                    <Skeleton className="h-6 w-48 mb-6" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-72 rounded-lg" />
+                      ))}
+                    </div>
+                    <div className="border-t my-8" />
+                  </div>
+                )}
+
+                <h2 className="text-xl font-semibold mb-4">Trending Destinations</h2>
+                
+                {/* Category Filters */}
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {tripCategories.map((cat) => (
+                    <Button
+                      key={cat.id}
+                      variant={selectedTripCategory === cat.id ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedTripCategory(cat.id)}
+                      data-testid={`button-category-${cat.id}`}
+                    >
+                      <cat.icon className="w-4 h-4 mr-1" />
+                      {cat.label}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Trip Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredTrips.map((trip, idx) => (
+                    <motion.div
+                      key={trip.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ y: -4 }}
+                      transition={{ duration: 0.2, delay: idx * 0.05 }}
+                    >
+                      <Card
+                        className="hover-elevate overflow-hidden group h-full"
+                        data-testid={`card-trip-${trip.id}`}
+                      >
+                        <CardContent className="p-0 flex flex-col h-full">
+                          <div className="relative h-48 overflow-hidden">
+                            {trip.imageUrl ? (
+                              <img
+                                src={trip.imageUrl}
+                                alt={trip.title}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                                <MapPin className="h-12 w-12 text-primary/30" />
+                              </div>
+                            )}
+                            
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                            
+                            <button
+                              onClick={() => toggleFavorite(trip.id)}
+                              className="absolute top-3 right-3 p-2 bg-white/90 rounded-full shadow-sm hover:bg-white transition-colors"
+                              data-testid={`button-favorite-${trip.id}`}
+                            >
+                              <Heart
+                                className={cn(
+                                  "w-5 h-5",
+                                  favorites.includes(trip.id)
+                                    ? "fill-[#FF385C] text-[#FF385C]"
+                                    : "text-gray-600"
+                                )}
+                              />
+                            </button>
+
+                            {trip.expertPick && (
+                              <div className="absolute top-3 left-3">
+                                <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 font-semibold">
+                                  <Trophy className="w-3 h-3 mr-1" />
+                                  Expert Pick
+                                </Badge>
+                              </div>
+                            )}
+
+                            <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                              <div className="flex flex-wrap gap-1">
+                                {trip.vibeTags?.slice(0, 2).map((tag: string) => (
+                                  <Badge 
+                                    key={tag} 
+                                    variant="secondary" 
+                                    className="text-xs bg-white/90 text-gray-700 border-0"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                              <div className="bg-white px-3 py-1.5 rounded-lg shadow-md">
+                                <span className="text-xs text-gray-400 line-through block">
+                                  ${trip.originalPrice}
+                                </span>
+                                <span className="font-bold text-lg text-[#FF385C]">
+                                  ${trip.price}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-4 flex-1 flex flex-col">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                              <MapPin className="w-4 h-4 text-[#FF385C]" />
+                              <span className="font-medium">{trip.destination}</span>
+                            </div>
+
+                            <h3 className="font-semibold text-lg mb-3 group-hover:text-[#FF385C] transition-colors line-clamp-2">
+                              {trip.title}
+                            </h3>
+
+                            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-3">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-4 h-4" />
+                                {trip.duration}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Users className="w-4 h-4" />
+                                {trip.travelers}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                                {trip.rating} ({trip.reviews})
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1 mb-4 flex-1">
+                              {trip.highlights.slice(0, 2).map((h: string) => (
+                                <Badge key={h} variant="outline" className="text-xs">
+                                  <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
+                                  {h}
+                                </Badge>
+                              ))}
+                              {trip.highlights.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{trip.highlights.length - 2} more
+                                </Badge>
+                              )}
+                            </div>
+
+                            <Link href={(trip as any).citySlug ? `/discover?tab=travelpulse&city=${encodeURIComponent(trip.destination)}` : `/discover?tab=services&location=${encodeURIComponent(trip.destination)}`}>
+                              <Button className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-trip-${trip.id}`}>
+                                View Details
+                                <ArrowRight className="w-4 h-4 ml-2" />
+                              </Button>
+                            </Link>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {filteredTrips.length === 0 && trendingTrips.length === 0 && !trendingLoading && (
+                  <div className="text-center py-16">
+                    <Globe className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Destination intelligence loading</h3>
+                    <p className="text-muted-foreground max-w-sm mx-auto">
+                      Trending destination data is generated daily by TravelPulse. Check back soon, or browse expert templates above.
+                    </p>
+                  </div>
+                )}
+
+                {filteredTrips.length === 0 && trendingTrips.length > 0 && (
+                  <div className="text-center py-16">
+                    <Search className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No destinations match your filters</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Try adjusting your search or category
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setTripSearchQuery("");
+                        setSelectedTripCategory("all");
+                      }}
+                    >
+                      Clear Filters
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Influencer Curated Content Tab */}
+              <TabsContent value="articles">
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Creator Spotlight
+                    </Badge>
+                  </div>
+                  <h2 className="text-2xl font-bold mb-2">Curated by Travel Creators</h2>
+                  <p className="text-muted-foreground">Discover authentic recommendations from verified travel influencers and local experts.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {influencerContent.map((content, idx) => (
+                    <motion.div
+                      key={content.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ y: -4 }}
+                      transition={{ duration: 0.2, delay: idx * 0.05 }}
+                    >
+                      <Card
+                        className="hover-elevate overflow-hidden cursor-pointer group h-full"
+                        data-testid={`card-influencer-${content.id}`}
+                      >
+                        <CardContent className="p-0 flex flex-col h-full">
+                          <div className="relative h-44 overflow-hidden">
+                            {content.imageUrl ? (
+                              <img
+                                src={content.imageUrl}
+                                alt={content.title}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-pink-500/10 flex items-center justify-center">
+                                <Camera className="h-12 w-12 text-purple-500/30" />
+                              </div>
+                            )}
+                            
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                            
+                            <div className="absolute top-3 right-3">
+                              <Badge 
+                                className={cn(
+                                  "text-xs border-0 font-medium",
+                                  content.platform === "instagram" && "bg-gradient-to-r from-purple-500 to-pink-500 text-white",
+                                  content.platform === "youtube" && "bg-red-500 text-white",
+                                  content.platform === "tiktok" && "bg-black text-white",
+                                  content.platform === "linkedin" && "bg-blue-600 text-white"
+                                )}
+                              >
+                                {content.platform === "instagram" && "Instagram"}
+                                {content.platform === "youtube" && "YouTube"}
+                                {content.platform === "tiktok" && "TikTok"}
+                                {content.platform === "linkedin" && "LinkedIn"}
+                              </Badge>
+                            </div>
+
+                            <div className="absolute bottom-3 left-3 right-3">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={content.avatarUrl}
+                                  alt={content.creatorName}
+                                  className="w-10 h-10 rounded-full border-2 border-white object-cover"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-white font-semibold text-sm truncate">{content.creatorName}</p>
+                                  <p className="text-white/70 text-xs">{content.creator}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="p-4 flex-1 flex flex-col">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline" className="text-xs">
+                                {content.category}
+                              </Badge>
+                              <Badge className="text-xs bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Verified
+                              </Badge>
+                            </div>
+                            
+                            <h3 className="font-semibold text-base mb-2 group-hover:text-[#FF385C] transition-colors line-clamp-2 flex-1">
+                              {content.title}
+                            </h3>
+                            
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
+                              <MapPin className="w-4 h-4 text-[#FF385C]" />
+                              <span>{content.destination}</span>
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-sm pt-3 border-t">
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <Users className="w-4 h-4" />
+                                {content.followers}
+                              </span>
+                              <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                                <TrendingUp className="w-4 h-4" />
+                                {content.engagementRate}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <div className="text-center mt-8">
+                  <Button variant="outline" className="px-8" data-testid="button-view-all-creators">
+                    View All Creators
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </TabsContent>
 
               {/* Events Tab - Global Calendar */}
               <TabsContent value="events">
@@ -1599,6 +2021,6 @@ export default function DiscoverPage() {
         </section>
       </div>
       <TripQueueIndicator />
-    </DashboardLayout>
+    </Layout>
   );
 }

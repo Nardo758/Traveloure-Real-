@@ -20,14 +20,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
-import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
-import { DaySelector } from "@/components/plancard/DaySelector";
-import { SectionTabs } from "@/components/plancard/SectionTabs";
-import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
-import { ChangeLogPanel } from "@/components/plancard/ChangeLogPanel";
-import { MapControlCenter } from "@/components/plancard/MapControlCenter";
-import { HeroSection } from "@/components/plancard/HeroSection";
-import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { InlineTransportSelector, type InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 
 type Section = "activities" | "transport";
@@ -563,6 +556,8 @@ export default function TripDetails() {
                               duration: l.estimatedDurationMinutes || l.duration || 0,
                               cost: l.estimatedCostUsd || l.cost || 0,
                               status: "active",
+                              bookingSource: undefined,
+                              partnerName: undefined,
                             }));
                           })(),
                         }));
@@ -585,87 +580,12 @@ export default function TripDetails() {
                         const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
                         const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
 
-                        const extraStats: ExtraStat[] = [
-                          { label: "Days", value: String(totalDays), icon: null },
-                          { label: "Activities", value: String(totalActivities), icon: null },
-                          { label: "Transit legs", value: String(totalLegs), icon: null },
-                          { label: "Transit time", value: `${Math.floor(totalTransitMinutes / 60)}h ${totalTransitMinutes % 60}m`, icon: null },
-                          { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
-                          { label: "Total Cost", value: `$${totalCost.toLocaleString()}`, icon: CostIcon },
-                          { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
-                        ];
-
-                        // Category counts (simplified)
-                        const categoryCounts = {
-                          Sightseeing: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "sightseeing").length || 0), 0),
-                          Food: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "food").length || 0), 0),
-                          Culture: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "culture").length || 0), 0),
-                        };
-
                         return (
-                          <div className="space-y-6">
-                            {/* Stats row */}
-                            <StatsRow stats={extraStats} />
-
-                            {/* Category pills */}
-                            <div className="flex gap-2 overflow-x-auto pb-1">
-                              {Object.entries(categoryCounts).map(([cat, count]) => (
-                                <button
-                                  key={cat}
-                                  className="px-3 py-1.5 text-xs font-medium rounded-full bg-muted text-muted-foreground whitespace-nowrap"
-                                >
-                                  {cat} ({count})
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Day selector */}
-                            <DaySelector
-                              days={planCardDays}
-                              selectedDay={selectedDay}
-                              onSelectDay={setSelectedDay}
-                              templateConfig={templateConfig}
-                            />
-
-                            {/* Section tabs */}
-                            <SectionTabs
-                              section={section}
-                              onSelectSection={setSection}
-                              activitiesCount={currentPlanCardDay?.activities?.length || 0}
-                              transportCount={currentPlanCardDay?.transports?.length || 0}
-                              confirmedActivitiesCount={currentPlanCardDay?.activities?.filter((a: any) => a.status === "confirmed").length || 0}
-                            />
-
-                            {/* Activities section (when section === "activities") */}
-                            {section === "activities" && (
-                              <ActivitiesSection
-                                day={currentPlanCardDay}
-                                legs={currentDayLegs}
-                                expertLayerEnabled={false}
-                                onExpertLayerToggle={() => {}}
-                                onActivityClick={(activityId) => {
-                                  // navigate to activity detail
-                                }}
-                                onTransportClick={(legId) => {
-                                  setSection("transport");
-                                }}
-                              />
-                            )}
-
-                            {/* Transport section (when section === "transport") */}
-                            {section === "transport" && (
-                              <DayTransportPanel
-                                day={currentItineraryDay}
-                                legs={currentDayLegs}
-                                onLegUpdate={() => {}}
-                              />
-                            )}
-
-                            {/* Show Map toggle */}
-                            <div className="pt-4 border-t">
-                              <MapControlCenter days={planCardDays} selectedDay={selectedDay} />
-                            </div>
-                          </div>
+                          <PlanCard
+                            role="owner"
+                            stage="full"
+                            trip={planCardTrip}
+                          />
                         );
                       })()}
                     </>
