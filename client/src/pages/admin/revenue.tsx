@@ -11,6 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   DollarSign,
   TrendingUp,
   TrendingDown,
@@ -29,9 +35,22 @@ import {
   Ticket,
   Hotel,
   Server,
+  ChevronDown,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import {
   Table,
   TableBody,
@@ -352,9 +371,43 @@ export default function AdminRevenue() {
                 <SelectItem value="last_90_days">Last 90 Days</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" data-testid="button-download-report">
-              <Download className="w-4 h-4 mr-2" /> Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-download-report">
+                  <Download className="w-4 h-4 mr-2" /> Export <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="export-csv"
+                  onClick={() => {
+                    const url = `/api/admin/revenue/unified/export?period=${period}&format=csv`;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `traveloure-revenue-${period}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                >
+                  <FileText className="w-4 h-4 mr-2" /> Download CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="export-pdf"
+                  onClick={() => {
+                    const url = `/api/admin/revenue/unified/export?period=${period}&format=pdf`;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `traveloure-revenue-${period}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                >
+                  <FileText className="w-4 h-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" data-testid="button-process-payouts">
               <CreditCard className="w-4 h-4 mr-2" /> Process Payouts
             </Button>
@@ -487,6 +540,206 @@ export default function AdminRevenue() {
             />
           </div>
         </div>
+
+        {/* Revenue Chart — stream comparison + daily trend */}
+        <Card data-testid="card-revenue-chart">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  Revenue Overview · {periodLabel}
+                </CardTitle>
+                <CardDescription>
+                  Stream comparison (this period vs last month) and daily platform revenue trend
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {/* Stacked bar — streams this period vs last month */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                  Streams: This Period vs Last Month
+                </p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart
+                    data={[
+                      {
+                        name: "Stripe",
+                        "This Period": unified?.stripe.total ?? 0,
+                        "Last Month": unified?.stripe.lastMonth ?? 0,
+                      },
+                      {
+                        name: "Travelpayouts",
+                        "This Period": unified?.travelpayouts.total ?? 0,
+                        "Last Month": unified?.travelpayouts.lastMonth ?? 0,
+                      },
+                      {
+                        name: "Viator",
+                        "This Period": unified?.viator.total ?? 0,
+                        "Last Month": unified?.viator.lastMonth ?? 0,
+                      },
+                      {
+                        name: "Fever",
+                        "This Period": unified?.fever.total ?? 0,
+                        "Last Month": unified?.fever.lastMonth ?? 0,
+                      },
+                      {
+                        name: "Booking.com",
+                        "This Period": unified?.bookingCom.total ?? 0,
+                        "Last Month": unified?.bookingCom.lastMonth ?? 0,
+                      },
+                    ]}
+                    margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                    barCategoryGap="30%"
+                    barGap={2}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) =>
+                        v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
+                      }
+                      width={48}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [
+                        new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                        }).format(value),
+                        undefined,
+                      ]}
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 8,
+                        border: "1px solid hsl(var(--border))",
+                        background: "hsl(var(--popover))",
+                        color: "hsl(var(--popover-foreground))",
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      iconType="circle"
+                      iconSize={8}
+                    />
+                    <Bar dataKey="This Period" fill="#7c3aed" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Last Month" fill="#c4b5fd" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Line chart — daily platform revenue trend */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                  Daily Platform Revenue Trend
+                </p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart
+                    data={(() => {
+                      const from = new Date(startDate);
+                      const to = new Date(endDate);
+                      const filtered = (dashboard?.dailyTrend || []).filter((d) => {
+                        const dt = new Date(d.date);
+                        return dt >= from && dt <= to;
+                      });
+                      return filtered.map((d) => ({
+                        date: new Date(d.date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        }),
+                        Revenue: d.platformRevenue,
+                        "Expert Payouts": d.expertPayouts,
+                        "Provider Payouts": d.providerPayouts,
+                      }));
+                    })()}
+                    margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) =>
+                        v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
+                      }
+                      width={48}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [
+                        new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                        }).format(value),
+                        undefined,
+                      ]}
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 8,
+                        border: "1px solid hsl(var(--border))",
+                        background: "hsl(var(--popover))",
+                        color: "hsl(var(--popover-foreground))",
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      iconType="circle"
+                      iconSize={8}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Revenue"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Expert Payouts"
+                      stroke="#a855f7"
+                      strokeWidth={1.5}
+                      dot={false}
+                      strokeDasharray="4 2"
+                      activeDot={{ r: 3 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Provider Payouts"
+                      stroke="#f59e0b"
+                      strokeWidth={1.5}
+                      dot={false}
+                      strokeDasharray="4 2"
+                      activeDot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                {(dashboard?.dailyTrend || []).length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center -mt-10">
+                    No daily trend data yet — data appears as revenue is generated.
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Secondary stat cards — Expert & Provider totals (all-time) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

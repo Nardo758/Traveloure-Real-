@@ -413,12 +413,13 @@ class BookingService {
           partner: item.affiliatePartner,
         });
       } else {
-        // Generate affiliate link
+        // Generate affiliate link — cart checkout is always user-initiated
         const affiliateLink = await affiliateService.generateLink(
           item.itemType,
           item.location,
           item.date,
-          item.metadata
+          item.metadata,
+          { initiatedBy: "user" }
         );
 
         if (affiliateLink) {

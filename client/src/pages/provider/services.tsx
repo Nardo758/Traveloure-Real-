@@ -1,5 +1,5 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -11,10 +11,19 @@ import {
   DollarSign,
   Clock,
   Users,
-  Image as ImageIcon
+  Camera,
+  Car,
+  ChefHat,
+  Map,
+  Heart,
+  Sparkles,
+  CalendarHeart,
+  UserCheck,
+  Languages,
+  Baby,
 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -35,8 +44,22 @@ interface Service {
 
 const categories = ["All", "Venue", "Catering", "Beverage", "Equipment", "Decoration"];
 
+const inspirationCards = [
+  { label: "Photography & Videography", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
+  { label: "Transportation & Logistics", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
+  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
+  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
+  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
+  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
+  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
+  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
+  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
+  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
+];
+
 export default function ProviderServices() {
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [, navigate] = useLocation();
   const { toast } = useToast();
 
   const { data: services, isLoading } = useQuery<Service[]>({
@@ -71,6 +94,7 @@ export default function ProviderServices() {
     },
   });
 
+  const totalServices = services?.length ?? 0;
   const filteredServices = !services
     ? []
     : selectedCategory === "All"
@@ -78,6 +102,9 @@ export default function ProviderServices() {
       : services.filter(s => s.category === selectedCategory);
 
   const activeCount = (services || []).filter(s => s.active).length;
+
+  const isFirstTimeEmpty = !isLoading && totalServices === 0;
+  const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
 
   return (
     <ProviderLayout title="Services">
@@ -91,7 +118,7 @@ export default function ProviderServices() {
             {isLoading ? (
               <Skeleton className="h-4 w-40 mt-1" />
             ) : (
-              <p className="text-gray-600">{activeCount} of {services?.length || 0} services active</p>
+              <p className="text-gray-600">{activeCount} of {totalServices} services active</p>
             )}
           </div>
           <Link href="/provider/services/new">
@@ -101,31 +128,87 @@ export default function ProviderServices() {
           </Link>
         </div>
 
-        {/* Category Filter */}
-        <div className="flex gap-2 flex-wrap">
-          {categories.map((category) => (
-            <Button
-              key={category}
-              variant={selectedCategory === category ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedCategory(category)}
-              data-testid={`button-category-${category.toLowerCase()}`}
-            >
-              {category}
-            </Button>
-          ))}
-        </div>
+        {/* Category Filter — only show when there are services */}
+        {totalServices > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            {categories.map((category) => (
+              <Button
+                key={category}
+                variant={selectedCategory === category ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedCategory(category)}
+                data-testid={`button-category-${category.toLowerCase()}`}
+              >
+                {category}
+              </Button>
+            ))}
+          </div>
+        )}
 
         {/* Services Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {isLoading ? (
-            <>
-              {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-48 rounded-lg" />
-              ))}
-            </>
-          ) : filteredServices.length > 0 ? (
-            filteredServices.map((service) => (
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-48 rounded-lg" />
+            ))}
+          </div>
+        ) : isFirstTimeEmpty ? (
+          /* First-time empty state: show inspiration panel */
+          <div className="space-y-6">
+            <div className="text-center py-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">What will you offer?</h3>
+              <p className="text-gray-500 text-sm">
+                Pick a category below to get started, or build your own service from scratch.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {inspirationCards.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <button
+                    key={card.slug}
+                    onClick={() => navigate(`/provider/services/new?category=${encodeURIComponent(card.slug)}`)}
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:border-[#FF385C] hover:shadow-sm transition-all text-center group"
+                    data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                  >
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700 leading-tight">{card.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="text-center">
+              <Link href="/provider/services/new">
+                <Button variant="outline" data-testid="button-add-first-service">
+                  <Plus className="w-4 h-4 mr-2" /> Start from scratch
+                </Button>
+              </Link>
+            </div>
+          </div>
+        ) : isFilterEmpty ? (
+          /* Category filter returned nothing */
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-gray-500 font-medium">No services in this category.</p>
+              <p className="text-gray-400 text-sm mt-1">Try a different filter or add a new service.</p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() => setSelectedCategory("All")}
+                data-testid="button-clear-filter"
+              >
+                Clear filter
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          /* Service cards */
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {filteredServices.map((service) => (
               <Card
                 key={service.id}
                 className={!service.active ? "opacity-60" : ""}
@@ -185,12 +268,11 @@ export default function ProviderServices() {
                   </div>
 
                   <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                    <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
-                      <Edit className="w-4 h-4 mr-1" /> Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid={`button-images-${service.id}`}>
-                      <ImageIcon className="w-4 h-4 mr-1" /> Images
-                    </Button>
+                    <Link href={`/provider/services/${service.id}/edit`}>
+                      <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
+                        <Edit className="w-4 h-4 mr-1" /> Edit
+                      </Button>
+                    </Link>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -204,18 +286,9 @@ export default function ProviderServices() {
                   </div>
                 </CardContent>
               </Card>
-            ))
-          ) : (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-500">No services found in this category.</p>
-                <Button className="mt-4" data-testid="button-add-first-service">
-                  <Plus className="w-4 h-4 mr-2" /> Add Your First Service
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </ProviderLayout>
   );

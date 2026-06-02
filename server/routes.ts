@@ -11466,7 +11466,7 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Track affiliate click
   app.post("/api/affiliate/track-click", async (req, res) => {
     try {
-      const { productId, partnerId, userId, tripId, itineraryItemId } = req.body;
+      const { productId, partnerId, userId, tripId, itineraryItemId, initiatedBy, agentType, sessionId } = req.body;
       
       if (!productId && !partnerId) {
         return res.status(400).json({ message: "productId or partnerId is required" });
@@ -11481,11 +11481,66 @@ export async function registerDiscoveryRoutes(app: Express) {
         referrer: req.headers.referer,
         userAgent: req.headers["user-agent"],
         ipAddress: req.ip,
+        initiatedBy: initiatedBy || "user",
+        agentType: agentType || null,
+        sessionId: sessionId || null,
       });
 
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Admin: Affiliate reconciliation
+  app.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const period = (req.query.period as string) || "this_month";
+      const partner = (req.query.partner as string) || undefined;
+      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      if (!validPeriods.includes(period)) {
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+      }
+
+      const { affiliateReconciliationService } = await import("./services/affiliate-reconciliation.service");
+      const result = await affiliateReconciliationService.getReconciliationView(period, partner);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Reconciliation] Error:", error);
+      res.status(500).json({ message: "Failed to get reconciliation data", error: error.message });
+    }
+  });
+
+  // Admin: Update reconciliation status for an earnings row
+  app.patch("/api/admin/affiliate/reconciliation/:earningId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { earningId } = req.params;
+      const { status, notes, partnerReferenceId } = req.body;
+      const validStatuses = ["unmatched", "matched", "disputed", "written_off"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const { affiliateReconciliationService } = await import("./services/affiliate-reconciliation.service");
+      await affiliateReconciliationService.updateReconciliationStatus(earningId, status, notes, partnerReferenceId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Reconciliation] Update error:", error);
+      res.status(500).json({ message: "Failed to update reconciliation status", error: error.message });
     }
   });
 
@@ -11743,6 +11798,139 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to resolve flag", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // ADMIN SERVICES REGISTRY
+  // ============================================================
+
+  app.get("/api/admin/services/summary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const all = await storage.getAllProviderServices();
+      const byStatus: Record<string, number> = {};
+      let totalRevenue = 0;
+      let totalBookings = 0;
+      let featuredCount = 0;
+      for (const s of all) {
+        byStatus[s.status] = (byStatus[s.status] || 0) + 1;
+        totalRevenue += parseFloat(s.totalRevenue ?? "0");
+        totalBookings += s.bookingsCount ?? 0;
+        if (s.isFeatured) featuredCount++;
+      }
+      res.json({
+        total: all.length,
+        byStatus,
+        totalRevenue,
+        totalBookings,
+        featuredCount,
+        averageRating: all.length > 0
+          ? all.reduce((sum, s) => sum + parseFloat(s.averageRating ?? "0"), 0) / all.filter(s => s.averageRating).length
+          : 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch services summary", error: err.message });
+    }
+  });
+
+  app.get("/api/admin/services", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { status, search, category } = req.query;
+      const all = await storage.getAllProviderServices();
+
+      const providerIds = [...new Set(all.map(s => s.userId))];
+      const providerRows = providerIds.length > 0
+        ? await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
+            .from(users).where(inArray(users.id, providerIds))
+        : [];
+      const providerMap = Object.fromEntries(providerRows.map(p => [p.id, p]));
+
+      let services = all.map(s => ({
+        ...s,
+        providerName: providerMap[s.userId]
+          ? `${providerMap[s.userId].firstName ?? ""} ${providerMap[s.userId].lastName ?? ""}`.trim() || providerMap[s.userId].email
+          : "Unknown",
+        providerEmail: providerMap[s.userId]?.email,
+      }));
+
+      if (status && status !== "all") services = services.filter(s => s.status === status);
+      if (category && category !== "all") services = services.filter(s => s.categoryId === category);
+      if (search) {
+        const q = (search as string).toLowerCase();
+        services = services.filter(s =>
+          s.serviceName.toLowerCase().includes(q) ||
+          (s.providerName as string).toLowerCase().includes(q) ||
+          s.trackingNumber?.toLowerCase().includes(q) ||
+          s.location?.toLowerCase().includes(q)
+        );
+      }
+
+      services.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+      res.json(services);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch services", error: err.message });
+    }
+  });
+
+  app.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { status } = req.body;
+      if (!["active", "paused", "draft", "suspended"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const [updated] = await db.update(providerServices)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(providerServices.id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Service not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update service status", error: err.message });
+    }
+  });
+
+  app.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { isFeatured } = req.body;
+      const [updated] = await db.update(providerServices)
+        .set({ isFeatured: Boolean(isFeatured), updatedAt: new Date() })
+        .where(eq(providerServices.id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Service not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update featured status", error: err.message });
+    }
+  });
+
+  app.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const [row] = await db.select().from(providerServices).where(eq(providerServices.id, req.params.id)).limit(1);
+      if (!row) return res.status(404).json({ message: "Service not found" });
+      await db.delete(providerServices).where(eq(providerServices.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete service", error: err.message });
     }
   });
 
@@ -12116,14 +12304,12 @@ export async function registerDiscoveryRoutes(app: Express) {
         { getFeverCommissions },
         { getBookingComCommissions },
         { getApiCostsSummary },
-        { revenueTrackingService },
       ] = await Promise.all([
         import("./services/travelpayouts/statistics.service"),
         import("./services/viator-commissions.service"),
         import("./services/fever-commissions.service"),
         import("./services/booking-com-commissions.service"),
         import("./services/api-costs.service"),
-        import("./services/revenue-tracking.service"),
       ]);
 
       // Compute period-specific date bounds for Stripe query
@@ -12148,8 +12334,28 @@ export async function registerDiscoveryRoutes(app: Express) {
         };
       })();
 
-      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary] = await Promise.all([
-        revenueTrackingService.getUnifiedDashboard().catch(() => null),
+      // Comparison (prior) period bounds for MoM badge
+      const priorPeriodBounds = (() => {
+        if (period === "last_month") {
+          return {
+            start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
+            end: new Date(now.getFullYear(), now.getMonth() - 1, 0, 23, 59, 59),
+          };
+        }
+        if (period === "last_90_days") {
+          return {
+            start: new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000),
+            end: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+          };
+        }
+        // this_month → compare against last calendar month
+        return {
+          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+        };
+      })();
+
+      const [travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary, stripePriorSummary] = await Promise.all([
         getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
         getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
@@ -12157,18 +12363,37 @@ export async function registerDiscoveryRoutes(app: Express) {
         getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
         // Fetch period-accurate Stripe total directly from DB
         storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
+        // Fetch prior period for MoM comparison
+        storage.getPlatformRevenueSummary(priorPeriodBounds.start, priorPeriodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
       ]);
 
-      const stripeThisMonth = stripe?.platform?.thisMonth || 0;
-      const stripeLastMonth = stripe?.platform?.lastMonth || 0;
+      const stripeThisMonth = stripePeriodSummary.totalPlatformFee;
+      const stripeLastMonth = stripePriorSummary.totalPlatformFee;
       // Use period-accurate DB query result (not all-time totalRevenue)
       const stripeTotal = stripePeriodSummary.totalPlatformFee;
+      const stripeGrowthPercent = stripeLastMonth > 0
+        ? Math.round(((stripeThisMonth - stripeLastMonth) / stripeLastMonth) * 1000) / 10
+        : 0;
 
-      const totalAffiliateRevenue =
+      // Use only reconciliation-confirmed affiliate totals when available
+      let confirmedAffiliateTotal = 0;
+      try {
+        const { affiliateReconciliationService } = await import("./services/affiliate-reconciliation.service");
+        confirmedAffiliateTotal = await affiliateReconciliationService.getConfirmedAffiliateTotal(
+          periodBounds.start,
+          periodBounds.end
+        );
+      } catch (_) { /* ignore — fallback to raw totals */ }
+
+      const rawAffiliateRevenue =
         (travelpayouts.total || 0) +
         (viator.total || 0) +
         (fever.total || 0) +
         (bookingCom.total || 0);
+
+      // Always use confirmed (matched) totals; raw affiliate numbers are for context only.
+      // If reconciliation has never run, confirmed will be 0 — that is the correct conservative figure.
+      const totalAffiliateRevenue = confirmedAffiliateTotal;
 
       const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
 
@@ -12181,7 +12406,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           lastMonth: stripeLastMonth,
           total: stripeTotal,
           currency: "USD",
-          growthPercent: stripe?.platform?.growthPercent || 0,
+          growthPercent: stripeGrowthPercent,
         },
         travelpayouts,
         viator,
@@ -12192,6 +12417,279 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (error: any) {
       console.error("[UnifiedRevenue] Error:", error);
       res.status(500).json({ message: "Failed to get unified revenue data", error: error.message });
+    }
+  });
+
+  // Admin unified revenue export (CSV or PDF)
+  app.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const period = (req.query.period as string) || "this_month";
+      const format = ((req.query.format as string) || "csv").toLowerCase();
+      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      if (!validPeriods.includes(period)) {
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+      }
+      if (!["csv", "pdf"].includes(format)) {
+        return res.status(400).json({ message: "Invalid format. Use: csv, pdf" });
+      }
+
+      const [
+        { getTravelpayoutsStatistics },
+        { getViatorCommissions },
+        { getFeverCommissions },
+        { getBookingComCommissions },
+        { getApiCostsSummary },
+        { revenueTrackingService },
+      ] = await Promise.all([
+        import("./services/travelpayouts/statistics.service"),
+        import("./services/viator-commissions.service"),
+        import("./services/fever-commissions.service"),
+        import("./services/booking-com-commissions.service"),
+        import("./services/api-costs.service"),
+        import("./services/revenue-tracking.service"),
+      ]);
+
+      const now = new Date();
+      const periodBounds = (() => {
+        if (period === "last_month") {
+          return {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+          };
+        }
+        if (period === "last_90_days") {
+          return {
+            start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+            end: now,
+          };
+        }
+        return {
+          start: new Date(now.getFullYear(), now.getMonth(), 1),
+          end: now,
+        };
+      })();
+
+      const [stripe, travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary, transactions] = await Promise.all([
+        revenueTrackingService.getUnifiedDashboard().catch(() => null),
+        getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
+        getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getBookingComCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
+        getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
+        storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
+        storage.getPlatformRevenue({ startDate: periodBounds.start, endDate: periodBounds.end }).catch(() => []),
+      ]);
+
+      const stripeTotal = stripePeriodSummary.totalPlatformFee;
+      const totalAffiliateRevenue = (travelpayouts.total || 0) + (viator.total || 0) + (fever.total || 0) + (bookingCom.total || 0);
+      const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
+
+      const periodLabel = period === "last_month" ? "Last Month" : period === "last_90_days" ? "Last 90 Days" : "This Month";
+      const exportedAt = now.toISOString();
+      const fmt = (n: number) => n.toFixed(2);
+
+      if (format === "csv") {
+        const rows: string[] = [];
+        const addRow = (...cols: (string | number)[]) => rows.push(cols.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","));
+        const addBlank = () => rows.push("");
+        const addHeader = (title: string) => { addBlank(); addRow(title); };
+
+        addRow("Traveloure - Unified Revenue Export");
+        addRow(`Period: ${periodLabel}`);
+        addRow(`Exported: ${exportedAt}`);
+
+        addHeader("REVENUE STREAM TOTALS");
+        addRow("Stream", "This Month (USD)", "Last Month (USD)", "Period Total (USD)");
+        addRow("Stripe (Platform Fees)", fmt(stripe?.platform?.thisMonth || 0), fmt(stripe?.platform?.lastMonth || 0), fmt(stripeTotal));
+        addRow("Travelpayouts", fmt(travelpayouts.thisMonth || 0), fmt(travelpayouts.lastMonth || 0), fmt(travelpayouts.total || 0));
+        addRow("Viator", fmt(viator.thisMonth || 0), fmt(viator.lastMonth || 0), fmt(viator.total || 0));
+        addRow("Fever", fmt(fever.thisMonth || 0), fmt(fever.lastMonth || 0), fmt(fever.total || 0));
+        addRow("Booking.com", fmt(bookingCom.thisMonth || 0), fmt(bookingCom.lastMonth || 0), fmt(bookingCom.total || 0));
+        addRow("API Costs (deducted)", "", "", `-${fmt(apiCosts.totalCostDollars)}`);
+        addRow("NET REVENUE", "", "", fmt(totalNetRevenue));
+
+        if ((travelpayouts as any).byPartner?.length) {
+          addHeader("TRAVELPAYOUTS PARTNER BREAKDOWN");
+          addRow("Partner", "This Month (USD)", "Last Month (USD)", "Period Total (USD)");
+          for (const p of (travelpayouts as any).byPartner) {
+            addRow(p.partnerLabel || p.partner, fmt(p.thisMonth || 0), fmt(p.lastMonth || 0), fmt(p.total || 0));
+          }
+        }
+
+        if (apiCosts.entries?.length) {
+          addHeader("API COST BREAKDOWN");
+          addRow("Provider", "API Calls", "Cost (USD)");
+          for (const e of apiCosts.entries) {
+            addRow(e.provider, e.calls, fmt(e.costDollars));
+          }
+          addRow("TOTAL API COSTS", "", fmt(apiCosts.totalCostDollars));
+        }
+
+        if (Array.isArray(transactions) && transactions.length) {
+          addHeader("RECENT TRANSACTIONS");
+          addRow("Date", "Source Type", "Gross Amount (USD)", "Platform Fee (USD)", "Tracking #");
+          for (const tx of transactions) {
+            addRow(
+              new Date(tx.date).toLocaleDateString("en-US"),
+              tx.sourceType || "",
+              fmt(tx.grossAmount || 0),
+              fmt(tx.platformFee || 0),
+              tx.trackingNumber || ""
+            );
+          }
+        }
+
+        const csvContent = rows.join("\r\n");
+        const filename = `traveloure-revenue-${period}-${now.toISOString().slice(0, 10)}.csv`;
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send("\uFEFF" + csvContent); // BOM for Excel UTF-8
+      }
+
+      // PDF: generate a real PDF using pdfkit
+      const PDFDocument = (await import("pdfkit")).default;
+      const periodTransactions = Array.isArray(transactions) ? transactions : [];
+
+      const filename = `traveloure-revenue-${period}-${now.toISOString().slice(0, 10)}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
+      doc.pipe(res);
+
+      const COL_GRAY = "#6b7280";
+      const COL_GREEN = "#16a34a";
+      const COL_BLACK = "#111827";
+      const COL_HEADER_BG = "#f3f4f6";
+
+      // Helper: sanitize string for PDF output (strip control chars)
+      const safe = (v: unknown) => String(v ?? "").replace(/[\x00-\x1F\x7F]/g, " ").slice(0, 200);
+
+      // Title
+      doc.fontSize(18).fillColor(COL_BLACK).font("Helvetica-Bold").text("Traveloure – Unified Revenue Report");
+      doc.fontSize(10).fillColor(COL_GRAY).font("Helvetica").text(`Period: ${periodLabel}   |   Exported: ${exportedAt}`);
+      doc.moveDown(0.5);
+
+      // Net Revenue highlight
+      doc.fontSize(13).fillColor(COL_GREEN).font("Helvetica-Bold").text(`Net Revenue: $${fmt(totalNetRevenue)} USD`);
+      doc.moveDown(1);
+
+      // Helper: draw a simple table
+      const drawTable = (headers: string[], colWidths: number[], rows: (string | number)[][], highlightLast = false) => {
+        const startX = doc.page.margins.left;
+        const rowH = 18;
+        let y = doc.y;
+
+        // Header row
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(COL_BLACK);
+        let x = startX;
+        headers.forEach((h, i) => {
+          doc.rect(x, y, colWidths[i], rowH).fill(COL_HEADER_BG).stroke("#d1d5db");
+          doc.fillColor(COL_BLACK).text(h, x + 4, y + 4, { width: colWidths[i] - 8, lineBreak: false });
+          x += colWidths[i];
+        });
+        y += rowH;
+
+        // Data rows
+        doc.font("Helvetica").fontSize(9);
+        rows.forEach((row, ri) => {
+          if (y + rowH > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+            y = doc.page.margins.top;
+          }
+          const isLast = highlightLast && ri === rows.length - 1;
+          x = startX;
+          row.forEach((cell, ci) => {
+            doc.rect(x, y, colWidths[ci], rowH).fill(isLast ? "#f9fafb" : "#ffffff").stroke("#e5e7eb");
+            doc.font(isLast ? "Helvetica-Bold" : "Helvetica").fillColor(COL_BLACK)
+              .text(safe(cell), x + 4, y + 4, { width: colWidths[ci] - 8, lineBreak: false });
+            x += colWidths[ci];
+          });
+          y += rowH;
+        });
+        doc.y = y;
+        doc.moveDown(1);
+      };
+
+      // Revenue Streams
+      doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("Revenue Stream Totals");
+      doc.moveDown(0.3);
+      drawTable(
+        ["Stream", "This Month", "Last Month", "Period Total"],
+        [210, 100, 100, 100],
+        [
+          ["Stripe (Platform Fees)", `$${fmt(stripe?.platform?.thisMonth || 0)}`, `$${fmt(stripe?.platform?.lastMonth || 0)}`, `$${fmt(stripeTotal)}`],
+          ["Travelpayouts", `$${fmt(travelpayouts.thisMonth || 0)}`, `$${fmt(travelpayouts.lastMonth || 0)}`, `$${fmt(travelpayouts.total || 0)}`],
+          ["Viator", `$${fmt(viator.thisMonth || 0)}`, `$${fmt(viator.lastMonth || 0)}`, `$${fmt(viator.total || 0)}`],
+          ["Fever", `$${fmt(fever.thisMonth || 0)}`, `$${fmt(fever.lastMonth || 0)}`, `$${fmt(fever.total || 0)}`],
+          ["Booking.com", `$${fmt(bookingCom.thisMonth || 0)}`, `$${fmt(bookingCom.lastMonth || 0)}`, `$${fmt(bookingCom.total || 0)}`],
+          ["API Costs (deducted)", "", "", `-$${fmt(apiCosts.totalCostDollars)}`],
+          ["NET REVENUE", "", "", `$${fmt(totalNetRevenue)}`],
+        ],
+        true
+      );
+
+      // Travelpayouts partner breakdown
+      const partners = (travelpayouts as any).byPartner ?? [];
+      if (partners.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("Travelpayouts Partner Breakdown");
+        doc.moveDown(0.3);
+        drawTable(
+          ["Partner", "This Month", "Last Month", "Period Total"],
+          [210, 100, 100, 100],
+          partners.map((p: any) => [
+            safe(p.partnerLabel || p.partner),
+            `$${fmt(p.thisMonth || 0)}`,
+            `$${fmt(p.lastMonth || 0)}`,
+            `$${fmt(p.total || 0)}`,
+          ])
+        );
+      }
+
+      // API costs breakdown
+      if (apiCosts.entries?.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text("API Cost Breakdown");
+        doc.moveDown(0.3);
+        drawTable(
+          ["Provider", "API Calls", "Cost (USD)"],
+          [240, 130, 130],
+          [
+            ...apiCosts.entries.map((e: any) => [safe(e.provider), String(e.calls), `$${fmt(e.costDollars)}`]),
+            ["TOTAL API COSTS", "", `$${fmt(apiCosts.totalCostDollars)}`],
+          ],
+          true
+        );
+      }
+
+      // Transactions
+      if (periodTransactions.length) {
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(COL_BLACK).text(`Transactions (${periodTransactions.length})`);
+        doc.moveDown(0.3);
+        drawTable(
+          ["Date", "Source Type", "Gross Amount", "Platform Fee", "Tracking #"],
+          [80, 140, 90, 90, 110],
+          periodTransactions.map((tx: any) => [
+            new Date(tx.date).toLocaleDateString("en-US"),
+            safe(tx.sourceType),
+            `$${fmt(tx.grossAmount || 0)}`,
+            `$${fmt(tx.platformFee || 0)}`,
+            safe(tx.trackingNumber || ""),
+          ])
+        );
+      }
+
+      doc.end();
+      return;
+    } catch (error: any) {
+      console.error("[RevenueExport] Error:", error);
+      res.status(500).json({ message: "Failed to export revenue data", error: error.message });
     }
   });
 

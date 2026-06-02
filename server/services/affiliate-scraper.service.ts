@@ -470,8 +470,17 @@ ${truncatedHtml}`;
     referrer?: string;
     userAgent?: string;
     ipAddress?: string;
+    initiatedBy?: "user" | "ai_agent" | "expert";
+    agentType?: "grok" | "claude" | "system" | null;
+    sessionId?: string;
   }): Promise<{ affiliateUrl: string }> {
-    await db.insert(affiliateClicks).values(data);
+    const { initiatedBy, agentType, sessionId, ...rest } = data;
+    await db.insert(affiliateClicks).values({
+      ...rest,
+      initiatedBy: initiatedBy || "user",
+      agentType: agentType || null,
+      sessionId: sessionId || null,
+    });
 
     if (data.productId) {
       const product = await this.getProductById(data.productId);
