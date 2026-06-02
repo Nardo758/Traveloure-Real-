@@ -35,7 +35,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ExpertSidebar } from "@/components/expert/expert-sidebar";
 import { Bell, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
 
 interface ExpertLayoutProps {
@@ -45,42 +45,58 @@ interface ExpertLayoutProps {
 
 export function ExpertLayout({ children, title }: ExpertLayoutProps) {
   const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "4rem",
+    "--sidebar-width": "220px",
+    "--sidebar-width-icon": "56px",
   };
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full bg-[#FAFAF8]">
+      <div className="flex min-h-screen w-full" style={{ background: "#FAFAF8" }}>
         <ExpertSidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between h-14 px-4 border-b border-[#E8E8E2] bg-white">
-            <div className="flex items-center gap-4">
-              <SidebarTrigger data-testid="button-expert-sidebar-toggle" />
+        <div className="flex flex-col flex-1 min-w-0">
+          <header
+            className="flex items-center justify-between h-[52px] px-5 sticky top-0 z-40 bg-white"
+            style={{ borderBottom: "1px solid #E8E8E2" }}
+          >
+            <div className="flex items-center gap-3">
+              <SidebarTrigger
+                className="h-8 w-8 rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
+                style={{ border: "1px solid #E8E8E2" }}
+                data-testid="button-expert-sidebar-toggle"
+              />
               {title && (
-                <h1 className="text-lg font-semibold text-[#1A1A18]">{title}</h1>
+                <h1 className="text-[16px] font-semibold" style={{ color: "#1A1A18", letterSpacing: -0.3 }}>
+                  {title}
+                </h1>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full border border-green-200">
-                <Bot className="w-4 h-4 text-green-600" />
-                <span className="text-sm font-medium text-green-700">AI: Active</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative"
-                data-testid="button-expert-notifications"
+            <div className="flex items-center gap-2">
+              <div
+                className="hidden sm:flex items-center gap-1.5 h-[28px] px-2.5 rounded-full"
+                style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}
+                data-testid="badge-ai-status"
               >
-                <Bell className="w-5 h-5 text-gray-600" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-[#FF385C]">
-                  3
-                </Badge>
-              </Button>
+                <Bot className="w-3.5 h-3.5" style={{ color: "#16A34A" }} />
+                <span className="text-[11px] font-medium" style={{ color: "#15803D" }}>
+                  AI: Active
+                </span>
+              </div>
+              <Link href="/notifications">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-[34px] w-[34px] rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
+                  style={{ border: "1px solid #E8E8E2" }}
+                  data-testid="button-expert-notifications"
+                >
+                  <Bell className="w-4 h-4" />
+                  <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] bg-[#E85D55] rounded-full" />
+                </Button>
+              </Link>
               <UserMenu />
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-auto">
             {children}
           </main>
         </div>
