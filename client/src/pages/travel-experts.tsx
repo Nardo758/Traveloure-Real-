@@ -51,8 +51,9 @@ const localExpertSteps = [
   { id: 2, title: "Your Locality" },
   { id: 3, title: "Knowledge Proof" },
   { id: 4, title: "Specialties" },
-  { id: 5, title: "Availability" },
-  { id: 6, title: "Review" },
+  { id: 5, title: "Services" },
+  { id: 6, title: "Availability" },
+  { id: 7, title: "Review" },
 ];
 
 const KNOWLEDGE_PROOF_QUESTIONS = [
@@ -295,8 +296,10 @@ export default function TravelExpertsPage() {
         case 4:
           return formData.localSpecialties.length > 0;
         case 5:
-          return !!(formData.availability && formData.responseTime && formData.hourlyRate);
+          return formData.selectedServices.length > 0;
         case 6:
+          return !!(formData.availability && formData.responseTime && formData.hourlyRate);
+        case 7:
           return formData.agreeToTerms;
         default:
           return true;
@@ -1082,8 +1085,8 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
-          {/* Step 3: Services */}
-          {!isLocalExpert && currentStep === 3 && (
+          {/* Step 3/5: Services */}
+          {((!isLocalExpert && currentStep === 3) || (isLocalExpert && currentStep === 5)) && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Services You Offer</CardTitle>
@@ -1120,7 +1123,7 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
-          {/* Step 4: Experience */}
+          {/* Step 4: Experience (travel/event experts only) */}
           {!isLocalExpert && currentStep === 4 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
@@ -1183,8 +1186,8 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
-          {/* Step 5: Availability */}
-          {currentStep === 5 && (
+          {/* Step 5/6: Availability */}
+          {((!isLocalExpert && currentStep === 5) || (isLocalExpert && currentStep === 6)) && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Availability & Rates</CardTitle>
@@ -1247,8 +1250,8 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
-          {/* Step 6: Review */}
-          {currentStep === 6 && (
+          {/* Step 6/7: Review */}
+          {((!isLocalExpert && currentStep === 6) || (isLocalExpert && currentStep === 7)) && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Review Your Application</CardTitle>
@@ -1300,6 +1303,14 @@ export default function TravelExpertsPage() {
                             </Badge>
                           );
                         })}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[#6B7280] text-sm">Services Offered:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {formData.selectedServices.map((s) => (
+                          <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
+                        ))}
                       </div>
                     </div>
                     <div className="space-y-3">
