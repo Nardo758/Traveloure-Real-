@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import { db } from "../db";
-import { localExpertForms, serviceProviderForms, notifications } from "@shared/schema";
+import { localExpertForms, serviceProviderForms } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getBaseUrl } from "../services/stripe.service";
@@ -65,6 +65,23 @@ router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
       return res.status(400).json({ message: "country and registrationNumber are required" });
     }
 
+    // Fetch existing form to capture already-uploaded document URLs
+    const [form] = await db
+      .select()
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, userId))
+      .limit(1);
+
+    if (!form) {
+      return res.status(404).json({ message: "Provider application not found" });
+    }
+
+    // Collect already-uploaded documents from the application form
+    const existingDocuments: Record<string, string> = {};
+    if ((form as any).businessLicense) existingDocuments.businessLicense = (form as any).businessLicense;
+    if ((form as any).businessGstTax) existingDocuments.businessGstTax = (form as any).businessGstTax;
+    if ((form as any).businessLogo) existingDocuments.businessLogo = (form as any).businessLogo;
+
     const PERSONA_API_KEY = process.env.PERSONA_API_KEY;
 
     if (!PERSONA_API_KEY) {
@@ -75,6 +92,7 @@ router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
           businessVerificationStatus: "submitted",
           businessCountry: country,
           businessRegistrationNumber: registrationNumber,
+          businessDocuments: existingDocuments,
         } as any)
         .where(eq(serviceProviderForms.userId, userId));
 
@@ -122,6 +140,7 @@ router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
         businessVerificationStatus: "submitted",
         businessCountry: country,
         businessRegistrationNumber: registrationNumber,
+        businessDocuments: existingDocuments,
       } as any)
       .where(eq(serviceProviderForms.userId, userId));
 
@@ -130,80 +149,6 @@ router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
     console.error("Persona KYB error:", err);
     res.status(500).json({ message: err.message || "Failed to create business verification" });
   }
-});
-
-// POST /api/webhooks/stripe-identity — Stripe Identity webhook
-router.post("/webhooks/stripe-identity", async (req, res) => {
-  let event: any;
-
-  try {
-    const sig = req.headers["stripe-signature"] as string;
-    if (process.env.STRIPE_IDENTITY_WEBHOOK_SECRET && sig) {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_IDENTITY_WEBHOOK_SECRET
-      );
-    } else {
-      event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    }
-  } catch (err: any) {
-    console.error("Stripe Identity webhook signature error:", err.message);
-    return res.status(400).json({ message: err.message });
-  }
-
-  const session = event.data?.object;
-  const userId = session?.metadata?.user_id;
-  const formType = session?.metadata?.form_type;
-
-  if (!userId) return res.json({ received: true });
-
-  try {
-    if (event.type === "identity.verification_session.verified") {
-      const updates = { identityVerificationStatus: "verified", identityVerifiedAt: new Date() };
-      if (formType === "expert") {
-        await db.update(localExpertForms).set(updates as any).where(eq(localExpertForms.userId, userId));
-      } else {
-        await db.update(serviceProviderForms).set(updates as any).where(eq(serviceProviderForms.userId, userId));
-      }
-    } else if (event.type === "identity.verification_session.requires_input") {
-      const updates = { identityVerificationStatus: "failed" };
-      if (formType === "expert") {
-        await db.update(localExpertForms).set(updates as any).where(eq(localExpertForms.userId, userId));
-      } else {
-        await db.update(serviceProviderForms).set(updates as any).where(eq(serviceProviderForms.userId, userId));
-      }
-    }
-  } catch (err) {
-    console.error("Stripe Identity webhook DB error:", err);
-  }
-
-  res.json({ received: true });
-});
-
-// POST /api/webhooks/persona — Persona KYB webhook
-router.post("/webhooks/persona", async (req, res) => {
-  try {
-    const event = req.body;
-    const inquiryId = event.data?.id;
-    const status = event.data?.attributes?.status;
-
-    if (!inquiryId) return res.json({ received: true });
-
-    const newStatus =
-      status === "approved" ? "verified" :
-      status === "declined" ? "failed" :
-      "submitted";
-
-    await db
-      .update(serviceProviderForms)
-      .set({ businessVerificationStatus: newStatus } as any)
-      .where(eq((serviceProviderForms as any).personaInquiryId, inquiryId));
-  } catch (err) {
-    console.error("Persona webhook error:", err);
-  }
-
-  res.json({ received: true });
 });
 
 export default router;
