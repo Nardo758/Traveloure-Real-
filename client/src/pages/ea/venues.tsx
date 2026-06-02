@@ -14,11 +14,17 @@ import {
   Filter
 } from "lucide-react";
 
+import { useQuery } from "@tanstack/react-query";
+
+interface EaSavedVenue {
+  id: string; name: string; type?: string; location?: string; rating?: string;
+  priceRange?: string; usedBy?: string[]; lastUsed?: string; favorite?: boolean; notes?: string;
+}
+
 export default function EAVenues() {
-  const savedVenues: Array<{
-    id: number; name: string; type: string; location: string; rating: number;
-    priceRange: string; usedBy: string[]; lastUsed?: string; favorite?: boolean; notes?: string;
-  }> = [];
+  const { data: savedVenues = [] } = useQuery<EaSavedVenue[]>({
+    queryKey: ["/api/ea/venues"],
+  });
 
   const recentSearches: string[] = [];
 
@@ -53,19 +59,21 @@ export default function EAVenues() {
                 <Filter className="w-4 h-4 mr-2" /> Filter
               </Button>
             </div>
-            {recentSearches.length > 0 && <div className="flex gap-2 mt-3">
-              <span className="text-sm text-gray-500">Recent:</span>
-              {recentSearches.map((search, idx) => (
-                <Badge 
-                  key={idx} 
-                  variant="outline" 
-                  className="cursor-pointer hover:bg-gray-100"
-                  data-testid={`recent-search-${idx}`}
-                >
-                  {search}
-                </Badge>
-              ))}
-            </div>
+            {recentSearches.length > 0 && (
+              <div className="flex gap-2 mt-3">
+                <span className="text-sm text-gray-500">Recent:</span>
+                {recentSearches.map((search, idx) => (
+                  <Badge 
+                    key={idx} 
+                    variant="outline" 
+                    className="cursor-pointer hover:bg-gray-100"
+                    data-testid={`recent-search-${idx}`}
+                  >
+                    {search}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -135,7 +143,7 @@ export default function EAVenues() {
                       </span>
                     </div>
                     <p className="text-sm text-gray-500 mb-2">
-                      Used by: {venue.usedBy.join(", ")}
+                      Used by: {(venue.usedBy ?? []).join(", ")}
                       {venue.lastUsed && ` • Last used: ${venue.lastUsed}`}
                     </p>
                     {venue.notes && (

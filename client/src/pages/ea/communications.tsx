@@ -17,11 +17,17 @@ import {
   User
 } from "lucide-react";
 
+import { useQuery } from "@tanstack/react-query";
+
+interface EaCommunication {
+  id: string; type: string; executiveName?: string; subject: string;
+  recipient?: string; sentAt?: string; status: string; body?: string;
+}
+
 export default function EACommunications() {
-  const recentComms: Array<{
-    id: number; type: string; executive: string; subject: string;
-    recipient: string; time: string; status: string;
-  }> = [];
+  const { data: recentComms = [] } = useQuery<EaCommunication[]>({
+    queryKey: ["/api/ea/communications"],
+  });
 
   const drafts: Array<{
     id: number; executive: string; type: string; content: string; aiGenerated: boolean;
@@ -91,10 +97,10 @@ export default function EACommunications() {
                           <div className="flex-1">
                             <div className="flex items-center justify-between">
                               <p className="font-medium text-gray-900">{comm.subject}</p>
-                              <span className="text-xs text-gray-500">{comm.time}</span>
+                              <span className="text-xs text-gray-500">{comm.sentAt ? new Date(comm.sentAt).toLocaleDateString() : ""}</span>
                             </div>
                             <p className="text-sm text-gray-500">
-                              <span className="font-medium">{comm.executive}</span> → {comm.recipient}
+                              <span className="font-medium">{comm.executiveName}</span> → {comm.recipient}
                             </p>
                             <Badge variant="outline" className="mt-1 text-xs">
                               {comm.status}
