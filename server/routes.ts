@@ -12227,8 +12227,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         (fever.total || 0) +
         (bookingCom.total || 0);
 
-      // Prefer confirmed (reconciled) total; fall back to raw if reconciliation DB is empty
-      const totalAffiliateRevenue = confirmedAffiliateTotal > 0 ? confirmedAffiliateTotal : rawAffiliateRevenue;
+      // Always use confirmed (matched) totals; raw affiliate numbers are for context only.
+      // If reconciliation has never run, confirmed will be 0 — that is the correct conservative figure.
+      const totalAffiliateRevenue = confirmedAffiliateTotal;
 
       const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
 

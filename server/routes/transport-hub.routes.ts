@@ -321,6 +321,7 @@ router.post(
       }
 
       // Log click event for affiliate tracking
+      // Transport hub clicks are always user-initiated (the user taps a booking card)
       try {
         await db.insert(affiliateClicks).values({
           partnerId: option.source, // Use source as partner identifier
@@ -329,6 +330,9 @@ router.post(
           referrer: referrer || undefined,
           userAgent: userAgent || undefined,
           ipAddress: (req.ip || "").split(":").pop(), // Extract IPv4 from IPv6 if needed
+          initiatedBy: "user",
+          agentType: null,
+          sessionId: null,
           clickedAt: new Date(),
         });
       } catch (clickError) {

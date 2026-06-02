@@ -215,24 +215,45 @@ class AffiliateReconciliationService {
 
   /**
    * Auto-match external commission rows against internal affiliate_earnings.
-   * Matching criteria:
-   *   - Same partner (loosely matched via partner name substring)
-   *   - createdAt within ±3 days
-   *   - Amount within 5% tolerance
+   * Matching criteria (all must be satisfied):
+   *   1. Same partnerId — looked up by matching the external `partner` key
+   *      against affiliate_partners.name (case-insensitive prefix)
+   *   2. createdAt within ±3 days of the partner-reported date
+   *   3. total_commission within 5% of the external amount
    *
-   * Marks matched rows and persists partnerReferenceId.
+   * When multiple candidates pass all filters we pick the one with the
+   * smallest absolute date delta (closest match first).
+   *
+   * Matched rows are updated in place; already-matched rows are skipped.
    */
   async matchRecords(period: string, partner?: string): Promise<void> {
     const { start, end } = getPeriodDates(period);
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
-    // Fetch all internal earnings for the period
+    // Build a lookup: external partner key → internal partner_id
+    const partnerMapResult = await db.execute(sql`
+      SELECT id, LOWER(name) AS name_lower FROM affiliate_partners
+    `);
+    const partnerKeyToId: Record<string, string> = {};
+    for (const row of partnerMapResult.rows as any[]) {
+      // Map common external keys to partner rows by prefix match
+      // e.g. 'travelpayouts', 'viator', 'fever', 'booking'
+      partnerKeyToId[row.name_lower] = row.id;
+      // Also index by first word (handles "Booking.com" → "booking")
+      const firstWord = row.name_lower.split(/[\s.]/)[0];
+      if (firstWord && !partnerKeyToId[firstWord]) {
+        partnerKeyToId[firstWord] = row.id;
+      }
+    }
+
+    // Fetch all unmatched internal earnings for the period
     const internal = await db.execute(sql`
-      SELECT ae.*, ap.name as partner_name
+      SELECT ae.*, ap.name AS partner_name
       FROM affiliate_earnings ae
       LEFT JOIN affiliate_partners ap ON ae.partner_id = ap.id
       WHERE ae.created_at >= ${start.toISOString()}
         AND ae.created_at <= ${end.toISOString()}
-        AND ae.reconciliation_status IN ('unmatched')
+        AND ae.reconciliation_status = 'unmatched'
       ORDER BY ae.created_at
     `);
     const internalRows = internal.rows as any[];
@@ -240,44 +261,59 @@ class AffiliateReconciliationService {
     // Fetch external reports
     const external = await this.fetchExternalReports(period, partner);
 
+    // Track which internal rows have been consumed in this pass
+    const consumed = new Set<string>();
+
     for (const ext of external) {
       const extDate = new Date(ext.reportedAt).getTime();
-      const threeDays = 3 * 24 * 60 * 60 * 1000;
 
-      // Find best matching internal row
-      const match = internalRows.find((row) => {
+      // Resolve the internal partner_id for this external partner key
+      const resolvedPartnerId = partnerKeyToId[ext.partner.toLowerCase()] ??
+        partnerKeyToId[ext.partner.toLowerCase().split(/[\s.]/)[0]];
+
+      // Collect all candidates that satisfy date + amount + partnerId
+      const candidates = internalRows.filter((row) => {
+        if (consumed.has(row.id)) return false;
         if (row.reconciliation_status === "matched") return false;
 
-        // Partner match (loose)
-        const partnerName = (row.partner_name || "").toLowerCase();
-        if (!partnerName.includes(ext.partner) && !ext.partner.includes(partnerName.split(" ")[0])) {
-          // Try by partner key
-          const partnerKey = ext.partner.toLowerCase();
-          if (!partnerName.includes(partnerKey)) return false;
+        // Partner must match by partnerId when we can resolve it
+        if (resolvedPartnerId && row.partner_id && row.partner_id !== resolvedPartnerId) {
+          return false;
         }
 
         // Date within ±3 days
         const rowDate = new Date(row.created_at).getTime();
-        if (Math.abs(rowDate - extDate) > threeDays) return false;
+        if (Math.abs(rowDate - extDate) > THREE_DAYS_MS) return false;
 
-        // Amount within 5%
+        // Amount within 5% tolerance
         const internalAmt = parseFloat(row.total_commission);
+        if (internalAmt === 0) return false;
         const tolerance = internalAmt * 0.05;
         return Math.abs(internalAmt - ext.amount) <= tolerance;
       });
 
-      if (match) {
-        // Mark as matched
-        match.reconciliation_status = "matched";
-        await db.execute(sql`
-          UPDATE affiliate_earnings
-          SET reconciliation_status = 'matched',
-              partner_reference_id = ${ext.partnerReferenceId},
-              reconciled_at = NOW(),
-              external_report_data = ${JSON.stringify(ext.rawData)}::jsonb
-          WHERE id = ${match.id}
-        `);
-      }
+      if (candidates.length === 0) continue;
+
+      // Pick the candidate with the smallest absolute date delta (closest match)
+      candidates.sort((a, b) => {
+        const da = Math.abs(new Date(a.created_at).getTime() - extDate);
+        const db2 = Math.abs(new Date(b.created_at).getTime() - extDate);
+        return da - db2;
+      });
+      const best = candidates[0];
+
+      // Mark as matched in memory and in DB
+      best.reconciliation_status = "matched";
+      consumed.add(best.id);
+
+      await db.execute(sql`
+        UPDATE affiliate_earnings
+        SET reconciliation_status  = 'matched',
+            partner_reference_id   = ${ext.partnerReferenceId},
+            reconciled_at          = NOW(),
+            external_report_data   = ${JSON.stringify(ext.rawData)}::jsonb
+        WHERE id = ${best.id}
+      `);
     }
   }
 
