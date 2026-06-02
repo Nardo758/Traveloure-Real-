@@ -237,26 +237,54 @@ export default function ExpertDetailPage() {
                 </div>
 
                 {/* Quick Info */}
-                <div className="flex flex-wrap gap-4">
-                  {destinations.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-muted-foreground" />
-                      <div className="flex gap-2">
-                        {destinations.slice(0, 3).map((dest: string) => (
-                          <Badge key={dest} variant="secondary">{dest}</Badge>
-                        ))}
-                        {destinations.length > 3 && (
-                          <Badge variant="secondary">+{destinations.length - 3}</Badge>
-                        )}
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-4">
+                    {destinations.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <div className="flex flex-wrap gap-2">
+                          {destinations.slice(0, 3).map((dest: string) => (
+                            <Badge key={dest} variant="secondary">{dest}</Badge>
+                          ))}
+                          {destinations.length > 3 && (
+                            <Badge variant="secondary">+{destinations.length - 3}</Badge>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {languages.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Languages className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        {languages.join(", ")}
-                      </span>
+                    )}
+                    {languages.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Languages className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
+                          {languages.join(", ")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {neighbourhoods.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap" data-testid="hero-neighbourhoods">
+                      <Home className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      {localityProofLabel && (
+                        <Badge variant="secondary" className="text-xs font-normal" data-testid="hero-locality-proof">
+                          {localityProofLabel}
+                        </Badge>
+                      )}
+                      {neighbourhoods.slice(0, 5).map((n: string, idx: number) => (
+                        <Badge
+                          key={idx}
+                          variant="outline"
+                          className="flex items-center gap-1 text-xs"
+                          data-testid={`hero-badge-neighbourhood-${idx}`}
+                        >
+                          <MapPin className="w-3 h-3" />
+                          {n}
+                        </Badge>
+                      ))}
+                      {neighbourhoods.length > 5 && (
+                        <Badge variant="outline" className="text-xs" data-testid="hero-neighbourhoods-overflow">
+                          +{neighbourhoods.length - 5} more
+                        </Badge>
+                      )}
                     </div>
                   )}
                 </div>
