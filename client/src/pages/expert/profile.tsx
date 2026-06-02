@@ -34,12 +34,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 
 const LOCALITY_PROOF_OPTIONS = [
-  { value: "resident", label: "Current resident" },
-  { value: "long_term_resident", label: "Long-term resident (5+ years)" },
-  { value: "former_resident", label: "Former resident" },
-  { value: "native", label: "Native / born here" },
-  { value: "frequent_visitor", label: "Frequent visitor" },
-  { value: "professional_guide", label: "Professional guide / licensed" },
+  { value: "born_raised", label: "Born & raised here" },
+  { value: "long_term_10yr", label: "Long-term resident (10+ years)" },
+  { value: "resident_5yr", label: "Resident (5+ years)" },
+  { value: "current_resident", label: "Current resident (1–5 years)" },
 ];
 
 export default function ExpertProfile() {
