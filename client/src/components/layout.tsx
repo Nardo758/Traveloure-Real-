@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Home,
   Plane,
+  MapPin,
   Heart,
   Gem,
   Sparkles,
@@ -316,7 +317,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-72 p-2">
                       {[
-                        { label: "Travel / Local Expert", desc: "Share your destination expertise & guide travellers", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Travel Expert", desc: "Share your destination expertise & guide travellers worldwide", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
                         { label: "Event Planner", desc: "Plan weddings, proposals & celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
                         { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
                         { label: "Executive Assistant", desc: "Manage premium travel for high-end clients", href: "/become-expert?type=executive_assistant", icon: Briefcase },
@@ -448,7 +450,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <div className="flex flex-col gap-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Join as a Partner</p>
                     {[
-                      { label: "Travel / Local Expert", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
                       { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
                       { label: "Service Provider", href: "/become-provider", icon: Building2 },
                       { label: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },

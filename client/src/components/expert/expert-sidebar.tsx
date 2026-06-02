@@ -32,6 +32,7 @@ import {
 function buildMenuGroups(expertType?: string | null) {
   const isEventPlanner = expertType === "event_planner";
   const isEA = expertType === "executive_assistant";
+  const isLocalExpert = expertType === "local_expert";
 
   return [
     {
@@ -46,9 +47,9 @@ function buildMenuGroups(expertType?: string | null) {
     {
       label: "Business",
       items: [
-        { title: isEventPlanner ? "Packages" : "Services", href: "/expert/services", icon: Briefcase },
+        { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
         { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
-        { title: isEventPlanner ? "Promo Content" : "Content Studio", href: "/expert/content-studio", icon: Palette },
+        { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],

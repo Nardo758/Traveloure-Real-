@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 interface ExpertApplication {
   id: string;
   userId: string;
+  expertType?: string;
   firstName?: string;
   lastName?: string;
   email?: string;
@@ -36,6 +37,11 @@ interface ExpertApplication {
   bio?: string;
   status: string;
   createdAt: string;
+  // Local Expert fields
+  neighborhoods?: string[];
+  localityProof?: string;
+  knowledgeProofAnswers?: Array<{ question: string; answer: string }>;
+  localSpecialties?: string[];
 }
 
 export default function AdminExperts() {
@@ -233,7 +239,32 @@ export default function AdminExperts() {
                       </div>
                     </div>
 
-                    {app.bio && (
+                    {app.expertType === "local_expert" && (app.neighborhoods ?? []).length > 0 && (
+                      <div className="text-sm">
+                        <span className="text-gray-500 font-medium">Neighbourhoods: </span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(app.neighborhoods ?? []).map((n, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{n}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {app.expertType === "local_expert" && (app.knowledgeProofAnswers ?? []).length > 0 && (
+                      <div className="text-sm space-y-2">
+                        <span className="text-gray-500 font-medium block">Knowledge Proof:</span>
+                        {(app.knowledgeProofAnswers ?? []).map((qa, i) => (
+                          qa.answer?.trim() && (
+                            <div key={i} className="p-2 bg-amber-50 border border-amber-100 rounded text-xs">
+                              <p className="font-medium text-amber-800 mb-0.5">Q{i + 1}: {qa.question?.slice(0, 70)}…</p>
+                              <p className="text-gray-700 italic">"{qa.answer.trim().slice(0, 200)}{qa.answer.trim().length > 200 ? "…" : ""}"</p>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
+
+                    {app.expertType !== "local_expert" && app.bio && (
                       <p className="text-sm text-gray-600 italic">"{app.bio.slice(0, 150)}{app.bio.length > 150 ? "..." : ""}"</p>
                     )}
 
