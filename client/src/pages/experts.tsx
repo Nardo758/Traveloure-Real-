@@ -213,8 +213,8 @@ export default function ExpertsPage() {
 
     const nbhQuery = neighbourhoodQuery.toLowerCase().trim();
     const matchesNeighbourhood =
-      nbhQuery.length < 3 ||
-      neighbourhoods.some((n: string) => n.toLowerCase().includes(nbhQuery));
+      nbhQuery.length === 0 ||
+      (nbhQuery.length >= 3 && neighbourhoods.some((n: string) => n.toLowerCase().includes(nbhQuery)));
 
     return matchesSearch && matchesDestination && matchesLanguage && matchesNeighbourhood;
   });
