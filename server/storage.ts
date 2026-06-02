@@ -142,6 +142,7 @@ export interface IStorage {
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
+  updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
 
   // Service Provider Forms
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
@@ -713,6 +714,12 @@ export class DatabaseStorage implements IStorage {
   async updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void> {
     await db.update(localExpertForms)
       .set({ expertNotesStyle: notesStyle })
+      .where(eq(localExpertForms.userId, userId));
+  }
+
+  async updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void> {
+    await db.update(localExpertForms)
+      .set({ neighborhoods, localityProof })
       .where(eq(localExpertForms.userId, userId));
   }
 
