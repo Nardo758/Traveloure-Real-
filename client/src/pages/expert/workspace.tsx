@@ -454,13 +454,6 @@ export default function ExpertWorkspace() {
     onError: (e: any) => toast({ title: "Could not update status", description: e.message, variant: "destructive" }),
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!assignment?.id) return;
-      await apiRequest("PATCH", `/api/expert/assignments/${assignment.id}/workspace-status`, {});
-    },
-  });
-
   useEffect(() => {
     const id = setInterval(() => setNowTick(n => n + 1), 30000);
     return () => clearInterval(id);
@@ -638,7 +631,7 @@ export default function ExpertWorkspace() {
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, paddingTop: 2 }}>
-          <Bdg c="amber">Step {["draft","in_review","notes","pending","delivered"].indexOf(workspaceStatus) + 1} of 5</Bdg>
+          <Bdg c="amber">Step {["draft","in_review","delivered"].indexOf(workspaceStatus) + 1} of 3</Bdg>
           {workspaceStatus !== "delivered" && (
             <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending} data-testid="button-mark-complete" style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "#EAB308", color: "white", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
               Mark Complete →
