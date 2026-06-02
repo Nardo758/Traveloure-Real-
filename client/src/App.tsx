@@ -142,6 +142,7 @@ import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import ItineraryViewPage from "@/pages/itinerary-view";
 import SharedTripPage from "@/pages/shared-trip";
+import VisaHelpPage from "@/pages/visa-help";
 import { Loader2 } from "lucide-react";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
@@ -324,6 +325,9 @@ function Router() {
       </Route>
       <Route path="/booking-demo">
         <BookingDemo />
+      </Route>
+      <Route path="/visa-help">
+        <Layout><VisaHelpPage /></Layout>
       </Route>
       
       {/* Application pages for becoming an expert or provider */}

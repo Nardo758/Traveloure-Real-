@@ -58,7 +58,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -542,9 +542,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Request expert booking assistance
   const expertBookingRequestSchema = z.object({
-    tripId: z.string().min(1, "tripId is required"),
+    tripId: z.string().optional(),
     notes: z.string().optional().default(""),
     serviceId: z.string().optional(),
+    bookingMetadata: z.record(z.any()).optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -556,13 +557,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, serviceId } = validation.data;
+      const { tripId, notes, serviceId, bookingMetadata } = validation.data;
       const userId = (req.user as any).claims.sub;
       
-      // Check if this is a real trip vs demo/mock trip
-      const trip = await storage.getTrip(tripId);
-      if (trip && trip.userId !== userId) {
-        return res.status(401).json({ message: "Unauthorized" });
+      // Only validate trip ownership when a tripId is provided
+      if (tripId) {
+        const trip = await storage.getTrip(tripId);
+        if (trip && trip.userId !== userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
       }
 
       let bookingId: string | undefined;
@@ -585,13 +588,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           serviceId,
           travelerId: userId,
           providerId,
-          tripId,
+          tripId: tripId || null,
           bookingDetails: { notes },
           status: "pending",
           totalAmount: String(totalAmount),
           platformFee: platformFeeAmt,
           providerEarnings: providerEarningsAmt,
-        });
+          ...(bookingMetadata ? { bookingMetadata } : {}),
+        } as any);
         bookingId = booking.id;
 
         // Notify the expert/provider that a new booking request has arrived
@@ -18435,6 +18439,161 @@ export async function registerDiscoveryRoutes(app: Express) {
   // ============================================================
   // EXPERT CONTRACTS
   // ============================================================
+
+  // ============================================================
+  // VISA REQUIREMENTS
+  // ============================================================
+
+  // Simple in-memory rate limiter for visa requirements (max 10 req / IP / minute)
+  const visaRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  function visaRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = visaRateLimitMap.get(ip);
+    if (!entry || now > entry.resetAt) {
+      visaRateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
+      return false;
+    }
+    if (entry.count >= 10) return true;
+    entry.count++;
+    return false;
+  }
+
+  app.post("/api/visa/requirements", async (req, res) => {
+    try {
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (visaRateLimit(ip)) {
+        return res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
+      }
+      const { passportCountry, destinationCountry } = req.body;
+      if (!passportCountry || !destinationCountry) {
+        return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
+      }
+
+      // Check cache first (7-day TTL)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const cached = await db
+        .select()
+        .from(visaRequirementsCache)
+        .where(
+          and(
+            eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+            eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+            sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
+          )
+        )
+        .limit(1)
+        .then((r) => r[0]);
+
+      if (cached) {
+        return res.json({
+          visaRequired: cached.visaRequired,
+          visaTypes: cached.visaTypes,
+          requiredDocuments: cached.requiredDocuments,
+          processingTime: cached.processingTime,
+          feeRange: cached.feeRange,
+          disclaimer: cached.disclaimer,
+          fromCache: true,
+        });
+      }
+
+      // Call Claude to get visa requirements
+      const prompt = `You are a visa information assistant. Provide visa requirements for a ${passportCountry} passport holder traveling to ${destinationCountry}.
+
+Return ONLY valid JSON in this exact structure (no additional text):
+{
+  "visa_required": true or false,
+  "visa_types": ["Tourist Visa", "Business Visa"],
+  "required_documents": ["Valid passport (6+ months validity)", "Completed visa application form", "Passport-sized photos", "Bank statements (last 3 months)", "Travel itinerary", "Hotel bookings"],
+  "processing_time": "5-10 business days",
+  "fee_range": "$50-$160 USD depending on visa type",
+  "disclaimer": "This information is for general guidance only. Requirements may change at any time. Always verify with the official embassy or consulate of ${destinationCountry} before traveling."
+}
+
+If no visa is required (visa-free or visa-on-arrival), set visa_required to false and explain in the disclaimer. Be specific and accurate based on commonly known visa policies.`;
+
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = (completion.content[0] as any).text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(500).json({ message: "Failed to parse AI response" });
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Store in cache
+      await db.insert(visaRequirementsCache).values({
+        passportCountry: passportCountry.toLowerCase(),
+        destinationCountry: destinationCountry.toLowerCase(),
+        visaRequired: Boolean(parsed.visa_required),
+        visaTypes: parsed.visa_types || [],
+        requiredDocuments: parsed.required_documents || [],
+        processingTime: parsed.processing_time || null,
+        feeRange: parsed.fee_range || null,
+        disclaimer: parsed.disclaimer || null,
+      });
+
+      res.json({
+        visaRequired: parsed.visa_required,
+        visaTypes: parsed.visa_types || [],
+        requiredDocuments: parsed.required_documents || [],
+        processingTime: parsed.processing_time,
+        feeRange: parsed.fee_range,
+        disclaimer: parsed.disclaimer,
+        fromCache: false,
+      });
+    } catch (err) {
+      console.error("[Visa] requirements error:", err);
+      res.status(500).json({ message: "Failed to fetch visa requirements" });
+    }
+  });
+
+  // GET /api/visa/experts — returns visa-assistance services with real provider names
+  app.get("/api/visa/experts", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string || "6"), 20);
+      const cat = await db
+        .select({ id: serviceCategories.id })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.slug, "visa-assistance"))
+        .limit(1)
+        .then((r) => r[0]);
+      if (!cat) return res.json({ services: [], total: 0 });
+      const rows = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+          description: providerServices.description,
+          price: providerServices.price,
+          averageRating: providerServices.averageRating,
+          reviewCount: providerServices.reviewCount,
+          location: providerServices.location,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          categoryId: providerServices.categoryId,
+          providerFirstName: users.firstName,
+          providerLastName: users.lastName,
+          providerAvatar: users.profileImageUrl,
+        })
+        .from(providerServices)
+        .leftJoin(users, eq(providerServices.userId, users.id))
+        .where(and(eq(providerServices.categoryId, cat.id), eq(providerServices.status, "active")))
+        .orderBy(desc(providerServices.bookingsCount))
+        .limit(limit);
+      const services = rows.map((r) => ({
+        ...r,
+        providerName: [r.providerFirstName, r.providerLastName].filter(Boolean).join(" ") || "Visa Specialist",
+      }));
+      res.json({ services, total: services.length });
+    } catch (err) {
+      console.error("[Visa] experts error:", err);
+      res.status(500).json({ message: "Failed to fetch visa experts" });
+    }
+  });
 
   app.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {

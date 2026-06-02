@@ -1339,7 +1339,12 @@ export class DatabaseStorage implements IStorage {
             providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || "Provider";
           }
         }
-        return { ...item, isCustomVenue: false, service: service ? { ...service, providerName } : null };
+        let categorySlug: string | null = null;
+        if (service?.categoryId) {
+          const [cat] = await db.select({ slug: serviceCategories.slug }).from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
+          categorySlug = cat?.slug ?? null;
+        }
+        return { ...item, isCustomVenue: false, service: service ? { ...service, providerName, categorySlug } : null };
       }
       return { ...item, service: null };
     }));
