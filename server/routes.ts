@@ -11719,16 +11719,56 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items
+  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items.
+  // Price, title, and currency are resolved server-side from the DB record; client-supplied
+  // values are ignored to prevent price-tampering attacks.
   app.post("/api/content/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const user = await storage.getUser(userId);
       const userEmail = user?.email || undefined;
 
-      const { title, price, currency, itemId, itemType, destination } = req.body;
-      if (!title || !price || parseFloat(price) <= 0) {
-        return res.status(400).json({ message: "title and a valid price are required" });
+      const { itemId, itemType } = req.body;
+      if (!itemId || !itemType) {
+        return res.status(400).json({ message: "itemId and itemType are required" });
+      }
+
+      // --- Server-side item resolution (price is NOT trusted from client) ---
+      let resolvedTitle: string;
+      let resolvedPrice: number;       // in whole currency units, e.g. 49.99
+      let resolvedCurrency: string;
+      let resolvedDestination: string;
+
+      if (itemType === "affiliate") {
+        const [product] = await db
+          .select()
+          .from(affiliateProducts)
+          .where(eq(affiliateProducts.id, itemId))
+          .limit(1);
+        if (!product) return res.status(404).json({ message: "Item not found" });
+        if (!product.price || parseFloat(String(product.price)) <= 0) {
+          return res.status(400).json({ message: "This item is not available for direct purchase" });
+        }
+        resolvedTitle = product.name;
+        resolvedPrice = parseFloat(String(product.price));
+        resolvedCurrency = (product.currency || "USD").toLowerCase();
+        resolvedDestination = product.city || product.country || "";
+      } else {
+        // content_registry
+        const [item] = await db
+          .select()
+          .from(contentRegistry)
+          .where(eq(contentRegistry.id, itemId))
+          .limit(1);
+        if (!item) return res.status(404).json({ message: "Item not found" });
+        const meta = (item.metadata as any) || {};
+        if (!meta.price || parseFloat(String(meta.price)) <= 0) {
+          return res.status(400).json({ message: "This item is not available for direct purchase" });
+        }
+        resolvedTitle = item.title || "Curated Experience";
+        resolvedPrice = parseFloat(String(meta.price));
+        resolvedCurrency = (meta.currency || "USD").toLowerCase();
+        resolvedDestination = meta.city || meta.destination || meta.location || "";
       }
 
       const { getBaseUrl } = await import("./services/stripe.service");
@@ -11738,7 +11778,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       });
 
       const baseUrl = getBaseUrl();
-      const amountCents = Math.round(parseFloat(price) * 100);
+      const amountCents = Math.round(resolvedPrice * 100);
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -11747,10 +11787,12 @@ export async function registerDiscoveryRoutes(app: Express) {
         line_items: [
           {
             price_data: {
-              currency: (currency || 'usd').toLowerCase(),
+              currency: resolvedCurrency,
               product_data: {
-                name: title,
-                description: destination ? `Curated experience in ${destination}` : 'Curated Traveloure experience',
+                name: resolvedTitle,
+                description: resolvedDestination
+                  ? `Curated experience in ${resolvedDestination}`
+                  : 'Curated Traveloure experience',
               },
               unit_amount: amountCents,
             },
@@ -11760,9 +11802,8 @@ export async function registerDiscoveryRoutes(app: Express) {
         metadata: {
           type: 'content_hub_purchase',
           userId,
-          itemId: String(itemId || ''),
-          itemType: itemType || 'curated',
-          destination: destination || '',
+          itemId: String(itemId),
+          itemType,
         },
         success_url: `${baseUrl}/discover?purchase=success`,
         cancel_url: `${baseUrl}/discover?purchase=cancelled`,

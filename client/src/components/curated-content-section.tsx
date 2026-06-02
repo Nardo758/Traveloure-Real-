@@ -217,13 +217,10 @@ function CuratedCard({
 
   const stripeCheckoutMutation = useMutation({
     mutationFn: async () => {
+      // Only send itemId + itemType — price/title/currency resolved server-side
       const res = await apiRequest("POST", "/api/content/checkout", {
         itemId: item.sourceId,
         itemType: item.type,
-        title: item.title,
-        price: item.price || "0",
-        currency: item.metadata?.currency || "USD",
-        destination: item.city || item.country || "",
       });
       return res.json();
     },
@@ -342,7 +339,8 @@ function CuratedCard({
               <Plus className="w-3 h-3 mr-1" />
               Add to Trip
             </Button>
-            {isAffiliate ? (
+            {isAffiliate && item.tracking?.isAffiliateTracked ? (
+              // Tracked affiliate — click is recorded in affiliate_clicks before redirect
               <Button
                 size="sm"
                 className="flex-1 text-xs h-8 bg-[#FF385C] hover:bg-[#E23350]"
@@ -359,7 +357,20 @@ function CuratedCard({
                   </>
                 )}
               </Button>
+            ) : isAffiliate ? (
+              // Affiliate URL present but no valid tracking identifiers — plain Visit link
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 text-xs h-8"
+                onClick={() => window.open(item.affiliate_url!, "_blank", "noopener,noreferrer")}
+                data-testid={`button-visit-partner-${item.id}`}
+              >
+                Visit Partner
+                <ExternalLink className="w-3 h-3 ml-1" />
+              </Button>
             ) : (
+              // Non-affiliate curated item — Stripe checkout or trip planner
               <Button
                 size="sm"
                 className="flex-1 text-xs h-8"
