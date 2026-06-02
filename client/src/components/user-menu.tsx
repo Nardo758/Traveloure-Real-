@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,6 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
-import { getRoleHomePath } from "@/lib/role-utils";
 
 const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
 const PROVIDER_ROLES = ["service_provider"];
@@ -57,6 +56,7 @@ function getAvatarFallback(user: { firstName?: string | null; email?: string | n
 export function UserMenu() {
   const { user, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
+  const [location] = useLocation();
 
   if (!user) {
     return (
@@ -85,11 +85,23 @@ export function UserMenu() {
   const isProvider = PROVIDER_ROLES.includes(role);
   const isEA = role === "executive_assistant";
   const isAdmin = role === "admin";
-  const isUser = !isExpert && !isProvider && !isEA && !isAdmin;
 
   const roleLabel = getRoleLabel(role);
   const displayName = getDisplayName(user);
   const avatarFallback = getAvatarFallback(user);
+
+  // Active-console tracking — which console path is the user currently in?
+  const inUserConsole = location.startsWith("/dashboard") || location.startsWith("/profile");
+  const inExpertConsole = location.startsWith("/expert");
+  const inProviderConsole = location.startsWith("/provider");
+  const inEAConsole = location.startsWith("/ea");
+  const inAdminConsole = location.startsWith("/admin");
+
+  function consoleItemClass(active: boolean) {
+    return active
+      ? "cursor-pointer bg-primary/10 text-primary font-semibold"
+      : "cursor-pointer";
+  }
 
   return (
     <DropdownMenu>
@@ -116,6 +128,7 @@ export function UserMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
+        {/* Identity header */}
         <DropdownMenuLabel className="font-normal pb-1">
           <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
           {user.email && (
@@ -130,143 +143,65 @@ export function UserMenu() {
 
         <DropdownMenuSeparator />
 
-        {/* ── Expert roles ── */}
-        {isExpert && (
-          <>
-            <DropdownMenuItem asChild>
-              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
-                <LayoutDashboard className="w-4 h-4 mr-2" />
-                Expert Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
-                <Briefcase className="w-4 h-4 mr-2" />
-                Provider Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
-                <User className="w-4 h-4 mr-2" />
-                User Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
-                <Map className="w-4 h-4 mr-2" />
-                My Trips
-              </Link>
-            </DropdownMenuItem>
-          </>
-        )}
+        {/* ── Shared consoles — visible to every logged-in user ── */}
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard" className={consoleItemClass(inUserConsole)} data-testid="link-user-console">
+            <User className="w-4 h-4 mr-2" />
+            User Console
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/expert/dashboard" className={consoleItemClass(inExpertConsole)} data-testid="link-expert-console">
+            <UserCheck className="w-4 h-4 mr-2" />
+            Expert Console
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/provider/dashboard" className={consoleItemClass(inProviderConsole)} data-testid="link-provider-console">
+            <Briefcase className="w-4 h-4 mr-2" />
+            Provider Console
+          </Link>
+        </DropdownMenuItem>
 
-        {/* ── Provider role ── */}
-        {isProvider && (
-          <>
-            <DropdownMenuItem asChild>
-              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
-                <LayoutDashboard className="w-4 h-4 mr-2" />
-                Provider Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
-                <UserCheck className="w-4 h-4 mr-2" />
-                Expert Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
-                <User className="w-4 h-4 mr-2" />
-                User Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
-                <Map className="w-4 h-4 mr-2" />
-                My Trips
-              </Link>
-            </DropdownMenuItem>
-          </>
-        )}
-
-        {/* ── Executive Assistant role ── */}
+        {/* ── EA-specific ── */}
         {isEA && (
-          <DropdownMenuItem asChild>
-            <Link href="/ea/dashboard" className="cursor-pointer" data-testid="link-user-ea-dashboard">
-              <CalendarClock className="w-4 h-4 mr-2" />
-              EA Dashboard
-            </Link>
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/ea/dashboard" className={consoleItemClass(inEAConsole)} data-testid="link-ea-console">
+                <CalendarClock className="w-4 h-4 mr-2" />
+                EA Console
+              </Link>
+            </DropdownMenuItem>
+          </>
         )}
 
-        {/* ── Admin role ── */}
+        {/* ── Admin-specific ── */}
         {isAdmin && (
           <>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/admin/dashboard" className="cursor-pointer" data-testid="link-user-admin-dashboard">
+              <Link href="/admin/dashboard" className={consoleItemClass(inAdminConsole)} data-testid="link-admin-console">
                 <Shield className="w-4 h-4 mr-2" />
                 Admin Panel
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
-                <UserCheck className="w-4 h-4 mr-2" />
-                Expert Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
-                <Briefcase className="w-4 h-4 mr-2" />
-                Provider Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
-                <User className="w-4 h-4 mr-2" />
-                User Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
-                <Map className="w-4 h-4 mr-2" />
-                My Trips
-              </Link>
-            </DropdownMenuItem>
           </>
         )}
 
-        {/* ── Regular traveler ── */}
-        {isUser && (
+        <DropdownMenuSeparator />
+
+        {/* ── My Trips shortcut ── */}
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
+            <Map className="w-4 h-4 mr-2" />
+            My Trips
+          </Link>
+        </DropdownMenuItem>
+
+        {/* ── Application links for regular users ── */}
+        {!isExpert && !isProvider && !isEA && !isAdmin && (
           <>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-console">
-                <User className="w-4 h-4 mr-2" />
-                User Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/expert/dashboard" className="cursor-pointer" data-testid="link-user-expert-console">
-                <UserCheck className="w-4 h-4 mr-2" />
-                Expert Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/provider/dashboard" className="cursor-pointer" data-testid="link-user-provider-console">
-                <Briefcase className="w-4 h-4 mr-2" />
-                Provider Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
-                <Map className="w-4 h-4 mr-2" />
-                My Trips
-              </Link>
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/expert-status" className="cursor-pointer" data-testid="link-user-expert-status">
