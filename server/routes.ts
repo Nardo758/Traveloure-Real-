@@ -59,7 +59,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry, affiliateClicks } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -11557,7 +11557,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const city = parts[0].trim();
       const country = parts.length > 1 ? parts[parts.length - 1].trim() : city;
 
-      // Tab → content type filter for content_registry
+      // Tab → content type filter for content_registry (covers all active template tabs)
       const TAB_CONTENT_TYPE_MAP: Record<string, string[]> = {
         venues: ["experience", "template", "service"],
         venue: ["experience", "template", "service"],
@@ -11566,7 +11566,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         "guest-accommodations": ["service"],
         activities: ["experience", "template"],
         photography: ["service"],
+        "photography-video": ["service", "media"],
         transportation: ["service"],
+        transfers: ["service"],
         entertainment: ["experience"],
         wellness: ["service", "experience"],
         "spa-wellness": ["service", "experience"],
@@ -11575,6 +11577,16 @@ export async function registerDiscoveryRoutes(app: Express) {
         sports: ["experience"],
         vendors: ["service"],
         "team-activities": ["experience"],
+        services: ["service"],
+        events: ["experience", "template"],
+        catering: ["service", "experience"],
+        decor: ["service"],
+        "decor-setup": ["service"],
+        tickets: ["experience", "template"],
+        "vip-experiences": ["experience"],
+        "pre-game": ["experience", "service"],
+        "gifts-keepsakes": ["service", "experience"],
+        keepsakes: ["service", "experience"],
       };
 
       const allowedContentTypes = tabParam && TAB_CONTENT_TYPE_MAP[tabParam]
@@ -11583,7 +11595,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           ? contentTypesParam.split(",").map(t => t.trim()).filter(Boolean)
           : ["experience", "template", "service", "media", "other"];
 
-      // Tab → affiliate product category mapping
+      // Tab → affiliate product category mapping (covers all active template tabs)
       const TAB_AFFILIATE_CATEGORIES: Record<string, string[]> = {
         venues: ["venue", "events", "conference"],
         venue: ["venue", "events", "conference"],
@@ -11592,7 +11604,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         "guest-accommodations": ["accommodation", "hotel", "lodging"],
         activities: ["activity", "tour", "outdoor", "entertainment", "sport"],
         photography: ["photography", "media"],
+        "photography-video": ["photography", "media", "video"],
         transportation: ["transport", "transfer", "car", "train"],
+        transfers: ["transport", "transfer", "shuttle"],
         entertainment: ["entertainment", "show", "concert", "theater"],
         wellness: ["wellness", "spa", "fitness"],
         "spa-wellness": ["wellness", "spa", "fitness"],
@@ -11601,6 +11615,16 @@ export async function registerDiscoveryRoutes(app: Express) {
         sports: ["sport", "outdoor", "adventure"],
         vendors: ["service", "vendor"],
         "team-activities": ["activity", "team", "group"],
+        services: ["service", "concierge", "planning"],
+        events: ["event", "conference", "festival", "show"],
+        catering: ["food", "catering", "dining", "culinary"],
+        decor: ["decor", "floral", "design"],
+        "decor-setup": ["decor", "setup", "floral", "design"],
+        tickets: ["ticket", "event", "attraction", "activity"],
+        "vip-experiences": ["vip", "luxury", "exclusive", "experience"],
+        "pre-game": ["dining", "activity", "sport", "entertainment"],
+        "gifts-keepsakes": ["gift", "souvenir", "keepsake", "shopping"],
+        keepsakes: ["gift", "souvenir", "keepsake"],
       };
       const affiliateCategoryFilter = tabParam && TAB_AFFILIATE_CATEGORIES[tabParam]
         ? TAB_AFFILIATE_CATEGORIES[tabParam]
@@ -11813,6 +11837,65 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err: any) {
       console.error("Content checkout error:", err);
       res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Content Hub Affiliate Redirect — unified intermediary for ALL affiliate-linked content hub items.
+  // Records an affiliate_clicks row (productId for affiliate_products rows, both null for registry rows —
+  // both FK fields are nullable so null is valid), then returns the authoritative affiliate URL from the DB.
+  // The frontend never passes the URL — server resolves it, preventing URL tampering.
+  app.post("/api/content/affiliate-redirect", async (req, res) => {
+    try {
+      const { itemId, itemType } = req.body;
+      if (!itemId || !itemType) {
+        return res.status(400).json({ message: "itemId and itemType are required" });
+      }
+
+      let affiliateUrl: string | null = null;
+      let productId: string | null = null;
+
+      if (itemType === "affiliate") {
+        const [product] = await db
+          .select()
+          .from(affiliateProducts)
+          .where(eq(affiliateProducts.id, itemId))
+          .limit(1);
+        if (!product) return res.status(404).json({ message: "Item not found" });
+        affiliateUrl = product.affiliateUrl || product.productUrl || null;
+        productId = product.id;
+      } else {
+        // content_registry
+        const [item] = await db
+          .select()
+          .from(contentRegistry)
+          .where(eq(contentRegistry.id, itemId))
+          .limit(1);
+        if (!item) return res.status(404).json({ message: "Item not found" });
+        const meta = (item.metadata as any) || {};
+        affiliateUrl = meta.affiliate_url || null;
+        // partnerId intentionally left null — registry items may not have a valid affiliate_partners FK
+      }
+
+      if (!affiliateUrl) {
+        return res.status(400).json({ message: "No affiliate URL available for this item" });
+      }
+
+      // Insert tracking row — productId/partnerId are nullable FKs; null is valid for registry items
+      const userId = (req.user as any)?.claims?.sub || null;
+      await db.insert(affiliateClicks).values({
+        productId,
+        partnerId: null,
+        userId,
+        initiatedBy: "user",
+        referrer: req.headers.referer || null,
+        userAgent: req.headers["user-agent"] || null,
+        ipAddress: req.ip || null,
+      });
+
+      res.json({ url: affiliateUrl });
+    } catch (err: any) {
+      console.error("Affiliate redirect error:", err);
+      res.status(500).json({ message: "Failed to process affiliate redirect" });
     }
   });
 

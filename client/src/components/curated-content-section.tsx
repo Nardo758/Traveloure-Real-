@@ -184,22 +184,15 @@ function CuratedCard({
   const [, navigate] = useLocation();
   const isAffiliate = !!item.affiliate_url;
 
-  const trackClickMutation = useMutation({
-    mutationFn: async () => {
-      if (!isAffiliate) return;
-      // Use only validated FK-backed identifiers from the API response.
-      // affiliate_products items supply productId (FK → affiliate_products.id).
-      // content_registry items supply partnerId from metadata (FK → affiliate_partners.id)
-      // only when present; otherwise isAffiliateTracked=false and we skip the API call.
-      if (!item.tracking?.isAffiliateTracked) return;
-      const trackPayload: Record<string, any> = { initiatedBy: "user" };
-      if (item.tracking.productId) trackPayload.productId = item.tracking.productId;
-      if (item.tracking.partnerId) trackPayload.partnerId = item.tracking.partnerId;
-      try {
-        await apiRequest("POST", "/api/affiliate/track-click", trackPayload);
-      } catch {
-        // Non-blocking — proceed even if tracking fails
-      }
+  // Unified affiliate redirect — always routes through platform intermediary for ALL affiliate items.
+  // Server resolves the authoritative URL and records an affiliate_clicks row before returning it.
+  const affiliateRedirectMutation = useMutation({
+    mutationFn: async (): Promise<{ url: string }> => {
+      const res = await apiRequest("POST", "/api/content/affiliate-redirect", {
+        itemId: item.sourceId,
+        itemType: item.type,
+      });
+      return res.json();
     },
   });
 
@@ -209,9 +202,16 @@ function CuratedCard({
       description: "You're being redirected to our partner's site to complete your booking.",
       duration: 3000,
     });
-    await trackClickMutation.mutateAsync().catch(() => {});
-    if (item.affiliate_url) {
-      window.open(item.affiliate_url, "_blank", "noopener,noreferrer");
+    try {
+      const data = await affiliateRedirectMutation.mutateAsync();
+      if (data?.url) {
+        window.open(data.url, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      // Fallback: open client-side affiliate_url if server redirect fails
+      if (item.affiliate_url) {
+        window.open(item.affiliate_url, "_blank", "noopener,noreferrer");
+      }
     }
   };
 
@@ -339,16 +339,16 @@ function CuratedCard({
               <Plus className="w-3 h-3 mr-1" />
               Add to Trip
             </Button>
-            {isAffiliate && item.tracking?.isAffiliateTracked ? (
-              // Tracked affiliate — click is recorded in affiliate_clicks before redirect
+            {isAffiliate ? (
+              // ALL affiliate items route through platform intermediary — click recorded server-side
               <Button
                 size="sm"
                 className="flex-1 text-xs h-8 bg-[#FF385C] hover:bg-[#E23350]"
                 onClick={handleBookViaTraveloure}
-                disabled={trackClickMutation.isPending}
+                disabled={affiliateRedirectMutation.isPending}
                 data-testid={`button-book-via-traveloure-${item.id}`}
               >
-                {trackClickMutation.isPending ? (
+                {affiliateRedirectMutation.isPending ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <>
@@ -356,18 +356,6 @@ function CuratedCard({
                     <ExternalLink className="w-3 h-3 ml-1" />
                   </>
                 )}
-              </Button>
-            ) : isAffiliate ? (
-              // Affiliate URL present but no valid tracking identifiers — plain Visit link
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1 text-xs h-8"
-                onClick={() => window.open(item.affiliate_url!, "_blank", "noopener,noreferrer")}
-                data-testid={`button-visit-partner-${item.id}`}
-              >
-                Visit Partner
-                <ExternalLink className="w-3 h-3 ml-1" />
               </Button>
             ) : (
               // Non-affiliate curated item — Stripe checkout or trip planner
