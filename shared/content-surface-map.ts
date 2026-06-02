@@ -124,6 +124,7 @@ export const SURFACE_DEFAULT_AFFILIATE_CATEGORIES: Record<SurfaceSlug, string[]>
 // Maps experience-template tab slugs to allowed content_registry contentType values.
 
 export const TAB_CONTENT_TYPE_MAP: Record<string, ContentTypeKey[]> = {
+  // ── Shared across multiple templates ──────────────────────────────────────
   venues: ["experience", "template", "service"],
   venue: ["experience", "template", "service"],
   dining: ["service", "experience"],
@@ -152,11 +153,43 @@ export const TAB_CONTENT_TYPE_MAP: Record<string, ContentTypeKey[]> = {
   "pre-game": ["experience", "service"],
   "gifts-keepsakes": ["service", "experience"],
   keepsakes: ["service", "experience"],
+
+  // ── Travel template ───────────────────────────────────────────────────────
+  hotels: ["service"],                          // hotel search tab
+  flights: ["service"],                         // flights tab (no curated content, passthrough)
+
+  // ── Wedding template ──────────────────────────────────────────────────────
+  rehearsal: ["service", "experience"],         // rehearsal dinner venues + catering
+  "welcome-events": ["experience", "template"], // welcome events for wedding guests
+  "local-experiences": ["experience", "template"], // local activities for wedding guests
+
+  // ── Proposal template ────────────────────────────────────────────────────
+  locations: ["experience", "template", "service"], // proposal spot discovery
+  "celebration-dining": ["service", "experience"],  // post-proposal dinner
+  "post-proposal": ["experience", "service"],       // post-proposal activities
+
+  // ── Date-night / romance template ────────────────────────────────────────
+  spa: ["service", "experience"],               // single-word spa tab (date-night)
+
+  // ── Party templates (baby-shower, graduation, engagement, housewarming, etc.)
+  decorations: ["service"],                     // decor & styling vendors
+  rentals: ["service"],                         // furniture / equipment rentals
+  av: ["service"],                              // A/V equipment (career-achievement)
+
+  // ── Bachelor / bachelorette template ─────────────────────────────────────
+  destinations: ["experience", "template"],     // destination inspiration cards
+  "daytime-activities": ["experience", "template"], // daytime bach activities
+  "party-services": ["service"],                // party planning services
+
+  // ── Anniversary trip template ─────────────────────────────────────────────
+  experiences: ["experience", "template"],      // couple experiences
+  "special-touches": ["service", "experience"], // gifts, surprises, upgrades
 };
 
 // ─── Tab → Affiliate Product Category Map ────────────────────────────────────
 
 export const TAB_AFFILIATE_CATEGORIES: Record<string, string[]> = {
+  // ── Shared across multiple templates ──────────────────────────────────────
   venues: ["venue", "events", "conference"],
   venue: ["venue", "events", "conference"],
   dining: ["food", "restaurant", "dining", "culinary"],
@@ -185,6 +218,37 @@ export const TAB_AFFILIATE_CATEGORIES: Record<string, string[]> = {
   "pre-game": ["dining", "activity", "sport", "entertainment"],
   "gifts-keepsakes": ["gift", "souvenir", "keepsake", "shopping"],
   keepsakes: ["gift", "souvenir", "keepsake"],
+
+  // ── Travel template ───────────────────────────────────────────────────────
+  hotels: ["accommodation", "hotel", "lodging", "resort"],
+  flights: [],                                          // no affiliate products for flights
+
+  // ── Wedding template ──────────────────────────────────────────────────────
+  rehearsal: ["food", "restaurant", "dining", "venue", "catering"],
+  "welcome-events": ["activity", "tour", "entertainment", "experience"],
+  "local-experiences": ["activity", "tour", "attraction", "experience"],
+
+  // ── Proposal template ────────────────────────────────────────────────────
+  locations: ["attraction", "venue", "experience", "tour"],
+  "celebration-dining": ["food", "restaurant", "dining", "culinary", "wine"],
+  "post-proposal": ["activity", "tour", "experience", "entertainment"],
+
+  // ── Date-night / romance template ────────────────────────────────────────
+  spa: ["wellness", "spa", "fitness", "beauty"],
+
+  // ── Party templates ───────────────────────────────────────────────────────
+  decorations: ["decor", "floral", "design", "rental"],
+  rentals: ["rental", "equipment", "furniture"],
+  av: ["equipment", "rental", "technology"],
+
+  // ── Bachelor / bachelorette template ─────────────────────────────────────
+  destinations: ["activity", "tour", "attraction", "experience"],
+  "daytime-activities": ["activity", "tour", "outdoor", "sport", "adventure"],
+  "party-services": ["service", "planning", "concierge", "entertainment"],
+
+  // ── Anniversary trip template ─────────────────────────────────────────────
+  experiences: ["activity", "tour", "experience", "romantic", "couple"],
+  "special-touches": ["gift", "experience", "luxury", "upgrade", "surprise"],
 };
 
 // ─── Pulse Score Tier Labels ──────────────────────────────────────────────────
