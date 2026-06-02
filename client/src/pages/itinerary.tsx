@@ -415,12 +415,6 @@ export default function ItineraryPage() {
     ferry: "bg-cyan-500", boat: "bg-cyan-500",
   };
 
-  const extraStats: ExtraStat[] = [
-    { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
-    { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
-    { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
-  ];
-
   const templateConfig = getTemplateConfig(tripData?.eventType);
 
   const planCardTrip: PlanCardTrip = {
@@ -465,6 +459,8 @@ export default function ItineraryPage() {
         duration: l.estimatedDurationMinutes || l.duration || 0,
         cost: l.estimatedCostUsd || l.cost || 0,
         status: "active",
+        bookingSource: undefined,
+        partnerName: undefined,
       }));
     })(),
   }));

@@ -556,6 +556,8 @@ export default function TripDetails() {
                               duration: l.estimatedDurationMinutes || l.duration || 0,
                               cost: l.estimatedCostUsd || l.cost || 0,
                               status: "active",
+                              bookingSource: undefined,
+                              partnerName: undefined,
                             }));
                           })(),
                         }));
@@ -577,23 +579,6 @@ export default function TripDetails() {
                         const totalBooked = planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.status === "confirmed").length || 0), 0);
                         const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
                         const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
-
-                        const extraStats: ExtraStat[] = [
-                          { label: "Days", value: String(totalDays), icon: null },
-                          { label: "Activities", value: String(totalActivities), icon: null },
-                          { label: "Transit legs", value: String(totalLegs), icon: null },
-                          { label: "Transit time", value: `${Math.floor(totalTransitMinutes / 60)}h ${totalTransitMinutes % 60}m`, icon: null },
-                          { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
-                          { label: "Total Cost", value: `$${totalCost.toLocaleString()}`, icon: CostIcon },
-                          { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
-                        ];
-
-                        // Category counts (simplified)
-                        const categoryCounts = {
-                          Sightseeing: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "sightseeing").length || 0), 0),
-                          Food: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "food").length || 0), 0),
-                          Culture: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "culture").length || 0), 0),
-                        };
 
                         return (
                           <PlanCard

@@ -347,6 +347,8 @@ export default function ItineraryViewPage() {
         duration: l.estimatedDurationMinutes || 0,
         cost: l.estimatedCostUsd || 0,
         status: "confirmed" as string,
+        bookingSource: undefined as "platform" | "affiliate" | undefined,
+        partnerName: undefined as string | undefined,
       };
     }),
   };
