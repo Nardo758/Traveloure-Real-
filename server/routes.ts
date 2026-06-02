@@ -58,7 +58,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -318,6 +318,60 @@ export async function registerRoutes(
       }
     } catch (err) {
       console.warn("[Seed] Could not seed service templates:", err);
+    }
+  })();
+
+  // ─── Backfill booking_fee_configs expert_share_percent 70 → 75 (idempotent) ──
+  // Schema default was corrected; this fixes any rows inserted before the change.
+  (async () => {
+    try {
+      await db.execute(sql`
+        UPDATE booking_fee_configs
+        SET expert_share_percent = '75.00'
+        WHERE CAST(expert_share_percent AS NUMERIC) = 70
+      `);
+    } catch (err) {
+      console.warn("[Seed] Could not backfill booking_fee_configs:", err);
+    }
+  })();
+
+  // ─── Seed 6 canonical templates into expert_service_offerings (per-name idempotent) ──
+  // expert_service_offerings is the canonical template catalog. The 6 service
+  // creation templates are seeded here so the table is no longer disconnected
+  // from the template UI and from-template flow.
+  (async () => {
+    try {
+      // "Itinerary Planning" category already seeded (from expertServiceCategories seed)
+      const ITINERARY_CATEGORY_ID = "0b8b0e25-845a-44fa-83a3-b065d7f23070";
+      const CANONICAL_OFFERINGS = [
+        { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
+        { name: "Cart Review & Optimization", description: "Expert review of your travel cart to find savings and better alternatives",                   price: "49.00",  sortOrder: 102 },
+        { name: "Full Trip Planning",         description: "Comprehensive trip planning from start to finish with personalized itinerary",                price: "249.00", sortOrder: 103 },
+        { name: "Destination Deep Dive",      description: "In-depth guide to a specific destination with local insights and hidden gems",                price: "79.00",  sortOrder: 104 },
+        { name: "Honeymoon Planning Package", description: "Romantic trip planning with special touches and memorable experiences",                      price: "399.00", sortOrder: 105 },
+        { name: "Group Trip Coordinator",     description: "Organize and coordinate travel for groups with complex logistics",                           price: "349.00", sortOrder: 106 },
+      ];
+      const existingEso = await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings);
+      const existingEsoNames = new Set(existingEso.map((o: any) => o.name));
+      let esoInserted = 0;
+      for (const offering of CANONICAL_OFFERINGS) {
+        if (!existingEsoNames.has(offering.name)) {
+          await db.insert(expertServiceOfferings).values({
+            categoryId: ITINERARY_CATEGORY_ID,
+            name: offering.name,
+            description: offering.description,
+            price: offering.price,
+            isDefault: true,
+            sortOrder: offering.sortOrder,
+          });
+          esoInserted++;
+        }
+      }
+      if (esoInserted > 0) {
+        console.log(`[Seed] Inserted ${esoInserted} canonical template(s) into expert_service_offerings.`);
+      }
+    } catch (err) {
+      console.warn("[Seed] Could not seed expert_service_offerings:", err);
     }
   })();
 
@@ -2635,14 +2689,63 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // === Service Templates Routes (Admin manages, Experts browse) ===
   
   // Get all active service templates
-  app.get("/api/service-templates", async (req, res) => {
-    const categoryId = req.query.categoryId as string | undefined;
-    const templates = await storage.getServiceTemplates(categoryId);
+  // expert_service_offerings is the canonical template catalog.
+  // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
+  app.get("/api/service-templates", async (_req, res) => {
+    const CANONICAL_NAMES = [
+      "Quick Consultation",
+      "Cart Review & Optimization",
+      "Full Trip Planning",
+      "Destination Deep Dive",
+      "Honeymoon Planning Package",
+      "Group Trip Coordinator",
+    ];
+    const rows = await db.select({
+      id:           expertServiceOfferings.id,
+      name:         expertServiceOfferings.name,
+      description:  expertServiceOfferings.description,
+      price:        expertServiceOfferings.price,
+      isDefault:    expertServiceOfferings.isDefault,
+      sortOrder:    expertServiceOfferings.sortOrder,
+      createdAt:    expertServiceOfferings.createdAt,
+      categoryName: expertServiceCategories.name,
+    })
+    .from(expertServiceOfferings)
+    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
+    .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
+    .orderBy(expertServiceOfferings.sortOrder);
+
+    const templates = rows.map(o => ({
+      id:               o.id,
+      title:            o.name,
+      description:      o.description,
+      categoryId:       null,   // expertServiceCategories ≠ serviceCategories
+      serviceType:      null,
+      deliveryMethod:   null,
+      deliveryTimeframe: null,
+      suggestedPrice:   o.price,
+      requirements:     null,
+      whatIncluded:     null,
+      isActive:         o.isDefault ?? true,
+      sortOrder:        o.sortOrder,
+      createdAt:        o.createdAt,
+      category:         o.categoryName,
+    }));
     res.json(templates);
   });
 
-  // Get single template
+  // Get single template — tries expert_service_offerings first, falls back to service_templates
   app.get("/api/service-templates/:id", async (req, res) => {
+    const esoRow = await db.select().from(expertServiceOfferings)
+      .where(eq(expertServiceOfferings.id, req.params.id)).then(r => r[0]);
+    if (esoRow) {
+      return res.json({
+        id: esoRow.id, title: esoRow.name, description: esoRow.description,
+        categoryId: null, serviceType: null, deliveryMethod: null, deliveryTimeframe: null,
+        suggestedPrice: esoRow.price, requirements: null, whatIncluded: null,
+        isActive: esoRow.isDefault ?? true, sortOrder: esoRow.sortOrder, createdAt: esoRow.createdAt,
+      });
+    }
     const template = await storage.getServiceTemplate(req.params.id);
     if (!template) {
       return res.status(404).json({ message: "Template not found" });
@@ -4564,26 +4667,56 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const template = await storage.getServiceTemplate(req.params.templateId);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+      const templateId = req.params.templateId;
+
+      // expert_service_offerings is the primary catalog; service_templates is legacy fallback
+      let serviceName: string;
+      let description: string | undefined;
+      let price: string;
+      let serviceType: string | undefined;
+      let deliveryMethod: string | undefined;
+      let deliveryTimeframe: string | undefined;
+      let requirements: string | undefined;
+      let whatIncluded: string | undefined;
+
+      const esoRow = await db.select().from(expertServiceOfferings)
+        .where(eq(expertServiceOfferings.id, templateId)).then(r => r[0]);
+
+      if (esoRow) {
+        // Primary: expert_service_offerings
+        serviceName     = esoRow.name;
+        description     = esoRow.description ?? undefined;
+        price           = esoRow.price;
+      } else {
+        // Fallback: service_templates (legacy / admin-created)
+        const stRow = await storage.getServiceTemplate(templateId);
+        if (!stRow) {
+          return res.status(404).json({ message: "Template not found" });
+        }
+        serviceName     = stRow.title;
+        description     = stRow.description ?? undefined;
+        price           = stRow.suggestedPrice ?? "0";
+        serviceType     = stRow.serviceType ?? undefined;
+        deliveryMethod  = stRow.deliveryMethod ?? undefined;
+        deliveryTimeframe = stRow.deliveryTimeframe ?? undefined;
+        requirements    = stRow.requirements as string | undefined;
+        whatIncluded    = stRow.whatIncluded as string | undefined;
       }
-      
-      // Create service from template
+
       const serviceData = {
         userId,
-        serviceName: template.title,
-        description: template.description,
-        categoryId: template.categoryId,
-        price: template.suggestedPrice || "0",
-        serviceType: template.serviceType,
-        deliveryMethod: template.deliveryMethod,
-        deliveryTimeframe: template.deliveryTimeframe,
-        requirements: template.requirements,
-        whatIncluded: template.whatIncluded,
+        serviceName,
+        description,
+        categoryId: null,
+        price: price || "0",
+        serviceType,
+        deliveryMethod,
+        deliveryTimeframe,
+        requirements,
+        whatIncluded,
         status: "draft",
       };
-      
+
       const service = await storage.createProviderService(serviceData as any);
       res.status(201).json(service);
     } catch (err) {
@@ -5808,8 +5941,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       for (const item of cartData) {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // Per-item: category config → fallback default rates
-        const itemCategoryRates = await resolveCommissionRates(item.service.categoryId ?? null);
+        // item.service.categoryId is a UUID (FK to serviceCategories), not a
+        // booking_fee_configs slug ("accommodation", "activities", …).
+        // Passing null resolves to the "default" config row correctly.
+        const itemCategoryRates = await resolveCommissionRates(null);
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -5826,8 +5961,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // expertShareRate: category config first, then per-service revenueShareRate as final override
-        const itemCategoryRates2 = await resolveCommissionRates(item.service.categoryId ?? null);
+        // item.service.categoryId is a UUID, not a booking_fee_configs slug — use null → "default"
+        const itemCategoryRates2 = await resolveCommissionRates(null);
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;
