@@ -73,9 +73,11 @@ function QueueRow({ item }: { item: QueueItem }) {
   const otherCandidates = scores.slice(1);
 
   const confirmMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", `/api/admin/routing-queue/${item.id}/confirm`, {}),
-    onSuccess: async (data: any) => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/routing-queue/${item.id}/confirm`, {});
+      return res.json() as Promise<any>;
+    },
+    onSuccess: (data: any) => {
       if (data?.alreadyExists || data?.alreadyConfirmed) {
         toast({ title: "Already assigned", description: data.message || "No change needed." });
       } else {
@@ -89,8 +91,10 @@ function QueueRow({ item }: { item: QueueItem }) {
   });
 
   const reassignMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", `/api/admin/routing-queue/${item.id}/reassign`, { expertId: reassignExpertId }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/routing-queue/${item.id}/reassign`, { expertId: reassignExpertId });
+      return res.json() as Promise<any>;
+    },
     onSuccess: (data: any) => {
       toast({ title: "Reassigned", description: `Lead reassigned to ${data?.expertName || "new expert"}.` });
       setExpanded(false);
