@@ -94,6 +94,17 @@ import {
   tripExpertAdvisors,
 } from "@shared/schema";
 
+// ─── Commission constants ─────────────────────────────────────────────────────
+// Expert-favorable split: expert keeps 75 %, platform keeps 25 %.
+// EXPERT_SHARE_RATE: used wherever revenueShareRate falls back to a default
+//   (shareRate = price * EXPERT_SHARE_RATE → expert earnings).
+// PLATFORM_FEE_RATE: used wherever the platform fee is added on-top of a price
+//   (platformFee = price * PLATFORM_FEE_RATE → platform cut).
+// A naive bulk-replace of the old 0.30 would invert one of these two meanings;
+// the named constants prevent that confusion.
+const EXPERT_SHARE_RATE = 0.75;
+const PLATFORM_FEE_RATE = 0.25;
+
 // Helper function to verify trip ownership
 async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
   const trip = await storage.getTrip(tripId);
@@ -172,6 +183,98 @@ export async function registerRoutes(
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
   }
+
+  // ─── Seed canonical service templates (idempotent) ──────────────────────────
+  // The six templates previously hardcoded in the frontend are promoted to DB
+  // rows so there is a single canonical source. Runs once at startup; skips if
+  // rows with the same title already exist.
+  (async () => {
+    try {
+      const existing = await storage.getServiceTemplates();
+      if (existing.length === 0) {
+        const CANONICAL_TEMPLATES = [
+          {
+            title: "Quick Consultation",
+            description: "15-minute video call to answer quick travel questions and provide immediate guidance",
+            serviceType: "consultation",
+            deliveryMethod: "video",
+            deliveryTimeframe: "15 min",
+            suggestedPrice: "29",
+            requirements: JSON.stringify(["Travel question or topic to discuss"]),
+            whatIncluded: JSON.stringify(["15-min video call", "Personalized advice", "Follow-up summary email"]),
+            isActive: true,
+            sortOrder: 1,
+          },
+          {
+            title: "Cart Review & Optimization",
+            description: "Expert review of your travel cart to find savings and better alternatives",
+            serviceType: "review",
+            deliveryMethod: "document",
+            deliveryTimeframe: "24 hours",
+            suggestedPrice: "49",
+            requirements: JSON.stringify(["Cart link or selections", "Budget constraints"]),
+            whatIncluded: JSON.stringify(["Written recommendations", "Alternative suggestions", "Savings estimate"]),
+            isActive: true,
+            sortOrder: 2,
+          },
+          {
+            title: "Full Trip Planning",
+            description: "Comprehensive trip planning from start to finish with personalized itinerary",
+            serviceType: "planning",
+            deliveryMethod: "hybrid",
+            deliveryTimeframe: "3-5 days",
+            suggestedPrice: "249",
+            requirements: JSON.stringify(["Destination", "Dates", "Budget", "Interests", "Travel style"]),
+            whatIncluded: JSON.stringify(["Full itinerary", "Booking links", "Restaurant reservations", "Daily schedule", "Packing list"]),
+            isActive: true,
+            sortOrder: 3,
+          },
+          {
+            title: "Destination Deep Dive",
+            description: "In-depth guide to a specific destination with local insights and hidden gems",
+            serviceType: "custom",
+            deliveryMethod: "document",
+            deliveryTimeframe: "48 hours",
+            suggestedPrice: "79",
+            requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),
+            whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Insider tips", "Safety advice"]),
+            isActive: true,
+            sortOrder: 4,
+          },
+          {
+            title: "Honeymoon Planning Package",
+            description: "Romantic trip planning with special touches and memorable experiences",
+            serviceType: "planning",
+            deliveryMethod: "hybrid",
+            deliveryTimeframe: "5-7 days",
+            suggestedPrice: "399",
+            requirements: JSON.stringify(["Couple preferences", "Budget", "Dates", "Special requests"]),
+            whatIncluded: JSON.stringify(["Custom itinerary", "Romantic experiences", "Special arrangements", "Booking assistance"]),
+            isActive: true,
+            sortOrder: 5,
+          },
+          {
+            title: "Group Trip Coordinator",
+            description: "Organize and coordinate travel for groups with complex logistics",
+            serviceType: "planning",
+            deliveryMethod: "video",
+            deliveryTimeframe: "1 week",
+            suggestedPrice: "349",
+            requirements: JSON.stringify(["Group size", "Budget per person", "Destination preferences", "Special needs"]),
+            whatIncluded: JSON.stringify(["Group logistics", "Shared itinerary", "Booking coordination", "Communication support"]),
+            isActive: true,
+            sortOrder: 6,
+          },
+        ];
+        for (const tpl of CANONICAL_TEMPLATES) {
+          await storage.createServiceTemplate(tpl as any);
+        }
+        console.log("[Seed] Inserted 6 canonical service templates into DB.");
+      }
+    } catch (err) {
+      console.warn("[Seed] Could not seed service templates:", err);
+    }
+  })();
 
   // Health check aliases (main health is at /health via health router)
   app.get("/api/health", (_req, res) => {
@@ -580,7 +683,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Derive provider and pricing server-side — never trust client input
         const providerId = service.userId;
         const totalAmount = Number(service.price ?? 0);
-        const shareRate = Number(service.revenueShareRate ?? 0.30);
+        const shareRate = Number(service.revenueShareRate ?? EXPERT_SHARE_RATE);
         const platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
         const providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
 
@@ -3284,9 +3387,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Calculate fees (platform takes 30%)
+      // Calculate fees (platform takes PLATFORM_FEE_RATE = 25%)
       const price = parseFloat(template.price as string);
-      const platformFee = price * 0.30;
+      const platformFee = price * PLATFORM_FEE_RATE;
       const expertEarnings = price - platformFee;
 
       // Create purchase record
@@ -3417,7 +3520,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const effectiveRate = grossBookingTotal > 0
         ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : 0.30;
+        : EXPERT_SHARE_RATE;
 
       const lastPayout = payouts[0];
 
@@ -5525,7 +5628,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       return sum + (price * (item.quantity || 1));
     }, 0);
     
-    const platformFee = subtotal * 0.30; // 30% platform fee
+    const platformFee = subtotal * PLATFORM_FEE_RATE;
     const total = subtotal + platformFee;
     
     res.json({
@@ -5651,7 +5754,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const price = parseFloat(item.service?.price || "0");
         return sum + (price * (item.quantity || 1));
       }, 0);
-      const platformFee = subtotal * 0.30;
+      const platformFee = subtotal * PLATFORM_FEE_RATE;
       const total = subtotal + platformFee;
       
       // Create bookings for each cart item
@@ -5660,13 +5763,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        // safeParseRate: returns fallback (0.75) when value is missing, non-numeric, or outside [0,1]
+        // safeParseRate: returns fallback (EXPERT_SHARE_RATE) when value is missing, non-numeric, or outside [0,1]
         const safeParseRate = (value: any, fallback: number): number => {
           const n = parseFloat(value);
           return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
         };
-        const serviceRate = safeParseRate(item.service.revenueShareRate, 0.75);
-        const fee = price * serviceRate;
+        // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
+        const expertShareRate = safeParseRate(item.service.revenueShareRate, EXPERT_SHARE_RATE);
+        const expertEarningsAmt = price * expertShareRate;
+        const platformFeeAmt = price - expertEarningsAmt;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -5689,8 +5794,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
             quantity: item.quantity || 1,
           },
           totalAmount: price.toFixed(2),
-          platformFee: fee.toFixed(2),
-          providerEarnings: (price - fee).toFixed(2),
+          platformFee: platformFeeAmt.toFixed(2),
+          providerEarnings: expertEarningsAmt.toFixed(2),
           status: "pending",
         });
         
@@ -17545,7 +17650,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           id, category, platform_fee_percent, expert_share_percent,
           ai_keeps_100, min_fee, max_fee, is_active, updated_by, created_at, updated_at
         ) VALUES (
-          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 70},
+          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 75},
           ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
           ${userId}, NOW(), NOW()
         )
@@ -17594,7 +17699,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       };
       res.json({
         platform_fee_percent: defaults[category] ?? 12,
-        expert_share_percent: 70,
+        expert_share_percent: 75,
         ai_keeps_100: true,
         min_fee: null,
         max_fee: null,
