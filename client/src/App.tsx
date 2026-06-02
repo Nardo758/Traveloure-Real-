@@ -105,6 +105,7 @@ import ExpertContractCategories from "@/pages/expert/contract-categories";
 import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
+import AdminRoutingQueue from "@/pages/admin/routing-queue";
 import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
 import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
@@ -612,6 +613,9 @@ function Router() {
       </Route>
       <Route path="/admin/content-mapping">
         {() => <ProtectedRoute component={AdminContentMapping} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/routing-queue">
+        {() => <ProtectedRoute component={AdminRoutingQueue} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

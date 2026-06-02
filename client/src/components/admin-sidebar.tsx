@@ -36,6 +36,7 @@ import {
   PlugZap,
   Package,
   Layers,
+  GitBranch,
 } from "lucide-react";
 
 const menuGroups = [
@@ -54,6 +55,7 @@ const menuGroups = [
       { title: "Users", href: "/admin/users", icon: Users },
       { title: "Experts", href: "/admin/experts", icon: UserCheck },
       { title: "Providers", href: "/admin/providers", icon: Building2 },
+      { title: "Routing Queue", href: "/admin/routing-queue", icon: GitBranch },
     ],
   },
   {

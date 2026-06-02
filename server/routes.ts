@@ -17533,6 +17533,115 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // GET /api/admin/routing-queue — routed leads awaiting admin confirmation
+  app.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          er.id,
+          er.trip_id,
+          er.user_id,
+          er.destination_city,
+          er.request_type,
+          er.status,
+          er.assigned_expert_id,
+          er.created_at,
+          er.assigned_at,
+          u.first_name || ' ' || u.last_name AS traveler_name,
+          u.email AS traveler_email,
+          eu.first_name || ' ' || eu.last_name AS expert_name,
+          eu.email AS expert_email,
+          lrl.top_score,
+          lrl.scores_json
+        FROM expert_requests er
+        LEFT JOIN users u ON u.id = er.user_id
+        LEFT JOIN users eu ON eu.id = er.assigned_expert_id
+        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id = er.trip_id
+          AND lrl.assigned_expert_id = er.assigned_expert_id
+        WHERE er.assigned_expert_id IS NOT NULL
+          AND er.status NOT IN ('confirmed', 'completed', 'cancelled')
+          AND NOT EXISTS (
+            SELECT 1 FROM trip_expert_advisors tea
+            WHERE tea.trip_id = er.trip_id
+              AND tea.local_expert_id = er.assigned_expert_id
+          )
+        ORDER BY er.created_at DESC
+        LIMIT 100
+      `);
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/routing-queue/:requestId/confirm — confirm assignment
+  app.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const { requestId } = req.params;
+
+      const queueResult = await db.execute(sql`
+        SELECT * FROM expert_requests WHERE id = ${requestId}
+      `);
+      const row = queueResult.rows?.[0] as any;
+      if (!row) return res.status(404).json({ error: "Routing request not found" });
+      if (!row.assigned_expert_id) return res.status(400).json({ error: "No expert assigned to this request" });
+      if (row.status === "confirmed") return res.status(409).json({ error: "Assignment already confirmed", alreadyConfirmed: true });
+      if (!row.trip_id) return res.status(400).json({ error: "Request has no associated trip" });
+
+      const alreadyExists = await storage.isExpertAssignedToTrip(row.trip_id, row.assigned_expert_id);
+      if (alreadyExists) {
+        await db.execute(sql`
+          UPDATE expert_requests SET status = 'confirmed' WHERE id = ${requestId}
+        `);
+        return res.status(200).json({ message: "Expert already assigned to this trip (no-op)", alreadyExists: true });
+      }
+
+      const advisor = await storage.createTripExpertAdvisor({
+        tripId: row.trip_id,
+        localExpertId: row.assigned_expert_id,
+      });
+
+      await db.execute(sql`
+        UPDATE expert_requests SET status = 'confirmed', assigned_at = NOW() WHERE id = ${requestId}
+      `);
+
+      res.json({ success: true, advisor });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/routing-queue/:requestId/reassign — pick a different expert
+  app.post("/api/admin/routing-queue/:requestId/reassign", isAuthenticated, async (req, res) => {
+    try {
+      const { requestId } = req.params;
+      const { expertId } = req.body;
+      if (!expertId) return res.status(400).json({ error: "expertId is required" });
+
+      const queueResult = await db.execute(sql`
+        SELECT * FROM expert_requests WHERE id = ${requestId}
+      `);
+      const row = queueResult.rows?.[0] as any;
+      if (!row) return res.status(404).json({ error: "Routing request not found" });
+      if (row.status === "confirmed") return res.status(409).json({ error: "Assignment already confirmed; cannot reassign" });
+
+      await db.execute(sql`
+        UPDATE expert_requests
+        SET assigned_expert_id = ${expertId}, assigned_at = NOW()
+        WHERE id = ${requestId}
+      `);
+
+      const expertResult = await db.execute(sql`
+        SELECT first_name || ' ' || last_name AS expert_name FROM users WHERE id = ${expertId}
+      `);
+      const expertName = (expertResult.rows?.[0] as any)?.expert_name || expertId;
+
+      res.json({ success: true, newExpertId: expertId, expertName });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Auto-capture accommodation preference from hotel searches/bookings
   app.post("/api/track/accommodation-preference", async (req, res) => {
     try {
