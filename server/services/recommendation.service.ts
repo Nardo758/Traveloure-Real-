@@ -1168,6 +1168,153 @@ class RecommendationService {
     return signals.length;
   }
 
+  /**
+   * Translate a booking funnel event into a demand signal increment.
+   * Called from the /api/track/funnel route to close the feedback loop.
+   *
+   * Score deltas by funnel stage:
+   *   view     → +5   (interest)
+   *   cart     → +20  (intent)
+   *   complete → +50  (confirmed demand)
+   *   abandoned with abandon_reason → +5 (still signals demand)
+   *
+   * Rows are keyed by (city, serviceType, dataSource='user_behavior').
+   * We upsert: update if exists, insert otherwise.
+   */
+  async recordFunnelEventAsSignal(event: {
+    stage: string;
+    serviceType?: string | null;
+    destination?: string | null;
+  }): Promise<void> {
+    const city = (event.destination || "").trim().toLowerCase();
+    if (!city) return;
+
+    const stageDelta: Record<string, number> = {
+      view: 5,
+      cart: 20,
+      checkout: 10,
+      complete: 50,
+      abandoned: 5,
+    };
+
+    const delta = stageDelta[event.stage] ?? 0;
+    if (delta === 0) return;
+
+    const serviceType = event.serviceType
+      ? this.normalizeServiceType(event.serviceType)
+      : "city_tour";
+
+    try {
+      const existing = await db
+        .select()
+        .from(serviceDemandSignals)
+        .where(
+          and(
+            eq(serviceDemandSignals.city, city),
+            eq(serviceDemandSignals.serviceType, serviceType),
+            eq(serviceDemandSignals.dataSource, "user_behavior"),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        const row = existing[0];
+        const newScore = Math.min(1000, row.demandScore + delta);
+        const newLevel = this.scoreToDemandLevel(newScore);
+        await db
+          .update(serviceDemandSignals)
+          .set({
+            demandScore: newScore,
+            demandLevel: newLevel,
+            trendDirection: delta >= 20 ? "up" : row.trendDirection ?? "stable",
+            updatedAt: new Date(),
+          })
+          .where(eq(serviceDemandSignals.id, row.id));
+      } else {
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.insert(serviceDemandSignals).values({
+          city,
+          serviceType,
+          demandLevel: this.scoreToDemandLevel(delta),
+          demandScore: delta,
+          trendDirection: "up",
+          supplyGap: 50,
+          seasonalPeak: [],
+          triggerEvents: [],
+          relatedTrends: [],
+          dataSource: "user_behavior",
+          confidenceScore: 60,
+          expiresAt,
+        });
+      }
+    } catch (err: any) {
+      console.error("[ServiceRecommendationEngine] recordFunnelEventAsSignal failed:", err?.message);
+    }
+  }
+
+  /**
+   * Record a "no results" search as a positive gap/opportunity demand signal.
+   * When users search for a service that doesn't exist yet, that IS demand —
+   * the gap score is boosted to reflect the market opportunity.
+   */
+  async recordNoResultsSignal(city: string, serviceType?: string | null): Promise<void> {
+    const normalizedCity = city.trim().toLowerCase();
+    if (!normalizedCity) return;
+
+    const svcType = serviceType
+      ? this.normalizeServiceType(serviceType)
+      : "city_tour";
+
+    const GAP_BOOST = 10;
+
+    try {
+      const existing = await db
+        .select()
+        .from(serviceDemandSignals)
+        .where(
+          and(
+            eq(serviceDemandSignals.city, normalizedCity),
+            eq(serviceDemandSignals.serviceType, svcType),
+            eq(serviceDemandSignals.dataSource, "user_behavior"),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        const row = existing[0];
+        const newGap = Math.min(100, (row.supplyGap ?? 0) + GAP_BOOST);
+        const newScore = Math.min(1000, row.demandScore + 8);
+        await db
+          .update(serviceDemandSignals)
+          .set({
+            supplyGap: newGap,
+            demandScore: newScore,
+            demandLevel: this.scoreToDemandLevel(newScore),
+            updatedAt: new Date(),
+          })
+          .where(eq(serviceDemandSignals.id, row.id));
+      } else {
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.insert(serviceDemandSignals).values({
+          city: normalizedCity,
+          serviceType: svcType,
+          demandLevel: "low",
+          demandScore: 8,
+          trendDirection: "up",
+          supplyGap: GAP_BOOST,
+          seasonalPeak: [],
+          triggerEvents: [],
+          relatedTrends: [],
+          dataSource: "user_behavior",
+          confidenceScore: 50,
+          expiresAt,
+        });
+      }
+    } catch (err: any) {
+      console.error("[ServiceRecommendationEngine] recordNoResultsSignal failed:", err?.message);
+    }
+  }
+
   async getMarketIntelligence(city: string): Promise<{
     topDemandSignals: ServiceDemandSignal[];
     gapAnalysis: ServiceGapAnalysis[];

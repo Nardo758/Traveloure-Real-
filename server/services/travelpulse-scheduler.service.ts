@@ -15,9 +15,22 @@ export interface DailyRefreshResult {
   demandSignalErrors: number;
 }
 
+export interface FeedbackLoopStats {
+  lastRunAt: Date | null;
+  totalSignalsProcessed: number;
+  totalRunCount: number;
+  citiesProcessed: number;
+}
+
 export class TravelPulseScheduler {
   private lastRunAt: Date | null = null;
   private nextRunAt: Date | null = null;
+  private feedbackLoop: FeedbackLoopStats = {
+    lastRunAt: null,
+    totalSignalsProcessed: 0,
+    totalRunCount: 0,
+    citiesProcessed: 0,
+  };
 
   async start(): Promise<void> {
     if (schedulerTimer) {
@@ -121,8 +134,17 @@ export class TravelPulseScheduler {
         await new Promise((resolve) => setTimeout(resolve, PER_CITY_RATE_LIMIT_MS));
       }
 
+      // Update feedback loop observability stats
+      this.feedbackLoop.lastRunAt = new Date();
+      this.feedbackLoop.totalSignalsProcessed += demandSignalsGenerated;
+      this.feedbackLoop.totalRunCount += 1;
+      this.feedbackLoop.citiesProcessed += batch.length;
+
       console.log(
         `[TravelPulse Scheduler] Daily refresh complete: ${refreshed} AI updated, ${errors} AI errors, ${demandSignalsGenerated} demand signals generated, ${demandSignalErrors} demand-signal errors`,
+      );
+      console.log(
+        `[TravelPulse Scheduler] Feedback loop stats — last run: ${this.feedbackLoop.lastRunAt.toISOString()}, total signals processed: ${this.feedbackLoop.totalSignalsProcessed}, total cycles: ${this.feedbackLoop.totalRunCount}, cities processed (lifetime): ${this.feedbackLoop.citiesProcessed}`,
       );
       return { refreshed, errors, demandSignalsGenerated, demandSignalErrors };
     } catch (error: any) {
@@ -170,11 +192,17 @@ export class TravelPulseScheduler {
     }
   }
 
-  getStatus(): { isRunning: boolean; lastRunAt: Date | null; nextRunAt: Date | null } {
+  getStatus(): {
+    isRunning: boolean;
+    lastRunAt: Date | null;
+    nextRunAt: Date | null;
+    feedbackLoop: FeedbackLoopStats;
+  } {
     return {
       isRunning,
       lastRunAt: this.lastRunAt,
       nextRunAt: this.nextRunAt,
+      feedbackLoop: { ...this.feedbackLoop },
     };
   }
 }
