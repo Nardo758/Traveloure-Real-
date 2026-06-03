@@ -25,6 +25,7 @@ import { formatDistanceToNow } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { getGuestSessionId } from "@/lib/guestSession";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -312,11 +313,13 @@ function GemCard({
               </Button>
             );
           })()}
-          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
-            onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
-            data-testid={`${testPrefix}-add-${idx}`}>
-            + Add
-          </Button>
+          <AddToPlanButton
+            contentId={item.id ?? displayName}
+            contentType="gem"
+            contentMeta={{ name: displayName, imageUrl: image, description, price: item.price ?? null }}
+            city={cityName}
+            size="xs"
+          />
           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => navigate(`/chat?about=${encodeURIComponent(displayName)}`)}
             data-testid={`${testPrefix}-ask-${idx}`}>
@@ -417,6 +420,98 @@ function WishlistButton({
     >
       <Heart className={`h-3.5 w-3.5 transition-colors ${isSaved ? "fill-rose-500 text-rose-500" : "text-gray-500"}`} />
     </button>
+  );
+}
+
+// ─── AddToPlanButton ─────────────────────────────────────────────────────────
+// Self-contained "＋ Add to plan" button that POSTs to the cart API.
+// Works for guests (localStorage session) and authenticated users alike.
+
+function AddToPlanButton({
+  contentId,
+  contentType,
+  contentMeta,
+  city,
+  className,
+  size = "sm",
+}: {
+  contentId: string;
+  contentType: "gem" | "hotel" | "activity";
+  contentMeta: { name: string; imageUrl?: string | null; description?: string | null; price?: string | null };
+  city?: string;
+  className?: string;
+  size?: "sm" | "xs";
+}) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [added, setAdded] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const guestId = !user ? getGuestSessionId() : undefined;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (guestId) headers["X-Guest-Session"] = guestId;
+
+      const res = await fetch("/api/cart/items", {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          contentType,
+          contentId,
+          contentMeta: { ...contentMeta, city: city ?? null },
+          experienceSlug: "general",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to add to plan");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setAdded(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      if (!user) {
+        toast({
+          title: "Added to your plan",
+          description: "Sign in to save your plan permanently.",
+        });
+      } else {
+        toast({ title: "Added to your plan" });
+      }
+      // Reset "added" state after a moment so it can be re-added
+      setTimeout(() => setAdded(false), 3000);
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not add", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const sizeClasses = size === "xs"
+    ? "text-[10px] h-6 px-2"
+    : "text-xs h-7 px-2.5";
+
+  return (
+    <Button
+      size="sm"
+      variant={added ? "default" : "outline"}
+      className={`${sizeClasses} whitespace-nowrap ${added ? "bg-[#FF385C] hover:bg-[#E23350] text-white border-[#FF385C]" : ""} ${className ?? ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!mutation.isPending && !added) mutation.mutate();
+      }}
+      disabled={mutation.isPending}
+      data-testid={`add-to-plan-${contentId}`}
+    >
+      {mutation.isPending ? (
+        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+      ) : added ? (
+        "✓ Added"
+      ) : (
+        "＋ Add to plan"
+      )}
+    </Button>
   );
 }
 
@@ -1146,18 +1241,12 @@ function ActivityRow({
               </Button>
             )
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 px-2.5"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined });
-            }}
-            data-testid={`${testPrefix}-add-${idx}`}
-          >
-            Add to experience
-          </Button>
+          <AddToPlanButton
+            contentId={(item as any).id ?? displayName}
+            contentType="activity"
+            contentMeta={{ name: displayName, imageUrl: image, description, price: item.price ?? null }}
+            city={cityName}
+          />
           <Button
             size="sm"
             variant="outline"
@@ -1386,11 +1475,13 @@ function HotelMiniCard({
               </Button>
             )
           ) : null}
-          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
-            onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
-            data-testid={`${testPrefix}-add-${idx}`}>
-            + Add
-          </Button>
+          <AddToPlanButton
+            contentId={item.id ?? displayName}
+            contentType="hotel"
+            contentMeta={{ name: displayName, imageUrl: image, description: item.address ?? null, price: item.price ?? null }}
+            city={cityName}
+            size="xs"
+          />
           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => navigate(`/chat?about=${encodeURIComponent(displayName)}`)}
             data-testid={`${testPrefix}-ask-${idx}`}>

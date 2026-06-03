@@ -234,7 +234,7 @@ export interface IStorage {
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
   getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
   getCartItemById(id: string): Promise<any | undefined>;
-  addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
+  addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
   updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
@@ -1371,6 +1371,22 @@ export class DatabaseStorage implements IStorage {
           };
         }
       }
+      // Handle discover content items (gems, hotels, activities)
+      if (item.contentId && item.contentType) {
+        const meta = (item.contentMeta as Record<string, any>) || {};
+        return {
+          ...item,
+          isContentItem: true,
+          service: null,
+          contentDisplay: {
+            name: meta.name || item.contentId,
+            imageUrl: meta.imageUrl || null,
+            city: meta.city || null,
+            description: meta.description || null,
+            price: meta.price || null,
+          },
+        };
+      }
       // Handle regular provider services
       if (item.serviceId) {
         const [service] = await db.select().from(providerServices).where(eq(providerServices.id, item.serviceId));
@@ -1393,9 +1409,12 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
+  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
     if (!userId && !item.guestSessionId) {
       throw new Error("Either userId or guestSessionId is required");
+    }
+    if (!item.serviceId && !item.customVenueId && !item.contentId) {
+      throw new Error("One of serviceId, customVenueId, or contentId is required");
     }
 
     // Build the owner match condition
@@ -1406,17 +1425,17 @@ export class DatabaseStorage implements IStorage {
       ownerCondition = eq(cartItems.guestSessionId, item.guestSessionId!);
     }
 
-    // Build the item match condition
+    // Build the item match condition (for deduplication)
     let itemCondition: any;
     if (item.customVenueId) {
       itemCondition = and(ownerCondition, eq(cartItems.customVenueId, item.customVenueId));
     } else if (item.serviceId) {
       itemCondition = and(ownerCondition, eq(cartItems.serviceId, item.serviceId));
-    } else {
-      throw new Error("Either serviceId or customVenueId is required");
+    } else if (item.contentId) {
+      itemCondition = and(ownerCondition, eq(cartItems.contentId, item.contentId));
     }
 
-    if (item.experienceSlug) {
+    if (item.experienceSlug && itemCondition) {
       itemCondition = and(itemCondition, eq(cartItems.experienceSlug, item.experienceSlug));
     }
 
@@ -1435,6 +1454,9 @@ export class DatabaseStorage implements IStorage {
       guestSessionId: item.guestSessionId || null,
       serviceId: item.serviceId || null,
       customVenueId: item.customVenueId || null,
+      contentType: item.contentType || null,
+      contentId: item.contentId || null,
+      contentMeta: item.contentMeta || {},
       experienceSlug: item.experienceSlug,
       quantity: item.quantity || 1,
       tripId: item.tripId,
@@ -1458,8 +1480,10 @@ export class DatabaseStorage implements IStorage {
         dupeCondition = and(dupeCondition, eq(cartItems.serviceId, guestItem.serviceId));
       } else if (guestItem.customVenueId) {
         dupeCondition = and(dupeCondition, eq(cartItems.customVenueId, guestItem.customVenueId));
+      } else if (guestItem.contentId) {
+        dupeCondition = and(dupeCondition, eq(cartItems.contentId, guestItem.contentId));
       } else {
-        // No service or venue — just delete the orphan guest row
+        // No service, venue, or content item — just delete the orphan guest row
         await db.delete(cartItems).where(eq(cartItems.id, guestItem.id));
         continue;
       }
