@@ -53,7 +53,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, experienceTypes } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -346,6 +346,11 @@ router.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
       ? await storage.getCartItems(userId, experienceSlug)
       : await storage.getCartItems(userId);
 
+    // Guard: empty cart cannot generate a meaningful trip
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: "Cannot resolve trip: cart is empty" });
+    }
+
     // 2. Reuse an existing tripId if any cart item already has one
     const existingTripId = items.find((i) => i.tripId)?.tripId;
     if (existingTripId) {
@@ -382,7 +387,48 @@ router.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
     const startDate = inferredStart.toISOString().split("T")[0];
     const endDate = inferredEnd.toISOString().split("T")[0];
 
-    // 5. Create the trip with inferred metadata
+    // 5. Resolve user_experience via slug (server-side) to get guestCount for party size
+    let resolvedUserExperienceId: string | null = userExperienceId || null;
+    let inferredTravelers = 2; // default fallback
+
+    if (experienceSlug) {
+      // Resolve experienceType by slug, then find the user's experience row
+      const [expType] = await db
+        .select({ id: experienceTypes.id })
+        .from(experienceTypes)
+        .where(eq(experienceTypes.slug, experienceSlug))
+        .limit(1);
+
+      if (expType) {
+        const [userExp] = await db
+          .select({ id: userExperiences.id, guestCount: userExperiences.guestCount })
+          .from(userExperiences)
+          .where(
+            and(
+              eq(userExperiences.userId, userId),
+              eq(userExperiences.experienceTypeId, expType.id)
+            )
+          )
+          .limit(1);
+
+        if (userExp) {
+          resolvedUserExperienceId = resolvedUserExperienceId || userExp.id;
+          if (userExp.guestCount && userExp.guestCount > 0) {
+            inferredTravelers = userExp.guestCount;
+          }
+        }
+      }
+    }
+
+    // Also check cart item contentMeta for any travelers hint
+    const metaTravelers = items
+      .map((i) => (i.contentMeta as any)?.travelers || (i.contentMeta as any)?.numberOfTravelers)
+      .filter((v) => typeof v === "number" && v > 0);
+    if (metaTravelers.length > 0 && inferredTravelers === 2) {
+      inferredTravelers = Math.max(...metaTravelers);
+    }
+
+    // 6. Create the trip with inferred metadata
     const title = `Your ${destination} trip`;
     const trip = await storage.createTrip({
       userId,
@@ -390,24 +436,24 @@ router.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
       destination,
       startDate,
       endDate,
-      numberOfTravelers: 2,
+      numberOfTravelers: inferredTravelers,
       status: "draft",
     });
 
-    // 6. Backfill tripId on all matching cart items
+    // 7. Backfill tripId on all matching cart items
     const whereClause = experienceSlug
       ? and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug))
       : eq(cartItems.userId, userId);
     await db.update(cartItems).set({ tripId: trip.id }).where(whereClause);
 
-    // 7. Link to user_experience if one was provided (idempotent)
-    if (userExperienceId) {
+    // 8. Link to user_experience idempotently (via client-supplied id or slug-resolved id)
+    if (resolvedUserExperienceId) {
       await db
         .update(userExperiences)
         .set({ tripId: trip.id })
         .where(
           and(
-            eq(userExperiences.id, userExperienceId),
+            eq(userExperiences.id, resolvedUserExperienceId),
             eq(userExperiences.userId, userId)
           )
         );
@@ -664,6 +710,7 @@ router.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
   // Get user notifications
 
 router.get("/api/cart", async (req, res) => {
+  try {
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
 
@@ -716,7 +763,11 @@ router.get("/api/cart", async (req, res) => {
       total: (subtotal + platformFeeTotal).toFixed(2),
       itemCount: items.length,
     });
-  });
+  } catch (err) {
+    console.error("GET /api/cart error:", err);
+    res.status(500).json({ message: "Failed to load cart" });
+  }
+});
 
   // Add to cart
 
