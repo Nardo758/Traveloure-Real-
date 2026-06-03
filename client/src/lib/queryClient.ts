@@ -7,14 +7,28 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function buildHeaders(base: Record<string, string> = {}): Record<string, string> {
+  try {
+    let guestId = localStorage.getItem("traveloure_guest_session");
+    if (!guestId) {
+      guestId = crypto.randomUUID();
+      localStorage.setItem("traveloure_guest_session", guestId);
+    }
+    return { ...base, "X-Guest-Session": guestId };
+  } catch {
+  }
+  return base;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const baseHeaders: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: buildHeaders(baseHeaders),
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -62,6 +76,7 @@ export const getQueryFn: <T>(options: {
     const url = buildUrlFromQueryKey(queryKey);
     const res = await fetch(url, {
       credentials: "include",
+      headers: buildHeaders(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

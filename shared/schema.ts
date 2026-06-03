@@ -731,7 +731,8 @@ export const notifications = pgTable("notifications", {
 
 export const cartItems = pgTable("cart_items", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  guestSessionId: varchar("guest_session_id", { length: 64 }),
   serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "cascade" }),
   customVenueId: varchar("custom_venue_id").references(() => customVenues.id, { onDelete: "cascade" }),
   experienceSlug: varchar("experience_slug", { length: 50 }),
