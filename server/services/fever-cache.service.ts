@@ -2,6 +2,7 @@ import { db } from "../db";
 import { feverEventCache, destinationEvents } from "@shared/schema";
 import { eq, and, gte, lte, ilike, or, sql, desc } from "drizzle-orm";
 import { feverService, FeverEvent } from "./fever.service";
+import { sharedCache } from "./shared-cache.service";
 
 const CACHE_DURATION_HOURS = 24;
 const BATCH_SIZE = 10;
@@ -210,17 +211,7 @@ class FeverCacheService {
   }
 
   async cleanupExpiredCache(): Promise<number> {
-    const now = new Date();
-    const expiredEvents = await db.select({ id: feverEventCache.id })
-      .from(feverEventCache)
-      .where(lte(feverEventCache.expiresAt, now));
-    
-    if (expiredEvents.length > 0) {
-      await db.delete(feverEventCache)
-        .where(lte(feverEventCache.expiresAt, now));
-    }
-    
-    return expiredEvents.length;
+    return sharedCache.cleanupDomainTable(feverEventCache, feverEventCache.expiresAt);
   }
 
   /**
