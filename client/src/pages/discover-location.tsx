@@ -38,6 +38,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
+} from "@/components/ui/tooltip";
+import {
   MapPin, Sparkles, Brain, Image as ImageIcon, Play, Camera,
   ExternalLink, Star, Clock, Wallet, Lightbulb, Shield, Sun, Heart,
   CalendarX, AlertCircle, Activity, Users, Gem, ChevronRight, ChevronDown,
@@ -176,7 +179,7 @@ function resolveMatch(item: {
 // ─── GemCard — compact bento card (2-col half or span-2 row) ─────────────────
 
 function GemCard({
-  item, idx, onAdd, testPrefix, onRequestBooking,
+  item, idx, onAdd, testPrefix, onRequestBooking, cityName,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -190,6 +193,7 @@ function GemCard({
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  cityName?: string;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
@@ -312,6 +316,15 @@ function GemCard({
             💬 Ask expert
           </Button>
         </div>
+
+        {/* Cross-sell strip */}
+        <CrossSellStrip
+          placeType={item.placeType ?? item.type ?? "gem"}
+          neighborhood={item.neighborhood}
+          cityName={cityName}
+          sourceContentId={item.id ?? displayName}
+          sourceContentType={item.placeType ?? item.type ?? "gem"}
+        />
       </div>
     </div>
   );
@@ -382,6 +395,179 @@ function WishlistButton({
     >
       <Heart className={`h-3.5 w-3.5 transition-colors ${isSaved ? "fill-rose-500 text-rose-500" : "text-gray-500"}`} />
     </button>
+  );
+}
+
+// ─── CrossSellStrip ───────────────────────────────────────────────────────────
+// Horizontal-scroll strip of matched provider services.
+// Appears below the primary action buttons on GemCard, HotelMiniCard, and ActivityRow.
+// Automatically hidden when zero providers match (no layout shift).
+
+interface CrossSellProvider {
+  serviceId: string;
+  serviceName: string;
+  shortDescription: string | null;
+  serviceType: string | null;
+  price: string | null;
+  priceType: string | null;
+  providerId: string;
+  providerName: string;
+  isFeatured: boolean;
+  averageRating: string | null;
+  bookingsCount: number;
+}
+
+function isTransportService(serviceType: string | null): boolean {
+  const t = (serviceType ?? "").toLowerCase();
+  return t.includes("action") || t.includes("concierge") || t.includes("transfer") || t.includes("transport");
+}
+
+function CrossSellStrip({
+  placeType,
+  neighborhood,
+  cityName,
+  sourceContentId,
+  sourceContentType,
+  labelOverride,
+}: {
+  placeType: string;
+  neighborhood?: string | null;
+  cityName?: string;
+  sourceContentId: string;
+  sourceContentType: string;
+  /** When set, forces this label instead of the auto-detected one */
+  labelOverride?: string;
+}) {
+  const [, navigate] = useLocation();
+  const [affiliateTarget, setAffiliateTarget] = useState<AffiliateBookingTarget | null>(null);
+  const [affiliateOpen, setAffiliateOpen] = useState(false);
+
+  const params = new URLSearchParams({ type: placeType, limit: "3" });
+  if (neighborhood) params.set("neighborhood", neighborhood);
+  if (cityName) params.set("city", cityName);
+
+  const { data, isLoading } = useQuery<{ providers: CrossSellProvider[]; affiliateFallback: boolean }>({
+    queryKey: ["/api/content-match", placeType, neighborhood ?? "", cityName ?? ""],
+    queryFn: () => fetch(`/api/content-match?${params.toString()}`).then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const providers = data?.providers ?? [];
+
+  const fireCrossSellClick = async (targetServiceId: string) => {
+    try {
+      await apiRequest("POST", "/api/cross-sell-events", {
+        sourceContentId,
+        sourceContentType,
+        targetServiceId,
+        eventType: "click",
+      });
+    } catch {
+      // Non-blocking — tracking failure must never block navigation
+    }
+  };
+
+  const handleChipClick = async (svc: CrossSellProvider) => {
+    await fireCrossSellClick(svc.serviceId);
+    navigate(`/services/${svc.serviceId}`);
+  };
+
+  const handleAffiliateChipClick = async (svc: CrossSellProvider, affiliateUrl: string) => {
+    await fireCrossSellClick(svc.serviceId);
+    setAffiliateTarget({
+      itemName: svc.serviceName,
+      partnerName: svc.providerName,
+      affiliateUrl,
+      partnerCategory: svc.serviceType ?? "service",
+      itemDescription: svc.shortDescription ?? undefined,
+    });
+    setAffiliateOpen(true);
+  };
+
+  // Determine strip label
+  const autoLabel = providers.length > 0 && providers.every(p => isTransportService(p.serviceType))
+    ? "Getting there"
+    : "Also popular";
+  const stripLabel = labelOverride ?? autoLabel;
+
+  if (isLoading) {
+    return (
+      <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5">
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
+          Users also book
+        </span>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+          {[0, 1].map(i => (
+            <Skeleton key={i} className="h-7 w-24 rounded-full flex-shrink-0" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (providers.length === 0) return null;
+
+  return (
+    <>
+      <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5" data-testid={`cross-sell-strip-${sourceContentId}`}>
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
+          {stripLabel}
+        </span>
+        <TooltipProvider delayDuration={300}>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            {providers.slice(0, 3).map((svc) => {
+              const initials = svc.providerName
+                .split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+              const priceDisplay = formatServicePrice(svc.price, svc.priceType);
+
+              return (
+                <Tooltip key={svc.serviceId}>
+                  <TooltipTrigger asChild>
+                    <div
+                      className="flex items-center gap-1 bg-muted/70 hover:bg-muted border border-border rounded-full px-2 py-1 flex-shrink-0 cursor-pointer transition-colors group"
+                      data-testid={`cross-sell-chip-${svc.serviceId}`}
+                    >
+                      {/* Provider avatar */}
+                      <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[8px] font-bold flex items-center justify-center flex-shrink-0">
+                        {initials}
+                      </span>
+                      {/* Service name + price */}
+                      <span className="text-[10px] font-medium leading-none max-w-[80px] truncate">
+                        {svc.serviceName}
+                      </span>
+                      {priceDisplay && (
+                        <span className="text-[9px] text-muted-foreground leading-none flex-shrink-0">
+                          {priceDisplay}
+                        </span>
+                      )}
+                      {/* Book button */}
+                      <Button
+                        size="sm"
+                        className="text-[9px] h-5 px-1.5 rounded-full flex-shrink-0 ml-0.5"
+                        data-testid={`cross-sell-book-${svc.serviceId}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleChipClick(svc);
+                        }}
+                      >
+                        Book
+                      </Button>
+                    </div>
+                  </TooltipTrigger>
+                  {svc.shortDescription && (
+                    <TooltipContent side="top" className="max-w-[200px] text-xs">
+                      {svc.shortDescription}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
+      </div>
+      <AffiliateBookingModal item={affiliateTarget} open={affiliateOpen} onOpenChange={setAffiliateOpen} />
+    </>
   );
 }
 
@@ -514,7 +700,7 @@ function detectBadge(bookingUrl: string | null | undefined): {
 }
 
 function ActivityRow({
-  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking,
+  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking, cityName, neighborhood,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -530,6 +716,8 @@ function ActivityRow({
   /** Force "BOOK ON TRAVELOURE" badge regardless of URL (for platform services). */
   forceTraveloure?: boolean;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  cityName?: string;
+  neighborhood?: string | null;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
@@ -676,6 +864,15 @@ function ActivityRow({
             </span>
           )}
         </div>
+
+        {/* Cross-sell strip */}
+        <CrossSellStrip
+          placeType={item.placeType ?? item.type ?? "activity"}
+          neighborhood={neighborhood}
+          cityName={cityName}
+          sourceContentId={(item as any).id ?? displayName}
+          sourceContentType={item.placeType ?? item.type ?? "activity"}
+        />
       </div>
     </div>
   );
@@ -768,7 +965,7 @@ function HotelRow({
 // Caller must add "col-span-2" to the grid wrapper or place it in its own row.
 
 function HotelMiniCard({
-  item, idx, onAdd, testPrefix, onRequestBooking,
+  item, idx, onAdd, testPrefix, onRequestBooking, cityName,
 }: {
   item: {
     id?: string; name?: string; title?: string; placeName?: string;
@@ -776,11 +973,13 @@ function HotelMiniCard({
     imageUrl?: string | null; media?: any[];
     price?: string | null; address?: string | null;
     bookingUrl?: string | null; starRating?: number | null;
+    neighborhood?: string | null;
   };
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  cityName?: string;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
@@ -824,26 +1023,21 @@ function HotelMiniCard({
           </span>
         </div>
 
-        {/* Transport match strip */}
-        <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">🚗 private transfer available</span>
+        {/* Actions */}
+        <div className="flex gap-1 pt-0.5">
           {item.bookingUrl ? (
             bd.isPartner ? (
-              <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 flex-shrink-0 border-violet-300 text-violet-700 hover:bg-violet-50"
+              <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 border-violet-300 text-violet-700 hover:bg-violet-50"
                 data-testid={`${testPrefix}-book-both-${idx}`}
                 onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Booking.com", affiliateUrl: item.bookingUrl!, partnerCategory: "hotel" })}>
                 Request booking
               </Button>
             ) : (
-              <Button size="sm" className="text-[10px] h-6 px-2 flex-shrink-0" asChild data-testid={`${testPrefix}-book-both-${idx}`}>
-                <a href={item.bookingUrl} rel="noopener noreferrer">Book both</a>
+              <Button size="sm" className="text-[10px] h-6 px-2" asChild data-testid={`${testPrefix}-book-both-${idx}`}>
+                <a href={item.bookingUrl} rel="noopener noreferrer">Book</a>
               </Button>
             )
           ) : null}
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-1 pt-0.5">
           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
             data-testid={`${testPrefix}-add-${idx}`}>
@@ -855,6 +1049,16 @@ function HotelMiniCard({
             💬 Ask expert
           </Button>
         </div>
+
+        {/* Cross-sell strip — "Getting there" label for hotel transport services */}
+        <CrossSellStrip
+          placeType="hotel"
+          neighborhood={item.neighborhood}
+          cityName={cityName}
+          sourceContentId={item.id ?? displayName}
+          sourceContentType="hotel"
+          labelOverride="Getting there"
+        />
       </div>
     </div>
   );
@@ -1129,6 +1333,7 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`gem-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
               />
             ))}
             {cardActivities.map((act, idx) => (
@@ -1139,6 +1344,7 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`act-card-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
               />
             ))}
             {hotels.map((hotel, idx) => (
@@ -1149,6 +1355,7 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`hotel-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
               />
             ))}
             {services.map((svc, idx) => (
@@ -1174,6 +1381,8 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`activity-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
+                neighborhood={neighborhood.slug}
               />
             ))}
           </div>

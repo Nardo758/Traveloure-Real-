@@ -7292,6 +7292,33 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
     }
   });
 
+  // ─── Cross-sell Click Events ─────────────────────────────────────────────────
+  // POST /api/cross-sell-events
+  // Tracks clicks on cross-sell service chips. Lightweight write — persistence
+  // and analytics aggregation are handled by the "Cross-sell conversion tracking"
+  // downstream task. This endpoint simply validates and acknowledges.
+
+  const crossSellEventSchema = z.object({
+    sourceContentId: z.string().min(1),
+    sourceContentType: z.string().min(1),
+    targetServiceId: z.string().min(1),
+    eventType: z.enum(["click"]),
+  });
+
+  router.post("/api/cross-sell-events", async (req, res) => {
+    try {
+      const parsed = crossSellEventSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten().fieldErrors });
+      }
+      // Lightweight acknowledgement — downstream conversion tracking task handles DB persistence.
+      res.status(201).json({ ok: true, received: parsed.data });
+    } catch (err: any) {
+      console.error("[cross-sell-events] error:", err.message);
+      res.status(500).json({ ok: false });
+    }
+  });
+
   // ─── Content-to-Supply Matching ─────────────────────────────────────────────
   // GET /api/content-match?type=restaurant&neighborhood=arashiyama&city=Kyoto&limit=3
   // Returns matched provider services and experts for a given content context.
