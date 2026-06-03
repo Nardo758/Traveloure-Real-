@@ -1190,6 +1190,48 @@ export default function DiscoverLocationPage() {
   const activities: any[] = data?.recommendations?.data?.activities ?? [];
   const events: any[] = data?.events?.data?.events ?? [];
 
+  const feedItems: FeedItem[] = [
+    ...hiddenGems.map((g) => ({
+      id: g.id,
+      name: g.placeName,
+      type: "hidden-gem",
+      placeType: g.placeType,
+      neighborhood: g.neighborhood,
+      imageUrl: g.imageUrl,
+      description: g.whyHidden,
+      rating: g.localRating,
+      bookingUrl: null,
+      source: "gem" as const,
+    })),
+    ...hotels.slice(0, 8).map((h: any, idx: number) => ({
+      id: h.id || `hotel-${idx}`,
+      name: h.name,
+      type: "hotel",
+      placeType: "hotel",
+      neighborhood: h.neighborhood || null,
+      imageUrl: h.media?.[0]?.url || null,
+      description: h.address,
+      rating: h.starRating,
+      starRating: h.starRating,
+      bookingUrl: h.bookingUrl || null,
+      price: h.price,
+      source: "hotel" as const,
+    })),
+    ...activities.slice(0, 8).map((a: any, idx: number) => ({
+      id: a.id || `activity-${idx}`,
+      name: a.title,
+      type: "activity",
+      placeType: a.type || "activity",
+      neighborhood: a.neighborhood || null,
+      imageUrl: a.media?.[0]?.url || null,
+      description: a.description,
+      rating: a.rating,
+      bookingUrl: a.bookingUrl || null,
+      price: a.price,
+      source: "activity" as const,
+    })),
+  ];
+
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
 
   if (!city) {
