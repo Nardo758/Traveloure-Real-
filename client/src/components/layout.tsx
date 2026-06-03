@@ -371,7 +371,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden border-t border-border bg-background"
+              className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
             >
               {/* Mobile Nav - Same for all users */}
               <div className="pt-2 pb-3 space-y-1 px-4">
