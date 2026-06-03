@@ -427,9 +427,45 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const input = insertServiceTemplateSchema.parse(req.body);
-      const template = await storage.createServiceTemplate(input);
-      res.status(201).json(template);
+      const { title, description, suggestedPrice, sortOrder } = req.body;
+      if (!title) {
+        return res.status(400).json({ message: "title is required" });
+      }
+      // Resolve (or create) the canonical Itinerary Planning category
+      let categoryRow = await db.select({ id: expertServiceCategories.id })
+        .from(expertServiceCategories)
+        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
+        .then(r => r[0]);
+      if (!categoryRow) {
+        const [inserted] = await db.insert(expertServiceCategories)
+          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
+          .returning({ id: expertServiceCategories.id });
+        categoryRow = inserted;
+      }
+      const [esoRow] = await db.insert(expertServiceOfferings).values({
+        categoryId:  categoryRow.id,
+        name:        title,
+        description: description ?? null,
+        price:       suggestedPrice ?? "0",
+        isDefault:   true,
+        sortOrder:   sortOrder ?? 0,
+      }).returning();
+      // Return ServiceTemplate-compatible shape so existing admin UIs don't break
+      res.status(201).json({
+        id:               esoRow.id,
+        title:            esoRow.name,
+        description:      esoRow.description,
+        categoryId:       null,
+        serviceType:      null,
+        deliveryMethod:   null,
+        deliveryTimeframe: null,
+        suggestedPrice:   esoRow.price,
+        requirements:     null,
+        whatIncluded:     null,
+        isActive:         esoRow.isDefault ?? true,
+        sortOrder:        esoRow.sortOrder,
+        createdAt:        esoRow.createdAt,
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -703,6 +739,43 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
       }
 
       const approved = await storage.approveExpertCustomService(req.params.id, adminId);
+
+      // Promote approved service to ESO (canonical catalog) if not already there
+      try {
+        const existing = await db.select({ id: expertServiceOfferings.id })
+          .from(expertServiceOfferings)
+          .where(eq(expertServiceOfferings.externalId, service.id))
+          .then(r => r[0]);
+        if (!existing) {
+          let categoryRow = await db.select({ id: expertServiceCategories.id })
+            .from(expertServiceCategories)
+            .where(eq(expertServiceCategories.name, "Itinerary Planning"))
+            .then(r => r[0]);
+          if (!categoryRow) {
+            const [ins] = await db.insert(expertServiceCategories)
+              .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
+              .returning({ id: expertServiceCategories.id });
+            categoryRow = ins;
+          }
+          const catId = (service as any).existingCategoryId ?? categoryRow.id;
+          await db.insert(expertServiceOfferings).values({
+            categoryId:   catId,
+            name:         service.title,
+            description:  service.description ?? null,
+            price:        service.price,
+            isDefault:    false,
+            sortOrder:    400,
+            expertId:     service.expertId,
+            externalId:   service.id,
+            status:       "approved",
+            reviewedAt:   new Date(),
+            reviewedBy:   adminId,
+          });
+        }
+      } catch (esoErr) {
+        console.warn("[ESO] Failed to promote approved custom service to ESO (non-fatal):", esoErr);
+      }
+
       res.json(approved);
     } catch (err) {
       console.error("Error approving custom service:", err);

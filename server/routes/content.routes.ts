@@ -1480,58 +1480,50 @@ router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
   // Get current user's wallet
 
 router.get("/api/service-templates", async (_req, res) => {
-    const CANONICAL_NAMES = [
-      "Quick Consultation",
-      "Cart Review & Optimization",
-      "Full Trip Planning",
-      "Destination Deep Dive",
-      "Honeymoon Planning Package",
-      "Group Trip Coordinator",
-    ];
-    const rows = await db.select({
-      id:           expertServiceOfferings.id,
-      name:         expertServiceOfferings.name,
-      description:  expertServiceOfferings.description,
-      price:        expertServiceOfferings.price,
-      isDefault:    expertServiceOfferings.isDefault,
-      sortOrder:    expertServiceOfferings.sortOrder,
-      createdAt:    expertServiceOfferings.createdAt,
-      categoryName: expertServiceCategories.name,
-    })
-    .from(expertServiceOfferings)
-    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
-    .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
-    .orderBy(expertServiceOfferings.sortOrder);
+    try {
+      const rows = await db.select({
+        id:           expertServiceOfferings.id,
+        name:         expertServiceOfferings.name,
+        description:  expertServiceOfferings.description,
+        price:        expertServiceOfferings.price,
+        isDefault:    expertServiceOfferings.isDefault,
+        sortOrder:    expertServiceOfferings.sortOrder,
+        createdAt:    expertServiceOfferings.createdAt,
+        categoryName: expertServiceCategories.name,
+      })
+      .from(expertServiceOfferings)
+      .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
+      .where(eq(expertServiceOfferings.isDefault, true))
+      .orderBy(expertServiceOfferings.sortOrder);
 
-    const esoTemplates = rows.map(o => ({
-      id:               o.id,
-      title:            o.name,
-      description:      o.description,
-      categoryId:       null,   // expertServiceCategories ≠ serviceCategories
-      serviceType:      null,
-      deliveryMethod:   null,
-      deliveryTimeframe: null,
-      suggestedPrice:   o.price,
-      requirements:     null,
-      whatIncluded:     null,
-      isActive:         o.isDefault ?? true,
-      sortOrder:        o.sortOrder,
-      createdAt:        o.createdAt,
-      category:         o.categoryName,
-    }));
+      const esoTemplates = rows.map(o => ({
+        id:               o.id,
+        title:            o.name,
+        description:      o.description,
+        categoryId:       null,
+        serviceType:      null,
+        deliveryMethod:   null,
+        deliveryTimeframe: null,
+        suggestedPrice:   o.price,
+        requirements:     null,
+        whatIncluded:     null,
+        isActive:         o.isDefault ?? true,
+        sortOrder:        o.sortOrder,
+        createdAt:        o.createdAt,
+        category:         o.categoryName,
+      }));
 
-    // If expert_service_offerings doesn't yet have all six (partial seed or clean DB),
-    // supplement with service_templates rows so the UI always shows the full set.
-    const missingNames = CANONICAL_NAMES.filter(n => !rows.some(r => r.name === n));
-    if (missingNames.length > 0) {
-      const stRows = await storage.getServiceTemplates();
-      const stFill = stRows
-        .filter((t: any) => missingNames.includes(t.title))
-        .map((t: any) => ({ ...t, suggestedPrice: t.suggestedPrice ?? t.price }));
-      return res.json([...esoTemplates, ...stFill]
-        .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)));
+      // If ESO has no isDefault=true rows yet (clean DB / partial seed),
+      // fall back to legacy service_templates so the UI always shows templates.
+      if (esoTemplates.length === 0) {
+        const stRows = await storage.getServiceTemplates();
+        return res.json(stRows.map((t: any) => ({ ...t, suggestedPrice: t.suggestedPrice ?? t.price })));
+      }
+
+      res.json(esoTemplates);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch service templates" });
     }
-    res.json(esoTemplates);
   });
 
   // Get single template — tries expert_service_offerings first, falls back to service_templates

@@ -3,6 +3,8 @@ import crypto from "crypto";
 import { createServer, request as httpRequest } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { runMigrations } from "./migrations/run-migrations";
+import { runEsoBackfill } from "./migrations/run-eso-backfill";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
@@ -107,6 +109,20 @@ app.get("/api/ready", (_req: Request, res: Response) => {
 async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
   logger.info("Database seeding started");
+
+  // Apply SQL schema migrations first (idempotent, safe to re-run).
+  // Fail-fast: if migrations fail, ESO columns may be missing and all ESO writes/reads
+  // will produce runtime errors. Throw so the server does not start in a broken state.
+  await runMigrations();
+
+  // Run ESO backfill: migrates legacy service_templates + approved expert_custom_services
+  // into expert_service_offerings as the canonical service catalog.
+  // Uses externalId for deterministic deduplication (safe to re-run).
+  try {
+    await runEsoBackfill();
+  } catch (err) {
+    logger.warn({ err }, "ESO backfill failed (non-fatal)");
+  }
 
   try {
     const result = await seedCategories();

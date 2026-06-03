@@ -760,8 +760,42 @@ router.delete("/api/expert/specializations/:specialization", isAuthenticated, as
 
 router.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const services = await storage.getExpertCustomServices(userId);
-    res.json(services);
+
+    // ESO-first: expert_service_offerings where expertId matches
+    const esoRows = await db.select().from(expertServiceOfferings)
+      .where(eq(expertServiceOfferings.expertId, userId));
+    const esoExternalIds = new Set(esoRows.map(r => r.externalId).filter(Boolean));
+
+    // Legacy fallback: rows in expert_custom_services not already covered by ESO
+    const legacyRows = await storage.getExpertCustomServices(userId);
+    const legacyOnly = legacyRows.filter((r: any) => !esoExternalIds.has(r.id));
+
+    const esoShaped = esoRows.map((eso: any) => ({
+      id:                 eso.id,
+      expertId:           eso.expertId,
+      title:              eso.name,
+      description:        eso.description,
+      categoryName:       eso.categoryName,
+      existingCategoryId: eso.categoryId,
+      price:              eso.price,
+      duration:           eso.duration,
+      deliverables:       eso.deliverables,
+      cancellationPolicy: eso.cancellationPolicy,
+      leadTime:           eso.leadTime,
+      imageUrl:           eso.imageUrl,
+      galleryImages:      eso.galleryImages,
+      experienceTypes:    eso.experienceTypes,
+      isActive:           eso.isActive,
+      status:             eso.status ?? "draft",
+      submittedAt:        eso.submittedAt,
+      reviewedAt:         eso.reviewedAt,
+      reviewedBy:         eso.reviewedBy,
+      rejectionReason:    eso.rejectionReason,
+      createdAt:          eso.createdAt,
+      updatedAt:          eso.updatedAt,
+    }));
+
+    res.json([...esoShaped, ...legacyOnly]);
   });
 
   // Get single custom service by ID (authenticated - owner only)
@@ -795,22 +829,68 @@ router.post("/api/expert/custom-services", isAuthenticated, async (req, res) => 
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      const service = await storage.createExpertCustomService(userId, {
-        title,
-        description,
-        categoryName,
-        existingCategoryId,
-        price: price.toString(),
-        duration,
-        deliverables,
-        cancellationPolicy,
-        leadTime,
-        imageUrl,
-        galleryImages,
-        experienceTypes,
-        isActive: false,
+      // Resolve category: use existingCategoryId or fall back to "Itinerary Planning"
+      let categoryId = existingCategoryId;
+      if (!categoryId) {
+        const catRow = await db.select({ id: expertServiceCategories.id })
+          .from(expertServiceCategories)
+          .where(eq(expertServiceCategories.name, "Itinerary Planning"))
+          .then(r => r[0]);
+        if (catRow) {
+          categoryId = catRow.id;
+        } else {
+          const [ins] = await db.insert(expertServiceCategories)
+            .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
+            .returning({ id: expertServiceCategories.id });
+          categoryId = ins.id;
+        }
+      }
+
+      const [eso] = await db.insert(expertServiceOfferings).values({
+        categoryId,
+        name:               title,
+        description:        description ?? null,
+        price:              price.toString(),
+        isDefault:          false,
+        sortOrder:          400,
+        expertId:           userId,
+        categoryName:       categoryName ?? null,
+        duration:           duration ?? null,
+        deliverables:       deliverables ?? [],
+        cancellationPolicy: cancellationPolicy ?? null,
+        leadTime:           leadTime ?? null,
+        imageUrl:           imageUrl ?? null,
+        galleryImages:      galleryImages ?? [],
+        experienceTypes:    experienceTypes ?? [],
+        isActive:           isActive !== false,
+        status:             "draft",
+      }).returning();
+
+      // Return in the same shape as ExpertCustomService so existing UIs don't break
+      res.status(201).json({
+        id:                 eso.id,
+        expertId:           eso.expertId,
+        title:              eso.name,
+        description:        eso.description,
+        categoryName:       eso.categoryName,
+        existingCategoryId: eso.categoryId,
+        price:              eso.price,
+        duration:           eso.duration,
+        deliverables:       eso.deliverables,
+        cancellationPolicy: eso.cancellationPolicy,
+        leadTime:           eso.leadTime,
+        imageUrl:           eso.imageUrl,
+        galleryImages:      eso.galleryImages,
+        experienceTypes:    eso.experienceTypes,
+        isActive:           eso.isActive,
+        status:             eso.status,
+        submittedAt:        eso.submittedAt,
+        reviewedAt:         eso.reviewedAt,
+        reviewedBy:         eso.reviewedBy,
+        rejectionReason:    eso.rejectionReason,
+        createdAt:          eso.createdAt,
+        updatedAt:          eso.updatedAt,
       });
-      res.status(201).json(service);
     } catch (err) {
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
