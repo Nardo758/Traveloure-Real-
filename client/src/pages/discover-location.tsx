@@ -1188,10 +1188,11 @@ export default function DiscoverLocationPage() {
   const neighborhoods: Neighborhood[] = data?.neighborhoods?.data ?? [];
   const hotels: any[] = data?.recommendations?.data?.hotels ?? [];
   const activities: any[] = data?.recommendations?.data?.activities ?? [];
+  const experts: any[] = data?.recommendations?.data?.experts ?? [];
   const events: any[] = data?.events?.data?.events ?? [];
 
   const feedItems: FeedItem[] = [
-    ...hiddenGems.map((g) => ({
+    ...hiddenGems.map((g, idx) => ({
       id: g.id,
       name: g.placeName,
       type: "hidden-gem",
@@ -1202,6 +1203,7 @@ export default function DiscoverLocationPage() {
       rating: g.localRating,
       bookingUrl: null,
       source: "gem" as const,
+      sourceIdx: idx,
     })),
     ...hotels.slice(0, 8).map((h: any, idx: number) => ({
       id: h.id || `hotel-${idx}`,
@@ -1216,6 +1218,7 @@ export default function DiscoverLocationPage() {
       bookingUrl: h.bookingUrl || null,
       price: h.price,
       source: "hotel" as const,
+      sourceIdx: idx,
     })),
     ...activities.slice(0, 8).map((a: any, idx: number) => ({
       id: a.id || `activity-${idx}`,
@@ -1229,6 +1232,21 @@ export default function DiscoverLocationPage() {
       bookingUrl: a.bookingUrl || null,
       price: a.price,
       source: "activity" as const,
+      sourceIdx: idx,
+    })),
+    ...events.slice(0, 8).map((e: any, idx: number) => ({
+      id: e.id || `event-${idx}`,
+      name: e.title || e.name,
+      type: "event",
+      placeType: "event",
+      neighborhood: e.neighborhood || null,
+      imageUrl: e.imageUrl || e.media?.[0]?.url || null,
+      description: e.description,
+      rating: null,
+      bookingUrl: e.bookingUrl || e.ticketUrl || null,
+      price: e.price,
+      source: "event" as const,
+      sourceIdx: idx,
     })),
   ];
 
@@ -1374,6 +1392,7 @@ export default function DiscoverLocationPage() {
                 activities={activities}
                 cityName={city}
                 activeFilter={activeFilter}
+                experts={experts}
                 onAdd={openAdd}
               />
             </section>
