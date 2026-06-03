@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, setupFacebookAuth, setupEmailAuth, isAuthenticated } from "./replit_integrations/auth";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { db } from "./db";
 import { eq, and, inArray, sql } from "drizzle-orm";
@@ -13,6 +13,7 @@ import expertsRouter from "./routes/experts.routes";
 import adminRouter from "./routes/admin.routes";
 import paymentsRouter from "./routes/payments.routes";
 import contentRouter, { registerDiscoveryRoutes } from "./routes/content.routes";
+import savedItemsRouter from "./routes/saved-items.routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -133,8 +134,11 @@ export async function registerRoutes(
   // payments: stripe, credits, wallet
   app.use(paymentsRouter);
 
+  // saved items (wishlist)
+  app.use(savedItemsRouter);
+
   // AI Discovery routes (uses dynamic import internally)
-  await registerDiscoveryRoutes();
+  await registerDiscoveryRoutes(app);
 
   return httpServer;
 }
