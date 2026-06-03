@@ -1,10 +1,20 @@
 /**
- * Stripe Service
+ * Stripe Service — Transport Booking Checkout & Webhook Utilities
  *
- * Handles Stripe payment processing for platform transport bookings
- * - Creating checkout sessions
- * - Handling payment confirmations
- * - Managing booking completion
+ * OWNERSHIP: This service is the canonical owner of Stripe Checkout Sessions for
+ * platform-managed transport bookings (booking type "platform" in transportBookingOptions).
+ * It creates checkout sessions, retrieves session details, confirms transport bookings on
+ * payment success, and verifies incoming Stripe webhook signatures. It also exports the
+ * shared `getBaseUrl()` helper used across Stripe services for constructing redirect URLs.
+ *
+ * DOES NOT OWN: PaymentIntents (owned by stripe-payment.service.ts), Checkout Sessions for
+ * expert services or cart bookings (owned by stripe-payment.service.ts), Connect accounts or
+ * transfers to experts/providers (owned by stripe-connect.service.ts).
+ *
+ * Stripe API calls made here:
+ *   - stripe.checkout.sessions.create    — transport booking checkout
+ *   - stripe.checkout.sessions.retrieve  — payment confirmation + session status
+ *   - stripe.webhooks.constructEvent     — webhook signature verification
  */
 
 import Stripe from "stripe";
