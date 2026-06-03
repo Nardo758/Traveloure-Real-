@@ -404,9 +404,10 @@ function Router() {
         {() => <ProtectedRoute component={ExpertAIAssistant} requiredRole="expert" />}
       </Route>
       {/* /expert/messages consolidated into /chat (ChatWithRoleLayout already applies
-          ExpertLayout when user role is expert). Deep-link clientId forwarded as query param. */}
+          ExpertLayout when user role is expert). Deep-link clientId forwarded as ?clientId=
+          so chat.tsx pre-populates the search box with the client's name. */}
       <Route path="/expert/messages/:clientId">
-        {(params: any) => <Redirect to={`/chat?client=${params.clientId}`} />}
+        {(params: any) => <Redirect to={`/chat?clientId=${params.clientId}`} />}
       </Route>
       <Route path="/expert/messages">
         <Redirect to="/chat" />
@@ -535,7 +536,11 @@ function Router() {
         {() => <ProtectedRoute component={ProviderBookings} requiredRole="provider" />}
       </Route>
       {/* /provider/messages consolidated into /chat (ChatWithRoleLayout applies ProviderLayout
-          when user role is service_provider). */}
+          when user role is service_provider). Deep-link clientId forwarded as ?clientId=
+          so chat.tsx pre-populates the search box with the client's name. */}
+      <Route path="/provider/messages/:clientId">
+        {(params: any) => <Redirect to={`/chat?clientId=${params.clientId}`} />}
+      </Route>
       <Route path="/provider/messages">
         <Redirect to="/chat" />
       </Route>
