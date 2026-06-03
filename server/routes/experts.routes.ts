@@ -2139,7 +2139,7 @@ router.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
         });
       }
 
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       const recommendations = await serviceRecommendationEngine.getExpertRecommendations(userId, cities, limit);
       
       res.json({ recommendations });
@@ -2168,7 +2168,7 @@ router.get("/api/recommendations/provider", isAuthenticated, async (req, res) =>
         });
       }
 
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       const recommendations = await serviceRecommendationEngine.getProviderRecommendations(userId, location, limit);
       
       res.json({ recommendations, location });
@@ -2189,7 +2189,7 @@ router.get("/api/recommendations/user", async (req, res) => {
       const userId = (req.user as any)?.claims?.sub || "anonymous";
       
       // If no city provided, return trending destinations as recommendations
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       
       if (!city) {
         // Return general trending recommendations without city filter
@@ -2217,7 +2217,7 @@ router.get("/api/recommendations/market-intelligence/:city", async (req, res) =>
     try {
       const { city } = req.params;
       
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       const intelligence = await serviceRecommendationEngine.getMarketIntelligence(city);
       
       res.json(intelligence);
@@ -2234,7 +2234,7 @@ router.get("/api/recommendations/seasonal/:city", async (req, res) => {
       const { city } = req.params;
       const month = req.query.month ? parseInt(req.query.month as string) : undefined;
       
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       const opportunities = await serviceRecommendationEngine.getSeasonalOpportunities(city, month);
       
       res.json({ opportunities, city, month: month || new Date().getMonth() + 1 });
@@ -2251,7 +2251,7 @@ router.post("/api/recommendations/refresh/:city", isAuthenticated, async (req, r
       const { city } = req.params;
       const country = req.query.country as string;
       
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       const count = await serviceRecommendationEngine.refreshDemandSignalsForCity(city);
       
       res.json({ message: `Generated ${count} demand signals for ${city}`, count });
@@ -2282,7 +2282,7 @@ router.post("/api/recommendations/:id/convert", isAuthenticated, async (req, res
       
       const { conversionType, resultId, revenueGenerated } = validatedBody.data;
       
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       await serviceRecommendationEngine.recordConversion(id, userId, conversionType, resultId, revenueGenerated);
       
       res.json({ message: "Conversion recorded" });
@@ -2298,7 +2298,7 @@ router.post("/api/recommendations/:id/dismiss", isAuthenticated, async (req, res
     try {
       const { id } = req.params;
       
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       await serviceRecommendationEngine.dismissRecommendation(id);
       
       res.json({ message: "Recommendation dismissed" });

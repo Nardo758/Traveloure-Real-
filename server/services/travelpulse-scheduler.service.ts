@@ -1,5 +1,5 @@
 import { travelPulseService } from "./travelpulse.service";
-import { serviceRecommendationEngine } from "./service-recommendation-engine.service";
+import { serviceRecommendationEngine } from "./recommendation.service";
 
 const DAILY_REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const INITIAL_DELAY = 5 * 60 * 1000; // 5 minutes after server start

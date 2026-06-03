@@ -147,7 +147,7 @@ class LocationViewService {
       if (!countryForCall) {
         throw new Error("country unknown — pass ?country= to fetch AI recommendations");
       }
-      const { aiRecommendationEngineService } = await import("./ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("./recommendation.service");
       return aiRecommendationEngineService.getAIEnhancedRecommendations(
         { cityName, country: countryForCall },
         limit,
