@@ -649,7 +649,13 @@ function NeighborhoodContainer({
     expertFirstName && `${expertFirstName} covers it`,
   ].filter(Boolean) as string[];
 
-  const hasGridContent = gems.length > 0 || hotels.length > 0 || services.length > 0;
+  // Split activities: card-worthy (has image/booking/price) go in 2-col grid;
+  // pure text suggestions stay as ActivityRow rows below.
+  const isCardWorthy = (a: any) => !!(a.imageUrl ?? a.media?.[0]?.url) || !!a.bookingUrl || !!a.price;
+  const cardActivities = activities.filter(isCardWorthy);
+  const textActivities = activities.filter(a => !isCardWorthy(a));
+
+  const hasGridContent = gems.length > 0 || hotels.length > 0 || services.length > 0 || cardActivities.length > 0;
 
   return (
     <div
@@ -707,7 +713,7 @@ function NeighborhoodContainer({
           IN {neighborhood.name.toUpperCase()}
         </p>
 
-        {/* Unified 2-col grid: gems + hotel mini cards + service mini cards */}
+        {/* Unified 2-col grid: gems + card-worthy activities + hotel mini cards + service mini cards */}
         {hasGridContent && (
           <div className="grid grid-cols-2 gap-3">
             {gems.map((gem, idx) => (
@@ -717,6 +723,15 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`gem-${neighborhood.slug}`}
+              />
+            ))}
+            {cardActivities.map((act, idx) => (
+              <GemCard
+                key={act.id ?? `ca-${idx}`}
+                item={act}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`act-card-${neighborhood.slug}`}
               />
             ))}
             {hotels.map((hotel, idx) => (
@@ -740,10 +755,10 @@ function NeighborhoodContainer({
           </div>
         )}
 
-        {/* AI text activities — below the grid (text-only, no image/booking URL) */}
-        {activities.length > 0 && (
+        {/* Pure text-only AI activities — below the grid (no image, no booking URL, no price) */}
+        {textActivities.length > 0 && (
           <div className={`rounded-xl border bg-card px-4 py-2${hasGridContent ? " mt-3" : ""}`}>
-            {activities.map((act, idx) => (
+            {textActivities.map((act, idx) => (
               <ActivityRow
                 key={act.id ?? idx}
                 item={act}
@@ -1068,36 +1083,40 @@ function AllGemsFeed({
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          {/* 2-col grid: gems + hotel mini cards + service mini cards */}
-          {(elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereServices.length > 0) && (
-            <div className="grid grid-cols-2 gap-3">
-              {elsewhereGems.map((gem, idx) => (
-                <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
-              ))}
-              {elsewhereHotels.map((hotel, idx) => (
-                <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
-              ))}
-              {elsewhereServices.map((svc, idx) => (
-                <ServiceMiniCard key={svc.id ?? idx} svc={svc} idx={idx} onAdd={onAdd} testPrefix="elsewhere-svc" />
-              ))}
-            </div>
-          )}
-
-          {/* AI text activities — below the grid */}
-          {elsewhereActivities.length > 0 && (
-            <div className={`rounded-xl border bg-card px-4 py-2${(elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereServices.length > 0) ? " mt-3" : ""}`}>
-              {elsewhereActivities.map((act, idx) => (
-                <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
-              ))}
-            </div>
-          )}
-
-          {/* Expert CTA at bottom of elsewhere */}
-          {experts.length > 0 && (
-            <div className="mt-3">
-              <ExpertFeedCard expert={experts[0]} cityName={cityName} />
-            </div>
-          )}
+          {/* 2-col grid: gems + card-worthy activities + hotel mini cards + service mini cards */}
+          {(() => {
+            const elsewhereCardActs = elsewhereActivities.filter(a => !!(a.imageUrl ?? a.media?.[0]?.url) || !!a.bookingUrl || !!a.price);
+            const elsewhereTextActs = elsewhereActivities.filter(a => !(a.imageUrl ?? a.media?.[0]?.url) && !a.bookingUrl && !a.price);
+            const hasElsewhereGrid = elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereServices.length > 0 || elsewhereCardActs.length > 0;
+            return (
+              <>
+                {hasElsewhereGrid && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {elsewhereGems.map((gem, idx) => (
+                      <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
+                    ))}
+                    {elsewhereCardActs.map((act, idx) => (
+                      <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act-card" />
+                    ))}
+                    {elsewhereHotels.map((hotel, idx) => (
+                      <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
+                    ))}
+                    {elsewhereServices.map((svc, idx) => (
+                      <ServiceMiniCard key={svc.id ?? idx} svc={svc} idx={idx} onAdd={onAdd} testPrefix="elsewhere-svc" />
+                    ))}
+                  </div>
+                )}
+                {/* Pure text-only activities — ActivityRow rows below grid */}
+                {elsewhereTextActs.length > 0 && (
+                  <div className={`rounded-xl border bg-card px-4 py-2${hasElsewhereGrid ? " mt-3" : ""}`}>
+                    {elsewhereTextActs.map((act, idx) => (
+                      <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
