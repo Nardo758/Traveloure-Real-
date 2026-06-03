@@ -42,8 +42,9 @@ import {
   ExternalLink, Star, Clock, Wallet, Lightbulb, Shield, Sun, Heart,
   CalendarX, AlertCircle, Activity, Users, Gem, ChevronRight, ChevronDown,
   Plus, Loader2, Package, Compass, Zap, Utensils, Hotel, Ticket, UserCheck,
-  BookOpen, Send, X as XIcon, Calendar,
+  BookOpen, Send, X as XIcon, Calendar, List, Map as MapIcon,
 } from "lucide-react";
+import { APIProvider, Map as GMap, Marker, InfoWindow } from "@vis.gl/react-google-maps";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1816,6 +1817,339 @@ function AllGemsFeed({
   );
 }
 
+// ─── Location Feed Map ────────────────────────────────────────────────────────
+
+type ViewMode = "list" | "map";
+
+interface MapItem {
+  id: string;
+  name: string;
+  category: "gem" | "hotel" | "activity" | "service";
+  placeType?: string | null;
+  lat: number;
+  lng: number;
+  price?: string | null;
+  imageUrl?: string | null;
+  bookingUrl?: string | null;
+}
+
+function extractLatLng(item: any): { lat: number; lng: number } | null {
+  if (typeof item.lat === "number" && typeof item.lng === "number") return { lat: item.lat, lng: item.lng };
+  if (item.geoCode?.latitude != null && item.geoCode?.longitude != null)
+    return { lat: Number(item.geoCode.latitude), lng: Number(item.geoCode.longitude) };
+  if (typeof item.latitude === "number" && typeof item.longitude === "number")
+    return { lat: item.latitude, lng: item.longitude };
+  return null;
+}
+
+const PIN_COLORS: Record<MapItem["category"], string> = {
+  gem: "#22C55E",
+  hotel: "#3B82F6",
+  activity: "#F59E0B",
+  service: "#8B5CF6",
+};
+
+function makePinSvg(color: string): string {
+  return (
+    "data:image/svg+xml," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${color}" stroke="white" stroke-width="2"/><circle cx="14" cy="14" r="5" fill="white"/></svg>`
+    )
+  );
+}
+
+function LocationFeedMapContent({
+  items,
+  cityCenter,
+  onAdd,
+  onRequestBooking,
+}: {
+  items: MapItem[];
+  cityCenter: { lat: number; lng: number };
+  onAdd: (t: AddDialogTarget) => void;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
+}) {
+  const [selected, setSelected] = useState<MapItem | null>(null);
+
+  return (
+    <GMap
+      defaultCenter={cityCenter}
+      defaultZoom={13}
+      gestureHandling="greedy"
+      disableDefaultUI={false}
+      zoomControl={true}
+      fullscreenControl={true}
+      mapTypeControl={false}
+      streetViewControl={false}
+      className="w-full h-full"
+      style={{ width: "100%", height: "100%" }}
+    >
+      {items.map((item) => (
+        <Marker
+          key={`${item.category}-${item.id}`}
+          position={{ lat: item.lat, lng: item.lng }}
+          onClick={() => setSelected(item)}
+          icon={{ url: makePinSvg(PIN_COLORS[item.category]) } as any}
+        />
+      ))}
+
+      {selected && (
+        <InfoWindow
+          position={{ lat: selected.lat, lng: selected.lng }}
+          onCloseClick={() => setSelected(null)}
+        >
+          <div className="p-1 max-w-[220px] font-sans">
+            <div className="flex items-start gap-1.5 mb-1.5">
+              <span className="font-semibold text-[13px] leading-tight flex-1">{selected.name}</span>
+              <span
+                className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 flex-shrink-0 text-white"
+                style={{ backgroundColor: PIN_COLORS[selected.category] }}
+              >
+                {selected.category === "gem" ? "GEM" :
+                 selected.category === "hotel" ? "STAY" :
+                 selected.category === "activity" ? "DO" : "SERVICE"}
+              </span>
+            </div>
+            {selected.placeType && (
+              <p className="text-[11px] text-gray-500 mb-1 capitalize">{selected.placeType.replace(/_/g, " ")}</p>
+            )}
+            {selected.price && (
+              <p className="text-[11px] font-medium text-gray-700 mb-2">{selected.price}</p>
+            )}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                className="text-[11px] font-medium px-2 py-1 rounded bg-primary text-white hover:bg-primary/90 transition-colors"
+                onClick={() => {
+                  setSelected(null);
+                  onAdd({ name: selected.name, type: selected.placeType ?? selected.category, imageUrl: selected.imageUrl ?? undefined });
+                }}
+                data-testid={`map-pin-add-${selected.id}`}
+              >
+                + Add to trip
+              </button>
+              {selected.bookingUrl && onRequestBooking && (
+                <button
+                  className="text-[11px] font-medium px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    setSelected(null);
+                    onRequestBooking({ name: selected.name, type: selected.placeType ?? selected.category, bookingUrl: selected.bookingUrl! });
+                  }}
+                  data-testid={`map-pin-book-${selected.id}`}
+                >
+                  Book
+                </button>
+              )}
+            </div>
+          </div>
+        </InfoWindow>
+      )}
+    </GMap>
+  );
+}
+
+function LocationFeedMap({
+  gems,
+  hotels,
+  activities,
+  platformServices,
+  cityName,
+  activeFilter,
+  onAdd,
+  onRequestBooking,
+}: {
+  gems: HiddenGem[];
+  hotels: any[];
+  activities: any[];
+  platformServices: PlatformService[];
+  cityName: string;
+  activeFilter: FeedFilter;
+  onAdd: (t: AddDialogTarget) => void;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
+}) {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  const [neighborhoodCoords, setNeighborhoodCoords] = useState<Map<string, { lat: number; lng: number }>>(new Map());
+  const [cityCenter, setCityCenter] = useState<{ lat: number; lng: number } | null>(null);
+
+  const uniqueNeighborhoods = useMemo(() => {
+    const slugs = new Set<string>();
+    gems.forEach(g => { if (g.neighborhood) slugs.add(g.neighborhood); });
+    platformServices.forEach(s => { if (s.neighborhood) slugs.add(s.neighborhood); });
+    return Array.from(slugs);
+  }, [gems, platformServices]);
+
+  useEffect(() => {
+    if (!apiKey || !cityName) return;
+    fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cityName)}&key=${apiKey}`
+    )
+      .then(r => r.json())
+      .then(json => {
+        const loc = json.results?.[0]?.geometry?.location;
+        if (loc) setCityCenter({ lat: loc.lat, lng: loc.lng });
+      })
+      .catch(() => {});
+  }, [cityName, apiKey]);
+
+  useEffect(() => {
+    if (!apiKey || uniqueNeighborhoods.length === 0) return;
+    const unresolved = uniqueNeighborhoods.filter(n => !neighborhoodCoords.has(n));
+    if (unresolved.length === 0) return;
+    Promise.all(
+      unresolved.map(async (neighborhood) => {
+        try {
+          const res = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(neighborhood + ", " + cityName)}&key=${apiKey}`
+          );
+          const json = await res.json();
+          const loc = json.results?.[0]?.geometry?.location;
+          if (loc) return { neighborhood, lat: loc.lat as number, lng: loc.lng as number };
+        } catch {}
+        return null;
+      })
+    ).then(results => {
+      setNeighborhoodCoords(prev => {
+        const next = new Map(prev);
+        results.forEach(r => { if (r) next.set(r.neighborhood, { lat: r.lat, lng: r.lng }); });
+        return next;
+      });
+    });
+  }, [uniqueNeighborhoods.join(","), cityName, apiKey]);
+
+  const mapItems = useMemo((): MapItem[] => {
+    const items: MapItem[] = [];
+
+    const filteredGems = activeFilter === "all" ? gems : gems.filter(g => matchesFilter(g, activeFilter));
+    for (const gem of filteredGems) {
+      const coords = gem.neighborhood ? neighborhoodCoords.get(gem.neighborhood) : null;
+      if (coords) {
+        const jitter = (Math.random() - 0.5) * 0.003;
+        items.push({
+          id: gem.id,
+          name: gem.placeName,
+          category: "gem",
+          placeType: gem.placeType,
+          lat: coords.lat + jitter,
+          lng: coords.lng + jitter,
+          price: gem.priceRange ?? null,
+          imageUrl: gem.imageUrl ?? null,
+        });
+      }
+    }
+
+    const showHotels = activeFilter === "all" || activeFilter === "stay";
+    if (showHotels) {
+      for (const hotel of hotels) {
+        const coords = extractLatLng(hotel);
+        if (coords) {
+          items.push({
+            id: hotel.id ?? hotel.hotelId ?? String(Math.random()),
+            name: hotel.name ?? hotel.placeName ?? "Hotel",
+            category: "hotel",
+            placeType: "hotel",
+            lat: coords.lat,
+            lng: coords.lng,
+            price: hotel.price ?? (hotel.offers?.[0]?.price?.total ? `$${hotel.offers[0].price.total}` : null),
+            imageUrl: hotel.media?.[0]?.url ?? null,
+            bookingUrl: hotel.bookingUrl ?? null,
+          });
+        }
+      }
+    }
+
+    const filteredActivities = activeFilter === "all" ? activities : activities.filter(a => matchesFilter(a, activeFilter));
+    for (const act of filteredActivities) {
+      const coords = extractLatLng(act);
+      if (coords) {
+        items.push({
+          id: act.id ?? String(Math.random()),
+          name: act.placeName ?? act.name ?? act.title ?? "Activity",
+          category: "activity",
+          placeType: act.placeType ?? act.type ?? null,
+          lat: coords.lat,
+          lng: coords.lng,
+          price: act.price ?? null,
+          imageUrl: act.imageUrl ?? act.media?.[0]?.url ?? null,
+          bookingUrl: act.bookingUrl ?? null,
+        });
+      }
+    }
+
+    if (activeFilter === "all" || activeFilter !== "experts") {
+      const filteredServices = platformServices.filter(s => matchesServiceFilter(s, activeFilter));
+      for (const svc of filteredServices) {
+        const coords = svc.neighborhood ? neighborhoodCoords.get(svc.neighborhood) : null;
+        if (coords) {
+          const jitter = (Math.random() - 0.5) * 0.003;
+          items.push({
+            id: svc.id,
+            name: svc.serviceName,
+            category: "service",
+            placeType: svc.serviceType ?? null,
+            lat: coords.lat + jitter,
+            lng: coords.lng + jitter,
+            price: svc.price ?? null,
+            imageUrl: svc.serviceImage ?? null,
+            bookingUrl: `/services/${svc.id}`,
+          });
+        }
+      }
+    }
+
+    return items;
+  }, [gems, hotels, activities, platformServices, activeFilter, neighborhoodCoords]);
+
+  if (!apiKey) {
+    return (
+      <div className="flex items-center justify-center bg-muted rounded-xl h-[60vh]">
+        <div className="text-center p-6">
+          <MapPin className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+          <p className="font-medium">Map unavailable</p>
+          <p className="text-sm text-muted-foreground">Google Maps API key not configured</p>
+        </div>
+      </div>
+    );
+  }
+
+  const center = cityCenter ?? { lat: 35.6762, lng: 139.6503 };
+
+  return (
+    <div className="relative rounded-xl overflow-hidden border h-[60vh] md:h-[calc(100vh-180px)]" data-testid="location-feed-map">
+      <APIProvider apiKey={apiKey}>
+        <LocationFeedMapContent
+          items={mapItems}
+          cityCenter={center}
+          onAdd={onAdd}
+          onRequestBooking={onRequestBooking}
+        />
+      </APIProvider>
+      <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-lg shadow px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5">
+          <MapPin className="h-3 w-3 text-muted-foreground" />
+          {mapItems.length} place{mapItems.length !== 1 ? "s" : ""}
+        </div>
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-lg shadow px-2 py-1.5 flex flex-wrap gap-1.5">
+          {(["gem", "hotel", "activity", "service"] as MapItem["category"][]).map(cat => {
+            const count = mapItems.filter(i => i.category === cat).length;
+            if (count === 0) return null;
+            return (
+              <span key={cat} className="text-[10px] font-semibold flex items-center gap-0.5">
+                <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: PIN_COLORS[cat] }} />
+                {count} {cat === "gem" ? "gems" : cat === "hotel" ? "stays" : cat === "activity" ? "activities" : "services"}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      {!cityCenter && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur rounded-lg shadow px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading map…
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Active Explore Spine ─────────────────────────────────────────────────────
 
 const SPINE_FILTERS: {
@@ -1833,47 +2167,79 @@ const SPINE_FILTERS: {
 ];
 
 function ExploreSpine({
-  active, onChange, counts,
+  active, onChange, counts, viewMode, onViewModeChange,
 }: {
   active: FeedFilter;
   onChange: (f: FeedFilter) => void;
   counts?: Partial<Record<FeedFilter, number>>;
+  viewMode: ViewMode;
+  onViewModeChange: (m: ViewMode) => void;
 }) {
   return (
     <nav
       className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-background/95 backdrop-blur border-b"
       data-testid="explore-spine"
     >
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {SPINE_FILTERS.map(({ label, value, Icon }) => {
-          const count = value !== "all" ? (counts?.[value] ?? 0) : null;
-          const isActive = active === value;
-          return (
-            <button
-              key={value}
-              onClick={() => onChange(value)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border
-                ${isActive
-                  ? "bg-primary text-white border-primary"
-                  : "bg-background text-foreground border-border hover:bg-muted"
-                }`}
-              data-testid={`spine-chip-${value}`}
-            >
-              <Icon className="h-3 w-3" />
-              {label}
-              {count !== null && count > 0 && (
-                <span
-                  className={`text-[10px] font-semibold rounded-full px-1.5 min-w-[16px] text-center leading-4 ${
-                    isActive ? "bg-white/25 text-white" : "bg-muted text-muted-foreground"
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex gap-2 overflow-x-auto pb-1 min-w-0">
+          {SPINE_FILTERS.map(({ label, value, Icon }) => {
+            const count = value !== "all" ? (counts?.[value] ?? 0) : null;
+            const isActive = active === value;
+            return (
+              <button
+                key={value}
+                onClick={() => onChange(value)}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border
+                  ${isActive
+                    ? "bg-primary text-white border-primary"
+                    : "bg-background text-foreground border-border hover:bg-muted"
                   }`}
-                  data-testid={`spine-count-${value}`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                data-testid={`spine-chip-${value}`}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+                {count !== null && count > 0 && (
+                  <span
+                    className={`text-[10px] font-semibold rounded-full px-1.5 min-w-[16px] text-center leading-4 ${
+                      isActive ? "bg-white/25 text-white" : "bg-muted text-muted-foreground"
+                    }`}
+                    data-testid={`spine-count-${value}`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex-shrink-0 flex items-center gap-0 rounded-full border overflow-hidden bg-background ml-1">
+          <button
+            onClick={() => onViewModeChange("list")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "list"
+                ? "bg-primary text-white"
+                : "text-foreground hover:bg-muted"
+            }`}
+            data-testid="toggle-view-list"
+            aria-label="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">List</span>
+          </button>
+          <button
+            onClick={() => onViewModeChange("map")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "map"
+                ? "bg-primary text-white"
+                : "text-foreground hover:bg-muted"
+            }`}
+            data-testid="toggle-view-map"
+            aria-label="Map view"
+          >
+            <MapIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Map</span>
+          </button>
+        </div>
       </div>
     </nav>
   );
@@ -2501,11 +2867,13 @@ export default function DiscoverLocationPage() {
 
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
   const [activeFilter, setActiveFilter] = useState<FeedFilter>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [requestingItem, setRequestingItem] = useState<AffiliateBookingTarget | null>(null);
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
   const trackedRef = useRef<Set<string>>(new Set());
+  const listScrollRef = useRef<number>(0);
 
   // Saved items (wishlist) — scoped to the logged-in user
   const { data: savedItemsData } = useQuery<any[]>({
@@ -2784,24 +3152,50 @@ export default function DiscoverLocationPage() {
             </section>
 
             {/* ── §2 EXPLORE SPINE (active filter) ─────────────────────────── */}
-            <ExploreSpine active={activeFilter} onChange={setActiveFilter} counts={filterCounts} />
+            <ExploreSpine
+              active={activeFilter}
+              onChange={setActiveFilter}
+              counts={filterCounts}
+              viewMode={viewMode}
+              onViewModeChange={(m) => {
+                if (m === "map") {
+                  listScrollRef.current = window.scrollY;
+                } else {
+                  requestAnimationFrame(() => window.scrollTo({ top: listScrollRef.current, behavior: "instant" }));
+                }
+                setViewMode(m);
+              }}
+            />
 
-            {/* ── §3 ALL GEMS FEED ─────────────────────────────────────────── */}
+            {/* ── §3 ALL GEMS FEED / MAP ───────────────────────────────────── */}
             <section id="gems-feed" data-testid="section-gems-feed">
-              <AllGemsFeed
-                neighborhoods={neighborhoods}
-                gems={hiddenGems}
-                hotels={hotels}
-                activities={activities}
-                platformServices={platformServices}
-                events={events}
-                cityName={city}
-                countryName={country}
-                activeFilter={activeFilter}
-                experts={experts}
-                onAdd={openAdd}
-                onRequestBooking={openRequestBooking}
-              />
+              {viewMode === "map" ? (
+                <LocationFeedMap
+                  gems={hiddenGems}
+                  hotels={hotels}
+                  activities={activities}
+                  platformServices={platformServices}
+                  cityName={city}
+                  activeFilter={activeFilter}
+                  onAdd={openAdd}
+                  onRequestBooking={openRequestBooking}
+                />
+              ) : (
+                <AllGemsFeed
+                  neighborhoods={neighborhoods}
+                  gems={hiddenGems}
+                  hotels={hotels}
+                  activities={activities}
+                  platformServices={platformServices}
+                  events={events}
+                  cityName={city}
+                  countryName={country}
+                  activeFilter={activeFilter}
+                  experts={experts}
+                  onAdd={openAdd}
+                  onRequestBooking={openRequestBooking}
+                />
+              )}
             </section>
 
             {/* ── §5 "About {city}" collapsed accordion ────────────────────── */}
