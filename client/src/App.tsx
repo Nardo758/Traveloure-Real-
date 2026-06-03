@@ -34,8 +34,6 @@ import ExpertProfile from "@/pages/expert/profile";
 import ExpertAIAssistant from "@/pages/expert/ai-assistant";
 import ExpertBookings from "@/pages/expert/bookings";
 import ExpertServices from "@/pages/expert/services";
-import ExpertPerformance from "@/pages/expert/performance";
-import ExpertCustomServices from "@/pages/expert/custom-services";
 import ExpertAssignedTrips from "@/pages/expert/assigned-trips";
 import EADashboard from "@/pages/ea/dashboard";
 import EAExecutives from "@/pages/ea/executives";
@@ -104,10 +102,7 @@ import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
-import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
-import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
-import ExpertTemplates from "@/pages/expert/templates";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
 import ExpertSettings from "@/pages/expert/settings";
@@ -115,7 +110,6 @@ import ExpertVerification from "@/pages/expert/verification";
 import ExpertServiceForm from "@/pages/expert/service-form";
 import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
-import ServiceTemplates from "@/pages/expert/service-templates";
 import ExpertWorkspace from "@/pages/expert/workspace";
 import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
@@ -431,28 +425,28 @@ function Router() {
         {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/templates">
-        {() => <ProtectedRoute component={ServiceTemplates} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/custom-services">
-        {() => <ProtectedRoute component={ExpertCustomServices} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/earnings">
         {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/performance">
-        {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
+        <Redirect to="/expert/analytics?tab=performance" />
       </Route>
       <Route path="/expert/revenue-optimization">
-        {() => <ProtectedRoute component={ExpertRevenueOptimization} requiredRole="expert" />}
+        <Redirect to="/expert/analytics?tab=revenue-optimization" />
       </Route>
       <Route path="/expert/leaderboard">
-        {() => <ProtectedRoute component={ExpertLeaderboard} requiredRole="expert" />}
+        <Redirect to="/expert/analytics?tab=leaderboard" />
       </Route>
       <Route path="/expert/analytics">
         {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
       <Route path="/expert/templates">
-        {() => <ProtectedRoute component={ExpertTemplates} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
@@ -479,7 +473,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertBookingPartners} requiredRole="expert" />}
       </Route>
       <Route path="/expert/service-wizard">
-        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/workspace/:tripId">
         {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
