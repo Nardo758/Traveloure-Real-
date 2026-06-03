@@ -1354,6 +1354,29 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const experience = await storage.createUserExperience({ ...req.body, userId });
+
+      // Auto-create a linked trip
+      let tripId: string | null = experience.tripId ?? null;
+      if (!tripId) {
+        const expType = experience.experienceTypeId
+          ? await db.select().from(experienceTypes).where(eq(experienceTypes.id, experience.experienceTypeId)).then(r => r[0])
+          : null;
+        const today = new Date().toISOString().split("T")[0];
+        const startDate = experience.eventDate || today;
+        const trip = await storage.createTrip({
+          userId,
+          title: experience.title || (expType ? `${expType.name} Trip` : "My Trip"),
+          destination: experience.location || "TBD",
+          startDate,
+          endDate: startDate,
+          eventType: expType?.slug || "vacation",
+          status: "draft",
+        });
+        tripId = trip.id;
+        const updated = await storage.updateUserExperience(experience.id, { tripId });
+        return res.status(201).json(updated || { ...experience, tripId });
+      }
+
       res.status(201).json(experience);
     } catch (err) {
       res.status(500).json({ message: "Failed to create experience" });
@@ -1368,7 +1391,35 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
     }
-    const updated = await storage.updateUserExperience(req.params.id, req.body);
+
+    const updates = req.body;
+
+    // Auto-create linked trip on first save if not already linked
+    if (!experience.tripId && !updates.tripId) {
+      try {
+        const expType = experience.experienceTypeId
+          ? await db.select().from(experienceTypes).where(eq(experienceTypes.id, experience.experienceTypeId)).then(r => r[0])
+          : null;
+        const today = new Date().toISOString().split("T")[0];
+        const startDate = updates.eventDate || experience.eventDate || today;
+        const destination = updates.location || experience.location || "TBD";
+        const title = updates.title || experience.title || (expType ? `${expType.name} Trip` : "My Trip");
+        const trip = await storage.createTrip({
+          userId,
+          title,
+          destination,
+          startDate,
+          endDate: startDate,
+          eventType: expType?.slug || "vacation",
+          status: "draft",
+        });
+        updates.tripId = trip.id;
+      } catch (tripErr) {
+        console.error("Failed to auto-create trip on experience update:", tripErr);
+      }
+    }
+
+    const updated = await storage.updateUserExperience(req.params.id, updates);
     res.json(updated);
   });
 

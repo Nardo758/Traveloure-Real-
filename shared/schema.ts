@@ -1078,6 +1078,7 @@ export const userExperiences = pgTable("user_experiences", {
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }),
   status: varchar("status", { length: 20 }).default("draft"), // draft, planning, confirmed, completed, cancelled
   eventDate: date("event_date"),
