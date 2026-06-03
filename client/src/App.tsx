@@ -32,7 +32,6 @@ import ExpertClients from "@/pages/expert/clients";
 import ExpertEarnings from "@/pages/expert/earnings";
 import ExpertProfile from "@/pages/expert/profile";
 import ExpertAIAssistant from "@/pages/expert/ai-assistant";
-import ExpertMessages from "@/pages/expert/messages";
 import ExpertBookings from "@/pages/expert/bookings";
 import ExpertServices from "@/pages/expert/services";
 import ExpertPerformance from "@/pages/expert/performance";
@@ -53,7 +52,6 @@ import EAProfile from "@/pages/ea/profile";
 import EASettings from "@/pages/ea/settings";
 import ProviderDashboard from "@/pages/provider/dashboard";
 import ProviderBookings from "@/pages/provider/bookings";
-import ProviderMessages from "@/pages/provider/messages";
 import ProviderServices from "@/pages/provider/services";
 import ProviderEarnings from "@/pages/provider/earnings";
 import ProviderPerformance from "@/pages/provider/performance";
@@ -315,6 +313,8 @@ function Router() {
       <Route path="/discover-experiences">
         <Redirect to="/discover" />
       </Route>
+      {/* /deals kept: unique content (flash sales, seasonal, last-minute, bundle listings)
+          with countdown timers and discount data not surfaced inside /discover. */}
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
       </Route>
@@ -324,6 +324,9 @@ function Router() {
       <Route path="/spontaneous">
         <Redirect to="/discover" />
       </Route>
+      {/* /hidden-gems kept: unique Grok-powered discovery of authentic local experiences with
+          category-based filtering (local food secrets, hidden viewpoints, etc.) — not present
+          inside /discover. */}
       <Route path="/hidden-gems">
         <Layout><HiddenGemsPage /></Layout>
       </Route>
@@ -395,14 +398,18 @@ function Router() {
       <Route path="/expert/dashboard">
         {() => <ProtectedRoute component={ExpertDashboard} requiredRole="expert" />}
       </Route>
+      {/* /expert/ai-assistant is role-specific AI task delegation (auto-draft, vendor research,
+          quality scoring) — distinct from /chat (human messaging). Keep separate. */}
       <Route path="/expert/ai-assistant">
         {() => <ProtectedRoute component={ExpertAIAssistant} requiredRole="expert" />}
       </Route>
-      <Route path="/expert/messages">
-        {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
-      </Route>
+      {/* /expert/messages consolidated into /chat (ChatWithRoleLayout already applies
+          ExpertLayout when user role is expert). Deep-link clientId forwarded as query param. */}
       <Route path="/expert/messages/:clientId">
-        {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
+        {(params: any) => <Redirect to={`/chat?client=${params.clientId}`} />}
+      </Route>
+      <Route path="/expert/messages">
+        <Redirect to="/chat" />
       </Route>
       <Route path="/expert/clients">
         {() => <ProtectedRoute component={ExpertClients} requiredRole="expert" />}
@@ -496,6 +503,8 @@ function Router() {
       <Route path="/ea/communications">
         {() => <ProtectedRoute component={EACommunications} requiredRole="executive_assistant" />}
       </Route>
+      {/* /ea/ai-assistant kept: EA-specific AI task management (approve/reject delegated tasks,
+          executive travel research, vendor options) — role-specific tools distinct from /chat. */}
       <Route path="/ea/ai-assistant">
         {() => <ProtectedRoute component={EAAIAssistant} requiredRole="executive_assistant" />}
       </Route>
@@ -525,8 +534,10 @@ function Router() {
       <Route path="/provider/bookings">
         {() => <ProtectedRoute component={ProviderBookings} requiredRole="provider" />}
       </Route>
+      {/* /provider/messages consolidated into /chat (ChatWithRoleLayout applies ProviderLayout
+          when user role is service_provider). */}
       <Route path="/provider/messages">
-        {() => <ProtectedRoute component={ProviderMessages} requiredRole="provider" />}
+        <Redirect to="/chat" />
       </Route>
       <Route path="/provider/services">
         {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
@@ -659,6 +670,9 @@ function Router() {
       <Route path="/chat">
         {() => <ProtectedRoute component={ChatWithRoleLayout} />}
       </Route>
+      {/* /ai-assistant kept: general travel AI chat with conversation history and streaming
+          (uses /api/conversations). Serves traveler role. Distinct from /chat (human
+          expert-to-traveler messaging) and from role-specific expert/ea AI tool pages. */}
       <Route path="/ai-assistant">
         {() => <DashboardLayout><ProtectedRoute component={AIAssistant} /></DashboardLayout>}
       </Route>
