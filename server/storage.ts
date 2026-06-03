@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import { PROCESSING_FEE_RATE } from "./services/commission";
+import { PROCESSING_FEE_RATE, resolveCommissionRates } from "./services/commission";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
@@ -2486,11 +2486,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpertTip(tip: InsertExpertTip): Promise<ExpertTip> {
-    // Get the revenue split for tips
-    const split = await this.getRevenueSplit('tip');
-    const platformPct = parseFloat(split?.platformPercentage || '5') / 100;
+    // Resolve tip commission rates from booking_fee_configs (canonical source).
+    // Falls back to hardcoded 25/75 if no "tip" row exists, but the startup seed
+    // inserts a "tip" row with platform_fee=5 / expert_share=95 to match legacy behaviour.
+    const { platformFeeRate } = await resolveCommissionRates({ category: 'tip' });
     const tipAmount = parseFloat(String(tip.amount));
-    const platformFee = tipAmount * platformPct;
+    const platformFee = tipAmount * platformFeeRate;
     const expertAmount = tipAmount - platformFee;
 
     // Generate tracking number for content registry

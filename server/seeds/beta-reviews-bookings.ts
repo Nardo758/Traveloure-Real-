@@ -8,7 +8,6 @@
  */
 
 import { db } from "../db";
-import { PLATFORM_FEE_RATE } from "../services/commission";
 import {
   users,
   reviewRatings,
@@ -336,7 +335,7 @@ export async function seedReviewsAndBookings(
     }
     
     const price = parseFloat(service.price);
-    const platformFee = price * PLATFORM_FEE_RATE;
+    const platformFee = price * 0.15; // 15% platform fee (stable seed fixture — do not replace with live rate)
     const providerEarnings = price - platformFee;
     
     const createdAt = randomPastDate(180);
