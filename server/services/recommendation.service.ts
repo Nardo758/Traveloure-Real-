@@ -1,5 +1,34 @@
+/**
+ * UNIFIED RECOMMENDATION SERVICE
+ *
+ * Single authoritative service for all recommendation logic on the platform.
+ * Merges two previously separate engines:
+ *
+ *  1. Destination Content Recommendations  (was: ai-recommendation-engine.service.ts)
+ *     Scores and ranks cached travel content (hotels, activities) for individual
+ *     travelers using seasonal data, destination events, city intelligence, budget,
+ *     and personal preferences.
+ *     Tables: hotelCache, activityCache, destinationSeasons, destinationEvents,
+ *             travelPulseCities
+ *
+ *  2. Service Opportunity Recommendations  (was: service-recommendation-engine.service.ts)
+ *     Authoritative owner of the demand-signal → service opportunity matching flow.
+ *     Ingests TravelPulse trends, derives demand signals, identifies supply gaps,
+ *     and surfaces actionable opportunities to experts, providers, and travelers.
+ *     Tables: serviceDemandSignals, serviceRecommendations, recommendationConversions,
+ *             serviceGapAnalysis, seasonalOpportunities, travelPulseTrending,
+ *             providerServices (read-only supply queries)
+ *
+ * All callers import from this file. The retired source files have been deleted.
+ */
+
 import { db } from "../db";
 import {
+  hotelCache,
+  activityCache,
+  destinationSeasons,
+  destinationEvents,
+  travelPulseCities,
   serviceDemandSignals,
   serviceRecommendations,
   recommendationConversions,
@@ -10,13 +39,69 @@ import {
   expertSelectedServices,
   expertCustomServices,
   expertServiceOfferings,
-  expertSpecializations,
   users,
+  HotelCache,
+  ActivityCache,
+  DestinationEvent,
   ServiceDemandSignal,
   ServiceGapAnalysis,
   SeasonalOpportunity,
 } from "@shared/schema";
-import { eq, and, gte, desc, asc, sql, ilike, inArray } from "drizzle-orm";
+import { eq, and, sql, gte, lte, desc, asc, or, ilike, inArray } from "drizzle-orm";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 1: Destination Content Recommendation types
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AIRecommendationContext {
+  cityName: string;
+  country: string;
+  travelMonth?: number;
+  checkInDate?: string;
+  checkOutDate?: string;
+  budget?: "budget" | "mid-range" | "luxury";
+  preferences?: string[];
+}
+
+interface SeasonalInsight {
+  rating: string;
+  weatherDescription: string | null;
+  crowdLevel: string | null;
+  priceLevel: string | null;
+  highlights: string[];
+  events: DestinationEvent[];
+}
+
+interface EnhancedHotel extends HotelCache {
+  aiScore: number;
+  aiReasons: string[];
+  seasonalMatch: boolean;
+  eventNearby: boolean;
+  budgetMatch: boolean;
+  bestTimeMatch: boolean;
+}
+
+interface EnhancedActivity extends ActivityCache {
+  aiScore: number;
+  aiReasons: string[];
+  seasonalMatch: boolean;
+  eventRelated: boolean;
+  preferenceMatch: boolean;
+  bestTimeMatch: boolean;
+}
+
+interface AIRecommendations {
+  hotels: EnhancedHotel[];
+  activities: EnhancedActivity[];
+  seasonalInsight: SeasonalInsight | null;
+  bestTimeToVisit: string | null;
+  totalHotels: number;
+  totalActivities: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 2: Service Opportunity Recommendation types
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface TrendAnalysis {
   serviceType: string;
@@ -86,7 +171,435 @@ const SERVICE_TYPE_MAPPINGS: Record<string, string[]> = {
   "water_activities": ["beach", "diving", "snorkeling", "boat", "cruise"],
 };
 
-class ServiceRecommendationEngineService {
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified Recommendation Service
+// ─────────────────────────────────────────────────────────────────────────────
+
+class RecommendationService {
+
+  // ───── Section 1: Destination Content Recommendations ─────────────────────
+
+  async getSeasonalInsight(
+    cityName: string,
+    country: string,
+    month: number
+  ): Promise<SeasonalInsight | null> {
+    const [seasonData, eventData] = await Promise.all([
+      db
+        .select()
+        .from(destinationSeasons)
+        .where(
+          and(
+            eq(destinationSeasons.city, cityName),
+            eq(destinationSeasons.country, country),
+            eq(destinationSeasons.month, month)
+          )
+        )
+        .limit(1),
+      db
+        .select()
+        .from(destinationEvents)
+        .where(
+          and(
+            eq(destinationEvents.city, cityName),
+            eq(destinationEvents.country, country),
+            eq(destinationEvents.status, "approved"),
+            or(
+              eq(destinationEvents.startMonth, month),
+              and(
+                lte(destinationEvents.startMonth, month),
+                gte(destinationEvents.endMonth, month)
+              )
+            )
+          )
+        ),
+    ]);
+
+    if (seasonData.length === 0) {
+      return null;
+    }
+
+    const season = seasonData[0];
+    return {
+      rating: season.rating,
+      weatherDescription: season.weatherDescription,
+      crowdLevel: season.crowdLevel,
+      priceLevel: season.priceLevel,
+      highlights: (season.highlights as string[]) || [],
+      events: eventData,
+    };
+  }
+
+  async getCityIntelligence(cityName: string, country: string) {
+    const city = await db
+      .select()
+      .from(travelPulseCities)
+      .where(
+        and(
+          eq(travelPulseCities.cityName, cityName),
+          eq(travelPulseCities.country, country)
+        )
+      )
+      .limit(1);
+
+    return city[0] || null;
+  }
+
+  private scoreHotel(
+    hotel: HotelCache,
+    context: AIRecommendationContext,
+    seasonalInsight: SeasonalInsight | null,
+    cityIntelligence: any
+  ): EnhancedHotel {
+    let aiScore = 50;
+    const aiReasons: string[] = [];
+    let seasonalMatch = false;
+    let eventNearby = false;
+    let budgetMatch = false;
+    let bestTimeMatch = false;
+
+    const preferenceTags = (hotel.preferenceTags as string[]) || [];
+
+    if (seasonalInsight) {
+      if (seasonalInsight.rating === "excellent") {
+        aiScore += 15;
+        aiReasons.push("Perfect timing - excellent season to visit");
+        seasonalMatch = true;
+        bestTimeMatch = true;
+      } else if (seasonalInsight.rating === "good") {
+        aiScore += 10;
+        aiReasons.push("Good timing - favorable season");
+        seasonalMatch = true;
+      } else if (seasonalInsight.rating === "poor") {
+        aiScore -= 10;
+        aiReasons.push("Off-season - consider alternative dates");
+      }
+
+      if (seasonalInsight.events.length > 0) {
+        aiScore += 10;
+        eventNearby = true;
+        const eventNames = seasonalInsight.events.slice(0, 2).map((e) => e.title);
+        aiReasons.push(`Near upcoming events: ${eventNames.join(", ")}`);
+      }
+
+      if (seasonalInsight.crowdLevel === "low" || seasonalInsight.crowdLevel === "moderate") {
+        aiScore += 5;
+        aiReasons.push("Lower crowds - better experience");
+      }
+
+      if (seasonalInsight.priceLevel === "low" || seasonalInsight.priceLevel === "moderate") {
+        aiScore += 5;
+        aiReasons.push("Good value period");
+        budgetMatch = true;
+      }
+    }
+
+    if (context.budget) {
+      if (context.budget === "budget" && preferenceTags.includes("budget")) {
+        aiScore += 10;
+        budgetMatch = true;
+        aiReasons.push("Matches your budget preference");
+      } else if (context.budget === "luxury" && preferenceTags.includes("luxury")) {
+        aiScore += 10;
+        budgetMatch = true;
+        aiReasons.push("Premium luxury property");
+      } else if (context.budget === "mid-range" && !preferenceTags.includes("budget") && !preferenceTags.includes("luxury")) {
+        aiScore += 5;
+        budgetMatch = true;
+      }
+    }
+
+    if (context.preferences && context.preferences.length > 0) {
+      const matchingTags = context.preferences.filter((pref) =>
+        preferenceTags.includes(pref)
+      );
+      if (matchingTags.length > 0) {
+        aiScore += matchingTags.length * 5;
+        aiReasons.push(`Matches preferences: ${matchingTags.join(", ")}`);
+      }
+    }
+
+    if (hotel.starRating) {
+      aiScore += hotel.starRating * 2;
+    }
+    if (hotel.reviewCount && hotel.reviewCount > 100) {
+      aiScore += 5;
+      aiReasons.push("Highly reviewed property");
+    }
+
+    if (cityIntelligence?.aiBudgetEstimate) {
+      const budgetStr = JSON.stringify(cityIntelligence.aiBudgetEstimate).toLowerCase();
+      if (budgetStr.includes("affordable") || budgetStr.includes("budget")) {
+        if (preferenceTags.includes("budget")) {
+          aiScore += 5;
+          aiReasons.push("Aligns with destination budget profile");
+        }
+      }
+    }
+
+    aiScore = Math.max(0, Math.min(100, aiScore));
+
+    return {
+      ...hotel,
+      aiScore,
+      aiReasons,
+      seasonalMatch,
+      eventNearby,
+      budgetMatch,
+      bestTimeMatch,
+    };
+  }
+
+  private scoreActivity(
+    activity: ActivityCache,
+    context: AIRecommendationContext,
+    seasonalInsight: SeasonalInsight | null,
+    cityIntelligence: any
+  ): EnhancedActivity {
+    let aiScore = 50;
+    const aiReasons: string[] = [];
+    let seasonalMatch = false;
+    let eventRelated = false;
+    let preferenceMatch = false;
+    let bestTimeMatch = false;
+
+    const preferenceTags = (activity.preferenceTags as string[]) || [];
+    const title = activity.title.toLowerCase();
+    const description = (activity.description || "").toLowerCase();
+
+    if (seasonalInsight) {
+      if (seasonalInsight.rating === "excellent") {
+        aiScore += 15;
+        aiReasons.push("Perfect season for this activity");
+        seasonalMatch = true;
+        bestTimeMatch = true;
+      } else if (seasonalInsight.rating === "good") {
+        aiScore += 10;
+        seasonalMatch = true;
+      }
+
+      for (const event of seasonalInsight.events) {
+        const eventTitle = event.title.toLowerCase();
+        const eventType = (event.eventType || "").toLowerCase();
+        if (
+          title.includes(eventTitle) ||
+          description.includes(eventTitle) ||
+          title.includes(eventType) ||
+          preferenceTags.includes(eventType)
+        ) {
+          aiScore += 15;
+          eventRelated = true;
+          aiReasons.push(`Related to ${event.title}`);
+          break;
+        }
+      }
+
+      for (const highlight of seasonalInsight.highlights) {
+        const highlightLower = highlight.toLowerCase();
+        if (title.includes(highlightLower) || description.includes(highlightLower)) {
+          aiScore += 10;
+          aiReasons.push(`Featured seasonal highlight: ${highlight}`);
+          break;
+        }
+      }
+
+      const weatherDesc = (seasonalInsight.weatherDescription || "").toLowerCase();
+      if (preferenceTags.includes("nature_outdoors") || preferenceTags.includes("adventure")) {
+        if (weatherDesc.includes("sunny") || weatherDesc.includes("clear") || weatherDesc.includes("warm")) {
+          aiScore += 10;
+          aiReasons.push("Great weather for outdoor activity");
+        } else if (weatherDesc.includes("rain") || weatherDesc.includes("cold")) {
+          aiScore -= 5;
+        }
+      }
+    }
+
+    if (context.preferences && context.preferences.length > 0) {
+      const matchingTags = context.preferences.filter((pref) =>
+        preferenceTags.includes(pref)
+      );
+      if (matchingTags.length > 0) {
+        aiScore += matchingTags.length * 8;
+        preferenceMatch = true;
+        aiReasons.push(`Matches your interests: ${matchingTags.join(", ")}`);
+      }
+    }
+
+    if (cityIntelligence?.aiMustSeeAttractions) {
+      const mustSee = cityIntelligence.aiMustSeeAttractions as string[];
+      for (const attraction of mustSee) {
+        if (title.includes(attraction.toLowerCase()) || description.includes(attraction.toLowerCase())) {
+          aiScore += 15;
+          aiReasons.push(`AI-recommended must-see attraction`);
+          break;
+        }
+      }
+    }
+
+    if (activity.rating) {
+      const ratingNum = parseFloat(activity.rating);
+      if (ratingNum >= 4.5) {
+        aiScore += 10;
+        aiReasons.push("Highly rated experience");
+      } else if (ratingNum >= 4.0) {
+        aiScore += 5;
+      }
+    }
+
+    if (activity.reviewCount && activity.reviewCount > 500) {
+      aiScore += 5;
+    }
+
+    aiScore = Math.max(0, Math.min(100, aiScore));
+
+    return {
+      ...activity,
+      aiScore,
+      aiReasons,
+      seasonalMatch,
+      eventRelated,
+      preferenceMatch,
+      bestTimeMatch,
+    };
+  }
+
+  async getAIEnhancedRecommendations(
+    context: AIRecommendationContext,
+    limit: number = 20
+  ): Promise<AIRecommendations> {
+    const travelMonth = context.travelMonth || new Date().getMonth() + 1;
+
+    const [seasonalInsight, cityIntelligence, hotels, activities] = await Promise.all([
+      this.getSeasonalInsight(context.cityName, context.country, travelMonth),
+      this.getCityIntelligence(context.cityName, context.country),
+      db
+        .select()
+        .from(hotelCache)
+        .where(
+          or(
+            ilike(hotelCache.city, `%${context.cityName}%`),
+            ilike(hotelCache.address, `%${context.cityName}%`)
+          )
+        )
+        .limit(limit * 2),
+      db
+        .select()
+        .from(activityCache)
+        .where(
+          or(
+            ilike(activityCache.destination, `%${context.cityName}%`),
+            ilike(activityCache.city, `%${context.cityName}%`)
+          )
+        )
+        .limit(limit * 2),
+    ]);
+
+    const enhancedHotels = hotels
+      .map((hotel) => this.scoreHotel(hotel, context, seasonalInsight, cityIntelligence))
+      .sort((a, b) => b.aiScore - a.aiScore)
+      .slice(0, limit);
+
+    const enhancedActivities = activities
+      .map((activity) => this.scoreActivity(activity, context, seasonalInsight, cityIntelligence))
+      .sort((a, b) => b.aiScore - a.aiScore)
+      .slice(0, limit);
+
+    return {
+      hotels: enhancedHotels,
+      activities: enhancedActivities,
+      seasonalInsight,
+      bestTimeToVisit: cityIntelligence?.aiBestTimeToVisit || null,
+      totalHotels: hotels.length,
+      totalActivities: activities.length,
+    };
+  }
+
+  async getEventAlignedRecommendations(
+    cityName: string,
+    country: string,
+    eventId: string
+  ): Promise<{ hotels: EnhancedHotel[]; activities: EnhancedActivity[] } | null> {
+    const event = await db
+      .select()
+      .from(destinationEvents)
+      .where(eq(destinationEvents.id, eventId))
+      .limit(1);
+
+    if (event.length === 0) {
+      return null;
+    }
+
+    const targetEvent = event[0];
+    const travelMonth = targetEvent.startMonth || new Date().getMonth() + 1;
+
+    const recommendations = await this.getAIEnhancedRecommendations(
+      {
+        cityName,
+        country,
+        travelMonth,
+        preferences: targetEvent.eventType ? [targetEvent.eventType] : undefined,
+      },
+      10
+    );
+
+    const eventRelatedActivities = recommendations.activities.filter((a) => a.eventRelated);
+    const otherActivities = recommendations.activities.filter((a) => !a.eventRelated);
+
+    return {
+      hotels: recommendations.hotels,
+      activities: [...eventRelatedActivities, ...otherActivities].slice(0, 10),
+    };
+  }
+
+  async getBestTimeRecommendations(
+    cityName: string,
+    country: string
+  ): Promise<{
+    bestMonths: { month: number; rating: string; reasons: string[] }[];
+    worstMonths: { month: number; rating: string; reasons: string[] }[];
+  }> {
+    const seasons = await db
+      .select()
+      .from(destinationSeasons)
+      .where(
+        and(
+          eq(destinationSeasons.city, cityName),
+          eq(destinationSeasons.country, country)
+        )
+      )
+      .orderBy(destinationSeasons.month);
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+
+    const bestMonths = seasons
+      .filter((s) => s.rating === "excellent" || s.rating === "good")
+      .map((s) => ({
+        month: s.month,
+        rating: s.rating,
+        reasons: [
+          s.weatherDescription || `Great weather in ${monthNames[s.month - 1]}`,
+          ...(s.highlights as string[] || []),
+        ],
+      }));
+
+    const worstMonths = seasons
+      .filter((s) => s.rating === "poor")
+      .map((s) => ({
+        month: s.month,
+        rating: s.rating,
+        reasons: [
+          s.weatherDescription || `Challenging conditions in ${monthNames[s.month - 1]}`,
+        ],
+      }));
+
+    return { bestMonths, worstMonths };
+  }
+
+  // ───── Section 2: Service Opportunity Recommendations ─────────────────────
+
   async analyzeTravelPulseTrends(city: string): Promise<TrendAnalysis[]> {
     const trends = await db
       .select()
@@ -104,13 +617,13 @@ class ServiceRecommendationEngineService {
 
     for (const trend of trends) {
       const serviceType = this.mapDestinationTypeToServiceType(trend.destinationType || "");
-      
+
       if (!analysisMap.has(serviceType)) {
         analysisMap.set(serviceType, {
           serviceType,
           demandLevel: this.scoreToDemandLevel(trend.trendScore || 0),
           demandScore: trend.trendScore || 0,
-          trendDirection: (trend.trendStatus === "emerging" || trend.trendStatus === "viral") ? "up" : 
+          trendDirection: (trend.trendStatus === "emerging" || trend.trendStatus === "viral") ? "up" :
                          trend.trendStatus === "declining" ? "down" : "stable",
           seasonalPeak: [],
           triggerEvents: trend.triggerEvent ? [trend.triggerEvent] : [],
@@ -152,7 +665,7 @@ class ServiceRecommendationEngineService {
   async generateDemandSignals(city: string, country?: string): Promise<ServiceDemandSignal[]> {
     const trends = await this.analyzeTravelPulseTrends(city);
     const existingSupply = await this.getExistingSupplyByLocation(city);
-    
+
     const signals: ServiceDemandSignal[] = [];
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -179,7 +692,7 @@ class ServiceRecommendationEngineService {
           })
           .onConflictDoNothing()
           .returning();
-        
+
         if (inserted) {
           signals.push(inserted);
         }
@@ -195,9 +708,9 @@ class ServiceRecommendationEngineService {
     const supplyMap = new Map<string, number>();
 
     const services = await db
-      .select({ 
+      .select({
         serviceType: providerServices.serviceType,
-        count: sql<number>`count(*)` 
+        count: sql<number>`count(*)`,
       })
       .from(providerServices)
       .where(
@@ -249,7 +762,7 @@ class ServiceRecommendationEngineService {
         }
 
         const opportunityScore = this.calculateExpertOpportunityScore(signal, existingServices);
-        
+
         if (opportunityScore < 40) continue;
 
         recommendations.push({
@@ -364,10 +877,10 @@ class ServiceRecommendationEngineService {
     const demandText = signal.demandLevel === "trending" ? "rapidly trending" :
                        signal.demandLevel === "very_high" ? "high demand" :
                        signal.demandLevel === "high" ? "growing demand" : "moderate demand";
-    
+
     const triggerEvents = signal.triggerEvents as string[] || [];
-    const triggerText = triggerEvents.length > 0 
-      ? ` driven by ${triggerEvents.slice(0, 2).join(", ")}` 
+    const triggerText = triggerEvents.length > 0
+      ? ` driven by ${triggerEvents.slice(0, 2).join(", ")}`
       : "";
 
     return `${this.formatServiceType(signal.serviceType)} services show ${demandText} in ${this.capitalizeCity(signal.city)}${triggerText}. Supply gap analysis suggests low competition.`;
@@ -375,9 +888,9 @@ class ServiceRecommendationEngineService {
 
   private generateExpertActionItems(signal: ServiceDemandSignal): string[] {
     const items: string[] = [];
-    
+
     items.push(`Create a ${this.formatServiceType(signal.serviceType)} service listing`);
-    
+
     const seasonalPeak = signal.seasonalPeak as number[] || [];
     if (seasonalPeak.length > 0) {
       const months = seasonalPeak.map(m => this.getMonthName(m)).join(", ");
@@ -433,7 +946,7 @@ class ServiceRecommendationEngineService {
       recommendations.push({
         id: gap.id,
         title: `Offer ${this.formatServiceType(gap.serviceType)} Services`,
-        description: gap.opportunityDescription || 
+        description: gap.opportunityDescription ||
           `Market analysis shows a gap in ${this.formatServiceType(gap.serviceType)} services in ${this.capitalizeCity(location)}.`,
         serviceType: gap.serviceType,
         city: location,
@@ -544,7 +1057,7 @@ class ServiceRecommendationEngineService {
 
       if (preferences?.length) {
         const serviceWords = signal.serviceType.split("_");
-        const matchedPrefs = preferences.filter(pref => 
+        const matchedPrefs = preferences.filter(pref =>
           serviceWords.some(word => pref.toLowerCase().includes(word))
         );
         if (matchedPrefs.length > 0) {
@@ -608,8 +1121,8 @@ class ServiceRecommendationEngineService {
 
     await db
       .update(serviceRecommendations)
-      .set({ 
-        status: "converted", 
+      .set({
+        status: "converted",
         convertedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -619,8 +1132,8 @@ class ServiceRecommendationEngineService {
   async dismissRecommendation(recommendationId: string): Promise<void> {
     await db
       .update(serviceRecommendations)
-      .set({ 
-        status: "dismissed", 
+      .set({
+        status: "dismissed",
         dismissedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -687,10 +1200,10 @@ class ServiceRecommendationEngineService {
     ]);
 
     const trendingCount = signals.filter(s => s.demandLevel === "trending").length;
-    const avgScore = signals.length > 0 
-      ? signals.reduce((sum, s) => sum + s.demandScore, 0) / signals.length 
+    const avgScore = signals.length > 0
+      ? signals.reduce((sum, s) => sum + s.demandScore, 0) / signals.length
       : 0;
-    
+
     const topTypesSet = new Set<string>();
     signals.slice(0, 5).forEach(s => topTypesSet.add(s.serviceType));
     const topTypes = Array.from(topTypesSet);
@@ -711,7 +1224,6 @@ class ServiceRecommendationEngineService {
     experienceType?: string,
     limit: number = 10
   ): Promise<UserRecommendation[]> {
-    // Get trending destinations from TravelPulse data
     const trendingData = await db
       .select()
       .from(travelPulseTrending)
@@ -733,7 +1245,6 @@ class ServiceRecommendationEngineService {
         reasons.push("Popular trending destination");
       }
 
-      // Use destinationType as category
       const category = trend.destinationType || "travel";
       reasons.push(`Category: ${category}`);
       if (experienceType && category.toLowerCase().includes(experienceType.toLowerCase())) {
@@ -741,10 +1252,8 @@ class ServiceRecommendationEngineService {
         reasons.push(`Matches your interest: ${experienceType}`);
       }
 
-      // Use city for location lookup
       const cityName = trend.city;
-      
-      // Get related services in that destination
+
       const services = await db
         .select({ id: providerServices.id, serviceName: providerServices.serviceName, price: providerServices.price })
         .from(providerServices)
@@ -778,4 +1287,10 @@ class ServiceRecommendationEngineService {
   }
 }
 
-export const serviceRecommendationEngine = new ServiceRecommendationEngineService();
+export const recommendationService = new RecommendationService();
+
+/** @deprecated Use recommendationService from recommendation.service */
+export const aiRecommendationEngineService = recommendationService;
+
+/** @deprecated Use recommendationService from recommendation.service */
+export const serviceRecommendationEngine = recommendationService;

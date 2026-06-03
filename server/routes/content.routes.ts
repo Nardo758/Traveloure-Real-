@@ -4563,7 +4563,7 @@ router.get("/api/travelpulse/ai-recommendations/:cityName/:country", async (req,
       const { cityName, country } = req.params;
       const { month, budget, preferences, limit } = req.query;
       
-      const { aiRecommendationEngineService } = await import("../services/ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("../services/recommendation.service");
       
       const recommendations = await aiRecommendationEngineService.getAIEnhancedRecommendations({
         cityName,
@@ -4586,7 +4586,7 @@ router.get("/api/travelpulse/event-recommendations/:cityName/:country/:eventId",
     try {
       const { cityName, country, eventId } = req.params;
       
-      const { aiRecommendationEngineService } = await import("../services/ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("../services/recommendation.service");
       
       const recommendations = await aiRecommendationEngineService.getEventAlignedRecommendations(
         cityName,
@@ -4611,7 +4611,7 @@ router.get("/api/travelpulse/best-time/:cityName/:country", async (req, res) => 
     try {
       const { cityName, country } = req.params;
       
-      const { aiRecommendationEngineService } = await import("../services/ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("../services/recommendation.service");
       
       const analysis = await aiRecommendationEngineService.getBestTimeRecommendations(cityName, country);
       
