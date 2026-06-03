@@ -76,7 +76,7 @@ import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
+import type { ExperienceType, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
@@ -1219,6 +1219,17 @@ export default function ExperienceTemplatePage() {
     enabled: !!slug,
   });
 
+  const { data: allUserExperiences } = useQuery<UserExperience[]>({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+
+  const linkedExperience = allUserExperiences
+    ?.filter((e) => e.experienceTypeId === experienceType?.id && !!e.tripId)
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())[0];
+  const linkedTripId = linkedExperience?.tripId ?? null;
+
   const [localExternalCart, setLocalExternalCart] = useState<CartItem[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -2115,6 +2126,18 @@ export default function ExperienceTemplatePage() {
 
             {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3 z-10">
+              {linkedTripId && (
+                <Link href={`/trip/${linkedTripId}`} className="mr-auto">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-primary hover:text-primary/80 font-medium"
+                    data-testid="button-view-trip-planner"
+                  >
+                    View in Trip Planner →
+                  </Button>
+                </Link>
+              )}
               <Link href="/credits">
                 <Button
                   variant="outline"
@@ -3374,7 +3397,19 @@ export default function ExperienceTemplatePage() {
               style={{ backgroundImage: `url('${config.heroImage}')` }}
             />
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-between z-10">
-              {/* Mobile Map/Form Toggle */}
+              {/* Mobile Map/Form Toggle or Trip Planner link */}
+              {linkedTripId ? (
+                <Link href={`/trip/${linkedTripId}`}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-xs text-primary font-medium"
+                    data-testid="button-view-trip-planner-mobile"
+                  >
+                    View Trip →
+                  </Button>
+                </Link>
+              ) : (
               <Button
                 variant={showMobileMap ? "default" : "outline"}
                 size="sm"
@@ -3394,6 +3429,7 @@ export default function ExperienceTemplatePage() {
                   </>
                 )}
               </Button>
+              )}
               <div className="flex items-center gap-2">
               <Link href="/credits">
                 <Button variant="outline" size="sm" className="gap-1 text-xs">
