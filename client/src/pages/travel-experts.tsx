@@ -160,6 +160,8 @@ export default function TravelExpertsPage() {
   const influencerFromUrl = urlParams.get('influencer') === 'true';
   const authFromUrl = urlParams.get('auth');
   const expertTypeFromUrl = urlParams.get('type') || 'travel_expert';
+  const cityFromUrl = urlParams.get('city') || '';
+  const countryFromUrl = urlParams.get('country') || '';
   
   // Map expert type to display title
   const isLocalExpert = expertTypeFromUrl === "local_expert";
@@ -178,8 +180,8 @@ export default function TravelExpertsPage() {
     lastName: "",
     email: "",
     phone: "",
-    country: "",
-    city: "",
+    country: countryFromUrl,
+    city: cityFromUrl,
     destinations: [] as string[],
     specialties: [] as string[],
     languages: [] as string[],
