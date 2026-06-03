@@ -1238,6 +1238,7 @@ function AllGemsFeed({
               : null;
             const [day, month] = dateStr ? dateStr.split(" ") : [null, null];
             const ticketUrl = ev.url ?? ev.ticketUrl ?? ev.bookingUrl ?? null;
+            const badge = detectBadge(ticketUrl);
             return (
               <div
                 key={ev.id ?? idx}
@@ -1255,21 +1256,44 @@ function AllGemsFeed({
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold leading-snug" data-testid={`event-title-${idx}`}>{title}</p>
-                  {venue && <p className="text-xs text-muted-foreground mt-0.5">{venue}</p>}
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <p className="text-sm font-semibold leading-snug" data-testid={`event-title-${idx}`}>{title}</p>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
+                      {badge.badgeText}
+                    </span>
+                  </div>
+                  {venue && <p className="text-xs text-muted-foreground">{venue}</p>}
                 </div>
-                {ticketUrl && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-7 px-2.5 flex-shrink-0"
-                    asChild
-                    data-testid={`event-ticket-${idx}`}
-                  >
-                    <a href={ticketUrl} target="_blank" rel="noopener noreferrer">
-                      <Ticket className="h-3 w-3 mr-1" />Tickets
-                    </a>
-                  </Button>
+                {badge.bookLabel && ticketUrl && (
+                  badge.isPartner ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 px-2.5 flex-shrink-0 border-violet-300 text-violet-700 hover:bg-violet-50"
+                      data-testid={`event-ticket-${idx}`}
+                      onClick={() => onRequestBooking?.({
+                        itemName: title,
+                        partnerName: badge.partnerName || "Partner",
+                        affiliateUrl: ticketUrl,
+                        partnerCategory: "event",
+                        itemDescription: venue ?? undefined,
+                      })}
+                    >
+                      {badge.bookLabel}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="text-xs h-7 px-2.5 flex-shrink-0"
+                      asChild
+                      data-testid={`event-ticket-${idx}`}
+                    >
+                      <a href={ticketUrl} target="_blank" rel="noopener noreferrer">
+                        <Ticket className="h-3 w-3 mr-1" />{badge.bookLabel}
+                      </a>
+                    </Button>
+                  )
                 )}
               </div>
             );
@@ -2191,7 +2215,9 @@ function AddItemDialog({
 export default function DiscoverLocationPage() {
   const rawParams = useParams<{ city: string }>();
   const searchString = useSearch();
-  const country = new URLSearchParams(searchString).get("country");
+  const urlParams = new URLSearchParams(searchString);
+  const country = urlParams.get("country");
+  const neighborhoodSlug = urlParams.get("neighborhood");
   const city = decodeURIComponent(rawParams?.city ?? "");
 
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
@@ -2242,6 +2268,15 @@ export default function DiscoverLocationPage() {
     enabled: !!city,
     staleTime: 10 * 60 * 1000,
   });
+
+  // Scroll to neighborhood container when ?neighborhood=<slug> is in the URL
+  useEffect(() => {
+    if (!neighborhoodSlug || isLoading) return;
+    const el = document.querySelector(`[data-testid="neighborhood-container-${neighborhoodSlug}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [neighborhoodSlug, isLoading]);
 
   // Unsplash download tracking (API compliance)
   useEffect(() => {
