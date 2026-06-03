@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +36,6 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CityDetailView } from "./CityDetailView";
 import { useTripQueue, QueuedCity } from "@/contexts/TripQueueContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -511,33 +510,16 @@ function CityGridSkeleton() {
 }
 
 export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
-  const [selectedCity, setSelectedCity] = useState<TravelPulseCity | null>(null);
-  const [hasAutoSelected, setHasAutoSelected] = useState(false);
-
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
   });
 
-  // Auto-select city from URL param when data loads
-  useEffect(() => {
-    if (selectedCityName && data?.cities && !hasAutoSelected) {
-      const matchedCity = data.cities.find(
-        (city) => city.cityName.toLowerCase() === selectedCityName.toLowerCase()
-      );
-      if (matchedCity) {
-        setSelectedCity(matchedCity);
-        setHasAutoSelected(true);
-      }
-    }
-  }, [selectedCityName, data?.cities, hasAutoSelected]);
-
   const handleCityClick = (city: TravelPulseCity) => {
-    setSelectedCity(city);
+    // Phase B: Navigate to LocationView instead of inline modal
+    const qs = new URLSearchParams();
+    qs.set("country", city.country);
+    navigate(`/discover/location/${encodeURIComponent(city.cityName)}?${qs.toString()}`);
     onCitySelect?.(city);
-  };
-
-  const handleBack = () => {
-    setSelectedCity(null);
   };
 
   if (isLoading) {
@@ -563,15 +545,6 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   }
 
   const cities = data?.cities || [];
-
-  if (selectedCity) {
-    return (
-      <CityDetailView
-        cityName={selectedCity.cityName}
-        onBack={handleBack}
-      />
-    );
-  }
 
   return (
     <div className="space-y-6">
