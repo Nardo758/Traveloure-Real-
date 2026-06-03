@@ -433,8 +433,10 @@ export default function CartPage() {
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   // Content items (Discover saves) — eligible for "Start planning"
+  // Require both contentId AND contentType to be non-empty; do NOT use
+  // contentMeta alone since addToCart always writes {} for all cart items.
   const contentItems = (cart?.items || []).filter(
-    (item) => item.isContentItem || (item.contentId && item.contentType) || item.contentMeta
+    (item) => item.isContentItem || (!!item.contentId && !!item.contentType)
   );
 
   const openPlanningDialog = () => {

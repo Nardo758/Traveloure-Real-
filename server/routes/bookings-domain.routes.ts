@@ -752,7 +752,10 @@ router.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) 
         const cartItem = await storage.getCartItemById(cartItemId);
         if (!cartItem) continue;
         if (cartItem.userId !== userId) continue;
-        if (!cartItem.contentType && !cartItem.contentId && !cartItem.contentMeta) continue;
+        // Only convert genuine Discover content items — both contentId AND
+        // contentType must be populated. contentMeta alone is not sufficient
+        // because addToCart always writes {} for all cart rows.
+        if (!cartItem.contentId || !cartItem.contentType) continue;
 
         const meta: Record<string, any> = cartItem.contentMeta || {};
         const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
