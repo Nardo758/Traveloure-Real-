@@ -62,12 +62,27 @@ export interface LocationViewOptions {
   limit?: number;
 }
 
+const SECTION_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`[location-view] ${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 async function settle<T>(
   label: string,
   promise: Promise<T>,
 ): Promise<SectionResult<T>> {
   try {
-    const data = await promise;
+    const data = await withTimeout(promise, SECTION_TIMEOUT_MS, label);
     return { data, error: null };
   } catch (err: any) {
     console.error(`[location-view] ${label} section failed:`, err?.message ?? err);

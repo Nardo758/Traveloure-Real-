@@ -1130,20 +1130,31 @@ export default function DiscoverLocationPage() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const trackedRef = useRef<Set<string>>(new Set());
 
-  // Main orchestrator query
+  // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams();
       if (country) qs.set("country", country);
-      const res = await fetch(
-        `/api/discover/location/${encodeURIComponent(city)}${qs.toString() ? `?${qs}` : ""}`,
-      );
-      if (!res.ok) throw new Error(`Location view: ${res.status}`);
-      return res.json();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      const combined = signal
+        ? (() => { signal.addEventListener("abort", () => controller.abort()); return controller.signal; })()
+        : controller.signal;
+      try {
+        const res = await fetch(
+          `/api/discover/location/${encodeURIComponent(city)}${qs.toString() ? `?${qs}` : ""}`,
+          { signal: combined },
+        );
+        if (!res.ok) throw new Error(`Location view: ${res.status}`);
+        return res.json();
+      } finally {
+        clearTimeout(timer);
+      }
     },
     enabled: !!city,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   // Media fires in parallel — country from URL search params, no wait on hero
