@@ -136,9 +136,6 @@ export async function registerRoutes(
   // AI Discovery routes (uses dynamic import internally)
   await registerDiscoveryRoutes();
 
-  // Bookings API routes - Stripe payments, availability, pricing
-  app.use("/api/bookings", bookingsRoutes);
-
   return httpServer;
 }
 
