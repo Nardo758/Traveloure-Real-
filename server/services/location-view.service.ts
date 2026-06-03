@@ -119,7 +119,7 @@ class LocationViewService {
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
-    const cacheKey = `${cityName}:${country ?? ""}`;
+    const cacheKey = `v2|${cityName}:${country ?? ""}`;
     const cached = locationViewCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
