@@ -616,6 +616,10 @@ export const serviceBookings = pgTable("service_bookings", {
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
+  // Attribution
+  source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
+  crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
+
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
   completedAt: timestamp("completed_at"),
@@ -5668,3 +5672,23 @@ export const savedItems = pgTable("saved_items", {
 export const insertSavedItemSchema = createInsertSchema(savedItems).omit({ id: true, createdAt: true });
 export type SavedItem = typeof savedItems.$inferSelect;
 export type InsertSavedItem = z.infer<typeof insertSavedItemSchema>;
+
+// === Cross-Sell Conversion Tracking ===
+
+export const crossSellEvents = pgTable("cross_sell_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: varchar("event_type", { length: 20 }).notNull(), // impression | click | conversion
+  sourceContentType: varchar("source_content_type", { length: 50 }).notNull(), // hotel | activity | gem | service | etc.
+  sourceContentId: varchar("source_content_id", { length: 255 }).notNull(),
+  sourceContentName: varchar("source_content_name", { length: 255 }),
+  targetServiceId: varchar("target_service_id", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  userId: varchar("user_id", { length: 255 }), // nullable — anonymous events allowed
+  sessionId: varchar("session_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCrossSellEventSchema = createInsertSchema(crossSellEvents).omit({ id: true, createdAt: true });
+export type CrossSellEvent = typeof crossSellEvents.$inferSelect;
+export type InsertCrossSellEvent = z.infer<typeof insertCrossSellEventSchema>;

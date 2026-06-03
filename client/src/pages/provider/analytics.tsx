@@ -13,6 +13,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Loader2,
+  MousePointerClick,
+  Eye,
+  ShoppingCart,
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
 
@@ -41,9 +44,28 @@ interface ProviderAnalytics {
   };
 }
 
+interface CrossSellStats {
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  conversions: number;
+  byService: Array<{
+    serviceId: string;
+    serviceName: string;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+  }>;
+}
+
 export default function ProviderAnalytics() {
   const { data: analytics, isLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
+  });
+
+  const { data: crossSell, isLoading: crossSellLoading } = useQuery<CrossSellStats>({
+    queryKey: ["/api/cross-sell-events/provider-stats"],
   });
 
   const metrics = [
@@ -216,6 +238,82 @@ export default function ProviderAnalytics() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Cross-sell Performance */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MousePointerClick className="w-5 h-5 text-violet-600" />
+              Cross-Sell Performance
+            </CardTitle>
+            <CardDescription>
+              Impressions, clicks, and bookings your services receive from "Users also book" strips
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {crossSellLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20" />)}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100" data-testid="crosssell-impressions">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Eye className="w-4 h-4 text-blue-500" />
+                      <p className="text-xs text-gray-500 font-medium">Impressions</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{(crossSell?.impressions ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="p-4 bg-violet-50 rounded-lg border border-violet-100" data-testid="crosssell-clicks">
+                    <div className="flex items-center gap-2 mb-1">
+                      <MousePointerClick className="w-4 h-4 text-violet-500" />
+                      <p className="text-xs text-gray-500 font-medium">Clicks</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{(crossSell?.clicks ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-100" data-testid="crosssell-ctr">
+                    <div className="flex items-center gap-2 mb-1">
+                      <TrendingUp className="w-4 h-4 text-amber-500" />
+                      <p className="text-xs text-gray-500 font-medium">CTR</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{crossSell?.ctr ?? 0}%</p>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-100" data-testid="crosssell-bookings">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ShoppingCart className="w-4 h-4 text-green-500" />
+                      <p className="text-xs text-gray-500 font-medium">Bookings via Cross-Sell</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{(crossSell?.conversions ?? 0).toLocaleString()}</p>
+                  </div>
+                </div>
+
+                {(crossSell?.byService?.length ?? 0) > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-gray-700">By Service</p>
+                    {(crossSell?.byService ?? []).map((row) => (
+                      <div key={row.serviceId} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0" data-testid={`crosssell-service-${row.serviceId}`}>
+                        <p className="text-sm font-medium text-gray-800 truncate max-w-[200px]">{row.serviceName}</p>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <span>{row.impressions.toLocaleString()} views</span>
+                          <span>{row.clicks.toLocaleString()} clicks</span>
+                          <Badge variant="outline" className="text-xs">{row.ctr}% CTR</Badge>
+                          <span className="text-green-600 font-medium">{row.conversions} bookings</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(crossSell?.impressions ?? 0) === 0 && (
+                  <p className="text-center text-gray-400 text-sm py-4">
+                    No cross-sell data yet — data populates as travellers view the "Users also book" strip.
+                  </p>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
 
