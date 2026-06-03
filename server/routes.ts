@@ -42,7 +42,8 @@ export async function registerRoutes(
         INSERT INTO booking_fee_configs
           (id, category, platform_fee_percent, expert_share_percent, ai_keeps_100, is_active, created_at, updated_at)
         VALUES
-          (gen_random_uuid(), 'default', 25, 75, true, true, NOW(), NOW())
+          (gen_random_uuid(), 'default', 25, 75, true,  true, NOW(), NOW()),
+          (gen_random_uuid(), 'tip',     5,  95, false, true, NOW(), NOW())
         ON CONFLICT (category) DO NOTHING
       `);
       await db.execute(sql`
