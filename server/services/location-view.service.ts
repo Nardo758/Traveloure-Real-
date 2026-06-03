@@ -17,14 +17,31 @@
  */
 
 import { db } from "../db";
-import { cityNeighborhoods } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 
 export interface SectionResult<T> {
   data: T | null;
   error: string | null;
+}
+
+export interface Neighborhood {
+  id: string;
+  city: string;
+  country: string;
+  name: string;
+  slug: string;
+  centroidLat: string;
+  centroidLng: string;
+  radiusKm: string | null;
+  description: string | null;
+  isFeatured: boolean | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  gemCount: number;
+  serviceCount: number;
 }
 
 export interface LocationViewPayload {
@@ -35,7 +52,7 @@ export interface LocationViewPayload {
   recommendations: SectionResult<any>;
   enriched: SectionResult<any>;
   events: SectionResult<any>;
-  neighborhoods: SectionResult<any[]>;
+  neighborhoods: SectionResult<Neighborhood[]>;
 }
 
 export interface LocationViewOptions {
@@ -136,11 +153,32 @@ class LocationViewService {
     })();
 
     // Neighborhoods for this city (used by Phase 3 ecosystem unit)
-    const neighborhoodsPromise = db
-      .select()
-      .from(cityNeighborhoods)
-      .where(eq(cityNeighborhoods.city, cityName))
-      .orderBy(cityNeighborhoods.name);
+    // Annotate each with gem and service counts
+    const neighborhoodsPromise = (async () => {
+      const neighborhoods = await db
+        .select()
+        .from(cityNeighborhoods)
+        .where(eq(cityNeighborhoods.city, cityName))
+        .orderBy(cityNeighborhoods.name);
+
+      const annotated = await Promise.all(
+        neighborhoods.map(async (n) => {
+          const [gemRows, svcRows] = await Promise.all([
+            db
+              .select()
+              .from(travelPulseHiddenGems)
+              .where(and(eq(travelPulseHiddenGems.city, cityName), eq(travelPulseHiddenGems.neighborhood, n.slug))),
+            db.select().from(providerServices).where(eq(providerServices.neighborhood, n.slug)),
+          ]);
+          return {
+            ...n,
+            gemCount: gemRows.length,
+            serviceCount: svcRows.length,
+          };
+        }),
+      );
+      return annotated;
+    })();
 
     const [hero, recommendations, enriched, events, neighborhoods] = await Promise.all([
       settle("hero", heroPromise),
