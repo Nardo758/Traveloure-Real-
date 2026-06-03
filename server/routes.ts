@@ -131,6 +131,9 @@ export async function registerRoutes(
       }
 
       // ── Backfill approved expert_custom_services → ESO ────────────────────
+      // isDefault is intentionally false: these are approved expert offerings,
+      // not seed templates. The template picker (GET /api/service-templates)
+      // only shows isDefault=true rows, keeping the template set clean.
       try {
         const approvedCustom = await db.select().from(expertCustomServices)
           .where(and(eq(expertCustomServices.status, "approved"), eq(expertCustomServices.isActive, true)));
@@ -147,7 +150,7 @@ export async function registerRoutes(
               name: cs.title,
               description: cs.description ?? undefined,
               price: cs.price,
-              isDefault: true,
+              isDefault: false,
               sortOrder: 300 + customBackfilled,
             });
             currentEsoNames2.add(cs.title);
