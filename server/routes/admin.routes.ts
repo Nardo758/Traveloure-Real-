@@ -1352,6 +1352,35 @@ router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, re
   });
 
 
+router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const { contentAffinityTags } = req.body;
+      if (!Array.isArray(contentAffinityTags)) {
+        return res.status(400).json({ message: "contentAffinityTags must be an array" });
+      }
+
+      const validTags = [
+        "hotel_arrival", "photo_shoot", "restaurant_visit", "cultural_attraction",
+        "wellness_experience", "nightlife", "hiking_outdoor", "wedding_proposal", "general_logistics",
+      ];
+      const sanitized: string[] = contentAffinityTags.filter((t: any) => typeof t === "string" && validTags.includes(t));
+
+      const [updated] = await db.update(providerServices)
+        .set({ contentAffinityTags: sanitized, updatedAt: new Date() })
+        .where(eq(providerServices.id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Service not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update affinity tags", error: err.message });
+    }
+  });
+
+
 router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;

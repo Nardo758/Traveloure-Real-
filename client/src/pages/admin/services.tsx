@@ -51,11 +51,28 @@ import {
   ToggleRight,
   AlertTriangle,
   FileText,
+  Tag,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+const AFFINITY_TAG_OPTIONS = [
+  { value: "hotel_arrival",       label: "Hotel arrival/departure" },
+  { value: "photo_shoot",         label: "Photo shoot" },
+  { value: "restaurant_visit",    label: "Restaurant visit" },
+  { value: "cultural_attraction", label: "Cultural attraction" },
+  { value: "wellness_experience", label: "Wellness experience" },
+  { value: "nightlife",           label: "Nightlife" },
+  { value: "hiking_outdoor",      label: "Hiking/outdoor" },
+  { value: "wedding_proposal",    label: "Wedding/proposal" },
+  { value: "general_logistics",   label: "Any trip (general logistics)" },
+];
+
+const AFFINITY_TAG_LABELS: Record<string, string> = Object.fromEntries(
+  AFFINITY_TAG_OPTIONS.map(o => [o.value, o.label])
+);
 
 interface AdminService {
   id: string;
@@ -82,6 +99,7 @@ interface AdminService {
   userId: string;
   providerName?: string;
   providerEmail?: string;
+  contentAffinityTags?: string[];
 }
 
 interface ServicesSummary {
@@ -115,6 +133,8 @@ export default function AdminServices() {
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("active");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [affinityDialogOpen, setAffinityDialogOpen] = useState(false);
+  const [editingTags, setEditingTags] = useState<string[]>([]);
 
   const { data: summary, isLoading: summaryLoading } = useQuery<ServicesSummary>({
     queryKey: ["/api/admin/services/summary"],
@@ -165,6 +185,18 @@ export default function AdminServices() {
       setSelectedService(null);
     },
     onError: () => toast({ title: "Failed to delete service", variant: "destructive" }),
+  });
+
+  const affinityTagsMutation = useMutation({
+    mutationFn: ({ id, tags }: { id: string; tags: string[] }) =>
+      apiRequest("PATCH", `/api/admin/services/${id}/affinity-tags`, { contentAffinityTags: tags }),
+    onSuccess: () => {
+      toast({ title: "Affinity tags updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/services"] });
+      setAffinityDialogOpen(false);
+      setSelectedService(null);
+    },
+    onError: () => toast({ title: "Failed to update affinity tags", variant: "destructive" }),
   });
 
   const filtered = services.filter(s => {
@@ -446,6 +478,16 @@ export default function AdminServices() {
                                   <><ToggleRight className="w-4 h-4 mr-2" /> Feature</>
                                 )}
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedService(service);
+                                  setEditingTags(Array.isArray(service.contentAffinityTags) ? service.contentAffinityTags : []);
+                                  setAffinityDialogOpen(true);
+                                }}
+                                data-testid={`menu-edit-affinity-${service.id}`}
+                              >
+                                <Tag className="w-4 h-4 mr-2" /> Edit Affinity Tags
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-red-600 focus:text-red-600"
@@ -532,6 +574,68 @@ export default function AdminServices() {
             >
               {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Delete Service
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Affinity Tags Dialog */}
+      <Dialog open={affinityDialogOpen} onOpenChange={setAffinityDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Tag className="w-4 h-4" /> Edit Affinity Tags
+            </DialogTitle>
+            <DialogDescription>
+              Set which traveller contexts surface <strong>{selectedService?.serviceName}</strong> in the marketplace.
+              Tagged services override category inference and receive a relevance boost.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-2" data-testid="admin-affinity-tags-group">
+            {AFFINITY_TAG_OPTIONS.map((opt) => {
+              const checked = editingTags.includes(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                    checked
+                      ? "border-[#1A1A18] bg-[#1A1A18]/5"
+                      : "border-[#E8E8E2] hover:border-[#AEAEA6]"
+                  }`}
+                  data-testid={`admin-affinity-tag-${opt.value}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300"
+                    checked={checked}
+                    onChange={(e) => {
+                      setEditingTags(prev =>
+                        e.target.checked
+                          ? [...prev, opt.value]
+                          : prev.filter(t => t !== opt.value)
+                      );
+                    }}
+                  />
+                  <span className="text-sm text-[#1A1A18]">{opt.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          {editingTags.length === 0 && (
+            <p className="text-xs text-[#7A7A72] -mt-1">
+              No tags selected — service surfaces via category matching only.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAffinityDialogOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-[#1A1A18] hover:bg-[#2A2A28] text-white"
+              onClick={() => selectedService && affinityTagsMutation.mutate({ id: selectedService.id, tags: editingTags })}
+              disabled={affinityTagsMutation.isPending}
+              data-testid="button-confirm-affinity-tags"
+            >
+              {affinityTagsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save Tags
             </Button>
           </DialogFooter>
         </DialogContent>
