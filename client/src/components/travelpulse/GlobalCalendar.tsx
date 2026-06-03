@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,6 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Link } from "wouter";
-import { CityDetailView } from "./CityDetailView";
 import { YearOverviewCalendar } from "./YearOverviewCalendar";
 import { MonthCalendarGrid } from "./MonthCalendarGrid";
 import { CompactYearCalendar } from "./CompactYearCalendar";
@@ -178,7 +178,6 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [view, setView] = useState<CalendarView>("month-destinations");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedVibe, setSelectedVibe] = useState("all");
-  const [selectedCity, setSelectedCity] = useState<{ name: string; country: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const [selectedWeek, setSelectedWeek] = useState<number | undefined>(undefined);
@@ -260,13 +259,14 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     staleTime: 1000 * 60 * 30,
   });
 
-  const handleCityClick = (cityName: string, country: string) => {
-    setSelectedCity({ name: cityName, country });
-    onCityClick?.(cityName, country);
-  };
+  const [, navigate] = useLocation();
 
-  const handleBackFromCity = () => {
-    setSelectedCity(null);
+  const handleCityClick = (cityName: string, country: string) => {
+    // Phase B: Navigate to LocationView instead of inline modal
+    const qs = new URLSearchParams();
+    qs.set("country", country);
+    navigate(`/discover/location/${encodeURIComponent(cityName)}?${qs.toString()}`);
+    onCityClick?.(cityName, country);
   };
 
   const handleMonthClick = (month: number) => {
@@ -300,15 +300,6 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     setSelectedWeek(undefined);
     setSelectedDay(undefined);
   };
-
-  if (selectedCity) {
-    return (
-      <CityDetailView
-        cityName={selectedCity.name}
-        onBack={handleBackFromCity}
-      />
-    );
-  }
 
   if (isLoading && view !== "year") {
     return (
