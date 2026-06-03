@@ -2350,6 +2350,11 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   // populated by backfill-gem-neighborhoods.ts or set directly on AI generation.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
+  // Expert curation link — when set, the gem was explicitly recommended or
+  // curated by this expert. Soft FK into users.id (expert role). Populated
+  // manually by admins or via the expert workspace "Recommend a gem" action.
+  curatedByExpertId: varchar("curated_by_expert_id", { length: 255 }),
+
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),

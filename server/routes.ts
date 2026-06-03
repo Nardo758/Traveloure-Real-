@@ -8283,4 +8283,151 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
     }
   });
 
+  // ─── Bundle Bookings — hotel + transfer in one PaymentIntent ─────────────────
+  // Creates two service bookings (hotel + transport) under a single Stripe
+  // PaymentIntent so the traveler checks out both items in one step.
+  app.post("/api/bundle-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const {
+        hotelServiceId, hotelName, hotelPrice,
+        transportServiceId, transportName, transportPrice,
+        travelDate, travelers,
+      } = req.body;
+
+      if (!hotelServiceId || !transportServiceId) {
+        return res.status(400).json({ message: "hotelServiceId and transportServiceId are required" });
+      }
+
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+      const hotelPriceNum = parseFloat(String(hotelPrice ?? 0)) || 0;
+      const transportPriceNum = parseFloat(String(transportPrice ?? 0)) || 0;
+      const totalCents = Math.round((hotelPriceNum + transportPriceNum) * 100);
+
+      // Create Stripe PaymentIntent for the combined amount
+      let paymentIntentId: string | null = null;
+      if (totalCents > 0) {
+        try {
+          const { stripeService } = await import("./replit_integrations/stripe.service");
+          const stripe = (stripeService as any).stripe;
+          if (stripe) {
+            const pi = await stripe.paymentIntents.create({
+              amount: totalCents,
+              currency: "eur",
+              metadata: {
+                bundle: "hotel_transfer",
+                hotelServiceId,
+                transportServiceId,
+                userId,
+                travelDate: travelDate ?? "",
+                travelers: String(travelers ?? 1),
+              },
+              description: `Bundle: ${hotelName ?? "Hotel"} + ${transportName ?? "Transfer"}`,
+            });
+            paymentIntentId = pi.id;
+          }
+        } catch (stripeErr) {
+          console.warn("[bundle-bookings] Stripe PI creation failed:", stripeErr);
+        }
+      }
+
+      // Persist two service booking records
+      const [hotelBooking] = await db.execute(sql`
+        INSERT INTO service_bookings
+          (id, user_id, service_id, booking_date, number_of_people, total_price, status, special_requests, created_at, updated_at)
+        VALUES
+          (gen_random_uuid(), ${userId}, ${hotelServiceId}, ${travelDate ?? null},
+           ${travelers ?? 1}, ${hotelPriceNum.toFixed(2)}, 'pending',
+           ${paymentIntentId ? `Bundle PI: ${paymentIntentId}` : "Bundle booking"}, NOW(), NOW())
+        RETURNING id
+      `);
+
+      const [transferBooking] = await db.execute(sql`
+        INSERT INTO service_bookings
+          (id, user_id, service_id, booking_date, number_of_people, total_price, status, special_requests, created_at, updated_at)
+        VALUES
+          (gen_random_uuid(), ${userId}, ${transportServiceId}, ${travelDate ?? null},
+           ${travelers ?? 1}, ${transportPriceNum.toFixed(2)}, 'pending',
+           ${paymentIntentId ? `Bundle PI: ${paymentIntentId}` : "Bundle booking"}, NOW(), NOW())
+        RETURNING id
+      `);
+
+      return res.status(201).json({
+        success: true,
+        paymentIntentId,
+        hotelBookingId: (hotelBooking as any)?.rows?.[0]?.id ?? null,
+        transferBookingId: (transferBooking as any)?.rows?.[0]?.id ?? null,
+        totalAmount: (hotelPriceNum + transportPriceNum).toFixed(2),
+        message: "Bundle created — both bookings are pending payment confirmation.",
+      });
+    } catch (err: any) {
+      console.error("[bundle-bookings] error:", err);
+      res.status(500).json({ message: "Failed to create bundle booking", error: err.message });
+    }
+  });
+
+  // GET /api/content-match-experts — returns the top expert match for a content type in a city
+  // Used by GemCard / ActivityRow to render "Expert pick" attribution.
+  app.get("/api/content-match-experts", async (req, res) => {
+    try {
+      const { type, city, limit = "1" } = req.query;
+      if (!city || typeof city !== "string") {
+        return res.status(400).json({ message: "city is required" });
+      }
+
+      // Pull local expert forms whose city matches, then join the users table for name
+      const experts = await db.execute(sql`
+        SELECT
+          u.id,
+          u.first_name,
+          u.last_name,
+          lef.specialization,
+          lef.hourly_rate,
+          lef.city_of_expertise,
+          u.average_rating,
+          u.review_count
+        FROM local_expert_forms lef
+        JOIN users u ON u.id = lef.user_id
+        WHERE u.role IN ('expert', 'local_expert')
+          AND LOWER(lef.city_of_expertise) = LOWER(${city})
+          AND lef.application_status = 'approved'
+        ORDER BY u.average_rating DESC NULLS LAST, lef.created_at DESC
+        LIMIT ${parseInt(limit as string)}
+      `);
+
+      const rows = (experts as any)?.rows ?? [];
+
+      // Score by specialization match to placeType
+      const t = (type as string ?? "").toLowerCase();
+      let scored = rows.map((r: any) => ({
+        id: r.id,
+        name: [r.first_name, r.last_name].filter(Boolean).join(" "),
+        specialty: r.specialization ?? null,
+        hourlyRate: r.hourly_rate ?? null,
+        averageRating: r.average_rating ?? null,
+        reviewCount: r.review_count ?? null,
+        score: (() => {
+          const spec = (r.specialization ?? "").toLowerCase();
+          if (!t) return 0;
+          if (t.includes("food") || t.includes("eat") || t.includes("restaurant")) {
+            return spec.includes("food") || spec.includes("culinary") || spec.includes("dining") ? 2 : 0;
+          }
+          if (t.includes("photo") || t.includes("viewpoint")) {
+            return spec.includes("photo") ? 2 : 0;
+          }
+          if (t.includes("hotel") || t.includes("stay")) {
+            return spec.includes("luxury") || spec.includes("accommodation") ? 2 : 1;
+          }
+          return spec.includes(t.split(" ")[0]) ? 1 : 0;
+        })(),
+      })).sort((a: any, b: any) => b.score - a.score);
+
+      res.json({ experts: scored });
+    } catch (err: any) {
+      console.error("[content-match-experts] error:", err);
+      res.status(500).json({ experts: [], error: err.message });
+    }
+  });
+
 }
