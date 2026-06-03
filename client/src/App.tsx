@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
@@ -10,6 +10,7 @@ import { ProviderLayout } from "@/components/provider/provider-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
+import { useEffect, useRef } from "react";
 
 import LandingPage from "@/pages/landing";
 import LandingMockups from "@/pages/landing-mockups";
@@ -710,6 +711,39 @@ function Router() {
   );
 }
 
+function GuestCartMigrator() {
+  const { user, isLoading } = useAuth();
+  const qc = useQueryClient();
+  const wasAuthenticated = useRef(false);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const isNowAuth = !!user;
+    if (!wasAuthenticated.current && isNowAuth) {
+      const guestSessionId = localStorage.getItem("traveloure_guest_session");
+      if (guestSessionId) {
+        fetch("/api/cart/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ guestSessionId }),
+          credentials: "include",
+        })
+          .then((res) => {
+            if (!res.ok) {
+              console.warn("[cart] Guest cart migration returned", res.status);
+            } else {
+              qc.invalidateQueries({ queryKey: ["/api/cart"] });
+            }
+          })
+          .catch((err) => console.warn("[cart] Guest cart migration failed", err));
+      }
+    }
+    wasAuthenticated.current = isNowAuth;
+  }, [user, isLoading, qc]);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -717,6 +751,7 @@ function App() {
         <SignInModalProvider>
           <TooltipProvider>
             <Toaster />
+            <GuestCartMigrator />
             <Router />
           </TooltipProvider>
         </SignInModalProvider>

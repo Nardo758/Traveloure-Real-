@@ -232,10 +232,13 @@ export interface IStorage {
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
-  addToCart(userId: string, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any>;
+  getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
+  getCartItemById(id: string): Promise<any | undefined>;
+  addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
   updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
+  migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
 
   // Contracts
   getContract(id: string): Promise<any | undefined>;
@@ -1324,11 +1327,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cart Methods
-  async getCartItems(userId: string, experienceSlug?: string): Promise<any[]> {
-    let whereCondition = eq(cartItems.userId, userId);
+  async getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]> {
+    let whereCondition: any = eq(cartItems.guestSessionId, guestSessionId);
     if (experienceSlug) {
-      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug)) as any;
+      whereCondition = and(eq(cartItems.guestSessionId, guestSessionId), eq(cartItems.experienceSlug, experienceSlug));
     }
+    return this._enrichCartItems(whereCondition);
+  }
+
+  async getCartItems(userId: string, experienceSlug?: string): Promise<any[]> {
+    let whereCondition: any = eq(cartItems.userId, userId);
+    if (experienceSlug) {
+      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug));
+    }
+    return this._enrichCartItems(whereCondition);
+  }
+
+  async getCartItemById(id: string): Promise<any | undefined> {
+    const [item] = await db.select().from(cartItems).where(eq(cartItems.id, id));
+    return item;
+  }
+
+  private async _enrichCartItems(whereCondition: any): Promise<any[]> {
     const items = await db.select().from(cartItems).where(whereCondition);
     // Join with service details or custom venue details
     const enriched = await Promise.all(items.map(async (item) => {
@@ -1373,22 +1393,35 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any> {
-    // Check if item already in cart for this experience
-    let whereCondition;
+  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
+    if (!userId && !item.guestSessionId) {
+      throw new Error("Either userId or guestSessionId is required");
+    }
+
+    // Build the owner match condition
+    let ownerCondition: any;
+    if (userId) {
+      ownerCondition = eq(cartItems.userId, userId);
+    } else {
+      ownerCondition = eq(cartItems.guestSessionId, item.guestSessionId!);
+    }
+
+    // Build the item match condition
+    let itemCondition: any;
     if (item.customVenueId) {
-      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.customVenueId, item.customVenueId));
+      itemCondition = and(ownerCondition, eq(cartItems.customVenueId, item.customVenueId));
     } else if (item.serviceId) {
-      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.serviceId, item.serviceId));
+      itemCondition = and(ownerCondition, eq(cartItems.serviceId, item.serviceId));
     } else {
       throw new Error("Either serviceId or customVenueId is required");
     }
-    
+
     if (item.experienceSlug) {
-      whereCondition = and(whereCondition, eq(cartItems.experienceSlug, item.experienceSlug));
+      itemCondition = and(itemCondition, eq(cartItems.experienceSlug, item.experienceSlug));
     }
-    const [existing] = await db.select().from(cartItems).where(whereCondition);
-    
+
+    const [existing] = await db.select().from(cartItems).where(itemCondition);
+
     if (existing) {
       const [updated] = await db.update(cartItems)
         .set({ quantity: (existing.quantity || 1) + (item.quantity || 1) })
@@ -1396,9 +1429,10 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return updated;
     }
-    
+
     const [newItem] = await db.insert(cartItems).values({
-      userId,
+      userId: userId || null,
+      guestSessionId: item.guestSessionId || null,
       serviceId: item.serviceId || null,
       customVenueId: item.customVenueId || null,
       experienceSlug: item.experienceSlug,
@@ -1408,6 +1442,46 @@ export class DatabaseStorage implements IStorage {
       notes: item.notes
     }).returning();
     return newItem;
+  }
+
+  async migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }> {
+    const guestItems = await db.select().from(cartItems).where(eq(cartItems.guestSessionId, guestSessionId));
+    if (guestItems.length === 0) return { migrated: 0, deduplicated: 0 };
+
+    let migrated = 0;
+    let deduplicated = 0;
+
+    for (const guestItem of guestItems) {
+      // Check if the authenticated cart already has this item
+      let dupeCondition: any = eq(cartItems.userId, userId);
+      if (guestItem.serviceId) {
+        dupeCondition = and(dupeCondition, eq(cartItems.serviceId, guestItem.serviceId));
+      } else if (guestItem.customVenueId) {
+        dupeCondition = and(dupeCondition, eq(cartItems.customVenueId, guestItem.customVenueId));
+      } else {
+        // No service or venue — just delete the orphan guest row
+        await db.delete(cartItems).where(eq(cartItems.id, guestItem.id));
+        continue;
+      }
+      if (guestItem.experienceSlug) {
+        dupeCondition = and(dupeCondition, eq(cartItems.experienceSlug, guestItem.experienceSlug));
+      }
+
+      const [existing] = await db.select().from(cartItems).where(dupeCondition);
+      if (existing) {
+        // Deduplicate: remove guest row (user already has this item)
+        await db.delete(cartItems).where(eq(cartItems.id, guestItem.id));
+        deduplicated++;
+      } else {
+        // Migrate: assign to user
+        await db.update(cartItems)
+          .set({ userId, guestSessionId: null })
+          .where(eq(cartItems.id, guestItem.id));
+        migrated++;
+      }
+    }
+
+    return { migrated, deduplicated };
   }
 
   async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined> {
