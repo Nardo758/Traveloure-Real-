@@ -938,6 +938,28 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isDefault: boolean("is_default").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // Migration 006: ESO canonicalization
+  // expertId=null → platform template; expertId set → expert-owned offering
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "cascade" }),
+  // externalId links back to the originating service_templates / expert_custom_services row
+  // Used for deterministic deduplication instead of fragile name-matching
+  externalId: varchar("external_id"),
+  // Migration 007: workflow/lifecycle columns (null for platform templates where expertId IS NULL)
+  status: varchar("status", { length: 20 }).default("draft"),       // draft | submitted | approved | rejected
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
+  duration: varchar("duration", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }),
+  imageUrl: text("image_url"),
+  galleryImages: jsonb("gallery_images").default([]),
+  experienceTypes: jsonb("experience_types").default([]),
+  isActive: boolean("is_active").default(true),
+  categoryName: varchar("category_name", { length: 100 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Link experts to their selected service offerings
