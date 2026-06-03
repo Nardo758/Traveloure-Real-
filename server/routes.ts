@@ -1771,6 +1771,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const { locationViewService } = await import("./services/location-view.service");
       const payload = await locationViewService.getLocationView(city, country, { month, year, limit });
+      res.set("Cache-Control", "public, max-age=300");
       res.json(payload);
     } catch (err: any) {
       console.error("Error building location view:", err);
