@@ -415,6 +415,8 @@ interface CrossSellProvider {
   isFeatured: boolean;
   averageRating: string | null;
   bookingsCount: number;
+  /** Optional external partner URL — when present, opens AffiliateBookingModal instead of navigating */
+  affiliateUrl?: string | null;
 }
 
 function isTransportService(serviceType: string | null): boolean {
@@ -428,15 +430,12 @@ function CrossSellStrip({
   cityName,
   sourceContentId,
   sourceContentType,
-  labelOverride,
 }: {
   placeType: string;
   neighborhood?: string | null;
   cityName?: string;
   sourceContentId: string;
   sourceContentType: string;
-  /** When set, forces this label instead of the auto-detected one */
-  labelOverride?: string;
 }) {
   const [, navigate] = useLocation();
   const [affiliateTarget, setAffiliateTarget] = useState<AffiliateBookingTarget | null>(null);
@@ -468,28 +467,31 @@ function CrossSellStrip({
     }
   };
 
+  /**
+   * Chip click: fire tracking first, then route.
+   * All content-match results are native Traveloure services → navigate to /services/:id.
+   * If a service ever carries an external affiliateUrl, open the AffiliateBookingModal instead.
+   */
   const handleChipClick = async (svc: CrossSellProvider) => {
     await fireCrossSellClick(svc.serviceId);
-    navigate(`/services/${svc.serviceId}`);
+    if (svc.affiliateUrl) {
+      setAffiliateTarget({
+        itemName: svc.serviceName,
+        partnerName: svc.providerName,
+        affiliateUrl: svc.affiliateUrl,
+        partnerCategory: svc.serviceType ?? "service",
+        itemDescription: svc.shortDescription ?? undefined,
+      });
+      setAffiliateOpen(true);
+    } else {
+      navigate(`/services/${svc.serviceId}`);
+    }
   };
 
-  const handleAffiliateChipClick = async (svc: CrossSellProvider, affiliateUrl: string) => {
-    await fireCrossSellClick(svc.serviceId);
-    setAffiliateTarget({
-      itemName: svc.serviceName,
-      partnerName: svc.providerName,
-      affiliateUrl,
-      partnerCategory: svc.serviceType ?? "service",
-      itemDescription: svc.shortDescription ?? undefined,
-    });
-    setAffiliateOpen(true);
-  };
-
-  // Determine strip label
-  const autoLabel = providers.length > 0 && providers.every(p => isTransportService(p.serviceType))
+  // Detect strip label from matched service types — transport/concierge → "Getting there", else "Also popular"
+  const stripLabel = providers.length > 0 && providers.every(p => isTransportService(p.serviceType))
     ? "Getting there"
     : "Also popular";
-  const stripLabel = labelOverride ?? autoLabel;
 
   if (isLoading) {
     return (
@@ -524,9 +526,11 @@ function CrossSellStrip({
               return (
                 <Tooltip key={svc.serviceId}>
                   <TooltipTrigger asChild>
+                    {/* Chip container is the primary click target — fires tracking on any tap/click */}
                     <div
                       className="flex items-center gap-1 bg-muted/70 hover:bg-muted border border-border rounded-full px-2 py-1 flex-shrink-0 cursor-pointer transition-colors group"
                       data-testid={`cross-sell-chip-${svc.serviceId}`}
+                      onClick={() => handleChipClick(svc)}
                     >
                       {/* Provider avatar */}
                       <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[8px] font-bold flex items-center justify-center flex-shrink-0">
@@ -541,7 +545,7 @@ function CrossSellStrip({
                           {priceDisplay}
                         </span>
                       )}
-                      {/* Book button */}
+                      {/* Book button — stopPropagation so chip onClick doesn't double-fire */}
                       <Button
                         size="sm"
                         className="text-[9px] h-5 px-1.5 rounded-full flex-shrink-0 ml-0.5"
@@ -1050,14 +1054,13 @@ function HotelMiniCard({
           </Button>
         </div>
 
-        {/* Cross-sell strip — "Getting there" label for hotel transport services */}
+        {/* Cross-sell strip — auto-labels "Getting there" when matched services are transport types */}
         <CrossSellStrip
           placeType="hotel"
           neighborhood={item.neighborhood}
           cityName={cityName}
           sourceContentId={item.id ?? displayName}
           sourceContentType="hotel"
-          labelOverride="Getting there"
         />
       </div>
     </div>
