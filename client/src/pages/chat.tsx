@@ -67,6 +67,9 @@ export default function Chat() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const expertIdFromUrl = urlParams.get("expertId");
+  // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
+  // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
+  const clientIdFromUrl = urlParams.get("clientId");
 
   const { data: linkedExpert } = useQuery<any>({
     queryKey: ["/api/experts", expertIdFromUrl],
@@ -89,6 +92,17 @@ export default function Chat() {
     enabled: !!expertIdFromUrl,
   });
 
+  // Fetch client info when arriving from /expert/messages/:clientId deep-link
+  const { data: linkedClient } = useQuery<any>({
+    queryKey: ["/api/users", clientIdFromUrl],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${clientIdFromUrl}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!clientIdFromUrl,
+  });
+
   const allExperts = useMemo(() => {
     if (linkedExpert) {
       const exists = sampleExperts.some(e => String(e.id) === String(linkedExpert.id));
@@ -106,6 +120,17 @@ export default function Chat() {
       setSelectedExpert(linkedExpert);
     }
   }, [linkedExpert]);
+
+  // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
+  // client's name so the relevant conversation thread is surfaced immediately.
+  useEffect(() => {
+    if (linkedClient && !searchQuery) {
+      const clientName = linkedClient.firstName
+        ? `${linkedClient.firstName} ${linkedClient.lastName || ""}`.trim()
+        : (linkedClient.username || linkedClient.email || "");
+      if (clientName) setSearchQuery(clientName);
+    }
+  }, [linkedClient]);
   const [realtimeMessages, setRealtimeMessages] = useState<RealtimeMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
