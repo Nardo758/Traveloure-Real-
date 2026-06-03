@@ -25,6 +25,7 @@ import { formatDistanceToNow } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { getGuestSessionId } from "@/lib/guestSession";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,6 +72,10 @@ interface HiddenGem {
   whyHidden?: string | null; description?: string | null; whyLocalsLoveIt?: string | null;
   imageUrl?: string | null; localRating?: string | number | null;
   priceRange?: string | null; reviewCount?: number | null;
+  curatedByExpertId?: string | null;
+}
+interface ExpertMatchInfo {
+  id: string; name: string; specialty?: string | null; hourlyRate?: string | null;
 }
 interface PlatformService {
   id: string; serviceName: string; serviceType?: string | null;
@@ -179,7 +184,7 @@ function resolveMatch(item: {
 // ─── GemCard — compact bento card (2-col half or span-2 row) ─────────────────
 
 function GemCard({
-  item, idx, onAdd, testPrefix, onRequestBooking, cityName,
+  item, idx, onAdd, testPrefix, onRequestBooking, cityName, expertMatch, curatedByExpert,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -188,12 +193,15 @@ function GemCard({
     localRating?: number | null; starRating?: number | null;
     bookingUrl?: string | null; price?: string | null;
     neighborhood?: string | null; address?: string | null;
+    curatedByExpertId?: string | null;
   };
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
   cityName?: string;
+  expertMatch?: ExpertMatchInfo | null;
+  curatedByExpert?: ExpertMatchInfo | null;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
@@ -305,17 +313,34 @@ function GemCard({
               </Button>
             );
           })()}
-          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
-            onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
-            data-testid={`${testPrefix}-add-${idx}`}>
-            + Add
-          </Button>
+          <AddToPlanButton
+            contentId={item.id ?? displayName}
+            contentType="gem"
+            contentMeta={{ name: displayName, imageUrl: image, description, price: item.price ?? null }}
+            city={cityName}
+            size="xs"
+          />
           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => navigate(`/chat?about=${encodeURIComponent(displayName)}`)}
             data-testid={`${testPrefix}-ask-${idx}`}>
             💬 Ask expert
           </Button>
         </div>
+
+        {/* Expert attribution — curated-by takes priority over soft expert pick */}
+        {curatedByExpert ? (
+          <ExpertPickAttribution
+            expert={curatedByExpert}
+            contentName={displayName}
+            variant="curated"
+          />
+        ) : expertMatch ? (
+          <ExpertPickAttribution
+            expert={expertMatch}
+            contentName={displayName}
+            variant="pick"
+          />
+        ) : null}
 
         {/* Cross-sell strip */}
         <CrossSellStrip
@@ -395,6 +420,98 @@ function WishlistButton({
     >
       <Heart className={`h-3.5 w-3.5 transition-colors ${isSaved ? "fill-rose-500 text-rose-500" : "text-gray-500"}`} />
     </button>
+  );
+}
+
+// ─── AddToPlanButton ─────────────────────────────────────────────────────────
+// Self-contained "＋ Add to plan" button that POSTs to the cart API.
+// Works for guests (localStorage session) and authenticated users alike.
+
+function AddToPlanButton({
+  contentId,
+  contentType,
+  contentMeta,
+  city,
+  className,
+  size = "sm",
+}: {
+  contentId: string;
+  contentType: "gem" | "hotel" | "activity";
+  contentMeta: { name: string; imageUrl?: string | null; description?: string | null; price?: string | null };
+  city?: string;
+  className?: string;
+  size?: "sm" | "xs";
+}) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [added, setAdded] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const guestId = !user ? getGuestSessionId() : undefined;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (guestId) headers["X-Guest-Session"] = guestId;
+
+      const res = await fetch("/api/cart/items", {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          contentType,
+          contentId,
+          contentMeta: { ...contentMeta, city: city ?? null },
+          experienceSlug: "general",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to add to plan");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setAdded(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      if (!user) {
+        toast({
+          title: "Added to your plan",
+          description: "Sign in to save your plan permanently.",
+        });
+      } else {
+        toast({ title: "Added to your plan" });
+      }
+      // Reset "added" state after a moment so it can be re-added
+      setTimeout(() => setAdded(false), 3000);
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not add", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const sizeClasses = size === "xs"
+    ? "text-[10px] h-6 px-2"
+    : "text-xs h-7 px-2.5";
+
+  return (
+    <Button
+      size="sm"
+      variant={added ? "default" : "outline"}
+      className={`${sizeClasses} whitespace-nowrap ${added ? "bg-[#FF385C] hover:bg-[#E23350] text-white border-[#FF385C]" : ""} ${className ?? ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!mutation.isPending && !added) mutation.mutate();
+      }}
+      disabled={mutation.isPending}
+      data-testid={`add-to-plan-${contentId}`}
+    >
+      {mutation.isPending ? (
+        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+      ) : added ? (
+        "✓ Added"
+      ) : (
+        "＋ Add to plan"
+      )}
+    </Button>
   );
 }
 
@@ -658,6 +775,295 @@ function AffiliateBookingModal({
   );
 }
 
+// ─── ExpertPickAttribution — slim attribution line on gem/activity cards ──────
+// Two variants: "Expert pick" (soft match) and "Curated by" (explicit curation).
+
+function ExpertPickAttribution({
+  expert, contentName, variant = "pick",
+}: {
+  expert: ExpertMatchInfo;
+  contentName: string;
+  variant?: "pick" | "curated";
+}) {
+  const [, navigate] = useLocation();
+  const initials = expert.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+  if (variant === "curated") {
+    return (
+      <div
+        className="border-t border-dashed border-emerald-200 pt-1.5 mt-0.5 flex items-center gap-1.5"
+        data-testid={`curated-by-${expert.id}`}
+      >
+        <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[8px] font-bold flex items-center justify-center flex-shrink-0">
+          {initials}
+        </div>
+        <span className="text-[10px] text-emerald-700 font-semibold flex-1 min-w-0 truncate flex items-center gap-1">
+          <UserCheck className="h-2.5 w-2.5 flex-shrink-0" />
+          Curated by {expert.name}
+          {expert.specialty && <span className="font-normal text-emerald-600 opacity-80">· {expert.specialty}</span>}
+        </span>
+        <button
+          className="text-[10px] text-emerald-700 underline underline-offset-1 hover:opacity-70 flex-shrink-0"
+          onClick={() => navigate(`/chat?expertId=${expert.id}&about=${encodeURIComponent(contentName)}`)}
+          data-testid={`curated-plan-link-${expert.id}`}
+        >
+          Plan with {expert.name.split(" ")[0]} →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5 flex items-center gap-1.5"
+      data-testid={`expert-pick-${expert.id}`}
+    >
+      <div className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[8px] font-bold flex items-center justify-center flex-shrink-0">
+        {initials}
+      </div>
+      <span className="text-[10px] text-muted-foreground flex-1 min-w-0 truncate">
+        Expert pick · <span className="font-medium text-foreground/70">{expert.name}</span>
+        {expert.specialty && <span> · {expert.specialty}</span>}
+      </span>
+      <button
+        className="text-[10px] text-primary underline underline-offset-1 hover:opacity-70 flex-shrink-0 whitespace-nowrap"
+        onClick={() => navigate(`/chat?expertId=${expert.id}&about=${encodeURIComponent(contentName)}`)}
+        data-testid={`expert-pick-link-${expert.id}`}
+      >
+        Plan with {expert.name.split(" ")[0]} →
+      </button>
+    </div>
+  );
+}
+
+// ─── BundleBookingModal — hotel + transfer checkout in one step ───────────────
+
+interface BundleItem {
+  serviceId: string;
+  name: string;
+  price: string | null;
+  priceType?: string | null;
+  type: "hotel" | "transport";
+}
+
+function BundleBookingModal({
+  hotel, transport, open, onOpenChange,
+}: {
+  hotel: BundleItem;
+  transport: BundleItem;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [travelDate, setTravelDate] = useState("");
+  const [travelers, setTravelers] = useState(1);
+
+  const transportPriceNum = parseFloat(String(transport.price ?? 0)) || 0;
+
+  const mutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bundle-bookings", {
+      transportServiceId: transport.serviceId,
+      travelDate: travelDate || null,
+      travelers,
+    }),
+    onSuccess: (data: any) => {
+      if (data?.checkoutUrl) {
+        toast({
+          title: "Transfer reserved!",
+          description: "Redirecting to Stripe to complete payment…",
+        });
+        onOpenChange(false);
+        setTravelDate(""); setTravelers(1);
+        window.location.href = data.checkoutUrl;
+      } else {
+        toast({ title: "Transfer reserved!", description: "Pending booking created. Check My Bookings." });
+        onOpenChange(false);
+        setTravelDate(""); setTravelers(1);
+      }
+    },
+    onError: (err: any) => {
+      const msg = err?.message ?? "";
+      const isForbidden = msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized");
+      toast({
+        title: isForbidden ? "Sign in required" : "Booking failed",
+        description: isForbidden ? "Please sign in to book." : "Something went wrong — please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="bundle-booking-modal">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-primary" />
+            Book transfer + hotel
+          </DialogTitle>
+          <DialogDescription>Book your airport transfer through Traveloure, then complete the hotel on its own booking page.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          {/* Side-by-side items */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Hotel — external booking */}
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
+                HOTEL
+              </span>
+              <p className="text-xs font-semibold mt-1.5 leading-snug line-clamp-2">{hotel.name}</p>
+              {hotel.price && (
+                <p className="text-sm font-bold mt-1 text-primary">{hotel.price}</p>
+              )}
+              <p className="text-[9px] text-muted-foreground mt-1">Book via hotel site</p>
+            </div>
+            {/* Transfer — booked through Traveloure */}
+            <div className="rounded-lg border bg-violet-50/60 border-violet-200 p-3">
+              <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-violet-50 text-violet-700 border-violet-200">
+                TRANSFER
+              </span>
+              <p className="text-xs font-semibold mt-1.5 leading-snug line-clamp-2">{transport.name}</p>
+              {transport.price && (
+                <p className="text-sm font-bold mt-1 text-primary">
+                  {formatServicePrice(transport.price, transport.priceType)}
+                </p>
+              )}
+              <p className="text-[9px] text-violet-600 mt-1 font-medium">Via Traveloure ✓</p>
+            </div>
+          </div>
+          {/* Transfer price — what you pay now */}
+          {transportPriceNum > 0 && (
+            <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 flex items-center justify-between">
+              <span className="text-xs font-medium">Transfer payment today</span>
+              <span className="text-base font-bold text-primary">
+                from €{transportPriceNum.toFixed(0)}
+              </span>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="bundle-date" className="text-xs font-medium">Travel date</Label>
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input id="bundle-date" type="date" className="pl-8 text-sm" value={travelDate}
+                onChange={e => setTravelDate(e.target.value)} data-testid="input-bundle-date" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bundle-travelers" className="text-xs font-medium">Travelers</Label>
+            <Input id="bundle-travelers" type="number" min={1} max={12} className="text-sm"
+              value={travelers} onChange={e => setTravelers(parseInt(e.target.value) || 1)}
+              data-testid="input-bundle-travelers" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}
+              data-testid="button-bundle-cancel">
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={() => mutation.mutate()} disabled={mutation.isPending}
+              data-testid="button-bundle-confirm">
+              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
+              Book transfer
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── ExpertTourRow — editorial cross-link for "Eat" filter ───────────────────
+// Shown at the top of the eat-filter flat feed when a food-tour service exists.
+
+function ExpertTourRow({
+  service, expert, cityName,
+}: {
+  service: PlatformService;
+  expert?: any;
+  cityName: string;
+}) {
+  const [, navigate] = useLocation();
+  const expertName = expert?.name ?? `Local ${cityName} expert`;
+  const initials = expertName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+  const priceDisplay = formatServicePrice(service.price, service.priceType);
+
+  return (
+    <div
+      className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 flex items-center gap-3 mb-4"
+      data-testid="expert-tour-row"
+    >
+      <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 text-sm font-bold flex items-center justify-center flex-shrink-0">
+        {initials}
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+          EXPERT FOOD TOURS THAT INCLUDE THESE SPOTS
+        </span>
+        <p className="text-sm font-semibold leading-snug mt-0.5 line-clamp-1">{service.serviceName}</p>
+        <p className="text-xs text-muted-foreground">
+          by {expertName}
+          {priceDisplay && <span className="font-medium text-foreground/80"> · {priceDisplay}</span>}
+        </p>
+      </div>
+      <Button
+        size="sm"
+        className="text-xs h-7 px-3 flex-shrink-0 bg-amber-500 hover:bg-amber-600 whitespace-nowrap"
+        onClick={() => navigate(`/services/${service.id}`)}
+        data-testid="button-see-food-tour"
+      >
+        See full tour →
+      </Button>
+    </div>
+  );
+}
+
+// ─── Helper: match a city expert to content type ─────────────────────────────
+
+function matchExpertToContent(experts: any[], placeType: string | null | undefined): ExpertMatchInfo | null {
+  if (!experts || experts.length === 0 || !placeType) return null;
+  const t = placeType.toLowerCase();
+
+  const toInfo = (e: any): ExpertMatchInfo => ({
+    id: e.id,
+    name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "),
+    specialty: Array.isArray(e.specializations)
+      ? e.specializations[0]
+      : (e.specialization ?? e.specialty ?? null),
+    hourlyRate: e.hourlyRate ?? null,
+  });
+
+  // Food/restaurant → culinary/food specialist
+  if (t.includes("restaurant") || t.includes("cafe") || t.includes("food") || t.includes("eat") ||
+      t.includes("dining") || t.includes("ramen") || t.includes("sushi") || t.includes("kitchen")) {
+    const match = experts.find(e => {
+      const spec = String(e.specializations ?? e.specialization ?? "").toLowerCase();
+      return spec.includes("food") || spec.includes("culinary") || spec.includes("dining");
+    });
+    if (match) return toInfo(match);
+  }
+
+  // Photo spots → photography specialist
+  if (t.includes("photo") || t.includes("viewpoint") || t.includes("scenic")) {
+    const match = experts.find(e => {
+      const spec = String(e.specializations ?? e.specialization ?? "").toLowerCase();
+      return spec.includes("photo") || spec.includes("photography");
+    });
+    if (match) return toInfo(match);
+  }
+
+  // Attractions, museums, temples → guide/cultural specialist
+  if (t.includes("attraction") || t.includes("museum") || t.includes("temple") ||
+      t.includes("shrine") || t.includes("castle") || t.includes("tour")) {
+    const match = experts.find(e => {
+      const spec = String(e.specializations ?? e.specialization ?? "").toLowerCase();
+      return spec.includes("cultural") || spec.includes("history") || spec.includes("guide") || spec.includes("heritage");
+    });
+    if (match) return toInfo(match);
+    // Fallback to first expert for high-value attractions
+    return toInfo(experts[0]);
+  }
+
+  return null;
+}
+
 /** Format a raw DB price decimal as a locale-aware currency string. */
 function formatServicePrice(
   price: string | null | undefined,
@@ -704,7 +1110,7 @@ function detectBadge(bookingUrl: string | null | undefined): {
 }
 
 function ActivityRow({
-  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking, cityName, neighborhood,
+  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking, cityName, neighborhood, expertMatch,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -722,6 +1128,7 @@ function ActivityRow({
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
   cityName?: string;
   neighborhood?: string | null;
+  expertMatch?: ExpertMatchInfo | null;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
@@ -834,18 +1241,12 @@ function ActivityRow({
               </Button>
             )
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 px-2.5"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined });
-            }}
-            data-testid={`${testPrefix}-add-${idx}`}
-          >
-            Add to experience
-          </Button>
+          <AddToPlanButton
+            contentId={(item as any).id ?? displayName}
+            contentType="activity"
+            contentMeta={{ name: displayName, imageUrl: image, description, price: item.price ?? null }}
+            city={cityName}
+          />
           <Button
             size="sm"
             variant="outline"
@@ -868,6 +1269,15 @@ function ActivityRow({
             </span>
           )}
         </div>
+
+        {/* Expert attribution */}
+        {expertMatch && (
+          <ExpertPickAttribution
+            expert={expertMatch}
+            contentName={displayName}
+            variant="pick"
+          />
+        )}
 
         {/* Cross-sell strip */}
         <CrossSellStrip
@@ -986,11 +1396,34 @@ function HotelMiniCard({
   cityName?: string;
 }) {
   const [, navigate] = useLocation();
+  const [bundleOpen, setBundleOpen] = useState(false);
+  const [bundleTransport, setBundleTransport] = useState<BundleItem | null>(null);
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const bd = detectBadge(item.bookingUrl);
 
+  // Fetch transport cross-sell match for the bundle chip
+  const matchParams = new URLSearchParams({ type: "hotel", limit: "1" });
+  if (item.neighborhood) matchParams.set("neighborhood", item.neighborhood);
+  if (cityName) matchParams.set("city", cityName);
+  const { data: bundleData } = useQuery<{ providers: CrossSellProvider[] }>({
+    queryKey: ["/api/content-match", "hotel-bundle", item.neighborhood ?? "", cityName ?? ""],
+    queryFn: () => fetch(`/api/content-match?${matchParams.toString()}`).then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    select: (d) => ({ providers: (d?.providers ?? []).filter((p) => isTransportService(p.serviceType)) }),
+  });
+
+  const topTransport = bundleData?.providers?.[0] ?? null;
+
+  const hotelPrice = parseFloat(String(item.price ?? 0)) || 0;
+  const transportPrice = topTransport ? (parseFloat(String(topTransport.price ?? 0)) || 0) : 0;
+  const bundleTotalDisplay = topTransport && (hotelPrice + transportPrice) > 0
+    ? `from €${(hotelPrice + transportPrice).toFixed(0)} total`
+    : null;
+
   return (
+    <>
     <div
       className="col-span-2 rounded-xl border bg-card overflow-hidden flex flex-row"
       data-testid={`${testPrefix}-mini-${idx}`}
@@ -1042,17 +1475,47 @@ function HotelMiniCard({
               </Button>
             )
           ) : null}
-          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
-            onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
-            data-testid={`${testPrefix}-add-${idx}`}>
-            + Add
-          </Button>
+          <AddToPlanButton
+            contentId={item.id ?? displayName}
+            contentType="hotel"
+            contentMeta={{ name: displayName, imageUrl: image, description: item.address ?? null, price: item.price ?? null }}
+            city={cityName}
+            size="xs"
+          />
           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => navigate(`/chat?about=${encodeURIComponent(displayName)}`)}
             data-testid={`${testPrefix}-ask-${idx}`}>
             💬 Ask expert
           </Button>
         </div>
+
+        {/* Bundle chip — "Hotel + Private transfer" when a transport match exists */}
+        {topTransport && (
+          <div className="border-t border-dashed border-violet-200 pt-1.5 mt-0.5 flex items-center gap-1.5">
+            <Package className="h-3 w-3 text-violet-500 flex-shrink-0" />
+            <span className="text-[10px] text-violet-700 font-medium flex-1 min-w-0 truncate">
+              Hotel + {topTransport.serviceName}
+              {bundleTotalDisplay && <span className="font-semibold"> — {bundleTotalDisplay}</span>}
+            </span>
+            <Button
+              size="sm"
+              className="text-[9px] h-5 px-2 rounded-full bg-violet-600 hover:bg-violet-700 flex-shrink-0"
+              data-testid={`${testPrefix}-bundle-${idx}`}
+              onClick={() => {
+                setBundleTransport({
+                  serviceId: topTransport.serviceId,
+                  name: topTransport.serviceName,
+                  price: topTransport.price,
+                  priceType: topTransport.priceType,
+                  type: "transport",
+                });
+                setBundleOpen(true);
+              }}
+            >
+              Bundle
+            </Button>
+          </div>
+        )}
 
         {/* Cross-sell strip — auto-labels "Getting there" when matched services are transport types */}
         <CrossSellStrip
@@ -1064,6 +1527,26 @@ function HotelMiniCard({
         />
       </div>
     </div>
+
+    {/* Bundle booking modal */}
+    {bundleTransport && (
+      <BundleBookingModal
+        hotel={{
+          serviceId: item.id ?? displayName,
+          name: displayName,
+          price: item.price ?? null,
+          priceType: null,
+          type: "hotel",
+        }}
+        transport={bundleTransport}
+        open={bundleOpen}
+        onOpenChange={(v) => {
+          setBundleOpen(v);
+          if (!v) setBundleTransport(null);
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -1223,7 +1706,7 @@ function isPhotoSpotGem(placeType: string | null | undefined): boolean {
 }
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, onRequestBooking,
+  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, onRequestBooking, experts,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
@@ -1234,6 +1717,7 @@ function NeighborhoodContainer({
   onAdd: (t: AddDialogTarget) => void;
   hueIdx: number;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  experts?: any[];
 }) {
   const [, navigate] = useLocation();
   const total = gems.length + hotels.length + activities.length + services.length;
@@ -1328,28 +1812,40 @@ function NeighborhoodContainer({
         {/* Unified 2-col grid: gems + card-worthy activities + hotel mini cards + service mini cards */}
         {hasGridContent && (
           <div className="grid grid-cols-2 gap-3">
-            {gems.map((gem, idx) => (
-              <GemCard
-                key={gem.id ?? idx}
-                item={gem}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`gem-${neighborhood.slug}`}
-                onRequestBooking={onRequestBooking}
-                cityName={cityName}
-              />
-            ))}
-            {cardActivities.map((act, idx) => (
-              <GemCard
-                key={act.id ?? `ca-${idx}`}
-                item={act}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`act-card-${neighborhood.slug}`}
-                onRequestBooking={onRequestBooking}
-                cityName={cityName}
-              />
-            ))}
+            {gems.map((gem, idx) => {
+              const expertM = experts ? matchExpertToContent(experts, gem.placeType) : null;
+              const curatedE = gem.curatedByExpertId && experts
+                ? (() => { const e = experts.find((ex: any) => ex.id === gem.curatedByExpertId); return e ? { name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "), id: e.id, specializations: e.specializations ?? null } : null; })()
+                : null;
+              return (
+                <GemCard
+                  key={gem.id ?? idx}
+                  item={gem}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`gem-${neighborhood.slug}`}
+                  onRequestBooking={onRequestBooking}
+                  cityName={cityName}
+                  expertMatch={expertM}
+                  curatedByExpert={curatedE}
+                />
+              );
+            })}
+            {cardActivities.map((act, idx) => {
+              const expertM = experts ? matchExpertToContent(experts, act.placeType ?? act.type) : null;
+              return (
+                <GemCard
+                  key={act.id ?? `ca-${idx}`}
+                  item={act}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`act-card-${neighborhood.slug}`}
+                  onRequestBooking={onRequestBooking}
+                  cityName={cityName}
+                  expertMatch={expertM}
+                />
+              );
+            })}
             {hotels.map((hotel, idx) => (
               <HotelMiniCard
                 key={hotel.id ?? idx}
@@ -1376,18 +1872,22 @@ function NeighborhoodContainer({
         {/* Pure text-only AI activities — below the grid (no image, no booking URL, no price) */}
         {textActivities.length > 0 && (
           <div className={`rounded-xl border bg-card px-4 py-2${hasGridContent ? " mt-3" : ""}`}>
-            {textActivities.map((act, idx) => (
-              <ActivityRow
-                key={act.id ?? idx}
-                item={act}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`activity-${neighborhood.slug}`}
-                onRequestBooking={onRequestBooking}
-                cityName={cityName}
-                neighborhood={neighborhood.slug}
-              />
-            ))}
+            {textActivities.map((act, idx) => {
+              const expertM = experts ? matchExpertToContent(experts, act.placeType ?? act.type) : null;
+              return (
+                <ActivityRow
+                  key={act.id ?? idx}
+                  item={act}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`activity-${neighborhood.slug}`}
+                  onRequestBooking={onRequestBooking}
+                  cityName={cityName}
+                  neighborhood={neighborhood.slug}
+                  expertMatch={expertM}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -1711,6 +2211,7 @@ function AllGemsFeed({
 
     const isStayFilter = activeFilter === "stay";
     const isPhotoFilter = activeFilter === "photo-spots";
+    const isEatFilter = activeFilter === "eat";
 
     const flatGems = gems.filter(g => matchesFilter(g, activeFilter));
     const flatHotels = isStayFilter ? hotels : [];
@@ -1739,21 +2240,69 @@ function AllGemsFeed({
       );
     }
 
+    // ── Editorial cross-link: find food-tour service for "eat" filter ──────────
+    const foodTourService = isEatFilter
+      ? platformServices.find(s => {
+          const t = (s.serviceType ?? s.serviceName ?? s.shortDescription ?? "").toLowerCase();
+          return t.includes("food tour") || t.includes("culinary tour") || t.includes("tasting") ||
+                 t.includes("food walk") || t.includes("street food") || t.includes("cooking class");
+        }) ?? null
+      : null;
+    const foodTourExpert = foodTourService ? experts[0] ?? null : null;
+
     return (
       <div data-testid="feed-flat" className="space-y-4">
+        {/* Editorial row: food tours for "eat" filter */}
+        {isEatFilter && foodTourService && (
+          <ExpertTourRow
+            service={foodTourService}
+            expert={foodTourExpert ? {
+              name: foodTourExpert.name ?? [foodTourExpert.firstName, foodTourExpert.lastName].filter(Boolean).join(" "),
+              id: foodTourExpert.id,
+            } : undefined}
+            cityName={cityName}
+          />
+        )}
+
         {/* All DB hidden gems → GemCard bento grid */}
         {flatGems.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
-            {flatGems.map((item, idx) => (
-              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} onRequestBooking={onRequestBooking} />
-            ))}
+            {flatGems.map((item, idx) => {
+              const expertM = matchExpertToContent(experts, item.placeType);
+              const curatedE = item.curatedByExpertId
+                ? (() => { const e = experts.find((ex: any) => ex.id === item.curatedByExpertId); return e ? { name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "), id: e.id, specializations: e.specializations ?? null } : null; })()
+                : null;
+              return (
+                <GemCard
+                  key={item.id ?? idx}
+                  item={item}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`flat-${activeFilter}-gem`}
+                  onRequestBooking={onRequestBooking}
+                  expertMatch={expertM}
+                  curatedByExpert={curatedE}
+                />
+              );
+            })}
           </div>
         )}
         {(flatActivities.length > 0 || flatRowServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
-            {flatActivities.map((item, idx) => (
-              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} onRequestBooking={onRequestBooking} />
-            ))}
+            {flatActivities.map((item, idx) => {
+              const expertM = matchExpertToContent(experts, item.placeType ?? item.type);
+              return (
+                <ActivityRow
+                  key={(item as any).id ?? idx}
+                  item={item}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`flat-${activeFilter}-act`}
+                  onRequestBooking={onRequestBooking}
+                  expertMatch={expertM}
+                />
+              );
+            })}
             {flatRowServices.map((svc, idx) => (
               <ActivityRow
                 key={svc.id ?? idx}
@@ -1917,6 +2466,7 @@ function AllGemsFeed({
             onAdd={onAdd}
             hueIdx={nIdx}
             onRequestBooking={onRequestBooking}
+            experts={experts}
           />
           {/* Expert card between every other neighborhood container */}
           {experts.length > 0 && nIdx % 2 === 0 && nIdx < ordered.length - 1 && (
@@ -1943,14 +2493,26 @@ function AllGemsFeed({
 
             {hasElsewhereGrid && (
               <div className="grid grid-cols-2 gap-3">
-                {elsewhereGems.map((gem, idx) => (
-                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="across-gem" onRequestBooking={onRequestBooking} />
-                ))}
+                {elsewhereGems.map((gem, idx) => {
+                  const curatedE = gem.curatedByExpertId
+                    ? (() => { const e = experts.find((ex: any) => ex.id === gem.curatedByExpertId); return e ? { name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "), id: e.id, specializations: e.specializations ?? null } : null; })()
+                    : null;
+                  return (
+                    <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="across-gem"
+                      onRequestBooking={onRequestBooking}
+                      expertMatch={matchExpertToContent(experts, gem.placeType)}
+                      curatedByExpert={curatedE}
+                    />
+                  );
+                })}
                 {elsewhereCardActs.map((act, idx) => (
-                  <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act" onRequestBooking={onRequestBooking} />
+                  <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act"
+                    onRequestBooking={onRequestBooking}
+                    expertMatch={matchExpertToContent(experts, act.placeType ?? act.type)}
+                  />
                 ))}
                 {elsewhereHotels.map((hotel, idx) => (
-                  <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="across-hotel" onRequestBooking={onRequestBooking} />
+                  <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="across-hotel" onRequestBooking={onRequestBooking} cityName={cityName} />
                 ))}
               </div>
             )}
@@ -1958,7 +2520,10 @@ function AllGemsFeed({
             {elsewhereTextActs.length > 0 && (
               <div className={`rounded-xl border bg-card px-4 py-2${hasElsewhereGrid ? " mt-3" : ""}`}>
                 {elsewhereTextActs.map((act, idx) => (
-                  <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act-row" onRequestBooking={onRequestBooking} />
+                  <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act-row"
+                    onRequestBooking={onRequestBooking}
+                    expertMatch={matchExpertToContent(experts, act.placeType ?? act.type)}
+                  />
                 ))}
               </div>
             )}

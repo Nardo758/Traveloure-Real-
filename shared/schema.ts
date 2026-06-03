@@ -616,6 +616,10 @@ export const serviceBookings = pgTable("service_bookings", {
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
+  // Attribution
+  source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
+  crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
+
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
   completedAt: timestamp("completed_at"),
@@ -727,9 +731,13 @@ export const notifications = pgTable("notifications", {
 
 export const cartItems = pgTable("cart_items", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  guestSessionId: varchar("guest_session_id", { length: 64 }),
   serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "cascade" }),
   customVenueId: varchar("custom_venue_id").references(() => customVenues.id, { onDelete: "cascade" }),
+  contentType: varchar("content_type", { length: 20 }),
+  contentId: text("content_id"),
+  contentMeta: jsonb("content_meta").default({}),
   experienceSlug: varchar("experience_slug", { length: 50 }),
   quantity: integer("quantity").default(1),
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
@@ -809,9 +817,27 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   experienceTypeSlug: varchar("experience_type_slug", { length: 50 }),
   status: varchar("status", { length: 30 }).default("pending"),
   selectedVariantId: varchar("selected_variant_id"),
+  optimizedAt: timestamp("optimized_at"),
+  optimizationPaymentId: varchar("optimization_payment_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// === Optimization Fee Tiers ===
+export const optimizationFees = pgTable("optimization_fees", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  complexityTier: varchar("complexity_tier", { length: 20 }).notNull().unique(), // simple | standard | complex
+  priceCents: integer("price_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOptimizationFeeSchema = createInsertSchema(optimizationFees).omit({ id: true, createdAt: true, updatedAt: true });
+export type OptimizationFee = typeof optimizationFees.$inferSelect;
+export type InsertOptimizationFee = z.infer<typeof insertOptimizationFeeSchema>;
 
 export const itineraryVariants = pgTable("itinerary_variants", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1073,6 +1099,7 @@ export const userExperiences = pgTable("user_experiences", {
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }),
   status: varchar("status", { length: 20 }).default("draft"), // draft, planning, confirmed, completed, cancelled
   eventDate: date("event_date"),
@@ -2345,6 +2372,11 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug;
   // populated by backfill-gem-neighborhoods.ts or set directly on AI generation.
   neighborhood: varchar("neighborhood", { length: 100 }),
+
+  // Expert curation link — when set, the gem was explicitly recommended or
+  // curated by this expert. Soft FK into users.id (expert role). Populated
+  // manually by admins or via the expert workspace "Recommend a gem" action.
+  curatedByExpertId: varchar("curated_by_expert_id", { length: 255 }),
 
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
@@ -5668,3 +5700,23 @@ export const savedItems = pgTable("saved_items", {
 export const insertSavedItemSchema = createInsertSchema(savedItems).omit({ id: true, createdAt: true });
 export type SavedItem = typeof savedItems.$inferSelect;
 export type InsertSavedItem = z.infer<typeof insertSavedItemSchema>;
+
+// === Cross-Sell Conversion Tracking ===
+
+export const crossSellEvents = pgTable("cross_sell_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: varchar("event_type", { length: 20 }).notNull(), // impression | click | conversion
+  sourceContentType: varchar("source_content_type", { length: 50 }).notNull(), // hotel | activity | gem | service | etc.
+  sourceContentId: varchar("source_content_id", { length: 255 }).notNull(),
+  sourceContentName: varchar("source_content_name", { length: 255 }),
+  targetServiceId: varchar("target_service_id", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  userId: varchar("user_id", { length: 255 }), // nullable — anonymous events allowed
+  sessionId: varchar("session_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCrossSellEventSchema = createInsertSchema(crossSellEvents).omit({ id: true, createdAt: true });
+export type CrossSellEvent = typeof crossSellEvents.$inferSelect;
+export type InsertCrossSellEvent = z.infer<typeof insertCrossSellEventSchema>;

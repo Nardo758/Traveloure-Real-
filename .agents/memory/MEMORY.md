@@ -1,2 +1,3 @@
 - [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link
 - [Phase 1b neighborhood system](phase-1b-neighborhoods.md) — cityNeighborhoods table + neighborhood columns on gems/services; backfill is Haversine proximity; verify check [B] is a false-negative on empty dev DB.
+- [Optimization fee gate](optimization-fee-gate.md) — G3+G4: preview endpoint + Stripe payment gate before full LLM optimizer; complexity tier drives fee; 24h free-rerun via optimized_at on itinerary_comparisons.

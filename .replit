@@ -60,4 +60,4 @@ ADMIN_ALLOWED_IPS = "127.0.0.1"
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 30000

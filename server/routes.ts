@@ -14,6 +14,8 @@ import adminRouter from "./routes/admin.routes";
 import paymentsRouter from "./routes/payments.routes";
 import contentRouter, { registerDiscoveryRoutes } from "./routes/content.routes";
 import savedItemsRouter from "./routes/saved-items.routes";
+import crossSellRouter from "./routes/cross-sell.routes";
+import optimizationRouter from "./routes/optimization.routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -34,6 +36,40 @@ export async function registerRoutes(
   // expert_service_offerings is now the canonical template catalog.
   // The ESO seed block below handles all 6 canonical templates and also
   // backfills any legacy service_templates / expert_custom_services rows.
+
+  // ─── Seed / backfill optimization_fees table (idempotent) ──────────────────
+  (async () => {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS optimization_fees (
+          id          varchar PRIMARY KEY,
+          complexity_tier varchar(20) NOT NULL UNIQUE,
+          price_cents integer NOT NULL,
+          currency    varchar(3) NOT NULL DEFAULT 'USD',
+          is_active   boolean NOT NULL DEFAULT true,
+          updated_by  varchar(255),
+          created_at  timestamp DEFAULT NOW(),
+          updated_at  timestamp DEFAULT NOW()
+        )
+      `);
+      await db.execute(sql`
+        INSERT INTO optimization_fees (id, complexity_tier, price_cents, currency, is_active, created_at, updated_at)
+        VALUES
+          (gen_random_uuid(), 'simple',   499,  'USD', true, NOW(), NOW()),
+          (gen_random_uuid(), 'standard', 999,  'USD', true, NOW(), NOW()),
+          (gen_random_uuid(), 'complex',  1999, 'USD', true, NOW(), NOW())
+        ON CONFLICT (complexity_tier) DO NOTHING
+      `);
+      // Add optimized_at + optimization_payment_id columns to itinerary_comparisons if missing
+      await db.execute(sql`
+        ALTER TABLE itinerary_comparisons
+          ADD COLUMN IF NOT EXISTS optimized_at timestamp,
+          ADD COLUMN IF NOT EXISTS optimization_payment_id varchar(255)
+      `);
+    } catch (err) {
+      console.warn("[Seed] Could not seed optimization_fees / migrate itinerary_comparisons:", err);
+    }
+  })();
 
   // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
   (async () => {
@@ -137,6 +173,10 @@ export async function registerRoutes(
 
   // saved items (wishlist)
   app.use(savedItemsRouter);
+
+  // cross-sell conversion tracking
+  app.use(crossSellRouter);
+  app.use(optimizationRouter);
 
   // AI Discovery routes (uses dynamic import internally)
   await registerDiscoveryRoutes(app);
@@ -8276,6 +8316,179 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
     } catch (err: any) {
       console.error("[admin/neighborhoods] backfill error:", err);
       res.status(500).json({ message: "Backfill failed", error: err.message });
+    }
+  });
+
+  // ─── Bundle Bookings — hotel + transfer bundle ───────────────────────────────
+  // Books the platform transport service via Stripe Checkout Session (redirect).
+  // Hotel is an external AI recommendation — not booked through this endpoint.
+  // One service_bookings row is created for the transport (correct schema columns:
+  // travelerId, providerId, totalAmount from providerServices — never client-trusted).
+  app.post("/api/bundle-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const { transportServiceId, travelDate, travelers } = req.body;
+
+      if (!transportServiceId) {
+        return res.status(400).json({ message: "transportServiceId is required" });
+      }
+
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+      // ── Server-side resolution of the platform-bookable transport service ──
+      const { providerServices } = await import("@shared/schema");
+      const [transportSvc] = await db
+        .select()
+        .from(providerServices)
+        .where(eq(providerServices.id, transportServiceId))
+        .limit(1);
+
+      if (!transportSvc) {
+        return res.status(404).json({ message: "Transport service not found" });
+      }
+      if (!transportSvc.userId) {
+        return res.status(422).json({ message: "Transport service has no associated provider" });
+      }
+
+      const transportPriceNum = parseFloat(String(transportSvc.price ?? 0)) || 0;
+      const transportCents = Math.round(transportPriceNum * 100);
+
+      const { getBaseUrl } = await import("./services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: "2024-12-18.acacia" as any,
+      });
+      const baseUrl = getBaseUrl();
+      const user = await storage.getUser(userId);
+
+      let checkoutUrl: string | null = null;
+      let sessionId: string | null = null;
+
+      if (transportCents > 0) {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          mode: "payment",
+          customer_email: user?.email || undefined,
+          line_items: [{
+            price_data: {
+              currency: "eur",
+              product_data: {
+                name: transportSvc.serviceName ?? "Private Transfer",
+                description: "Airport / hotel private transfer — Traveloure Bundle",
+              },
+              unit_amount: transportCents,
+            },
+            quantity: Math.max(1, parseInt(String(travelers ?? 1)) || 1),
+          }],
+          metadata: {
+            bundle: "hotel_transfer",
+            transportServiceId,
+            userId,
+            travelDate: travelDate ?? "",
+            travelers: String(travelers ?? 1),
+          },
+          success_url: `${baseUrl}/my-bookings?bundle=success`,
+          cancel_url: `${baseUrl}/discover?bundle=cancelled`,
+        });
+        checkoutUrl = session.url;
+        sessionId = session.id;
+      }
+
+      // Create one platform service booking for the transport (hotel is booked externally)
+      const booking = await storage.createServiceBooking({
+        serviceId: transportServiceId,
+        travelerId: userId,
+        providerId: transportSvc.userId,
+        totalAmount: transportPriceNum.toFixed(2),
+        status: "pending",
+        stripePaymentIntentId: sessionId,
+        bookingDetails: {
+          travelDate: travelDate ?? null,
+          travelers: travelers ?? 1,
+          bundleType: "hotel_transfer",
+        },
+        bookingMetadata: {
+          checkoutSessionId: sessionId,
+          bundle: "hotel_transfer",
+        },
+      } as any);
+
+      return res.status(201).json({
+        success: true,
+        checkoutUrl,
+        sessionId,
+        transferBookingId: booking.id,
+        totalAmount: transportPriceNum.toFixed(2),
+        message: checkoutUrl
+          ? "Transfer reserved — complete payment to confirm."
+          : "Transfer booked as pending.",
+      });
+    } catch (err: any) {
+      console.error("[bundle-bookings] error:", err);
+      res.status(500).json({ message: "Failed to create bundle booking", error: err.message });
+    }
+  });
+
+  // GET /api/content-match-experts — returns the top expert match for a content type in a city
+  // Used by GemCard / ActivityRow to render "Expert pick" attribution.
+  app.get("/api/content-match-experts", async (req, res) => {
+    try {
+      const { type, city, limit = "1" } = req.query;
+      if (!city || typeof city !== "string") {
+        return res.status(400).json({ message: "city is required" });
+      }
+
+      // Pull local expert forms whose city matches, then join the users table for name
+      const experts = await db.execute(sql`
+        SELECT
+          u.id,
+          u.first_name,
+          u.last_name,
+          lef.specialization,
+          lef.hourly_rate,
+          lef.city_of_expertise,
+          u.average_rating,
+          u.review_count
+        FROM local_expert_forms lef
+        JOIN users u ON u.id = lef.user_id
+        WHERE u.role IN ('expert', 'local_expert')
+          AND LOWER(lef.city_of_expertise) = LOWER(${city})
+          AND lef.application_status = 'approved'
+        ORDER BY u.average_rating DESC NULLS LAST, lef.created_at DESC
+        LIMIT ${parseInt(limit as string)}
+      `);
+
+      const rows = (experts as any)?.rows ?? [];
+
+      // Score by specialization match to placeType
+      const t = (type as string ?? "").toLowerCase();
+      let scored = rows.map((r: any) => ({
+        id: r.id,
+        name: [r.first_name, r.last_name].filter(Boolean).join(" "),
+        specialty: r.specialization ?? null,
+        hourlyRate: r.hourly_rate ?? null,
+        averageRating: r.average_rating ?? null,
+        reviewCount: r.review_count ?? null,
+        score: (() => {
+          const spec = (r.specialization ?? "").toLowerCase();
+          if (!t) return 0;
+          if (t.includes("food") || t.includes("eat") || t.includes("restaurant")) {
+            return spec.includes("food") || spec.includes("culinary") || spec.includes("dining") ? 2 : 0;
+          }
+          if (t.includes("photo") || t.includes("viewpoint")) {
+            return spec.includes("photo") ? 2 : 0;
+          }
+          if (t.includes("hotel") || t.includes("stay")) {
+            return spec.includes("luxury") || spec.includes("accommodation") ? 2 : 1;
+          }
+          return spec.includes(t.split(" ")[0]) ? 1 : 0;
+        })(),
+      })).sort((a: any, b: any) => b.score - a.score);
+
+      res.json({ experts: scored });
+    } catch (err: any) {
+      console.error("[content-match-experts] error:", err);
+      res.status(500).json({ experts: [], error: err.message });
     }
   });
 
