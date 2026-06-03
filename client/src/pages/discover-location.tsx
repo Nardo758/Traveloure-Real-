@@ -14,7 +14,7 @@
  * Perf fixes preserved: parallel media query, no enriched call, 5-min staleTime.
  */
 
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState, useMemo, createContext, useContext } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -220,6 +220,13 @@ function GemCard({
             <Gem className="h-8 w-8 text-muted-foreground/30" />
           </div>
         )}
+        <WishlistButton
+          contentId={item.id ?? displayName}
+          contentName={displayName}
+          contentType={item.placeType ?? item.type ?? "gem"}
+          contentImage={image}
+          className="absolute top-1.5 left-1.5"
+        />
         {rating && (
           <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm" data-testid={`${testPrefix}-rating-${idx}`}>
             <Star className="h-2.5 w-2.5 fill-white text-white" />{rating}
@@ -319,6 +326,62 @@ interface AffiliateBookingTarget {
   affiliateUrl: string;
   partnerCategory?: string;
   itemDescription?: string;
+}
+
+// ─── Saved Items Context ──────────────────────────────────────────────────────
+
+interface SavedItemsContextValue {
+  savedMap: Map<string, string>; // contentId → savedItem.id
+  onSave: (item: { contentId: string; contentName: string; contentType: string; contentImage?: string | null; city?: string }) => void;
+  onUnsave: (savedItemId: string) => void;
+  isAuth: boolean;
+}
+
+const SavedItemsContext = createContext<SavedItemsContextValue>({
+  savedMap: new Map(),
+  onSave: () => {},
+  onUnsave: () => {},
+  isAuth: false,
+});
+
+function WishlistButton({
+  contentId, contentName, contentType, contentImage, city, className,
+}: {
+  contentId: string;
+  contentName: string;
+  contentType: string;
+  contentImage?: string | null;
+  city?: string;
+  className?: string;
+}) {
+  const { savedMap, onSave, onUnsave, isAuth } = useContext(SavedItemsContext);
+  const { toast } = useToast();
+  const savedId = savedMap.get(contentId);
+  const isSaved = !!savedId;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuth) {
+      toast({ title: "Sign in to save places", description: "Create an account to build your wishlist." });
+      return;
+    }
+    if (isSaved) {
+      onUnsave(savedId!);
+    } else {
+      onSave({ contentId, contentName, contentType, contentImage, city });
+    }
+  };
+
+  return (
+    <button
+      className={`p-1.5 rounded-full bg-white/85 hover:bg-white transition-colors shadow-sm ${className ?? ""}`}
+      onClick={handleClick}
+      data-testid={`wishlist-btn-${contentId}`}
+      aria-label={isSaved ? "Remove from saved" : "Save to wishlist"}
+    >
+      <Heart className={`h-3.5 w-3.5 transition-colors ${isSaved ? "fill-rose-500 text-rose-500" : "text-gray-500"}`} />
+    </button>
+  );
 }
 
 function AffiliateBookingModal({
@@ -599,6 +662,13 @@ function ActivityRow({
           >
             <UserCheck className="h-3 w-3 mr-1" />Ask expert
           </Button>
+          <WishlistButton
+            contentId={(item as any).id ?? displayName}
+            contentName={displayName}
+            contentType={item.placeType ?? item.type ?? "activity"}
+            contentImage={image}
+            className="border border-border h-7 w-7 flex-shrink-0"
+          />
           {isPhotoSpot && (
             <span className="text-xs text-muted-foreground self-center" onClick={stopNav}>
               · photographer available → <button className="underline text-primary">Book shoot</button>
@@ -722,12 +792,19 @@ function HotelMiniCard({
       data-testid={`${testPrefix}-mini-${idx}`}
     >
       {/* Left image strip — 96px wide */}
-      <div className="w-24 flex-shrink-0 bg-blue-50 flex items-center justify-center self-stretch">
+      <div className="w-24 flex-shrink-0 bg-blue-50 flex items-center justify-center self-stretch relative">
         {image ? (
           <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
         ) : (
           <Hotel className="h-8 w-8 text-blue-300" />
         )}
+        <WishlistButton
+          contentId={item.id ?? displayName}
+          contentName={displayName}
+          contentType="hotel"
+          contentImage={image}
+          className="absolute top-1.5 left-1.5"
+        />
       </div>
 
       <div className="p-3 flex flex-col flex-1 gap-1.5 min-w-0">
@@ -2212,6 +2289,83 @@ function AddItemDialog({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── PlanningSticky ───────────────────────────────────────────────────────────
+// Appears after 300px scroll; hidden once user has a trip for this city.
+
+function PlanningSticky({ city, userTrips }: { city: string; userTrips: any[] | null | undefined }) {
+  const [visible, setVisible] = useState(false);
+  const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const handleScroll = () => setVisible(window.scrollY > 300);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const hasCityTrip = (userTrips ?? []).some(
+    (t: any) => (t.destination ?? "").toLowerCase().includes(city.toLowerCase()),
+  );
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const today = new Date();
+      const start = new Date(today);
+      start.setDate(today.getDate() + 14);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 7);
+      const res = await apiRequest("POST", "/api/trips", {
+        destination: city,
+        startDate: start.toISOString().slice(0, 10),
+        endDate: end.toISOString().slice(0, 10),
+        title: `My trip to ${city}`,
+        status: "draft",
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+      navigate(`/trip/${data.id}`);
+    },
+    onError: () => {
+      toast({ title: "Sign in required", description: "Please sign in to start planning.", variant: "destructive" });
+    },
+  });
+
+  if (!visible || hasCityTrip) return null;
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pb-4 pointer-events-none">
+      <div
+        className="pointer-events-auto flex items-center gap-3 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-5 py-3 max-w-sm w-full"
+        data-testid="planning-sticky-bar"
+      >
+        <p className="flex-1 text-sm font-medium truncate text-gray-700">
+          Inspired by {city}?
+        </p>
+        <Button
+          size="sm"
+          className="flex-shrink-0 rounded-full text-white text-xs px-4"
+          style={{ background: "#FF385C" }}
+          onClick={() => {
+            if (!user) {
+              toast({ title: "Sign in to plan", description: "Create an account to start your trip." });
+              return;
+            }
+            createMutation.mutate();
+          }}
+          disabled={createMutation.isPending}
+          data-testid="button-plan-my-trip"
+        >
+          {createMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
+          Plan my trip to {city}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function DiscoverLocationPage() {
   const rawParams = useParams<{ city: string }>();
   const searchString = useSearch();
@@ -2220,6 +2374,8 @@ export default function DiscoverLocationPage() {
   const neighborhoodSlug = urlParams.get("neighborhood");
   const city = decodeURIComponent(rawParams?.city ?? "");
 
+  const { user } = useAuth();
+
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
   const [activeFilter, setActiveFilter] = useState<FeedFilter>("all");
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -2227,6 +2383,49 @@ export default function DiscoverLocationPage() {
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
   const trackedRef = useRef<Set<string>>(new Set());
+
+  // Saved items (wishlist) — scoped to the logged-in user
+  const { data: savedItemsData } = useQuery<any[]>({
+    queryKey: ["/api/saved-items"],
+    enabled: !!user,
+  });
+
+  const savedMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of savedItemsData ?? []) {
+      map.set(item.contentId, item.id);
+    }
+    return map;
+  }, [savedItemsData]);
+
+  const saveItemMutation = useMutation({
+    mutationFn: async (item: { contentId: string; contentName: string; contentType: string; contentImage?: string | null; city?: string }) => {
+      const res = await apiRequest("POST", "/api/saved-items", { ...item, city: item.city ?? city });
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/saved-items"] }),
+  });
+
+  const unsaveItemMutation = useMutation({
+    mutationFn: async (savedItemId: string) => {
+      await apiRequest("DELETE", `/api/saved-items/${savedItemId}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/saved-items"] }),
+  });
+
+  const savedItemsCtxValue = useMemo(() => ({
+    savedMap,
+    onSave: (item: any) => saveItemMutation.mutate(item),
+    onUnsave: (id: string) => unsaveItemMutation.mutate(id),
+    isAuth: !!user,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [savedMap, user]);
+
+  // User trips — for sticky bar city-match check
+  const { data: userTripsData } = useQuery<any[]>({
+    queryKey: ["/api/trips"],
+    enabled: !!user,
+  });
 
   // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
@@ -2346,6 +2545,7 @@ export default function DiscoverLocationPage() {
   }
 
   return (
+    <SavedItemsContext.Provider value={savedItemsCtxValue}>
     <Layout>
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
 
@@ -2564,6 +2764,10 @@ export default function DiscoverLocationPage() {
         open={!!requestingItem}
         onOpenChange={v => { if (!v) setRequestingItem(null); }}
       />
+
+      {/* Sticky planning bar — appears after scrolling past the hero */}
+      <PlanningSticky city={city} userTrips={userTripsData} />
     </Layout>
+    </SavedItemsContext.Provider>
   );
 }
