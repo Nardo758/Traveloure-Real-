@@ -15,7 +15,7 @@
  */
 
 import { useRef, useEffect, useState } from "react";
-import { useParams, useSearch, useLocation, Link as WouterLink } from "wouter";
+import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -430,6 +430,7 @@ function ActivityRow({
   forceTraveloure?: boolean;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const description = item.whyHidden ?? item.whyLocalsLoveIt ?? item.description ?? null;
@@ -456,8 +457,23 @@ function ActivityRow({
   // Is this an internal Traveloure service URL we can navigate to directly?
   const isInternalService = item.bookingUrl?.startsWith("/services/");
 
-  const rowContent = (
-    <>
+  /** For internal service rows: navigate on row click, but let child buttons handle their own events. */
+  const handleRowClick = isInternalService && item.bookingUrl
+    ? () => navigate(item.bookingUrl!)
+    : undefined;
+
+  /** Stops the row-level navigation click from firing when a child button is clicked. */
+  const stopNav = isInternalService
+    ? (e: React.MouseEvent) => e.stopPropagation()
+    : undefined;
+
+  return (
+    <div
+      className={`flex items-start gap-3 py-3 border-b last:border-b-0${isInternalService ? " cursor-pointer hover:bg-muted/40 rounded-lg px-1 -mx-1 transition-colors" : ""}`}
+      data-testid={`${testPrefix}-${idx}`}
+      onClick={handleRowClick}
+      role={isInternalService ? "link" : undefined}
+    >
       {image && (
         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
           <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
@@ -529,43 +545,30 @@ function ActivityRow({
             size="sm"
             variant="outline"
             className="text-xs h-7 px-2.5"
-            onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined });
+            }}
             data-testid={`${testPrefix}-add-${idx}`}
           >
             Add to experience
           </Button>
-          <Button size="sm" variant="ghost" className="text-xs h-7 px-2" data-testid={`${testPrefix}-ask-${idx}`}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs h-7 px-2"
+            onClick={stopNav}
+            data-testid={`${testPrefix}-ask-${idx}`}
+          >
             <UserCheck className="h-3 w-3 mr-1" />Ask an expert
           </Button>
           {isPhotoSpot && (
-            <span className="text-xs text-muted-foreground self-center">
+            <span className="text-xs text-muted-foreground self-center" onClick={stopNav}>
               · photographer available → <button className="underline text-primary">Book shoot</button>
             </span>
           )}
         </div>
       </div>
-    </>
-  );
-
-  if (isInternalService && item.bookingUrl) {
-    return (
-      <WouterLink href={item.bookingUrl}>
-        <div
-          className="flex items-start gap-3 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted/40 rounded-lg px-1 -mx-1 transition-colors"
-          data-testid={`${testPrefix}-${idx}`}
-        >
-          {rowContent}
-        </div>
-      </WouterLink>
-    );
-  }
-
-  return (
-    <div
-      className="flex items-start gap-3 py-3 border-b last:border-b-0"
-      data-testid={`${testPrefix}-${idx}`}
-    >
-      {rowContent}
     </div>
   );
 }
