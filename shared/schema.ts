@@ -5644,3 +5644,23 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
 export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAffiliateBookingRequest = z.infer<typeof insertAffiliateBookingRequestSchema>;
 export type AffiliateBookingRequest = typeof affiliateBookingRequests.$inferSelect;
+
+// === Saved Items (Wishlist) ===
+// Single-user wishlist: saves gems, hotels, activities without requiring an active trip.
+
+export const savedItems = pgTable("saved_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contentType: varchar("content_type", { length: 50 }).notNull(), // gem | hotel | activity | service
+  contentId: varchar("content_id", { length: 255 }).notNull(),
+  contentName: varchar("content_name", { length: 255 }).notNull(),
+  contentImage: text("content_image"),
+  city: varchar("city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueUserItem: unique("saved_items_user_content_unique").on(table.userId, table.contentType, table.contentId),
+}));
+
+export const insertSavedItemSchema = createInsertSchema(savedItems).omit({ id: true, createdAt: true });
+export type SavedItem = typeof savedItems.$inferSelect;
+export type InsertSavedItem = z.infer<typeof insertSavedItemSchema>;
