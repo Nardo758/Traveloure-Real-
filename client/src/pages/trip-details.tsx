@@ -346,7 +346,7 @@ export default function TripDetails() {
       {/* Hero Header */}
       <div className="relative h-[45vh] min-h-[350px]">
         <img 
-          src={`https://source.unsplash.com/1600x900/?${encodeURIComponent(trip.destination)},travel,landmark`}
+          src={`https://picsum.photos/seed/${encodeURIComponent(trip.destination)}/1600/900`}
           alt={trip.destination}
           className="w-full h-full object-cover"
         />
@@ -749,7 +749,7 @@ export default function TripDetails() {
                         </div>
                         <div className="relative">
                           <img
-                            src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=600&auto=format&fit=crop"
+                            src="https://picsum.photos/seed/local-expert/600/400"
                             alt="Local Expert"
                             className="rounded-2xl shadow-xl"
                           />

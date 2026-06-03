@@ -649,7 +649,7 @@ const WEDDING_VENDOR_TYPES = [
 
 const experienceConfigs: Record<string, ExperienceConfig> = {
   travel: {
-    heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-travel/1600/900",
     tabs: [
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
       { id: "events", label: "Events", icon: Ticket, category: "events" },
@@ -664,7 +664,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Travel Dates:",
   },
   wedding: {
-    heroImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-wedding/1600/900",
     tabs: [
       { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "vendors", label: "Vendors", icon: Users, category: "vendors" },
@@ -699,7 +699,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     },
   },
   proposal: {
-    heroImage: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-proposal/1600/900",
     tabs: [
       { id: "locations", label: "Locations", icon: MapPin, category: "venue" },
       { id: "services", label: "Services", icon: Wrench, category: "services-proposal" },
@@ -712,7 +712,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Proposal Date:",
   },
   birthday: {
-    heroImage: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-birthday/1600/900",
     tabs: [
       { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "activities", label: "Activities", icon: PartyPopper, category: "activities" },
@@ -726,7 +726,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "boys-trip": {
-    heroImage: "https://images.unsplash.com/photo-1506869640319-fe1a24fd76dc?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-boys-trip/1600/900",
     tabs: [
       { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
       { id: "activities", label: "Adventures", icon: Dumbbell, category: "adventures" },
@@ -739,7 +739,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Trip Dates:",
   },
   "girls-trip": {
-    heroImage: "https://images.unsplash.com/photo-1559181567-c3190ca9959b?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-girls-trip/1600/900",
     tabs: [
       { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
       { id: "spa", label: "Spa & Wellness", icon: Heart, category: "spa" },
@@ -752,7 +752,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Trip Dates:",
   },
   "date-night": {
-    heroImage: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-date-night/1600/900",
     tabs: [
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
       { id: "activities", label: "Activities", icon: Heart, category: "activities" },
@@ -764,7 +764,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Date:",
   },
   "corporate-events": {
-    heroImage: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-corporate/1600/900",
     tabs: [
       { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "team-activities", label: "Team Activities", icon: Users, category: "team-building" },
@@ -777,7 +777,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Event Date:",
   },
   "reunions": {
-    heroImage: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-reunions/1600/900",
     tabs: [
       { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "activities", label: "Activities", icon: Users, category: "activities" },
@@ -790,7 +790,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Reunion Date:",
   },
   "wedding-anniversaries": {
-    heroImage: "https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-anniversary/1600/900",
     tabs: [
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
@@ -803,7 +803,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Anniversary Date:",
   },
   "retreats": {
-    heroImage: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-retreats/1600/900",
     tabs: [
       { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "activities", label: "Activities", icon: TreePine, category: "activities" },
@@ -817,7 +817,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Retreat Dates:",
   },
   "baby-shower": {
-    heroImage: "https://images.unsplash.com/photo-1544776193-352d25ca82cd?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-baby-shower/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Cake, category: "catering" },
@@ -830,7 +830,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "graduation-party": {
-    heroImage: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-graduation/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
@@ -843,7 +843,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "engagement-party": {
-    heroImage: "https://images.unsplash.com/photo-1469371670807-013ccf25f16a?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-engagement/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Wine, category: "catering" },
@@ -856,7 +856,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "housewarming-party": {
-    heroImage: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-housewarming/1600/900",
     tabs: [
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "decorations", label: "Decorations", icon: Home, category: "decorations" },
@@ -869,7 +869,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "retirement-party": {
-    heroImage: "https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-retirement/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Wine, category: "catering" },
@@ -882,7 +882,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "career-achievement-party": {
-    heroImage: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-career/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
@@ -895,7 +895,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Event Date:",
   },
   "farewell-party": {
-    heroImage: "https://images.unsplash.com/photo-1496024840928-4c417adf211d?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-farewell/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
@@ -908,7 +908,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "holiday-party": {
-    heroImage: "https://images.unsplash.com/photo-1482517967863-00e15c9b44be?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-holiday/1600/900",
     tabs: [
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
@@ -921,7 +921,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Date:",
   },
   "bachelor-bachelorette": {
-    heroImage: "https://images.unsplash.com/photo-1529543544277-7f15a4b8a8e8?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-bachelor/1600/900",
     tabs: [
       { id: "destinations", label: "Destinations", icon: MapPin, category: "destinations" },
       { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
@@ -935,7 +935,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     dateLabel: "Party Dates:",
   },
   "anniversary-trip": {
-    heroImage: "https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=1600&q=80",
+    heroImage: "https://picsum.photos/seed/exp-anniversary-trip/1600/900",
     tabs: [
       { id: "destinations", label: "Destinations", icon: Heart, category: "destinations" },
       { id: "accommodations", label: "Romantic Stays", icon: Hotel, category: "accommodations" },

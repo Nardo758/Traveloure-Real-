@@ -227,7 +227,7 @@ export default function ItineraryViewPage() {
     setMetaTag("og:description", description);
     setMetaName("description", description);
 
-    const coverImageUrl = "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1200&h=630&q=80";
+    const coverImageUrl = "https://picsum.photos/seed/travel-cover/1200/630";
     setMetaTag("og:image", coverImageUrl);
     setMetaTag("og:type", "website");
 

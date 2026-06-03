@@ -212,37 +212,37 @@ function ServiceCard({
   // Generate mock image based on category
   const getCategoryImage = (categorySlug: string) => {
     const imageMap: Record<string, string> = {
-      "photography-videography": "https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=600&q=80",
-      "transportation-logistics": "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80",
-      "food-culinary": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80",
-      "childcare-family": "https://images.unsplash.com/photo-1476703993599-0035a21b17a9?w=600&q=80",
-      "tours-experiences": "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=600&q=80",
-      "personal-assistance": "https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&q=80",
-      "health-wellness": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=600&q=80",
-      "beauty-styling": "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=600&q=80",
-      "pets-animals": "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=600&q=80",
-      "events-celebrations": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&q=80",
-      "technology-connectivity": "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=600&q=80",
-      "language-translation": "https://images.unsplash.com/photo-1523289333742-be1143f6b766?w=600&q=80",
+      "photography-videography": "https://picsum.photos/seed/photography/600/400",
+      "transportation-logistics": "https://picsum.photos/seed/transport/600/400",
+      "food-culinary": "https://picsum.photos/seed/food/600/400",
+      "childcare-family": "https://picsum.photos/seed/family/600/400",
+      "tours-experiences": "https://picsum.photos/seed/tours/600/400",
+      "personal-assistance": "https://picsum.photos/seed/assistance/600/400",
+      "health-wellness": "https://picsum.photos/seed/wellness/600/400",
+      "beauty-styling": "https://picsum.photos/seed/beauty/600/400",
+      "pets-animals": "https://picsum.photos/seed/pets/600/400",
+      "events-celebrations": "https://picsum.photos/seed/events/600/400",
+      "technology-connectivity": "https://picsum.photos/seed/technology/600/400",
+      "language-translation": "https://picsum.photos/seed/language/600/400",
     };
-    return imageMap[categorySlug] || "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80";
+    return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
   };
 
   // Generate provider avatar based on service ID for consistency
   const getProviderAvatar = (serviceId: string) => {
     const avatars = [
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&q=80",
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80",
-      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&q=80",
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80",
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80",
-      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80",
-      "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&q=80",
-      "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=150&q=80",
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&q=80",
-      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&q=80",
-      "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&q=80",
-      "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&q=80",
+      "https://picsum.photos/seed/avatar-1/150/150",
+      "https://picsum.photos/seed/avatar-2/150/150",
+      "https://picsum.photos/seed/avatar-3/150/150",
+      "https://picsum.photos/seed/avatar-4/150/150",
+      "https://picsum.photos/seed/avatar-5/150/150",
+      "https://picsum.photos/seed/avatar-6/150/150",
+      "https://picsum.photos/seed/avatar-7/150/150",
+      "https://picsum.photos/seed/avatar-8/150/150",
+      "https://picsum.photos/seed/avatar-9/150/150",
+      "https://picsum.photos/seed/avatar-10/150/150",
+      "https://picsum.photos/seed/avatar-11/150/150",
+      "https://picsum.photos/seed/avatar-12/150/150",
     ];
     // Use a hash of the service ID to get a consistent avatar
     const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -717,7 +717,7 @@ export default function DiscoverPage() {
       originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
       highlights: (city.aiMustSeeAttractions || []).slice(0, 3),
       expertPick: city.trendingScore > 70,
-      imageUrl: city.imageUrl || `https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80`,
+      imageUrl: city.imageUrl || `https://picsum.photos/seed/city-${city.cityName?.toLowerCase() || 'travel'}/600/400`,
       vibeTags: city.vibeTags?.slice(0, 3) || [],
       citySlug: city.cityName?.toLowerCase().replace(/\s+/g, "-"),
     }));

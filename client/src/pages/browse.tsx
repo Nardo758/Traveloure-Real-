@@ -311,7 +311,7 @@ export default function BrowsePage() {
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
-              backgroundImage: "url('https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=1600&q=80')",
+              backgroundImage: "url('https://picsum.photos/seed/browse-hero/1600/900')",
             }}
           >
             <div className="absolute inset-0 bg-black/30" />

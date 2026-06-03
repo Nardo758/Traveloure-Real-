@@ -50,25 +50,25 @@ const team = [
   {
     name: "Amara Patel",
     role: "Co-Founder & CEO",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop",
+    image: "https://picsum.photos/seed/team-1/200/200",
     bio: "Former travel industry executive with 15+ years of experience building travel platforms."
   },
   {
     name: "Marcus Chen",
     role: "Co-Founder & CTO",
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
+    image: "https://picsum.photos/seed/team-2/200/200",
     bio: "AI researcher turned entrepreneur, passionate about using technology to solve real problems."
   },
   {
     name: "Sofia Rodriguez",
     role: "Head of Expert Network",
-    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop",
+    image: "https://picsum.photos/seed/team-3/200/200",
     bio: "Built our network of 500+ verified local experts across 8 countries."
   },
   {
     name: "James Okonkwo",
     role: "Head of Product",
-    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop",
+    image: "https://picsum.photos/seed/team-4/200/200",
     bio: "Product leader focused on creating delightful user experiences for travelers."
   }
 ];

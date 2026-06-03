@@ -808,7 +808,7 @@ router.post("/api/expert/custom-services", isAuthenticated, async (req, res) => 
         imageUrl,
         galleryImages,
         experienceTypes,
-        isActive: isActive !== false,
+        isActive: false,
       });
       res.status(201).json(service);
     } catch (err) {
@@ -834,7 +834,8 @@ router.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      const updated = await storage.updateExpertCustomService(req.params.id, req.body);
+      const { isActive: _ignoreIsActive, status: _ignoreStatus, ...safeBody } = req.body;
+      const updated = await storage.updateExpertCustomService(req.params.id, safeBody);
       res.json(updated);
     } catch (err) {
       console.error("Error updating custom service:", err);
