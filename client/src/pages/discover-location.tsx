@@ -1173,6 +1173,104 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
   return false;
 }
 
+// ─── Expert Recruit Card ──────────────────────────────────────────────────────
+
+function ExpertRecruitCard({ cityName, userRole }: { cityName: string; userRole?: string | null }) {
+  const isSupply = userRole === "expert" || userRole === "provider";
+  const cityParam = encodeURIComponent(cityName);
+
+  if (isSupply) {
+    return (
+      <div
+        className="rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center space-y-3"
+        data-testid="expert-promote-card"
+      >
+        <div className="flex justify-center">
+          <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
+            <Zap className="w-6 h-6 text-primary" />
+          </span>
+        </div>
+        <p className="font-semibold text-base">Promote your {cityName} services</p>
+        <p className="text-sm text-muted-foreground">
+          Get discovered by travellers actively planning a trip here.
+        </p>
+        <Button size="sm" asChild data-testid="btn-promote-services">
+          <a href={`/expert/services/new?city=${cityParam}`}>Promote services →</a>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-2xl border border-dashed border-amber-400/60 bg-amber-50 dark:bg-amber-950/20 p-6 text-center space-y-3"
+      data-testid="expert-recruit-card"
+    >
+      <div className="flex justify-center">
+        <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/40">
+          <UserCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+        </span>
+      </div>
+      <p className="font-semibold text-base">Become a local expert for {cityName}</p>
+      <p className="text-sm text-muted-foreground">
+        Share your local knowledge, earn from itinerary planning, and help travellers discover the city like a local.
+      </p>
+      <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white border-none" asChild data-testid="btn-apply-expert">
+        <a href={`/become-expert?city=${cityParam}&type=local_expert`}>Apply to join →</a>
+      </Button>
+    </div>
+  );
+}
+
+// ─── Provider Recruit Banner ──────────────────────────────────────────────────
+
+function ProviderRecruitBanner({
+  cityName, serviceCount, userRole,
+}: {
+  cityName: string;
+  serviceCount: number;
+  userRole?: string | null;
+}) {
+  if (serviceCount >= 3) return null;
+
+  const cityParam = encodeURIComponent(cityName);
+  const isSupply = userRole === "expert" || userRole === "provider";
+
+  if (isSupply) {
+    return (
+      <div
+        className="mt-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3"
+        data-testid="provider-promote-banner"
+      >
+        <Package className="w-4 h-4 text-primary flex-shrink-0" />
+        <p className="text-sm flex-1">
+          <span className="font-medium">Promote your {cityName} services</span>
+          {" — "}get discovered by travellers planning here.
+        </p>
+        <Button size="sm" variant="outline" className="flex-shrink-0 text-xs h-7 px-3" asChild data-testid="btn-promote-provider">
+          <a href={`/provider/services/new?city=${cityParam}`}>Promote →</a>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-4 flex items-center gap-3 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/30 px-4 py-3"
+      data-testid="provider-recruit-banner"
+    >
+      <Package className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      <p className="text-sm flex-1 text-muted-foreground">
+        Are you a guide, driver, or photographer in <span className="font-medium text-foreground">{cityName}</span>?{" "}
+        <span className="font-medium text-foreground">List your service free.</span>
+      </p>
+      <Button size="sm" variant="outline" className="flex-shrink-0 text-xs h-7 px-3" asChild data-testid="btn-list-service">
+        <a href={`/become-provider?city=${cityParam}&prefill=true`}>Get listed →</a>
+      </Button>
+    </div>
+  );
+}
+
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
@@ -1191,13 +1289,16 @@ function AllGemsFeed({
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const userRole = user?.role ?? null;
+
   // ── Flat filter mode ──────────────────────────────────────────────────────
   if (activeFilter !== "all") {
     if (activeFilter === "experts") {
       if (experts.length === 0) {
         return (
-          <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
-            No local experts found for {cityName} yet.
+          <div className="py-8" data-testid="feed-empty-experts">
+            <ExpertRecruitCard cityName={cityName} userRole={userRole} />
           </div>
         );
       }
@@ -1615,6 +1716,9 @@ function AllGemsFeed({
           </div>
         </div>
       )}
+
+      {/* Provider recruitment banner — shown when city has fewer than 3 platform services */}
+      <ProviderRecruitBanner cityName={cityName} serviceCount={platformServices.length} userRole={userRole} />
     </div>
   );
 }
