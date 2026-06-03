@@ -959,16 +959,8 @@ export default function DiscoverPage() {
                   Plan Experience
                 </Button>
               </Link>
-              <Link href="/spontaneous">
-                <Button
-                  variant="outline"
-                  className="bg-amber-500/20 backdrop-blur-sm border-amber-400/50 text-primary-foreground font-medium"
-                  data-testid="button-live-intel"
-                >
-                  <Zap className="w-4 h-4 mr-2" />
-                  Live Intel
-                </Button>
-              </Link>
+              {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}
+              {/* (absorb). Per-city happening-now section ships in Phase 3's location view. */}
             </motion.div>
           </div>
         </section>
@@ -1137,6 +1129,26 @@ export default function DiscoverPage() {
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
+            {/* Trip Packages CTA — replaces the retired Packages tab per spec §10 / decision #2 */}
+            <Link href="/experiences">
+              <div
+                className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 to-amber-500/5 px-5 py-4 hover-elevate active-elevate-2 cursor-pointer"
+                data-testid="cta-trip-templates"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Globe className="w-5 h-5 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm sm:text-base truncate">
+                      Looking for trip packages?
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                      Build a trip from a curated template — wedding, proposal, getaway, and more.
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-primary flex-shrink-0" />
+              </div>
+            </Link>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="relative mb-8">
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">

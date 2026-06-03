@@ -85,6 +85,7 @@ import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
+import DiscoverLocationPage from "@/pages/discover-location";
 import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
@@ -125,7 +126,6 @@ import ServiceDetailPage from "@/pages/service-detail";
 import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
-import SpontaneousPage from "@/pages/spontaneous";
 import HiddenGemsPage from "@/pages/hidden-gems";
 import TransportationBookingPage from "@/pages/transportation-booking";
 import PrivacyPolicyPage from "@/pages/privacy";
@@ -233,7 +233,12 @@ function Router() {
       <Route path="/discover">
         <DiscoverPage />
       </Route>
-      
+      {/* Phase 2 shell for the new location view (v2 spec §3, Decision #5). */}
+      {/* Phase 3 fills the section renderers; the orchestrator endpoint and IA are live now. */}
+      <Route path="/discover/location/:city">
+        <DiscoverLocationPage />
+      </Route>
+
       <Route path="/services/:id">
         <ServiceDetailPage />
       </Route>
@@ -310,8 +315,11 @@ function Router() {
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
       </Route>
+      {/* /spontaneous absorbed into Discover happening-now (v2 spec §6, Phase 2). */}
+      {/* Route preserved as redirect for bookmark continuity; Phase 3 wires the */}
+      {/* per-city happening-now section into the location view. */}
       <Route path="/spontaneous">
-        <SpontaneousPage />
+        <Redirect to="/discover" />
       </Route>
       <Route path="/hidden-gems">
         <Layout><HiddenGemsPage /></Layout>
