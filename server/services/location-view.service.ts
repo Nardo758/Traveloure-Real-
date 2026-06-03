@@ -1,10 +1,9 @@
 /**
  * Location View aggregation orchestrator (v2 spec §3, §5, §10 — Phase 1b-3).
  *
- * Fans out, in parallel, to the four endpoints that already exist:
+ * Fans out, in parallel, to the three endpoints that already exist:
  *   - travelpulse/cities/:cityName            (hero + gems + happening-now)
  *   - travelpulse/ai-recommendations/...      (hotels + activities)
- *   - travelpulse/enriched/:cityName          (eat · do · attractions)
  *   - travelpulse/fever-events/:cityName      (events)
  *
  * Calls services directly (not via HTTP) to avoid serialization round-trips.
@@ -18,7 +17,7 @@
 
 import { db } from "../db";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 
@@ -50,7 +49,6 @@ export interface LocationViewPayload {
   generatedAt: string;
   hero: SectionResult<any>;
   recommendations: SectionResult<any>;
-  enriched: SectionResult<any>;
   events: SectionResult<any>;
   neighborhoods: SectionResult<Neighborhood[]>;
 }
@@ -87,12 +85,25 @@ function deriveEventWindow(opts: LocationViewOptions): { startDate: string; endD
   return { startDate, endDate };
 }
 
+interface CacheEntry {
+  payload: LocationViewPayload;
+  expiresAt: number;
+}
+
+const locationViewCache = new Map<string, CacheEntry>();
+
 class LocationViewService {
   async getLocationView(
     cityName: string,
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
+    const cacheKey = `${cityName}:${country ?? ""}`;
+    const cached = locationViewCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.payload;
+    }
+
     const limit = opts.limit ?? 20;
     const { startDate, endDate } = deriveEventWindow(opts);
 
@@ -122,24 +133,6 @@ class LocationViewService {
       );
     })();
 
-    // Enriched eat/do/attractions
-    const enrichedPromise = (async () => {
-      const { contentEnrichmentService } = await import("./content-enrichment.service");
-      const enriched = await contentEnrichmentService.getEnrichedContentForCity(cityName);
-      return (
-        enriched ?? {
-          cityName,
-          country: country ?? "",
-          lastUpdated: new Date(),
-          restaurants: [],
-          attractions: [],
-          nightlife: [],
-          hiddenGems: [],
-          trendingNow: [],
-        }
-      );
-    })();
-
     // Events (Fever)
     const eventsPromise = (async () => {
       const result = await feverService.searchEvents({
@@ -153,6 +146,7 @@ class LocationViewService {
     })();
 
     // Neighborhoods for this city — annotated with gem + service counts
+    // Uses 2 aggregate queries instead of N+1 to avoid per-neighborhood round-trips
     const neighborhoodsPromise = (async () => {
       const neighborhoods = await db
         .select()
@@ -160,43 +154,61 @@ class LocationViewService {
         .where(eq(cityNeighborhoods.city, cityName))
         .orderBy(cityNeighborhoods.name);
 
-      const annotated = await Promise.all(
-        neighborhoods.map(async (n) => {
-          const [gemRows, svcRows] = await Promise.all([
-            db
-              .select()
-              .from(travelPulseHiddenGems)
-              .where(and(eq(travelPulseHiddenGems.city, cityName), eq(travelPulseHiddenGems.neighborhood, n.slug))),
-            db.select().from(providerServices).where(eq(providerServices.neighborhood, n.slug)),
-          ]);
-          return {
-            ...n,
-            gemCount: gemRows.length,
-            serviceCount: svcRows.length,
-          };
-        }),
-      );
-      return annotated;
+      const [gemRows, svcRows] = await Promise.all([
+        db
+          .select({
+            neighborhood: travelPulseHiddenGems.neighborhood,
+            count: sql<number>`cast(count(*) as int)`,
+          })
+          .from(travelPulseHiddenGems)
+          .where(eq(travelPulseHiddenGems.city, cityName))
+          .groupBy(travelPulseHiddenGems.neighborhood),
+        db
+          .select({
+            neighborhood: providerServices.neighborhood,
+            count: sql<number>`cast(count(*) as int)`,
+          })
+          .from(providerServices)
+          .groupBy(providerServices.neighborhood),
+      ]);
+
+      const gemCountMap = new Map<string, number>();
+      for (const row of gemRows) {
+        if (row.neighborhood) gemCountMap.set(row.neighborhood, row.count);
+      }
+
+      const svcCountMap = new Map<string, number>();
+      for (const row of svcRows) {
+        if (row.neighborhood) svcCountMap.set(row.neighborhood, row.count);
+      }
+
+      return neighborhoods.map((n) => ({
+        ...n,
+        gemCount: gemCountMap.get(n.slug) ?? 0,
+        serviceCount: svcCountMap.get(n.slug) ?? 0,
+      }));
     })();
 
-    const [hero, recommendations, enriched, events, neighborhoods] = await Promise.all([
+    const [hero, recommendations, events, neighborhoods] = await Promise.all([
       settle("hero", heroPromise),
       settle("recommendations", recommendationsPromise),
-      settle("enriched", enrichedPromise),
       settle("events", eventsPromise),
       settle("neighborhoods", neighborhoodsPromise),
     ]);
 
-    return {
+    const payload: LocationViewPayload = {
       city: cityName,
       country: country ?? (hero.data as any)?.country ?? null,
       generatedAt: new Date().toISOString(),
       hero,
       recommendations,
-      enriched,
       events,
       neighborhoods,
     };
+
+    locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });
+
+    return payload;
   }
 }
 
