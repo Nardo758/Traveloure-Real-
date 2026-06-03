@@ -510,6 +510,7 @@ function CityGridSkeleton() {
 }
 
 export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
+  const [, navigate] = useLocation();
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
   });
