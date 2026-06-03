@@ -336,9 +336,15 @@ router.get("/api/bookings/user", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/cart/items", isAuthenticated, async (req, res) => {
+router.post("/api/cart/items", async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = req.user ? (req.user as any).claims.sub : null;
+      const guestSessionId = !userId ? (req.headers["x-guest-session"] as string | undefined) : undefined;
+
+      if (!userId && !guestSessionId) {
+        return res.status(400).json({ message: "Authentication or guest session required" });
+      }
+
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
@@ -354,7 +360,7 @@ router.post("/api/cart/items", isAuthenticated, async (req, res) => {
         if (!venue) {
           return res.status(404).json({ message: "Custom venue not found" });
         }
-        if (venue.userId !== userId) {
+        if (userId && venue.userId !== userId) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       }
@@ -367,6 +373,7 @@ router.post("/api/cart/items", isAuthenticated, async (req, res) => {
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
         experienceSlug,
+        guestSessionId,
       });
       res.status(201).json(item);
     } catch (error: any) {
@@ -556,11 +563,21 @@ router.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
 
   // Get user notifications
 
-router.get("/api/cart", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+router.get("/api/cart", async (req, res) => {
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
-    const items = await storage.getCartItems(userId, experienceSlug);
+
+    let items: any[];
+    if (req.user) {
+      const userId = (req.user as any).claims.sub;
+      items = await storage.getCartItems(userId, experienceSlug);
+    } else {
+      const guestSessionId = req.headers["x-guest-session"] as string | undefined;
+      if (!guestSessionId) {
+        return res.json({ items: [], subtotal: "0.00", platformFee: "0.00", total: "0.00", itemCount: 0 });
+      }
+      items = await storage.getGuestCartItems(guestSessionId, experienceSlug);
+    }
 
     // Per-item commission lookup — matches the logic in /api/checkout so the
     // quoted fee never diverges from the charged fee.
@@ -603,12 +620,18 @@ router.get("/api/cart", isAuthenticated, async (req, res) => {
 
   // Add to cart
 
-router.post("/api/cart", isAuthenticated, async (req, res) => {
+router.post("/api/cart", async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = req.user ? (req.user as any).claims.sub : null;
+      const guestSessionId = !userId ? (req.headers["x-guest-session"] as string | undefined) : undefined;
+
+      if (!userId && !guestSessionId) {
+        return res.status(400).json({ message: "Authentication or guest session required" });
+      }
+
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       
-      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug });
+      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug, guest: !userId });
       
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
@@ -628,8 +651,7 @@ router.post("/api/cart", isAuthenticated, async (req, res) => {
         if (!venue) {
           return res.status(404).json({ message: "Custom venue not found" });
         }
-        // Verify user owns the custom venue
-        if (venue.userId !== userId) {
+        if (userId && venue.userId !== userId) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       }
@@ -645,6 +667,7 @@ router.post("/api/cart", isAuthenticated, async (req, res) => {
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
         experienceSlug,
+        guestSessionId,
       });
       
       res.status(201).json(item);
@@ -654,9 +677,26 @@ router.post("/api/cart", isAuthenticated, async (req, res) => {
     }
   });
 
+  // Migrate guest cart after login/signup
+
+router.post("/api/cart/migrate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { guestSessionId } = req.body;
+      if (!guestSessionId || typeof guestSessionId !== "string") {
+        return res.status(400).json({ message: "guestSessionId is required" });
+      }
+      const result = await storage.migrateGuestCart(guestSessionId, userId);
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error("Cart migration error:", err);
+      res.status(500).json({ message: "Failed to migrate cart" });
+    }
+  });
+
   // Update cart item
 
-router.patch("/api/cart/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/cart/:id", async (req, res) => {
     try {
       const { quantity, scheduledDate, notes } = req.body;
       const updated = await storage.updateCartItem(req.params.id, {
@@ -677,7 +717,7 @@ router.patch("/api/cart/:id", isAuthenticated, async (req, res) => {
 
   // Remove from cart
 
-router.delete("/api/cart/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/cart/:id", async (req, res) => {
     try {
       await storage.removeFromCart(req.params.id);
       res.status(204).send();

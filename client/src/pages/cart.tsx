@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { getGuestSessionId } from "@/lib/guestSession";
 import { Link, useLocation, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,6 +139,11 @@ export default function CartPage() {
   const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
 
+  // Initialize guest session ID on first visit (ensures localStorage entry exists)
+  useEffect(() => {
+    getGuestSessionId();
+  }, []);
+
   // Load experience context from sessionStorage on mount
   useEffect(() => {
     const storedContext = sessionStorage.getItem("experienceContext");
@@ -231,11 +237,14 @@ export default function CartPage() {
     queryKey: ["/api/cart", experienceSlug],
     queryFn: async () => {
       const url = experienceSlug ? `/api/cart?experience=${experienceSlug}` : "/api/cart";
-      const res = await fetch(url, { credentials: "include" });
+      const guestId = localStorage.getItem("traveloure_guest_session");
+      const headers: Record<string, string> = {};
+      if (guestId) headers["X-Guest-Session"] = guestId;
+      const res = await fetch(url, { credentials: "include", headers });
       if (!res.ok) throw new Error("Failed to fetch cart");
       return res.json();
     },
-    enabled: !!user,
+    enabled: !!experienceSlug,
   });
 
   // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
@@ -556,19 +565,6 @@ export default function CartPage() {
     );
   }
 
-  if (!user) {
-    return (
-      <DashboardLayout>
-        <div className="container py-8 max-w-4xl mx-auto text-center">
-          <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Your Cart</h1>
-          <p className="text-muted-foreground mb-6">Please sign in to view your cart</p>
-          <Button onClick={() => openSignInModal()} data-testid="button-sign-in">Sign In</Button>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout>
       <div className="container py-8 max-w-5xl mx-auto">
@@ -623,6 +619,42 @@ export default function CartPage() {
             <Badge variant="secondary" data-testid="badge-item-count">{totalItemCount} items</Badge>
           )}
         </div>
+
+        {/* Guest nudge — only shown when unauthenticated and there are items */}
+        {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (
+          <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="banner-guest-nudge">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <p className="text-sm text-amber-800 dark:text-amber-200 flex-1">
+              Your plan is saved in this browser only.{" "}
+              <button
+                type="button"
+                className="font-semibold underline hover:no-underline"
+                onClick={() => openSignInModal()}
+                data-testid="button-sign-in-nudge"
+              >
+                Sign in to save it permanently
+              </button>
+            </p>
+          </div>
+        )}
+
+        {/* Guest nudge — empty cart prompt for unauthenticated users without items */}
+        {!user && !authLoading && totalItemCount === 0 && flowStep === "cart" && !isLoading && !optimizationResult && (
+          <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800" data-testid="banner-guest-empty-nudge">
+            <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0" />
+            <p className="text-sm text-blue-800 dark:text-blue-200 flex-1">
+              Build your plan first — no account needed.{" "}
+              <button
+                type="button"
+                className="font-semibold underline hover:no-underline"
+                onClick={() => openSignInModal()}
+                data-testid="button-sign-in-empty"
+              >
+                Sign in to save and optimize
+              </button>
+            </p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-4">

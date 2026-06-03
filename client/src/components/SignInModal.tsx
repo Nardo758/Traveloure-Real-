@@ -42,6 +42,21 @@ export function SignInModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const migrateGuestCart = async () => {
+    try {
+      const guestSessionId = localStorage.getItem("traveloure_guest_session");
+      if (!guestSessionId) return;
+      await fetch("/api/cart/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guestSessionId }),
+        credentials: "include",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+    } catch {
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -74,6 +89,9 @@ export function SignInModal({
       if (!response.ok) {
         throw new Error(data.message || "Authentication failed");
       }
+
+      // Migrate guest cart items to the authenticated account
+      await migrateGuestCart();
 
       // Invalidate user query to refresh auth state
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
