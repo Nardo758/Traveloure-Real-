@@ -14,6 +14,7 @@ import {
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Activity, Battery, Shield, BatteryLow,
+  ShoppingBag,
 } from "lucide-react";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -401,6 +402,20 @@ export default function ExpertWorkspace() {
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
     enabled: !!tripId,
     staleTime: 30 * 1000,
+  });
+
+  const { data: partnerBookingRequests, isLoading: partnerBookingLoading } = useQuery<any[]>({
+    queryKey: ["/api/affiliate-booking-requests/expert"],
+    staleTime: 30 * 1000,
+  });
+
+  const updateBookingMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/affiliate-booking-requests/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
+      toast({ title: "Booking updated" });
+    },
   });
 
   const energyCalcRef = useRef(false);
@@ -929,6 +944,7 @@ export default function ExpertWorkspace() {
               { k: "commission", l: "💰 Earnings" },
               { k: "providers", l: "👥 Providers" },
               { k: "affiliates", l: "🔗 Affiliates" },
+              { k: "partner-bookings", l: "🛍️ Partner Bookings" },
             ].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${P}` : "2px solid transparent", color: rightTab === t.k ? P : G[500], marginBottom: -1, whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
@@ -1356,6 +1372,52 @@ export default function ExpertWorkspace() {
           )}
 
           {/* Affiliates Tab */}
+          {rightTab === "partner-bookings" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 7, background: "#7c3aed22", display: "flex", alignItems: "center", justifyContent: "center" }}><ShoppingBag style={{ width: 11, height: 11, color: "#7c3aed" }} /></div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Partner Booking Requests</span>
+              </div>
+              <p style={{ fontSize: 11, color: G[500], marginBottom: 12 }}>Requests from users to book partner-affiliate items on their behalf.</p>
+              {partnerBookingLoading && <div style={{ textAlign: "center", padding: 20, color: G[400], fontSize: 12 }}>Loading…</div>}
+              {!partnerBookingLoading && (!partnerBookingRequests || partnerBookingRequests.length === 0) && (
+                <div style={{ textAlign: "center", padding: 24, color: G[400], fontSize: 12, background: G[50], borderRadius: 10 }}>
+                  <ShoppingBag style={{ width: 28, height: 28, margin: "0 auto 8px", opacity: 0.3 }} />
+                  No partner booking requests yet
+                </div>
+              )}
+              {partnerBookingRequests?.map((req: any) => (
+                <div key={req.id} data-testid={`card-partner-booking-${req.id}`} style={{ padding: "11px 12px", border: `1px solid ${G[200]}`, borderRadius: 10, marginBottom: 10, background: "white" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: G[900], marginBottom: 2 }}>{req.itemName}</div>
+                      <div style={{ fontSize: 11, color: G[500] }}>{req.partnerName} · {req.partnerCategory ?? "activity"}</div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 99, background: req.status === "confirmed" ? "#dcfce7" : req.status === "failed" ? "#fee2e2" : "#f3e8ff", color: req.status === "confirmed" ? "#16a34a" : req.status === "failed" ? "#dc2626" : "#7c3aed" }}>{req.status}</span>
+                  </div>
+                  {(req.travelDate || req.travelers) && (
+                    <div style={{ fontSize: 11, color: G[500], display: "flex", gap: 10, marginBottom: 6 }}>
+                      {req.travelDate && <span>📅 {req.travelDate}</span>}
+                      {req.travelers && <span>👥 {req.travelers} traveler{req.travelers !== 1 ? "s" : ""}</span>}
+                    </div>
+                  )}
+                  {req.userNotes && <div style={{ fontSize: 11, color: G[600], background: G[50], borderRadius: 6, padding: "4px 8px", marginBottom: 6 }}>{req.userNotes}</div>}
+                  {req.affiliateUrl && (
+                    <a href={req.affiliateUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-booking-${req.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#7c3aed", fontWeight: 600, textDecoration: "none", padding: "4px 9px", border: "1.5px solid #c4b5fd", borderRadius: 7, marginBottom: 8 }}>
+                      <ExternalLink style={{ width: 11, height: 11 }} />Open booking link
+                    </a>
+                  )}
+                  {req.status !== "confirmed" && req.status !== "failed" && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => updateBookingMutation.mutate({ id: req.id, status: "confirmed" })} disabled={updateBookingMutation.isPending} data-testid={`button-confirm-${req.id}`} style={{ flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: "#16a34a", color: "white", border: "none" }}>✓ Confirm</button>
+                      <button onClick={() => updateBookingMutation.mutate({ id: req.id, status: "failed" })} disabled={updateBookingMutation.isPending} data-testid={`button-fail-${req.id}`} style={{ flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: "white", color: "#dc2626", border: "1.5px solid #fca5a5" }}>✗ Failed</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {rightTab === "affiliates" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
