@@ -4451,6 +4451,13 @@ router.get("/api/travelpulse/ai/status", requireAdmin, async (req, res) => {
         scheduler: status,
         citiesNeedingRefresh: citiesNeedingRefresh.length,
         cities: citiesNeedingRefresh.map(c => ({ name: c.cityName, country: c.country, lastAiUpdate: c.aiGeneratedAt })),
+        feedbackLoop: {
+          lastRunAt: status.feedbackLoop.lastRunAt,
+          totalSignalsProcessed: status.feedbackLoop.totalSignalsProcessed,
+          totalCycles: status.feedbackLoop.totalRunCount,
+          citiesProcessedLifetime: status.feedbackLoop.citiesProcessed,
+          description: "Demand signal regeneration pass runs after every city intelligence cycle. Funnel events (view, cart, complete) increment service_demand_signals in real time. Zero-result searches via /api/track/search boost supply-gap scores as gap/opportunity signals.",
+        },
       });
     } catch (error: any) {
       console.error("Error getting AI status:", error);
@@ -7068,6 +7075,16 @@ router.post("/api/track/search", async (req, res) => {
         ipCountry: req.headers["cf-ipcountry"] as string,
       });
 
+      // Feed zero-result searches back into demand signal layer as gap/opportunity signals (non-blocking)
+      if (req.body.resultsCount === 0 && req.body.destination) {
+        const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+        serviceRecommendationEngine
+          .recordNoResultsSignal(req.body.destination, req.body.searchType)
+          .catch((err: any) =>
+            console.error("[track/search] no-results demand signal update failed:", err?.message),
+          );
+      }
+
       res.json({ success: true });
     } catch (err) {
       console.error("Track search error:", err);
@@ -7120,6 +7137,18 @@ router.post("/api/track/funnel", async (req, res) => {
         abandonReason: req.body.abandonReason,
         ipCountry: req.headers["cf-ipcountry"] as string,
       });
+
+      // Feed this funnel event back into the demand signal layer (non-blocking)
+      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      serviceRecommendationEngine
+        .recordFunnelEventAsSignal({
+          stage: req.body.stage,
+          serviceType: req.body.serviceType,
+          destination: req.body.destination,
+        })
+        .catch((err: any) =>
+          console.error("[track/funnel] demand signal update failed:", err?.message),
+        );
 
       res.json({ success: true });
     } catch (err) {
