@@ -108,7 +108,19 @@ const navItems = [
     ],
   },
   { name: "Partner With Us", href: "/partner-with-us" },
-  { name: "Discover", href: "/discover" },
+  {
+    name: "Discover",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "BROWSE",
+        items: [
+          { name: "By Location", href: "/discover", icon: MapPin, description: "Explore destinations & trending cities" },
+          { name: "By Date", href: "/discover?tab=events", icon: Calendar, description: "Upcoming events & activities" },
+        ],
+      },
+    ],
+  },
   {
     name: "Planning Tools",
     icon: ChevronDown,
