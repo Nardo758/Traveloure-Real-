@@ -736,7 +736,7 @@ export default function ExpertWorkspace() {
                       <span style={{ fontSize: 11, fontWeight: 700, color: "#15803D" }}>${parseFloat(commission.expertShare).toLocaleString()}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 10, color: G[500] }}>{Math.round(commission.revenueShareRate * 100)}% of gross · {commission.itemCount} items</span>
+                      <span style={{ fontSize: 10, color: G[500] }}>{isNaN(commission.revenueShareRate) ? '—' : `${Math.round(commission.revenueShareRate * 100)}%`} of gross · {commission.itemCount} items</span>
                     </div>
                   </div>
                 </div>
@@ -1240,7 +1240,7 @@ export default function ExpertWorkspace() {
                   <div style={{ background: "linear-gradient(135deg,#FF385C12,#FF6B8A08)", border: `1px solid ${P}30`, borderRadius: 12, padding: "14px", marginBottom: 14 }}>
                     <div style={{ fontSize: 11, color: G[500], marginBottom: 2 }}>Your estimated earnings · this trip</div>
                     <div style={{ fontSize: 28, fontWeight: 800, color: G[900] }}>${parseFloat(commission.expertShare).toFixed(2)}</div>
-                    <div style={{ fontSize: 12, color: "#15803D", fontWeight: 600, marginTop: 2 }}>{Math.round(commission.revenueShareRate * 100)}% revenue share · {commission.itemCount} items</div>
+                    <div style={{ fontSize: 12, color: "#15803D", fontWeight: 600, marginTop: 2 }}>{isNaN(commission.revenueShareRate) ? '—' : `${Math.round(commission.revenueShareRate * 100)}%`} revenue share · {commission.itemCount} items</div>
                     <div style={{ height: 1, background: G[200], margin: "10px 0" }} />
                     <div style={{ display: "flex", gap: 16 }}>
                       <div><div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase" }}>Gross</div><div style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>${parseFloat(commission.totalGross).toFixed(2)}</div></div>

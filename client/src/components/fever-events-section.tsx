@@ -204,7 +204,7 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src =
-                        "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=300&h=200&fit=crop";
+                        "https://picsum.photos/seed/event/300/200";
                     }}
                   />
                 ) : (
