@@ -120,7 +120,7 @@ function resolveMatch(item: {
   return { primaryLabel: null, badgeLabel: "Not bookable", badgeClass: "bg-muted text-muted-foreground border-border", Icon: null };
 }
 
-// ─── GemCard ──────────────────────────────────────────────────────────────────
+// ─── GemCard — full-bleed image card for 2-col bento grid ────────────────────
 
 function GemCard({
   item, idx, onAdd, testPrefix,
@@ -142,79 +142,58 @@ function GemCard({
   const description = item.whyHidden ?? item.description ?? null;
   const rating = item.localRating ?? item.starRating ?? null;
   const match = resolveMatch(item);
+  const typeLabel = (item.placeType ?? item.type ?? "").toUpperCase().replace(/-/g, " ");
 
   return (
-    <Card
-      className="overflow-hidden flex flex-col w-full max-w-[360px]"
+    <div
+      className="rounded-xl border bg-card overflow-hidden flex flex-col"
       data-testid={`${testPrefix}-${idx}`}
     >
-      {/* Image */}
-      <div className="relative aspect-[4/3] bg-muted flex-shrink-0">
+      {/* Image — crisp 4:3, fills full card width */}
+      <div className="relative aspect-[4/3] bg-muted flex-shrink-0 w-full">
         {image ? (
-          <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
+          <img
+            src={image}
+            alt={displayName}
+            className="absolute inset-0 w-full h-full object-cover"
+            loading="lazy"
+          />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Gem className="h-8 w-8 text-muted-foreground/40" />
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-muted/60">
+            <Gem className="h-10 w-10 text-muted-foreground/30" />
           </div>
         )}
-        {(item.placeType ?? item.type) && (
-          <Badge className="absolute top-2 left-2 text-[10px] bg-black/60 text-white border-0 backdrop-blur-sm">
-            {item.placeType ?? item.type}
-          </Badge>
+        {typeLabel && (
+          <span className="absolute top-2 left-2 text-[10px] font-semibold uppercase tracking-wide bg-white/90 text-gray-800 rounded px-1.5 py-0.5 shadow-sm">
+            {typeLabel}
+          </span>
         )}
         {rating && (
-          <Badge className="absolute top-2 right-2 bg-amber-50 text-amber-800 border-amber-200 text-[10px]">
-            <Star className="h-2.5 w-2.5 mr-0.5 fill-amber-500 text-amber-500" />{rating}
-          </Badge>
+          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm">
+            <Star className="h-2.5 w-2.5 fill-white text-white" />{rating}
+          </span>
         )}
       </div>
 
-      <CardContent className="p-3 flex flex-col flex-1 gap-2">
+      <div className="p-3 flex flex-col flex-1 gap-2">
         <div>
           <p className="font-semibold text-sm leading-snug line-clamp-1" data-testid={`${testPrefix}-name-${idx}`}>
             {displayName}
+            {item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
           </p>
           {description && (
             <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{description}</p>
           )}
-          {item.address && !description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.address}</p>
-          )}
-          {item.price && (
-            <p className="text-xs font-medium text-primary mt-0.5">{item.price}</p>
-          )}
         </div>
 
-        {/* Bookability badge */}
-        <Badge
-          variant="outline"
-          className={`self-start text-[10px] px-2 py-0.5 ${match.badgeClass}`}
-        >
-          {match.Icon && <match.Icon className="h-2.5 w-2.5 mr-1" />}
-          {match.badgeLabel}
-        </Badge>
-
-        {/* Actions */}
         <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
           {match.primaryLabel && item.bookingUrl && (
-            <Button size="sm" className="text-xs h-7 px-2.5" asChild>
-              <a
-                href={item.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid={`${testPrefix}-book-${idx}`}
-              >
-                {match.primaryLabel}
-              </a>
+            <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
+              <a href={item.bookingUrl} target="_blank" rel="noopener noreferrer">{match.primaryLabel}</a>
             </Button>
           )}
           {match.primaryLabel && !item.bookingUrl && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-7 px-2.5"
-              data-testid={`${testPrefix}-primary-${idx}`}
-            >
+            <Button size="sm" className="text-xs h-7 px-2.5" data-testid={`${testPrefix}-book-${idx}`}>
               {match.primaryLabel}
             </Button>
           )}
@@ -222,78 +201,230 @@ function GemCard({
             size="sm"
             variant="outline"
             className="text-xs h-7 px-2.5"
-            onClick={() =>
-              onAdd({
-                name: displayName,
-                type: item.placeType ?? item.type ?? "activity",
-                imageUrl: image ?? undefined,
-                description: description ?? undefined,
-              })
-            }
+            onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
             data-testid={`${testPrefix}-add-${idx}`}
           >
             <Plus className="h-3 w-3 mr-1" />Add
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ActivityRow — text-based row for bookable activities (like the mockup) ───
+
+function ActivityRow({
+  item, idx, onAdd, testPrefix,
+}: {
+  item: {
+    id?: string; placeName?: string; title?: string; name?: string;
+    placeType?: string | null; type?: string | null;
+    bookingUrl?: string | null; price?: string | null;
+    description?: string | null; whyHidden?: string | null;
+    imageUrl?: string | null; media?: any[];
+  };
+  idx: number;
+  onAdd: (t: AddDialogTarget) => void;
+  testPrefix: string;
+}) {
+  const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
+  const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
+  const description = item.whyHidden ?? item.description ?? null;
+  const hasBooking = !!item.bookingUrl;
+  const typeLabel = (item.placeType ?? item.type ?? "").toLowerCase();
+
+  let badgeText = "NOT BOOKABLE";
+  let badgeClass = "bg-muted text-muted-foreground border-border";
+  let bookLabel = "";
+  let bookVariant: "default" | "outline" = "default";
+
+  if (hasBooking) {
+    if (typeLabel.includes("viator") || typeLabel.includes("via ") || typeLabel.includes("tiqet")) {
+      badgeText = "VIA PARTNER";
+      badgeClass = "bg-blue-50 text-blue-700 border-blue-200";
+      bookLabel = "Book via partner";
+      bookVariant = "outline";
+    } else {
+      badgeText = "BOOK ON TRAVELOURE";
+      badgeClass = "bg-green-50 text-green-700 border-green-200";
+      bookLabel = "Book now";
+    }
+  }
+
+  const isPhotoSpot = typeLabel.includes("photo") || typeLabel.includes("viewpoint");
+
+  return (
+    <div
+      className="flex items-start gap-3 py-3 border-b last:border-b-0"
+      data-testid={`${testPrefix}-${idx}`}
+    >
+      {/* Small thumbnail if available */}
+      {image && (
+        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+          <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <p className="text-sm font-semibold leading-snug" data-testid={`${testPrefix}-name-${idx}`}>
+            {displayName}
+            {item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
+          </p>
+          <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badgeClass}`}>
+            {badgeText}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {bookLabel && hasBooking && (
+            <Button size="sm" variant={bookVariant} className="text-xs h-7 px-2.5" asChild>
+              <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>
+                {bookLabel}
+              </a>
+            </Button>
+          )}
           <Button
             size="sm"
-            variant="ghost"
-            className="text-xs h-7 px-2"
-            data-testid={`${testPrefix}-ask-${idx}`}
+            variant="outline"
+            className="text-xs h-7 px-2.5"
+            onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
+            data-testid={`${testPrefix}-add-${idx}`}
           >
-            <UserCheck className="h-3 w-3 mr-1" />Ask expert
+            Add to experience
           </Button>
+          <Button size="sm" variant="ghost" className="text-xs h-7 px-2" data-testid={`${testPrefix}-ask-${idx}`}>
+            <UserCheck className="h-3 w-3 mr-1" />Ask an expert
+          </Button>
+          {isPhotoSpot && (
+            <span className="text-xs text-muted-foreground self-center">
+              · photographer available → <button className="underline text-primary">Book shoot</button>
+            </span>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
-// ─── ExpertFeedCard ───────────────────────────────────────────────────────────
+// ─── HotelRow — full-width with small thumbnail + "Book both" ─────────────────
 
-function ExpertFeedCard({ cityName }: { cityName: string }) {
+function HotelRow({
+  item, idx, onAdd, testPrefix,
+}: {
+  item: {
+    id?: string; name?: string; title?: string; placeName?: string;
+    placeType?: string | null; type?: string | null;
+    imageUrl?: string | null; media?: any[];
+    price?: string | null; address?: string | null;
+    bookingUrl?: string | null; starRating?: number | null;
+  };
+  idx: number;
+  onAdd: (t: AddDialogTarget) => void;
+  testPrefix: string;
+}) {
+  const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
+  const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
+  const hasBooking = !!item.bookingUrl;
+
   return (
-    <Card
-      className="border-primary/20 bg-primary/[0.03] w-full max-w-[360px]"
+    <div
+      className="flex items-center gap-3 py-3 border-b last:border-b-0"
+      data-testid={`${testPrefix}-${idx}`}
+    >
+      <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+        {image ? (
+          <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Hotel className="h-5 w-5 text-muted-foreground/40" />
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <span className="text-[10px] font-semibold uppercase tracking-wide bg-purple-50 text-purple-700 border border-purple-200 rounded px-1.5 py-0.5">
+          MARQUEE STAY
+        </span>
+        <p className="text-sm font-semibold mt-0.5 leading-snug" data-testid={`${testPrefix}-name-${idx}`}>
+          {displayName}
+          {item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
+        </p>
+        {item.address && (
+          <p className="text-xs text-muted-foreground line-clamp-1">{item.address}</p>
+        )}
+      </div>
+
+      <div className="flex-shrink-0 flex flex-col gap-1.5 items-end">
+        {hasBooking ? (
+          <Button size="sm" className="text-xs h-7 px-3 whitespace-nowrap" asChild>
+            <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>
+              Book both
+            </a>
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 px-3 whitespace-nowrap"
+            onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
+            data-testid={`${testPrefix}-add-${idx}`}
+          >
+            <Plus className="h-3 w-3 mr-1" />Add
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ExpertFeedCard — "Plan it for me" CTA row ───────────────────────────────
+
+function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }) {
+  const initials = expert?.name
+    ? expert.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
+    : "LC";
+  const expertName = expert?.name ?? `Local ${cityName} Expert`;
+  const rating = expert?.rating ?? expert?.averageRating ?? null;
+  const specialization = expert?.specialization ?? expert?.bio ?? "Itinerary planning";
+  const price = expert?.hourlyRate ? `from €${expert.hourlyRate}` : null;
+
+  return (
+    <div
+      className="flex items-center gap-3 py-3 px-4 rounded-xl border border-primary/20 bg-primary/[0.03] mt-1"
       data-testid="expert-feed-card"
     >
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <Users className="h-5 w-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold leading-snug">
-              Turn your picks into a day-by-day plan
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              A local {cityName} expert can build a personalised itinerary from your saved items
-            </p>
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
-                <Star className="h-2.5 w-2.5 mr-0.5 fill-amber-500 text-amber-500" />Top-rated
-              </Badge>
-              <span className="text-xs text-muted-foreground">itinerary planning · concierge</span>
-            </div>
-          </div>
-        </div>
-        <Button size="sm" className="w-full mt-3 text-xs" data-testid="button-plan-with-expert">
-          <UserCheck className="h-3 w-3 mr-1.5" />Plan with a local expert
-        </Button>
-      </CardContent>
-    </Card>
+      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary">
+        {initials}
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">PLAN IT FOR ME</span>
+        <p className="text-sm font-semibold leading-snug line-clamp-1">
+          {expertName} turns your picks into a day-by-day plan
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span>{specialization}</span>
+          {rating && (
+            <span className="flex items-center gap-0.5">
+              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+              {typeof rating === "number" ? rating.toFixed(1) : rating}
+            </span>
+          )}
+          {price && <span>{price}</span>}
+        </p>
+      </div>
+      <Button size="sm" className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap" data-testid="button-plan-with-expert">
+        Plan with {expert?.name?.split(" ")[0] ?? "expert"}
+      </Button>
+    </div>
   );
 }
 
-// ─── GemGrid — flex-wrap so sparse containers don't force empty columns ───────
-
-function GemGrid({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap gap-4">{children}</div>;
-}
-
-// ─── NeighborhoodContainer ────────────────────────────────────────────────────
+// ─── NeighborhoodContainer — bento 2-col gems + hotel/activity rows ───────────
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, cityName, onAdd, showExpertCard,
+  neighborhood, gems, hotels, activities, cityName, onAdd, showExpertCard, expert,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
@@ -302,99 +433,138 @@ function NeighborhoodContainer({
   cityName: string;
   onAdd: (t: AddDialogTarget) => void;
   showExpertCard: boolean;
+  expert?: any;
 }) {
   const total = gems.length + hotels.length + activities.length;
   if (total === 0) return null;
 
+  const doCount = gems.filter(g => {
+    const t = (g.placeType ?? "").toLowerCase();
+    return !t.includes("eat") && !t.includes("restaurant") && !t.includes("cafe") && !t.includes("hotel");
+  }).length;
+  const eatCount = gems.filter(g => {
+    const t = (g.placeType ?? "").toLowerCase();
+    return t.includes("eat") || t.includes("restaurant") || t.includes("cafe") || t.includes("food");
+  }).length;
+  const stayCount = hotels.length;
+  const expertCount = neighborhood.serviceCount ?? 0;
+
+  const statParts = [
+    doCount > 0 && `${doCount} to do`,
+    eatCount > 0 && `${eatCount} to eat`,
+    stayCount > 0 && `${stayCount} stay${stayCount !== 1 ? "s" : ""}`,
+    expertCount > 0 && `${expertCount} expert${expertCount !== 1 ? "s" : ""}`,
+  ].filter(Boolean);
+
   return (
     <div
-      className="border-l-4 border-primary/30 pl-4 md:pl-6 py-2"
+      className="rounded-2xl border bg-card overflow-hidden"
       data-testid={`neighborhood-container-${neighborhood.slug}`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="text-base font-bold flex items-center gap-1.5">
-            <MapPin className="h-4 w-4 text-primary" />
-            {neighborhood.name}
-            {neighborhood.isFeatured && (
-              <Badge variant="secondary" className="text-[10px] ml-1">Featured</Badge>
-            )}
-          </h3>
-          <div className="flex gap-1.5">
-            {neighborhood.gemCount > 0 && (
-              <Badge variant="outline" className="text-[10px]">
-                <Gem className="h-2.5 w-2.5 mr-0.5" />{neighborhood.gemCount} gems
-              </Badge>
-            )}
-            {neighborhood.serviceCount > 0 && (
-              <Badge variant="outline" className="text-[10px]">
-                <Sparkles className="h-2.5 w-2.5 mr-0.5" />{neighborhood.serviceCount} services
-              </Badge>
-            )}
+      <div className="px-4 pt-4 pb-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <MapPin className="h-4 w-4 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-bold leading-tight" data-testid={`neighborhood-name-${neighborhood.slug}`}>
+                  {neighborhood.name}
+                </h3>
+                <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-wide">
+                  NEIGHBORHOOD
+                </Badge>
+                {neighborhood.isFeatured && (
+                  <Badge className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                    <Star className="h-2.5 w-2.5 mr-0.5 fill-amber-500 text-amber-500" />trending
+                  </Badge>
+                )}
+              </div>
+              {statParts.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">{statParts.join(" · ")}</p>
+              )}
+              {neighborhood.description && (
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{neighborhood.description}</p>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 px-2.5"
-            data-testid={`btn-explore-${neighborhood.slug}`}
-          >
-            <Compass className="h-3 w-3 mr-1" />Explore
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 px-2.5"
-            onClick={() =>
-              onAdd({
-                name: `${neighborhood.name} Day`,
-                type: "neighborhood-day",
-                description: `A day exploring ${neighborhood.name} in ${cityName}`,
-              })
-            }
-            data-testid={`btn-add-day-${neighborhood.slug}`}
-          >
-            <Plus className="h-3 w-3 mr-1" />Add a day
-          </Button>
+          <div className="flex gap-2 flex-shrink-0">
+            <Button size="sm" className="text-xs h-8 px-3" data-testid={`btn-explore-${neighborhood.slug}`}>
+              <Compass className="h-3 w-3 mr-1" />Explore {neighborhood.name}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-8 px-3"
+              onClick={() => onAdd({ name: `${neighborhood.name} Day`, type: "neighborhood-day", description: `A day exploring ${neighborhood.name} in ${cityName}` })}
+              data-testid={`btn-add-day-${neighborhood.slug}`}
+            >
+              <Plus className="h-3 w-3 mr-1" />Add a {neighborhood.name.split(" ")[0]} day
+            </Button>
+          </div>
         </div>
       </div>
 
-      {neighborhood.description && (
-        <p className="text-xs text-muted-foreground mb-4 max-w-xl">{neighborhood.description}</p>
-      )}
+      {/* Content area */}
+      <div className="px-4 pb-4">
+        {gems.length > 0 && (
+          <div className="mb-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+              IN {neighborhood.name.toUpperCase()}
+            </p>
+            {/* Bento 2-col grid for gems */}
+            <div className="grid grid-cols-2 gap-3">
+              {gems.map((gem, idx) => (
+                <GemCard
+                  key={gem.id ?? idx}
+                  item={gem}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`gem-${neighborhood.slug}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-      <GemGrid>
-        {gems.map((gem, idx) => (
-          <GemCard
-            key={gem.id ?? idx}
-            item={gem}
-            idx={idx}
-            onAdd={onAdd}
-            testPrefix={`gem-${neighborhood.slug}`}
-          />
-        ))}
-        {hotels.map((hotel, idx) => (
-          <GemCard
-            key={hotel.id ?? idx}
-            item={hotel}
-            idx={idx}
-            onAdd={onAdd}
-            testPrefix={`hotel-${neighborhood.slug}`}
-          />
-        ))}
-        {activities.map((act, idx) => (
-          <GemCard
-            key={act.id ?? idx}
-            item={act}
-            idx={idx}
-            onAdd={onAdd}
-            testPrefix={`activity-${neighborhood.slug}`}
-          />
-        ))}
-        {showExpertCard && <ExpertFeedCard cityName={cityName} />}
-      </GemGrid>
+        {/* Hotels as full-width rows */}
+        {hotels.length > 0 && (
+          <div className={gems.length > 0 ? "mt-3" : ""}>
+            {hotels.map((hotel, idx) => (
+              <HotelRow
+                key={hotel.id ?? idx}
+                item={hotel}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`hotel-${neighborhood.slug}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Activities as text rows */}
+        {activities.length > 0 && (
+          <div className={gems.length > 0 || hotels.length > 0 ? "mt-3" : ""}>
+            {activities.map((act, idx) => (
+              <ActivityRow
+                key={act.id ?? idx}
+                item={act}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`activity-${neighborhood.slug}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {showExpertCard && (
+          <div className="mt-3">
+            <ExpertFeedCard expert={expert} cityName={cityName} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -423,25 +593,45 @@ function matchesFilter(item: any, filter: FeedFilter): boolean {
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, cityName, activeFilter, onAdd,
+  neighborhoods, gems, hotels, activities, experts, cityName, activeFilter, onAdd,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
   hotels: any[];
   activities: any[];
+  experts: any[];
   cityName: string;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
 }) {
   // ── Flat filter mode ──────────────────────────────────────────────────────
   if (activeFilter !== "all") {
-    const flat = [
-      ...gems.map(g => ({ ...g })),
-      ...hotels.map(h => ({ ...h })),
-      ...activities.map(a => ({ ...a })),
-    ].filter(item => matchesFilter(item, activeFilter));
+    if (activeFilter === "experts") {
+      if (experts.length === 0) {
+        return (
+          <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
+            No local experts found for {cityName} yet.
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-3" data-testid="feed-experts">
+          {experts.map((exp, idx) => (
+            <ExpertFeedCard key={exp.id ?? idx} expert={exp} cityName={cityName} />
+          ))}
+        </div>
+      );
+    }
 
-    if (flat.length === 0) {
+    const isStayFilter = activeFilter === "stay";
+    const isGemFilter = activeFilter === "photo-spots";
+
+    const flatGems = gems.filter(g => matchesFilter(g, activeFilter));
+    const flatHotels = isStayFilter ? hotels : [];
+    const flatActivities = !isStayFilter && !isGemFilter ? activities.filter(a => matchesFilter(a, activeFilter)) : [];
+
+    const hasAny = flatGems.length > 0 || flatHotels.length > 0 || flatActivities.length > 0;
+    if (!hasAny) {
       return (
         <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
           No {activeFilter} spots found in {cityName} yet.
@@ -450,18 +640,28 @@ function AllGemsFeed({
     }
 
     return (
-      <div data-testid="feed-flat">
-        <GemGrid>
-          {flat.map((item, idx) => (
-            <GemCard
-              key={(item as any).id ?? idx}
-              item={item}
-              idx={idx}
-              onAdd={onAdd}
-              testPrefix={`flat-${activeFilter}`}
-            />
-          ))}
-        </GemGrid>
+      <div data-testid="feed-flat" className="space-y-6">
+        {flatGems.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            {flatGems.map((item, idx) => (
+              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
+            ))}
+          </div>
+        )}
+        {flatHotels.length > 0 && (
+          <div className="rounded-xl border bg-card px-4 py-2">
+            {flatHotels.map((item, idx) => (
+              <HotelRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-hotel`} />
+            ))}
+          </div>
+        )}
+        {flatActivities.length > 0 && (
+          <div className="rounded-xl border bg-card px-4 py-2">
+            {flatActivities.map((item, idx) => (
+              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -481,16 +681,40 @@ function AllGemsFeed({
     }
   }
 
-  // Hotels and activities go into "Elsewhere" (they lack neighborhood tags currently)
-  const elsewhereHotels = hotels;
-  const elsewhereActivities = activities;
+  // Distribute activities across neighborhoods proportionally; overflow → elsewhere
+  const activitiesPerNeighborhood = neighborhoods.length > 0
+    ? Math.ceil(activities.length / neighborhoods.length)
+    : 0;
+  const activitiesBySlug = new Map<string, any[]>();
+  let activityOffset = 0;
+  for (const n of neighborhoods) {
+    const slice = activities.slice(activityOffset, activityOffset + activitiesPerNeighborhood);
+    if (slice.length > 0) activitiesBySlug.set(n.slug, slice);
+    activityOffset += activitiesPerNeighborhood;
+  }
+  const elsewhereActivities = activities.slice(activityOffset);
+
+  // Hotels → split first half into first neighborhood, rest into "elsewhere"
+  const hotelsPerNeighborhood = neighborhoods.length > 0 ? Math.ceil(hotels.length / neighborhoods.length) : 0;
+  const hotelsBySlug = new Map<string, any[]>();
+  let hotelOffset = 0;
+  for (const n of neighborhoods) {
+    const slice = hotels.slice(hotelOffset, hotelOffset + hotelsPerNeighborhood);
+    if (slice.length > 0) hotelsBySlug.set(n.slug, slice);
+    hotelOffset += hotelsPerNeighborhood;
+  }
+  const elsewhereHotels = hotels.slice(hotelOffset);
 
   const ordered = [
     ...neighborhoods.filter(n => n.isFeatured),
     ...neighborhoods.filter(n => !n.isFeatured),
   ];
 
-  const hasNeighborhoodContent = ordered.some(n => (gemsBySlug.get(n.slug)?.length ?? 0) > 0);
+  const hasNeighborhoodContent = ordered.some(n =>
+    (gemsBySlug.get(n.slug)?.length ?? 0) > 0 ||
+    (activitiesBySlug.get(n.slug)?.length ?? 0) > 0 ||
+    (hotelsBySlug.get(n.slug)?.length ?? 0) > 0
+  );
   const hasElsewhere = elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereActivities.length > 0;
 
   if (!hasNeighborhoodContent && !hasElsewhere) {
@@ -502,40 +726,57 @@ function AllGemsFeed({
   }
 
   return (
-    <div className="space-y-10" data-testid="feed-grouped">
+    <div className="space-y-6" data-testid="feed-grouped">
       {ordered.map((n, nIdx) => (
         <NeighborhoodContainer
           key={n.id}
           neighborhood={n}
           gems={gemsBySlug.get(n.slug) ?? []}
-          hotels={[]}
-          activities={[]}
+          hotels={hotelsBySlug.get(n.slug) ?? []}
+          activities={activitiesBySlug.get(n.slug) ?? []}
           cityName={cityName}
           onAdd={onAdd}
-          showExpertCard={nIdx % 2 === 0}
+          showExpertCard={nIdx === 1 || nIdx === 3}
+          expert={experts[nIdx % experts.length]}
         />
       ))}
 
       {hasElsewhere && (
-        <div data-testid="elsewhere-section">
-          <div className="flex items-center gap-3 mb-4">
-            <h3 className="text-base font-semibold text-muted-foreground whitespace-nowrap">
-              Elsewhere in {cityName}
-            </h3>
-            <div className="flex-1 h-px bg-border" />
+        <div className="rounded-2xl border bg-card overflow-hidden" data-testid="elsewhere-section">
+          <div className="px-4 pt-4 pb-2">
+            <div className="flex items-center gap-3">
+              <h3 className="text-base font-semibold whitespace-nowrap">Elsewhere in {cityName}</h3>
+              <div className="flex-1 h-px bg-border" />
+            </div>
           </div>
-          <GemGrid>
-            {elsewhereGems.map((gem, idx) => (
-              <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
-            ))}
-            {elsewhereHotels.map((hotel, idx) => (
-              <GemCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
-            ))}
-            {elsewhereActivities.map((act, idx) => (
-              <GemCard key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-activity" />
-            ))}
-            <ExpertFeedCard cityName={cityName} />
-          </GemGrid>
+          <div className="px-4 pb-4">
+            {elsewhereGems.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                {elsewhereGems.map((gem, idx) => (
+                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
+                ))}
+              </div>
+            )}
+            {elsewhereHotels.length > 0 && (
+              <div className="border-t pt-2">
+                {elsewhereHotels.map((hotel, idx) => (
+                  <HotelRow key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
+                ))}
+              </div>
+            )}
+            {elsewhereActivities.length > 0 && (
+              <div className={elsewhereHotels.length > 0 ? "mt-1" : "border-t pt-2"}>
+                {elsewhereActivities.map((act, idx) => (
+                  <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
+                ))}
+              </div>
+            )}
+            {experts.length > 0 && (
+              <div className="mt-3">
+                <ExpertFeedCard expert={experts[0]} cityName={cityName} />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
