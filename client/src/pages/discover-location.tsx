@@ -15,7 +15,7 @@
  */
 
 import { useRef, useEffect, useState } from "react";
-import { useParams, useSearch, useLocation } from "wouter";
+import { useParams, useSearch, useLocation, Link as WouterLink } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -73,7 +73,7 @@ interface PlatformService {
   price?: string | null; priceType?: string | null;
   serviceImage?: string | null; neighborhood?: string | null;
   location?: string | null; averageRating?: string | null;
-  isFeatured?: boolean | null;
+  isFeatured?: boolean | null; bookingsCount?: number | null;
 }
 interface SectionResult<T> { data: T | null; error: string | null }
 interface LocationViewPayload {
@@ -367,6 +367,28 @@ function AffiliateBookingModal({
   );
 }
 
+/** Format a raw DB price decimal as a locale-aware currency string. */
+function formatServicePrice(
+  price: string | null | undefined,
+  priceType?: string | null,
+): string | null {
+  if (!price) return null;
+  const raw = String(price).trim();
+  // Already has a currency symbol — respect it but still normalize decimals
+  const hasSymbol = /^[€$£¥₹]/.test(raw) || /[€$£¥₹]$/.test(raw);
+  if (hasSymbol) {
+    return priceType === "variable" ? `From ${raw}` : raw;
+  }
+  const num = parseFloat(raw);
+  if (isNaN(num)) return raw;
+  const formatted = new Intl.NumberFormat("en-EU", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: num % 1 === 0 ? 0 : 2,
+  }).format(num);
+  return priceType === "variable" ? `From ${formatted}` : formatted;
+}
+
 function detectBadge(bookingUrl: string | null | undefined): {
   badgeText: string; badgeClass: string; bookLabel: string; isPartner: boolean; partnerName: string;
 } {
@@ -396,9 +418,10 @@ function ActivityRow({
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
     placeType?: string | null; type?: string | null;
-    bookingUrl?: string | null; price?: string | null;
+    bookingUrl?: string | null; price?: string | null; priceType?: string | null;
     description?: string | null; whyHidden?: string | null; whyLocalsLoveIt?: string | null;
     imageUrl?: string | null; media?: any[];
+    bookingsCount?: number | null;
   };
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
@@ -422,16 +445,19 @@ function ActivityRow({
     ? { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false }
     : detectBadge(item.bookingUrl);
 
-  const priceDisplay = item.price
-    ? (String(item.price).startsWith("€") || String(item.price).startsWith("$") || String(item.price).startsWith("£")
-      ? item.price : `€${item.price}`)
-    : null;
+  // Locale-aware price — for platform services use priceType to decide "From" prefix
+  const priceDisplay = forceTraveloure
+    ? formatServicePrice(item.price, item.priceType)
+    : (item.price
+      ? (String(item.price).startsWith("€") || String(item.price).startsWith("$") || String(item.price).startsWith("£")
+        ? item.price : `€${item.price}`)
+      : null);
 
-  return (
-    <div
-      className="flex items-start gap-3 py-3 border-b last:border-b-0"
-      data-testid={`${testPrefix}-${idx}`}
-    >
+  // Is this an internal Traveloure service URL we can navigate to directly?
+  const isInternalService = item.bookingUrl?.startsWith("/services/");
+
+  const rowContent = (
+    <>
       {image && (
         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
           <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
@@ -443,15 +469,30 @@ function ActivityRow({
           <p className="text-sm font-semibold leading-snug" data-testid={`${testPrefix}-name-${idx}`}>
             {displayName}
             {displayType && <span className="font-normal text-muted-foreground"> · {displayType}</span>}
-            {priceDisplay && <span className="font-normal text-muted-foreground"> · {priceDisplay}</span>}
           </p>
           <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
             {badge.badgeText}
           </span>
+          {priceDisplay && (
+            <span
+              className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200"
+              data-testid={`${testPrefix}-price-${idx}`}
+            >
+              {priceDisplay}
+            </span>
+          )}
+          {(item.bookingsCount ?? 0) > 0 && (
+            <span
+              className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-0.5"
+              data-testid={`${testPrefix}-bookings-${idx}`}
+            >
+              <Users className="w-2.5 h-2.5" />{item.bookingsCount} booked
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          {badge.bookLabel && (item.bookingUrl || forceTraveloure) && (
+          {badge.bookLabel && (item.bookingUrl || forceTraveloure) && !isInternalService && (
             badge.isPartner ? (
               <Button
                 size="sm"
@@ -503,6 +544,28 @@ function ActivityRow({
           )}
         </div>
       </div>
+    </>
+  );
+
+  if (isInternalService && item.bookingUrl) {
+    return (
+      <WouterLink href={item.bookingUrl}>
+        <div
+          className="flex items-start gap-3 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted/40 rounded-lg px-1 -mx-1 transition-colors"
+          data-testid={`${testPrefix}-${idx}`}
+        >
+          {rowContent}
+        </div>
+      </WouterLink>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-start gap-3 py-3 border-b last:border-b-0"
+      data-testid={`${testPrefix}-${idx}`}
+    >
+      {rowContent}
     </div>
   );
 }
@@ -916,6 +979,40 @@ function NeighborhoodContainer({
             ))}
           </div>
         )}
+
+        {/* Platform services — always "BOOK ON TRAVELOURE" */}
+        {services.length > 0 && (
+          <div className="border-t pt-2 mt-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+              BOOK ON TRAVELOURE
+            </p>
+            {services.map((svc, idx) => (
+              <ActivityRow
+                key={svc.id ?? idx}
+                item={{
+                  placeName: svc.serviceName,
+                  placeType: svc.serviceType ?? "service",
+                  price: svc.price ?? null,
+                  priceType: svc.priceType ?? null,
+                  description: svc.shortDescription ?? svc.description,
+                  imageUrl: svc.serviceImage,
+                  bookingUrl: `/services/${svc.id}`,
+                  bookingsCount: svc.bookingsCount ?? null,
+                }}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`service-${neighborhood.slug}`}
+                forceTraveloure
+              />
+            ))}
+          </div>
+        )}
+
+        {expert && (
+          <div className="mt-3">
+            <ExpertFeedCard expert={expert} cityName={cityName} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1051,9 +1148,11 @@ function AllGemsFeed({
                   placeName: svc.serviceName,
                   placeType: svc.serviceType ?? "service",
                   price: svc.price ?? null,
+                  priceType: svc.priceType ?? null,
                   description: svc.shortDescription ?? svc.description,
                   imageUrl: svc.serviceImage,
                   bookingUrl: `/services/${svc.id}`,
+                  bookingsCount: svc.bookingsCount ?? null,
                 }}
                 idx={idx}
                 onAdd={onAdd}
