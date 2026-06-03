@@ -29,6 +29,9 @@ import {
   ChevronRight,
   Gift,
   Sun,
+  Snowflake,
+  Leaf,
+  Flower2,
   Package,
   CreditCard,
   Wallet,
@@ -970,13 +973,13 @@ export default function ExpertAnalytics() {
                       </Card>
                     </div>
 
-                    <Card className="border">
-                      <CardHeader>
-                        <CardTitle>Passive Income Streams</CardTitle>
-                        <CardDescription>Earn money even when you're not actively working</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <Card className="border">
+                        <CardHeader>
+                          <CardTitle>Passive Income Streams</CardTitle>
+                          <CardDescription>Earn money even when you're not actively working</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
                           {passiveIncomeStreams.map((stream, index) => (
                             <div
                               key={index}
@@ -1011,6 +1014,142 @@ export default function ExpertAnalytics() {
                               )}
                             </div>
                           ))}
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Zap className="w-5 h-5 text-amber-500" />
+                            Upsell Opportunities
+                          </CardTitle>
+                          <CardDescription>Services your clients frequently request</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          {[
+                            {
+                              id: 1,
+                              title: "Add Transportation Service",
+                              description: "Most clients also need transportation coordination",
+                              potential: "+$180/trip average",
+                              adoption: 92,
+                              icon: Zap,
+                            },
+                            {
+                              id: 2,
+                              title: "Offer Photography Package",
+                              description: "Many proposal clients want photo coordination",
+                              potential: "+$250/booking",
+                              adoption: 68,
+                              icon: Gift,
+                            },
+                            {
+                              id: 3,
+                              title: "Premium Concierge Add-on",
+                              description: "High-value clients often upgrade",
+                              potential: "+$400/trip",
+                              adoption: 45,
+                              icon: Star,
+                            },
+                          ].map((opp) => (
+                            <div
+                              key={opp.id}
+                              className="p-4 rounded-lg border"
+                              data-testid={`upsell-${opp.id}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                  <opp.icon className="w-5 h-5 text-amber-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="font-medium text-foreground">{opp.title}</p>
+                                    <Badge className="bg-green-100 text-green-700 border-green-200 shrink-0">
+                                      {opp.potential}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mt-1">{opp.description}</p>
+                                  <div className="mt-2">
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                                      <span>Client adoption</span>
+                                      <span>{opp.adoption}%</span>
+                                    </div>
+                                    <Progress value={opp.adoption} className="h-2" />
+                                  </div>
+                                </div>
+                              </div>
+                              <Button className="w-full mt-3 bg-primary" size="sm" data-testid={`button-add-service-${opp.id}`}>
+                                <PlusCircle className="w-4 h-4 mr-2" /> Add This Service
+                              </Button>
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <Card className="border">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Calendar className="w-5 h-5 text-primary" />
+                          Seasonal Demand Forecast
+                        </CardTitle>
+                        <CardDescription>Adjust your pricing based on upcoming high-demand periods</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {(marketIntel?.seasonalDemand?.length ? marketIntel.seasonalDemand : [
+                            {
+                              season: "Peak Travel Season",
+                              location: "Your Markets",
+                              timing: "Varies by destination",
+                              demandIncrease: 120,
+                              suggestedRateIncrease: 20,
+                              status: "upcoming",
+                              daysAway: 30,
+                              icon: Sun,
+                            },
+                          ]).map((season: any, index: number) => {
+                            const SeasonIcon = season.icon ?? Sun;
+                            return (
+                              <div
+                                key={index}
+                                className={`p-4 rounded-lg border ${season.status === 'current' ? 'border-primary bg-primary/5' : season.status === 'upcoming' ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/20' : ''}`}
+                                data-testid={`rev-season-${index}`}
+                              >
+                                <div className="flex items-center gap-2 mb-3">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${season.status === 'current' ? 'bg-primary/20' : 'bg-muted'}`}>
+                                    <SeasonIcon className={`w-5 h-5 ${season.status === 'current' ? 'text-primary' : 'text-muted-foreground'}`} />
+                                  </div>
+                                  {season.status === 'current' && (
+                                    <Badge className="bg-primary text-primary-foreground">Active Now</Badge>
+                                  )}
+                                  {season.status === 'upcoming' && (
+                                    <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">
+                                      {season.daysAway} days
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="font-medium text-foreground">{season.season}</p>
+                                <p className="text-sm text-muted-foreground">{season.location}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{season.timing}</p>
+                                <div className="mt-3 pt-3 border-t space-y-1">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Demand</span>
+                                    <span className="text-green-600 font-medium">+{season.demandIncrease}%</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Suggested Rate</span>
+                                    <span className="text-primary font-medium">+{season.suggestedRateIncrease}%</span>
+                                  </div>
+                                </div>
+                                {season.status !== 'current' && (
+                                  <Button variant="outline" size="sm" className="w-full mt-3" data-testid={`button-prepare-${index}`}>
+                                    Prepare Now
+                                  </Button>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </CardContent>
                     </Card>
