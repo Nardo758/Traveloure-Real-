@@ -1,11 +1,23 @@
 import { Router } from "express";
 import { db } from "../db";
 import { z } from "zod";
-import { crossSellEvents, serviceBookings, providerServices } from "@shared/schema";
-import { eq, and, inArray, sql, desc, count, gte } from "drizzle-orm";
+import { crossSellEvents, serviceBookings, providerServices, users } from "@shared/schema";
+import { eq, and, inArray, sql, desc, count } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function requireAdmin(req: any, res: any): Promise<boolean> {
+  const userId = req.user?.claims?.sub;
+  if (!userId) { res.status(401).json({ message: "Unauthorized" }); return false; }
+  const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || user.role !== "admin") { res.status(403).json({ message: "Admin access required" }); return false; }
+  return true;
+}
+
+// ── schemas ───────────────────────────────────────────────────────────────────
 
 const crossSellEventSchema = z.object({
   eventType: z.enum(["impression", "click", "conversion"]),
@@ -18,7 +30,9 @@ const crossSellEventSchema = z.object({
   sessionId: z.string().optional(),
 });
 
-// POST /api/cross-sell-events — accepts a single event or batch array
+// ── POST /api/cross-sell-events ───────────────────────────────────────────────
+// Anonymous — accepts a single event or a batch array.
+// Attaches user_id when the request is authenticated.
 router.post("/api/cross-sell-events", async (req, res) => {
   try {
     const userId = (req as any).user?.claims?.sub ?? null;
@@ -51,16 +65,17 @@ router.post("/api/cross-sell-events", async (req, res) => {
   }
 });
 
-// GET /api/cross-sell-events/provider-stats — provider's own cross-sell performance
+// ── GET /api/cross-sell-events/provider-stats ─────────────────────────────────
+// Auth required. Returns cross-sell performance for the authenticated provider's services.
 router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req, res) => {
   try {
     const userId = (req as any).user.claims.sub;
 
-    // Get all service IDs owned by this provider
+    // providerServices uses userId (not providerId) as the owner FK
     const services = await db
       .select({ id: providerServices.id })
       .from(providerServices)
-      .where(eq(providerServices.providerId, userId));
+      .where(eq(providerServices.userId, userId));
 
     const serviceIds = services.map((s) => s.id);
     if (serviceIds.length === 0) {
@@ -78,7 +93,7 @@ router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req,
       .where(inArray(crossSellEvents.targetServiceId, serviceIds))
       .groupBy(crossSellEvents.eventType, crossSellEvents.targetServiceId);
 
-    // Count cross-sell attributed bookings
+    // Count cross-sell attributed bookings for these services
     const csBookings = await db
       .select({ cnt: count() })
       .from(serviceBookings)
@@ -92,7 +107,6 @@ router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req,
 
     let totalImpressions = 0;
     let totalClicks = 0;
-
     const byServiceMap: Record<string, { impressions: number; clicks: number; conversions: number }> = {};
 
     for (const row of stats) {
@@ -104,7 +118,7 @@ router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req,
       if (row.eventType === "conversion") { byServiceMap[sid].conversions += n; }
     }
 
-    // Fetch service names to enrich response
+    // Enrich with service names
     const serviceDetails = await db
       .select({ id: providerServices.id, serviceName: providerServices.serviceName })
       .from(providerServices)
@@ -133,65 +147,87 @@ router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req,
   }
 });
 
-// GET /api/admin/cross-sell/funnel — platform-wide funnel report
+// ── GET /api/admin/cross-sell/funnel ─────────────────────────────────────────
+// Admin only. Platform-wide cross-sell funnel with optional ?city= filter.
+// When a city filter is supplied, bookings are also filtered to services seen
+// in that city's cross-sell events to keep the funnel metrics consistent.
 router.get("/api/admin/cross-sell/funnel", isAuthenticated, async (req, res) => {
+  const isAdmin = await requireAdmin(req, res);
+  if (!isAdmin) return;
+
   try {
     const { city } = req.query;
+    const cityFilter = city && city !== "all" ? (city as string) : undefined;
 
-    const whereClause = city
-      ? eq(crossSellEvents.city, city as string)
-      : undefined;
+    const eventCityFilter = cityFilter ? eq(crossSellEvents.city, cityFilter) : undefined;
 
-    // Overall funnel counts
+    // Overall funnel counts (city-scoped)
     const funnelRows = await db
       .select({ eventType: crossSellEvents.eventType, cnt: count() })
       .from(crossSellEvents)
-      .where(whereClause)
+      .where(eventCityFilter)
       .groupBy(crossSellEvents.eventType);
 
     const funnel: Record<string, number> = { impression: 0, click: 0, conversion: 0 };
     for (const r of funnelRows) funnel[r.eventType] = Number(r.cnt);
 
-    // Total cross-sell bookings (from bookings table)
-    const csBookingRows = await db
-      .select({ cnt: count() })
-      .from(serviceBookings)
-      .where(eq(serviceBookings.source, "cross_sell"));
-    const bookingsCount = Number(csBookingRows[0]?.cnt ?? 0);
+    // Cross-sell bookings — city-consistent:
+    // When city filter is active, scope to services that received cross-sell events
+    // in that city so the conversion rate is meaningful.
+    let bookingsCount = 0;
+    if (cityFilter) {
+      const cityServiceRows = await db
+        .selectDistinct({ sid: crossSellEvents.targetServiceId })
+        .from(crossSellEvents)
+        .where(eq(crossSellEvents.city, cityFilter));
+      const cityServiceIds = cityServiceRows.map((r) => r.sid);
+      if (cityServiceIds.length > 0) {
+        const csBookingRows = await db
+          .select({ cnt: count() })
+          .from(serviceBookings)
+          .where(
+            and(
+              inArray(serviceBookings.serviceId, cityServiceIds),
+              eq(serviceBookings.source, "cross_sell")
+            )
+          );
+        bookingsCount = Number(csBookingRows[0]?.cnt ?? 0);
+      }
+    } else {
+      const csBookingRows = await db
+        .select({ cnt: count() })
+        .from(serviceBookings)
+        .where(eq(serviceBookings.source, "cross_sell"));
+      bookingsCount = Number(csBookingRows[0]?.cnt ?? 0);
+    }
 
-    // Top source content types (by clicks)
+    // Top source content types (by clicks, city-scoped)
     const topSourceTypes = await db
-      .select({
-        sourceContentType: crossSellEvents.sourceContentType,
-        clicks: count(),
-      })
+      .select({ sourceContentType: crossSellEvents.sourceContentType, clicks: count() })
       .from(crossSellEvents)
       .where(
-        whereClause
-          ? and(eq(crossSellEvents.eventType, "click"), whereClause)
+        eventCityFilter
+          ? and(eq(crossSellEvents.eventType, "click"), eventCityFilter)
           : eq(crossSellEvents.eventType, "click")
       )
       .groupBy(crossSellEvents.sourceContentType)
       .orderBy(desc(count()))
       .limit(10);
 
-    // Top converting services (by conversion events + bookings)
+    // Top clicked services (city-scoped)
     const topServices = await db
-      .select({
-        targetServiceId: crossSellEvents.targetServiceId,
-        clicks: count(),
-      })
+      .select({ targetServiceId: crossSellEvents.targetServiceId, clicks: count() })
       .from(crossSellEvents)
       .where(
-        whereClause
-          ? and(eq(crossSellEvents.eventType, "click"), whereClause)
+        eventCityFilter
+          ? and(eq(crossSellEvents.eventType, "click"), eventCityFilter)
           : eq(crossSellEvents.eventType, "click")
       )
       .groupBy(crossSellEvents.targetServiceId)
       .orderBy(desc(count()))
       .limit(10);
 
-    // Fetch service names for top services
+    // Enrich top services with names
     const topServiceIds = topServices.map((s) => s.targetServiceId);
     const serviceNames =
       topServiceIds.length > 0
@@ -203,7 +239,7 @@ router.get("/api/admin/cross-sell/funnel", isAuthenticated, async (req, res) => 
     const nameMap: Record<string, string> = {};
     for (const s of serviceNames) nameMap[s.id] = s.serviceName ?? s.id;
 
-    // Available cities for filter
+    // Available cities for the filter dropdown
     const cities = await db
       .selectDistinct({ city: crossSellEvents.city })
       .from(crossSellEvents)
