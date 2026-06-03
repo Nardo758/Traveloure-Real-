@@ -125,7 +125,6 @@ import ServiceDetailPage from "@/pages/service-detail";
 import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
-import SpontaneousPage from "@/pages/spontaneous";
 import HiddenGemsPage from "@/pages/hidden-gems";
 import TransportationBookingPage from "@/pages/transportation-booking";
 import PrivacyPolicyPage from "@/pages/privacy";
@@ -310,8 +309,11 @@ function Router() {
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
       </Route>
+      {/* /spontaneous absorbed into Discover happening-now (v2 spec §6, Phase 2). */}
+      {/* Route preserved as redirect for bookmark continuity; Phase 3 wires the */}
+      {/* per-city happening-now section into the location view. */}
       <Route path="/spontaneous">
-        <SpontaneousPage />
+        <Redirect to="/discover" />
       </Route>
       <Route path="/hidden-gems">
         <Layout><HiddenGemsPage /></Layout>
