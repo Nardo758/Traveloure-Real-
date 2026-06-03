@@ -14,7 +14,7 @@
  * Perf fixes preserved: parallel media query, no enriched call, 5-min staleTime.
  */
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -1049,21 +1049,34 @@ function matchesFilter(item: any, filter: FeedFilter): boolean {
   if (filter === "eat")
     return t.includes("restaurant") || t.includes("cafe") || t.includes("food") ||
            t.includes("eat") || t.includes("dining") || t.includes("ramen") || t.includes("sushi") ||
-           t.includes("culinary") || t.includes("cooking");
+           t.includes("culinary") || t.includes("cooking") || t.includes("bar") ||
+           t.includes("izakaya") || t.includes("yakitori") || t.includes("noodle") ||
+           t.includes("bento") || t.includes("street food") || t.includes("kitchen") ||
+           t.includes("bistro") || t.includes("tavern") || t.includes("teahouse") ||
+           t.includes("bakery") || t.includes("patisserie") || t.includes("market food");
   if (filter === "do")
     return t.includes("attraction") || t.includes("museum") || t.includes("temple") ||
            t.includes("shrine") || t.includes("park") || t.includes("garden") ||
            t.includes("castle") || t.includes("activity") || t.includes("tour") || t.includes("experience") ||
-           t.includes("action") || t.includes("planning") || t.includes("consultation") ||
-           t.includes("concierge") || t.includes("specialty") || t.includes("neighborhood") ||
-           t.includes("district") || t.includes("area");
+           t.includes("wellness") || t.includes("spa") || t.includes("onsen") ||
+           t.includes("nature") || t.includes("walk") || t.includes("hike") || t.includes("forest") ||
+           t.includes("art") || t.includes("gallery") || t.includes("nightlife") ||
+           t.includes("market") || t.includes("craft") || t.includes("workshop") ||
+           t.includes("planning") || t.includes("consultation") ||
+           t.includes("concierge") || t.includes("specialty");
   if (filter === "stay")
     return t.includes("hotel") || t.includes("lodging") || t.includes("accommodation") ||
-           t.includes("ryokan") || t.includes("hostel");
+           t.includes("ryokan") || t.includes("hostel") || t.includes("villa") ||
+           t.includes("apartment") || t.includes("inn") || t.includes("guesthouse") ||
+           (t.includes("stay") && !t.includes("restaurant"));
   if (filter === "events")
-    return t.includes("event") || t.includes("festival") || t.includes("concert");
+    return t.includes("event") || t.includes("festival") || t.includes("concert") ||
+           t.includes("show") || t.includes("performance") || t.includes("ceremony") ||
+           t.includes("matsuri");
   if (filter === "photo-spots")
-    return isPhotoSpotGem(t) || t.includes("spot") || t.includes("photography");
+    return isPhotoSpotGem(t) || t.includes("photography") ||
+           (t.includes("spot") && !t.includes("hot spot") && !t.includes("sweet spot")) ||
+           t.includes("landmark") || t.includes("overlook");
   return false;
 }
 
@@ -1072,15 +1085,26 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
   const t = (svc.serviceType ?? "").toLowerCase();
   if (filter === "eat")
     return t.includes("dining") || t.includes("food") || t.includes("culinary") ||
-           t.includes("restaurant") || t.includes("cooking") || t.includes("cafe");
+           t.includes("restaurant") || t.includes("cooking") || t.includes("cafe") ||
+           t.includes("bar") || t.includes("kitchen") || t.includes("catering") ||
+           t.includes("bakery") || t.includes("beverage");
   if (filter === "do")
     return t.includes("experience") || t.includes("tour") || t.includes("activity") ||
-           t.includes("action") || t.includes("planning") || t.includes("consultation") ||
-           t.includes("concierge") || t.includes("specialty");
+           t.includes("planning") || t.includes("consultation") ||
+           t.includes("concierge") || t.includes("specialty") || t.includes("wellness") ||
+           t.includes("spa") || t.includes("fitness") || t.includes("workshop") ||
+           t.includes("art") || t.includes("entertainment") || t.includes("adventure") ||
+           t.includes("nightlife") || t.includes("sightseeing");
   if (filter === "stay")
-    return t.includes("accommodation") || t.includes("hotel") || t.includes("lodging");
+    return t.includes("accommodation") || t.includes("hotel") || t.includes("lodging") ||
+           t.includes("rental") || t.includes("villa") || t.includes("stay") ||
+           t.includes("guesthouse") || t.includes("hostel");
+  if (filter === "events")
+    return t.includes("event") || t.includes("festival") || t.includes("entertainment") ||
+           t.includes("show") || t.includes("ticket");
   if (filter === "photo-spots")
-    return t.includes("photo") || t.includes("photography");
+    return t.includes("photo") || t.includes("photography") || t.includes("videography") ||
+           t.includes("shoot");
   return false;
 }
 
@@ -1453,10 +1477,11 @@ const SPINE_FILTERS: {
 ];
 
 function ExploreSpine({
-  active, onChange,
+  active, onChange, counts,
 }: {
   active: FeedFilter;
   onChange: (f: FeedFilter) => void;
+  counts?: Partial<Record<FeedFilter, number>>;
 }) {
   return (
     <nav
@@ -1464,20 +1489,35 @@ function ExploreSpine({
       data-testid="explore-spine"
     >
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {SPINE_FILTERS.map(({ label, value, Icon }) => (
-          <button
-            key={value}
-            onClick={() => onChange(value)}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border
-              ${active === value
-                ? "bg-primary text-white border-primary"
-                : "bg-background text-foreground border-border hover:bg-muted"
-              }`}
-            data-testid={`spine-chip-${value}`}
-          >
-            <Icon className="h-3 w-3" />{label}
-          </button>
-        ))}
+        {SPINE_FILTERS.map(({ label, value, Icon }) => {
+          const count = value !== "all" ? (counts?.[value] ?? 0) : null;
+          const isActive = active === value;
+          return (
+            <button
+              key={value}
+              onClick={() => onChange(value)}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border
+                ${isActive
+                  ? "bg-primary text-white border-primary"
+                  : "bg-background text-foreground border-border hover:bg-muted"
+                }`}
+              data-testid={`spine-chip-${value}`}
+            >
+              <Icon className="h-3 w-3" />
+              {label}
+              {count !== null && count > 0 && (
+                <span
+                  className={`text-[10px] font-semibold rounded-full px-1.5 min-w-[16px] text-center leading-4 ${
+                    isActive ? "bg-white/25 text-white" : "bg-muted text-muted-foreground"
+                  }`}
+                  data-testid={`spine-count-${value}`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
@@ -2101,6 +2141,23 @@ export default function DiscoverLocationPage() {
   const experts: any[] = data?.recommendations?.data?.experts ?? [];
   const events: any[] = data?.events?.data?.events ?? [];
 
+  // Per-filter counts for ExploreSpine badges
+  const filterCounts = useMemo((): Partial<Record<FeedFilter, number>> => {
+    const allItems = [...hiddenGems, ...activities];
+    const nonAllFilters: FeedFilter[] = ["eat", "do", "stay", "events", "photo-spots"];
+    const counts: Partial<Record<FeedFilter, number>> = {};
+    for (const f of nonAllFilters) {
+      const itemCount = allItems.filter(i => matchesFilter(i, f)).length;
+      const svcCount = f !== "events"
+        ? platformServices.filter(s => matchesServiceFilter(s, f)).length
+        : 0;
+      const hotelCount = f === "stay" ? hotels.length : 0;
+      counts[f] = itemCount + svcCount + hotelCount;
+    }
+    counts.experts = experts.length;
+    return counts;
+  }, [hiddenGems, activities, hotels, experts, platformServices]);
+
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
   const openRequestBooking = (target: AffiliateBookingTarget) => setRequestingItem(target);
 
@@ -2233,7 +2290,7 @@ export default function DiscoverLocationPage() {
             </section>
 
             {/* ── §2 EXPLORE SPINE (active filter) ─────────────────────────── */}
-            <ExploreSpine active={activeFilter} onChange={setActiveFilter} />
+            <ExploreSpine active={activeFilter} onChange={setActiveFilter} counts={filterCounts} />
 
             {/* ── §3 ALL GEMS FEED ─────────────────────────────────────────── */}
             <section id="gems-feed" data-testid="section-gems-feed">
