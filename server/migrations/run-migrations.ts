@@ -16,6 +16,7 @@ const __dirname_local = dirname(__filename);
 const MIGRATION_FILES = [
   "006_eso_canonicalization.sql",
   "007_eso_workflow_columns.sql",
+  "008_content_affinity_tags.sql",
 ];
 
 export async function runMigrations(): Promise<void> {

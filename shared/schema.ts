@@ -540,6 +540,10 @@ export const providerServices = pgTable("provider_services", {
   // populated by provider in listing form + admin backfill for legacy rows.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
+  // Content-affinity tags — canonical slugs indicating which traveller contexts
+  // surface this service. e.g. ['hotel_arrival','photo_shoot'].
+  // Empty array → system falls back to serviceType inference in content-matching.service.
+  contentAffinityTags: text("content_affinity_tags").array().default([]),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
