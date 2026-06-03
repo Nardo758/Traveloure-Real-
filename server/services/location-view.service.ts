@@ -152,8 +152,7 @@ class LocationViewService {
       return result ?? { events: [], total: 0, page: 1, totalPages: 0, city: null };
     })();
 
-    // Neighborhoods for this city (used by Phase 3 ecosystem unit)
-    // Annotate each with gem and service counts
+    // Neighborhoods for this city — annotated with gem + service counts
     const neighborhoodsPromise = (async () => {
       const neighborhoods = await db
         .select()

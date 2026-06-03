@@ -10,59 +10,25 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { formatDistanceToNow } from "date-fns";
-import { cn } from "@/lib/utils";
-import {
-  AlertCircle,
-  MapPin,
-  Sparkles,
-  Image as ImageIcon,
-  Brain,
-  Compass,
-  Users,
-  Zap,
-  Gem,
-  Activity,
-  Clock,
-  Star,
-  Heart,
-  Camera,
-  ThumbsUp,
-  Sun,
-  Shield,
-  Lightbulb,
-  Wallet,
-  CalendarX,
-  Play,
-  ExternalLink,
-  Calendar,
-  Plus,
-  Search,
-  Hotel,
-  UserCircle,
-  Eye,
-  DollarSign,
-} from "lucide-react";
+import { AlertCircle, MapPin, Sparkles, Image as ImageIcon, Brain, Compass } from "lucide-react";
+import { NeighborhoodCard } from "@/components/neighborhood-card";
+import { ProviderCard } from "@/components/provider-card";
+import { HeroCard } from "@/components/hero-card";
+import { MediaCard } from "@/components/media-card";
+import { InsightsCard } from "@/components/insights-card";
+import { EventsCard } from "@/components/events-card";
 
 /**
- * Location View — Phase 3 build (v2 spec §3, §5; Decision #5 destination).
+ * Location View — Phase 3 renderers (v2 spec §3, §5; Decision #5 destination).
  *
  * Replaces CityDetailView (7 tabs) with one scrolling page following the
  * wireframe in docs/PHASE3_WIREFRAME_LocationView.md. Sections:
  *
- *   1. HERO (city, pulse, happening-now strip, supply summary)
- *   2. EXPLORE SPINE (anchor chips for in-page nav)
- *   3. BY-NEIGHBORHOOD (ecosystem cards with woven counts + Add-a-day)
- *   4. GEMS BY CATEGORY (split-row cards: Book / Add to experience / Find expert)
- *   5. SUPPLY (woven: hotels, experiences, experts; native-first)
- *   6. LIVE FEED (real-time activity strip — own section)
- *   7. MEDIA GALLERY (full carry-over from CityDetailView's Media tab)
- *   8. INSIGHTS (all 9 AI insight subcards from CityDetailView verbatim)
- *   9. FOOTER HANDOFF (events for the week)
- *
- * Data sources:
- *   - /api/discover/location/:city — orchestrator (hero/recommendations/enriched/events/neighborhoods)
- *   - /api/travelpulse/media/:city/:country — separate query (matches CityDetailView pattern)
+ * Phase 2 shipped the shell and wired it to the orchestrator endpoint
+ * (/api/discover/location/:city, built in Phase 1b-3) with per-section
+ * { data, error } envelopes. Phase 3 replaces the placeholders with
+ * real renderers. The data plumbing is end-to-end; Phase 3 is purely
+ * a rendering task, not a fetch task.
  */
 
 interface SectionResult<T> {
@@ -231,68 +197,9 @@ function HeroSection({
             </CardContent>
           </Card>
         )}
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Supply</p>
-            <p className="text-sm font-semibold" data-testid="text-supply-summary">
-              {hotelCount} stays · {activityCount} experiences
-            </p>
-          </CardContent>
-        </Card>
-        {cityIntel?.crowdLevel && (
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Crowd Level</p>
-              <p className="text-sm font-semibold capitalize">{cityIntel.crowdLevel}</p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Happening Now strip */}
-      {happeningNow.length > 0 && (
-        <Card data-testid="happening-now-strip">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="w-4 h-4 text-orange-500" />
-              Happening Now in {city}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-3 overflow-x-auto pb-1">
-              {happeningNow.slice(0, 5).map((event: any) => (
-                <div
-                  key={event.id}
-                  className="flex-shrink-0 w-64 p-3 border rounded-lg"
-                  data-testid={`happening-now-${event.id}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    {event.isLive && (
-                      <Badge variant="destructive" className="text-xs animate-pulse">
-                        LIVE
-                      </Badge>
-                    )}
-                    <p className="font-semibold text-sm truncate">{event.title}</p>
-                  </div>
-                  <Badge variant="outline" className="text-xs capitalize mb-1">
-                    {event.eventType}
-                  </Badge>
-                  {event.venue && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3" />
-                      {event.venue}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {generatedAt && (
-        <p className="text-xs text-muted-foreground mt-3">
-          Generated {new Date(generatedAt).toLocaleString()}
+        {children}
+        <p className="text-xs text-muted-foreground italic border-t pt-3">
+          {phaseNote}
         </p>
       )}
     </section>
@@ -1319,129 +1226,180 @@ export default function DiscoverLocationPage() {
         )}
 
         {data && (
-          <>
-            {/* §1 HERO */}
-            <HeroSection
-              city={city}
-              country={country}
-              heroData={data.hero.data}
-              recommendationsData={data.recommendations.data}
-              generatedAt={data.generatedAt}
-              heroPhoto={mediaData?.hero?.url}
-            />
-
-            {/* §2 EXPLORE SPINE */}
-            <ExploreSpine />
-
-            {/* §3 BY-NEIGHBORHOOD */}
-            <section data-testid="section-by-neighborhood">
-              <SectionHeader
-                id="by-neighborhood"
-                icon={MapPin}
-                title="By Neighborhood"
-                subtitle="Each neighborhood's ecosystem of things to do and bookable services."
-              />
-              {data.neighborhoods.error ? (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{data.neighborhoods.error}</AlertDescription>
-                </Alert>
-              ) : (
-                <NeighborhoodSection
-                  neighborhoods={data.neighborhoods.data || []}
-                  city={city}
-                  onAddToExperience={(item) => {
-                    setAddToExperienceItem(item);
-                    setAddToExperienceOpen(true);
-                  }}
+          <div className="grid grid-cols-1 gap-6">
+            {/* 1. Hero — overview + happening-now strip + live activity */}
+            <SectionShell
+              icon={Sparkles}
+              title="Hero"
+              subtitle="City overview, current pulse, what's happening right now."
+              section={data.hero}
+              phaseNote="Hero section — city intelligence and live activity."
+            >
+              {data.hero.data ? (
+                <HeroCard
+                  city={data.hero.data.city}
+                  happeningNow={data.hero.data.happeningNow}
+                  liveActivity={data.hero.data.liveActivity}
+                  alerts={data.hero.data.alerts}
                 />
-              )}
-            </section>
-
-            {/* §4 GEMS BY CATEGORY */}
-            <section data-testid="section-gems">
-              <SectionHeader
-                id="gems"
-                icon={Gem}
-                title="Hidden Gems"
-                subtitle="Curated places locals love. Every gem is actionable."
-              />
-              <GemsSection
-                gems={data.hero.data?.hiddenGems || []}
-                city={city}
-                onAddToExperience={(item) => {
-                  setAddToExperienceItem(item);
-                  setAddToExperienceOpen(true);
-                }}
-              />
-            </section>
-
-            {/* §5 SUPPLY (woven) */}
-            <section data-testid="section-supply">
-              <SectionHeader
-                id="supply"
-                icon={Compass}
-                title="Stay · Do · Plan"
-                subtitle="Stays, experiences, and experts — blended native-first, with the featured-sort guardrail."
-              />
-              {data.recommendations.error ? (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{data.recommendations.error}</AlertDescription>
-                </Alert>
               ) : (
-                <SupplySection
-                  recommendationsData={data.recommendations.data}
-                  city={city}
-                  onAddToExperience={(item) => {
-                    setAddToExperienceItem(item);
-                    setAddToExperienceOpen(true);
-                  }}
-                />
+                <p className="text-sm text-muted-foreground">
+                  No hero data available. TravelPulse cities endpoint may be unavailable.
+                </p>
               )}
-            </section>
+            </SectionShell>
 
-            {/* §6 LIVE FEED */}
-            <section data-testid="section-live-feed">
-              <SectionHeader
-                id="live-feed"
-                icon={Activity}
-                title="Live Activity"
-                subtitle="What travelers are doing in the city right now."
-              />
-              <LiveFeedSection
-                liveActivity={data.hero.data?.liveActivity || []}
-                city={city}
-              />
-            </section>
+            {/* 2. Supply rail — featured + recommendations */}
+            <SectionShell
+              icon={Compass}
+              title="Supply"
+              subtitle="Featured providers and AI recommendations, ranked with the featured-sort guardrail."
+              section={data.recommendations}
+              phaseNote="Add-to-experience template action wires up in Phase 4+."
+            >
+              {data.recommendations.data ? (
+                <div className="space-y-6">
+                  {data.recommendations.data.hotels && data.recommendations.data.hotels.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm">Accommodations</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {data.recommendations.data.hotels.map((hotel: any) => (
+                          <ProviderCard
+                            key={hotel.id}
+                            id={hotel.id}
+                            name={hotel.name}
+                            type="hotel"
+                            rating={hotel.starRating}
+                            reviewCount={hotel.reviewCount}
+                            price={hotel.price}
+                            description={hotel.address}
+                            image={hotel.media?.[0]?.url}
+                            aiScore={hotel.aiScore || 0}
+                            aiReasons={hotel.aiReasons || []}
+                            location={[hotel.city, hotel.countryName].filter(Boolean).join(", ")}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {data.recommendations.data.activities && data.recommendations.data.activities.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm">Activities</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {data.recommendations.data.activities.map((activity: any) => (
+                          <ProviderCard
+                            key={activity.id}
+                            id={activity.id}
+                            name={activity.title}
+                            type="activity"
+                            price={activity.price}
+                            description={activity.description}
+                            image={activity.media?.[0]?.url}
+                            aiScore={activity.aiScore || 0}
+                            aiReasons={activity.aiReasons || []}
+                            location={activity.city}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No recommendations available. This may indicate sparse local inventory or a temporary service issue.
+                </p>
+              )}
+            </SectionShell>
 
-            {/* §7 MEDIA GALLERY */}
-            <section data-testid="section-media">
-              <SectionHeader
-                id="media"
-                icon={ImageIcon}
-                title="Media Gallery"
-                subtitle="Destination videos and photo gallery, including Google-attributed attraction photos."
-              />
-              <MediaSection mediaData={mediaData} city={city} />
-            </section>
+            {/* 3. By Neighborhood — gems + services rolled up by neighborhood */}
+            <SectionShell
+              icon={MapPin}
+              title="By Neighborhood"
+              subtitle="The ecosystem unit: each neighborhood's gems + services + featured providers."
+              section={data.neighborhoods}
+              phaseNote="Click-through to neighborhood detail view ships in Phase 4+."
+            >
+              {Array.isArray(data.neighborhoods.data) && data.neighborhoods.data.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {data.neighborhoods.data.map((n: any) => (
+                    <NeighborhoodCard
+                      key={n.id}
+                      name={n.name}
+                      slug={n.slug}
+                      gemCount={n.gemCount ?? 0}
+                      serviceCount={n.serviceCount ?? 0}
+                      description={n.description}
+                      isFeatured={n.isFeatured}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No neighborhoods seeded yet for this city — Phase 4 blended fill picks up the slack here.
+                </p>
+              )}
+            </SectionShell>
 
-            {/* §8 INSIGHTS */}
-            <section data-testid="section-insights">
-              <SectionHeader
-                id="insights"
-                icon={Brain}
-                title="Insights"
-                subtitle="AI travel intelligence: best time, duration, budget, must-see, tips, safety, seasonal, dates to avoid."
+            {/* 4. Media — full surface, NOT a hero fold (per retirement plan audit) */}
+            <SectionShell
+              icon={ImageIcon}
+              title="Media"
+              subtitle="Destination videos and photo gallery."
+              section={data.enriched}
+              phaseNote="Full gallery via /api/cities/:city/media wires up in Phase 4."
+            >
+              <MediaCard
+                videos={data.enriched?.data?.videos}
+                photos={data.enriched?.data?.photos}
+                error={data.enriched?.error}
               />
-              <InsightsSection cityIntel={data.hero.data?.city} city={city} />
-            </section>
+            </SectionShell>
 
-            {/* §9 FOOTER HANDOFF */}
-            <section id="events" data-testid="section-events-handoff">
-              <FooterHandoff events={data.events.data} city={city} />
-            </section>
-          </>
+            {/* 5. Insights panel — full surface, the 9 AI subcards */}
+            <SectionShell
+              icon={Brain}
+              title="Insights"
+              subtitle="Best time, optimal duration, budget tiers, must-see, tips, safety, seasonal highlights."
+              section={data.hero}
+              phaseNote="Full AI insights panel — powered by TravelPulse city intelligence."
+            >
+              {data.hero.data ? (
+                <InsightsCard insights={data.hero.data} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No AI insights available. TravelPulse AI fields will populate this section.
+                </p>
+              )}
+            </SectionShell>
+
+            {/* Events — by-date view per §4. Sits at the bottom for now; Phase 6 may break it out. */}
+            <SectionShell
+              icon={Sparkles}
+              title="Events (this month)"
+              subtitle="By-date view (v2 spec §4). Phase 6 may extract this into its own surface."
+              section={data.events}
+              phaseNote="Add-to-trip integration ships in Phase 4+."
+            >
+              {data.events.data?.events ? (
+                <EventsCard
+                  events={data.events.data.events.map((e: any) => ({
+                    id: e.id || e.eventId || Math.random().toString(),
+                    title: e.title || e.name || "Event",
+                    date: e.date || e.eventDate || new Date().toISOString().split("T")[0],
+                    time: e.time || e.startTime,
+                    location: e.location || e.venue,
+                    description: e.description || e.shortDescription,
+                    url: e.url || e.link,
+                    image: e.image || e.imageUrl,
+                  }))}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No events scheduled for this month. Check back later or adjust your travel dates.
+                </p>
+              )}
+            </SectionShell>
+          </div>
         )}
 
         {/* Phase C: Add-to-experience dialog */}

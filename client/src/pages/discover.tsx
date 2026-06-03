@@ -878,6 +878,8 @@ export default function DiscoverPage() {
     );
   };
 
+  const influencerContent: any[] = [];
+
   return (
     <Layout>
       <SEOHead 
