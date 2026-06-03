@@ -6,14 +6,20 @@ import { sharedCache } from "./shared-cache.service";
 
 const CACHE_DURATION_HOURS = 24;
 const CACHE_TTL_MS = CACHE_DURATION_HOURS * 60 * 60 * 1000;
+/** Pre-expiry refresh window — same as original 20h stale threshold */
 const STALE_THRESHOLD_HOURS = 20;
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 2000;
 const NAMESPACE = "fever";
 
+/**
+ * Envelope stored in the shared KV cache for each city.
+ * `refreshedAt` tracks when the cache was last populated so the 20h
+ * stale-window check (pre-expiry refresh) can be preserved exactly.
+ */
 interface FeverCachePayload {
   events: FeverEvent[];
-  refreshedAt: string;
+  refreshedAt: string; // ISO-8601
 }
 
 class FeverCacheService {
@@ -51,9 +57,12 @@ class FeverCacheService {
   async isCacheStale(cityCode: string): Promise<boolean> {
     const payload = await sharedCache.get<FeverCachePayload>(NAMESPACE, cityCode.toUpperCase());
     if (!payload) return true;
+
+    // Replicate original 20-hour pre-expiry refresh window
     const staleThreshold = new Date();
     staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
-    return new Date(payload.refreshedAt) < staleThreshold;
+    const refreshedAt = new Date(payload.refreshedAt);
+    return refreshedAt < staleThreshold;
   }
 
   async refreshCityCache(cityCode: string): Promise<{ refreshed: number; errors: string[] }> {
@@ -155,11 +164,13 @@ class FeverCacheService {
       const events = payload?.events ?? [];
       totalCachedEvents += events.length;
 
+      // Strip the namespace prefix to expose the bare city code
       const cityCode = row.cacheKey.startsWith(prefix)
         ? row.cacheKey.slice(prefix.length)
         : row.cacheKey;
       citiesWithCache.push(cityCode);
 
+      // Use refreshedAt from payload for recency — tracks actual refresh time
       const refreshedAt = payload?.refreshedAt ? new Date(payload.refreshedAt) : null;
       if (refreshedAt) {
         if (!oldestCache || refreshedAt < oldestCache) oldestCache = refreshedAt;
