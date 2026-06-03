@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Lightbulb, X } from "lucide-react";
 import { useDeleteTrip } from "@/hooks/use-trips";
+import { openMapsDeepLink } from "@/lib/maps";
 
 interface Trip {
   id: string;
@@ -84,13 +85,7 @@ function formatMinutes(mins: number): string {
 }
 
 function openInMaps(destination: string) {
-  const query = encodeURIComponent(destination);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  if (isIOS) {
-    window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
-  } else {
-    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
-  }
+  openMapsDeepLink({ places: [{ name: destination }] });
 }
 
 function getStatusGradient(trip: Trip): string {
