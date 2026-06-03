@@ -85,6 +85,7 @@ import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
+import DiscoverLocationPage from "@/pages/discover-location";
 import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
@@ -231,6 +232,11 @@ function Router() {
       {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
       <Route path="/discover">
         <DiscoverPage />
+      </Route>
+      {/* Phase 2 shell for the new location view (v2 spec §3, Decision #5). */}
+      {/* Phase 3 fills the section renderers; the orchestrator endpoint and IA are live now. */}
+      <Route path="/discover/location/:city">
+        <DiscoverLocationPage />
       </Route>
       
       <Route path="/services/:id">
