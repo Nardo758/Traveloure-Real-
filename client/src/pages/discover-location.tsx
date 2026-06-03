@@ -5,9 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, MapPin, Sparkles, Image as ImageIcon, Brain, Compass } from "lucide-react";
+import { NeighborhoodCard } from "@/components/neighborhood-card";
+import { ProviderCard } from "@/components/provider-card";
+import { HeroCard } from "@/components/hero-card";
+import { MediaCard } from "@/components/media-card";
+import { InsightsCard } from "@/components/insights-card";
+import { EventsCard } from "@/components/events-card";
 
 /**
- * Location View — Phase 2 shell (v2 spec §3, §5; Decision #5 destination).
+ * Location View — Phase 3 renderers (v2 spec §3, §5; Decision #5 destination).
  *
  * Five-section IA per docs/CITY_DETAIL_VIEW_RETIREMENT_PLAN.md:
  *   1. Hero (overview + happening-now strip + live activity)
@@ -16,11 +22,10 @@ import { AlertCircle, MapPin, Sparkles, Image as ImageIcon, Brain, Compass } fro
  *   4. Media (videos + photo gallery — full surface, not a hero fold)
  *   5. Insights panel (the 9 AI subcards — full surface, not a hero fold)
  *
- * Phase 2 ships the shell and wires it to the orchestrator endpoint
+ * Phase 2 shipped the shell and wired it to the orchestrator endpoint
  * (/api/discover/location/:city, built in Phase 1b-3) with per-section
- * { data, error } envelopes. Each section currently renders a placeholder
- * showing what data it received — Phase 3 replaces the placeholders with
- * real renderers. The data plumbing is end-to-end now, so Phase 3 is purely
+ * { data, error } envelopes. Phase 3 replaces the placeholders with
+ * real renderers. The data plumbing is end-to-end; Phase 3 is purely
  * a rendering task, not a fetch task.
  */
 
@@ -73,7 +78,7 @@ function SectionShell({
         )}
         {children}
         <p className="text-xs text-muted-foreground italic border-t pt-3">
-          Phase 3 will render: {phaseNote}
+          {phaseNote}
         </p>
       </CardContent>
     </Card>
@@ -158,12 +163,20 @@ export default function DiscoverLocationPage() {
               title="Hero"
               subtitle="City overview, current pulse, what's happening right now."
               section={data.hero}
-              phaseNote="hero card with city facts, live weather, top 1-3 events, and the live-activity strip."
+              phaseNote="Hero section — city intelligence and live activity."
             >
-              <p className="text-sm text-muted-foreground">
-                Data source: travelpulse cities endpoint. Got{" "}
-                {data.hero.data ? "a payload" : "no data"}.
-              </p>
+              {data.hero.data ? (
+                <HeroCard
+                  city={data.hero.data.city}
+                  happeningNow={data.hero.data.happeningNow}
+                  liveActivity={data.hero.data.liveActivity}
+                  alerts={data.hero.data.alerts}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No hero data available. TravelPulse cities endpoint may be unavailable.
+                </p>
+              )}
             </SectionShell>
 
             {/* 2. Supply rail — featured + recommendations */}
@@ -172,17 +185,60 @@ export default function DiscoverLocationPage() {
               title="Supply"
               subtitle="Featured providers and AI recommendations, ranked with the featured-sort guardrail."
               section={data.recommendations}
-              phaseNote="provider cards (responsive split-row/stacked) + the 'Add to experience template' action."
+              phaseNote="Add-to-experience template action wires up in Phase 4+."
             >
-              <p className="text-sm text-muted-foreground">
-                Data source: ai-recommendation-engine. Returned{" "}
-                {Array.isArray(data.recommendations.data)
-                  ? `${data.recommendations.data.length} item(s)`
-                  : data.recommendations.data
-                    ? "a payload"
-                    : "no data"}
-                .
-              </p>
+              {data.recommendations.data ? (
+                <div className="space-y-6">
+                  {data.recommendations.data.hotels && data.recommendations.data.hotels.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm">Accommodations</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {data.recommendations.data.hotels.map((hotel: any) => (
+                          <ProviderCard
+                            key={hotel.id}
+                            id={hotel.id}
+                            name={hotel.name}
+                            type="hotel"
+                            rating={hotel.starRating}
+                            reviewCount={hotel.reviewCount}
+                            price={hotel.price}
+                            description={hotel.address}
+                            image={hotel.media?.[0]?.url}
+                            aiScore={hotel.aiScore || 0}
+                            aiReasons={hotel.aiReasons || []}
+                            location={[hotel.city, hotel.countryName].filter(Boolean).join(", ")}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {data.recommendations.data.activities && data.recommendations.data.activities.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm">Activities</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {data.recommendations.data.activities.map((activity: any) => (
+                          <ProviderCard
+                            key={activity.id}
+                            id={activity.id}
+                            name={activity.title}
+                            type="activity"
+                            price={activity.price}
+                            description={activity.description}
+                            image={activity.media?.[0]?.url}
+                            aiScore={activity.aiScore || 0}
+                            aiReasons={activity.aiReasons || []}
+                            location={activity.city}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No recommendations available. This may indicate sparse local inventory or a temporary service issue.
+                </p>
+              )}
             </SectionShell>
 
             {/* 3. By Neighborhood — gems + services rolled up by neighborhood */}
@@ -191,22 +247,26 @@ export default function DiscoverLocationPage() {
               title="By Neighborhood"
               subtitle="The ecosystem unit: each neighborhood's gems + services + featured providers."
               section={data.neighborhoods}
-              phaseNote="neighborhood card grid with rollup counts, click-through to neighborhood detail."
+              phaseNote="Click-through to neighborhood detail view ships in Phase 4+."
             >
-              <p className="text-sm text-muted-foreground">
-                {Array.isArray(data.neighborhoods.data)
-                  ? `${data.neighborhoods.data.length} neighborhood(s) seeded for ${city}.`
-                  : "No neighborhoods seeded yet for this city — Phase 4 blended fill picks up the slack here."}
-              </p>
-              {Array.isArray(data.neighborhoods.data) && data.neighborhoods.data.length > 0 && (
-                <ul className="text-sm space-y-1 list-disc list-inside">
-                  {data.neighborhoods.data.slice(0, 8).map((n: any) => (
-                    <li key={n.id}>
-                      <span className="font-medium">{n.name}</span>
-                      <span className="text-muted-foreground"> — {n.slug}</span>
-                    </li>
+              {Array.isArray(data.neighborhoods.data) && data.neighborhoods.data.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {data.neighborhoods.data.map((n: any) => (
+                    <NeighborhoodCard
+                      key={n.id}
+                      name={n.name}
+                      slug={n.slug}
+                      gemCount={n.gemCount ?? 0}
+                      serviceCount={n.serviceCount ?? 0}
+                      description={n.description}
+                      isFeatured={n.isFeatured}
+                    />
                   ))}
-                </ul>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No neighborhoods seeded yet for this city — Phase 4 blended fill picks up the slack here.
+                </p>
               )}
             </SectionShell>
 
@@ -216,11 +276,13 @@ export default function DiscoverLocationPage() {
               title="Media"
               subtitle="Destination videos and photo gallery."
               section={data.enriched}
-              phaseNote="videos grid + photo gallery, embedded inline (was CityDetailView's Media tab)."
+              phaseNote="Full gallery via /api/cities/:city/media wires up in Phase 4."
             >
-              <p className="text-sm text-muted-foreground">
-                Data source: enriched content service. Will also pull from cities/{`{city}`}/media in Phase 3.
-              </p>
+              <MediaCard
+                videos={data.enriched?.data?.videos}
+                photos={data.enriched?.data?.photos}
+                error={data.enriched?.error}
+              />
             </SectionShell>
 
             {/* 5. Insights panel — full surface, the 9 AI subcards */}
@@ -228,14 +290,16 @@ export default function DiscoverLocationPage() {
               icon={Brain}
               title="Insights"
               subtitle="Best time, optimal duration, budget tiers, must-see, tips, safety, seasonal highlights."
-              section={data.hero /* AI fields ride on the city intelligence payload */}
-              phaseNote="9 AI insight subcards (was CityDetailView's AI Insights tab)."
+              section={data.hero}
+              phaseNote="Full AI insights panel — powered by TravelPulse city intelligence."
             >
-              <p className="text-sm text-muted-foreground">
-                Sources from travelpulse cities endpoint's aiBestTimeToVisit / aiOptimalDuration /
-                aiBudgetEstimate / aiMustSeeAttractions / aiTravelTips / aiLocalInsights /
-                aiSafetyNotes / aiSeasonalHighlights fields.
-              </p>
+              {data.hero.data ? (
+                <InsightsCard insights={data.hero.data} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No AI insights available. TravelPulse AI fields will populate this section.
+                </p>
+              )}
             </SectionShell>
 
             {/* Events — by-date view per §4. Sits at the bottom for now; Phase 6 may break it out. */}
@@ -244,15 +308,26 @@ export default function DiscoverLocationPage() {
               title="Events (this month)"
               subtitle="By-date view (v2 spec §4). Phase 6 may extract this into its own surface."
               section={data.events}
-              phaseNote="events list with date-matching that writes user_experience_items.scheduled_date."
+              phaseNote="Add-to-trip integration ships in Phase 4+."
             >
-              <p className="text-sm text-muted-foreground">
-                Data source: Fever events service. Got{" "}
-                {data.events.data?.events
-                  ? `${data.events.data.events.length} event(s) for the current month window`
-                  : "no events for the window"}
-                .
-              </p>
+              {data.events.data?.events ? (
+                <EventsCard
+                  events={data.events.data.events.map((e: any) => ({
+                    id: e.id || e.eventId || Math.random().toString(),
+                    title: e.title || e.name || "Event",
+                    date: e.date || e.eventDate || new Date().toISOString().split("T")[0],
+                    time: e.time || e.startTime,
+                    location: e.location || e.venue,
+                    description: e.description || e.shortDescription,
+                    url: e.url || e.link,
+                    image: e.image || e.imageUrl,
+                  }))}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No events scheduled for this month. Check back later or adjust your travel dates.
+                </p>
+              )}
             </SectionShell>
           </div>
         )}
