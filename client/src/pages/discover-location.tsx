@@ -86,6 +86,41 @@ interface AddDialogTarget { name: string; type: string; imageUrl?: string; descr
 
 type FeedFilter = "all" | "eat" | "do" | "stay" | "experts" | "events" | "photo-spots";
 
+// ─── Category badge resolver (colored, shown above gem name) ─────────────────
+
+function resolveCategoryBadge(placeType: string | null | undefined): { label: string; className: string } {
+  const t = (placeType ?? "").toLowerCase();
+  if (t.includes("photo") || t.includes("viewpoint") || t.includes("scenic") || t.includes("vista"))
+    return { label: "PHOTO SPOT", className: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  if (t.includes("attraction") || t.includes("museum") || t.includes("temple") || t.includes("shrine") || t.includes("castle"))
+    return { label: "ATTRACTION", className: "bg-amber-50 text-amber-700 border-amber-200" };
+  if (t.includes("cafe"))
+    return { label: "CAFÉ", className: "bg-orange-50 text-orange-700 border-orange-200" };
+  if (t.includes("restaurant") || t.includes("food") || t.includes("dining") || t.includes("ramen") || t.includes("sushi") || t.includes("eat"))
+    return { label: "RESTAURANT", className: "bg-orange-50 text-orange-700 border-orange-200" };
+  if (t.includes("experience"))
+    return { label: "EXPERIENCE", className: "bg-violet-50 text-violet-700 border-violet-200" };
+  if (t.includes("neighborhood") || t.includes("district") || t.includes("area"))
+    return { label: "NEIGHBORHOOD", className: "bg-violet-50 text-violet-700 border-violet-200" };
+  if (t.includes("park") || t.includes("garden") || t.includes("nature") || t.includes("forest"))
+    return { label: "NATURE", className: "bg-green-50 text-green-700 border-green-200" };
+  if (t.includes("hotel") || t.includes("stay") || t.includes("ryokan") || t.includes("accommodation") || t.includes("hostel"))
+    return { label: "MARQUEE STAY", className: "bg-blue-50 text-blue-700 border-blue-200" };
+  const raw = (placeType ?? "").replace(/_/g, " ").toUpperCase();
+  return { label: raw || "GEM", className: "bg-muted text-muted-foreground border-border" };
+}
+
+// ─── Neighborhood hue palette (rotates by index) ──────────────────────────────
+
+const NEIGHBORHOOD_HUES = [
+  { bg: "bg-emerald-100", icon: "text-emerald-700" },
+  { bg: "bg-rose-100",    icon: "text-rose-700"    },
+  { bg: "bg-violet-100",  icon: "text-violet-700"  },
+  { bg: "bg-amber-100",   icon: "text-amber-700"   },
+  { bg: "bg-sky-100",     icon: "text-sky-700"     },
+  { bg: "bg-orange-100",  icon: "text-orange-700"  },
+];
+
 // ─── Match-rule resolver ──────────────────────────────────────────────────────
 
 interface MatchResult {
@@ -154,7 +189,7 @@ function GemCard({
   const description = item.whyHidden ?? item.description ?? null;
   const rating = item.localRating ?? item.starRating ?? null;
   const match = resolveMatch(item);
-  const typeLabel = (item.placeType ?? item.type ?? "").toUpperCase().replace(/-/g, " ");
+  const catBadge = resolveCategoryBadge(item.placeType ?? item.type);
 
   return (
     <div
@@ -175,11 +210,6 @@ function GemCard({
             <Gem className="h-10 w-10 text-muted-foreground/30" />
           </div>
         )}
-        {typeLabel && (
-          <span className="absolute top-2 left-2 text-[10px] font-semibold uppercase tracking-wide bg-white/90 text-gray-800 rounded px-1.5 py-0.5 shadow-sm">
-            {typeLabel}
-          </span>
-        )}
         {rating && (
           <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm">
             <Star className="h-2.5 w-2.5 fill-white text-white" />{rating}
@@ -189,7 +219,10 @@ function GemCard({
 
       <div className="p-3 flex flex-col flex-1 gap-2">
         <div>
-          <p className="font-semibold text-sm leading-snug line-clamp-1" data-testid={`${testPrefix}-name-${idx}`}>
+          <span className={`text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${catBadge.className}`}>
+            {catBadge.label}
+          </span>
+          <p className="font-semibold text-sm leading-snug line-clamp-1 mt-1" data-testid={`${testPrefix}-name-${idx}`}>
             {displayName}
             {item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
           </p>
@@ -414,6 +447,124 @@ function HotelRow({
   );
 }
 
+// ─── HotelMiniCard — half-width card for 2-col grid inside neighborhood ──────
+
+function HotelMiniCard({
+  item, idx, onAdd, testPrefix,
+}: {
+  item: {
+    id?: string; name?: string; title?: string; placeName?: string;
+    placeType?: string | null; type?: string | null;
+    imageUrl?: string | null; media?: any[];
+    price?: string | null; address?: string | null;
+    bookingUrl?: string | null; starRating?: number | null;
+  };
+  idx: number;
+  onAdd: (t: AddDialogTarget) => void;
+  testPrefix: string;
+}) {
+  const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
+  const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
+  const hasBooking = !!item.bookingUrl;
+
+  return (
+    <div
+      className="rounded-xl border bg-card overflow-hidden flex flex-col"
+      data-testid={`${testPrefix}-mini-${idx}`}
+    >
+      <div className="relative aspect-[4/3] bg-muted flex-shrink-0 w-full">
+        {image ? (
+          <img src={image} alt={displayName} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+            <Hotel className="h-10 w-10 text-blue-300" />
+          </div>
+        )}
+      </div>
+      <div className="p-3 flex flex-col flex-1 gap-2">
+        <div>
+          <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
+            MARQUEE STAY
+          </span>
+          <p className="font-semibold text-sm leading-snug line-clamp-1 mt-1" data-testid={`${testPrefix}-name-${idx}`}>
+            {displayName}{item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
+          </p>
+          {item.address && <p className="text-xs text-muted-foreground line-clamp-1">{item.address}</p>}
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
+          {hasBooking && (
+            <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
+              <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer">Book</a>
+            </Button>
+          )}
+          <Button
+            size="sm" variant="outline" className="text-xs h-7 px-2.5"
+            onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
+            data-testid={`${testPrefix}-add-${idx}`}
+          >
+            <Plus className="h-3 w-3 mr-1" />Add
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ServiceMiniCard — half-width card for 2-col grid inside neighborhood ─────
+
+function ServiceMiniCard({
+  svc, idx, onAdd, testPrefix,
+}: {
+  svc: PlatformService;
+  idx: number;
+  onAdd: (t: AddDialogTarget) => void;
+  testPrefix: string;
+}) {
+  const displayName = svc.serviceName;
+  const image = svc.serviceImage ?? null;
+  const description = svc.shortDescription ?? svc.description ?? null;
+
+  return (
+    <div
+      className="rounded-xl border bg-card overflow-hidden flex flex-col"
+      data-testid={`${testPrefix}-mini-${idx}`}
+    >
+      <div className="relative aspect-[4/3] bg-muted flex-shrink-0 w-full">
+        {image ? (
+          <img src={image} alt={displayName} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
+            <Package className="h-10 w-10 text-emerald-300" />
+          </div>
+        )}
+      </div>
+      <div className="p-3 flex flex-col flex-1 gap-2">
+        <div>
+          <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-green-50 text-green-700 border-green-200">
+            BOOK ON TRAVELOURE
+          </span>
+          <p className="font-semibold text-sm leading-snug line-clamp-1 mt-1" data-testid={`${testPrefix}-name-${idx}`}>
+            {displayName}{svc.price && <span className="font-normal text-muted-foreground"> · {svc.price}</span>}
+          </p>
+          {description && <p className="text-xs text-muted-foreground line-clamp-2">{description}</p>}
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
+          <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
+            <a href={`/services/${svc.id}`}>Book now</a>
+          </Button>
+          <Button
+            size="sm" variant="outline" className="text-xs h-7 px-2.5"
+            onClick={() => onAdd({ name: displayName, type: svc.serviceType ?? "service", description: description ?? undefined })}
+            data-testid={`${testPrefix}-add-${idx}`}
+          >
+            <Plus className="h-3 w-3 mr-1" />Add
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ExpertFeedCard — "Plan it for me" CTA row ───────────────────────────────
 
 function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }) {
@@ -456,7 +607,7 @@ function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }
   );
 }
 
-// ─── NeighborhoodContainer — bento 2-col photo gems + ActivityRow text rows ───
+// ─── NeighborhoodContainer — nested-container redesign ───────────────────────
 
 function isPhotoSpotGem(placeType: string | null | undefined): boolean {
   const t = (placeType ?? "").toLowerCase();
@@ -464,7 +615,7 @@ function isPhotoSpotGem(placeType: string | null | undefined): boolean {
 }
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, services, cityName, onAdd, showExpertCard, expert,
+  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, expert,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
@@ -473,12 +624,13 @@ function NeighborhoodContainer({
   services: PlatformService[];
   cityName: string;
   onAdd: (t: AddDialogTarget) => void;
-  showExpertCard: boolean;
+  hueIdx: number;
   expert?: any;
 }) {
-  // All DB hidden gems go into the GemCard bento grid (GemCard degrades gracefully without imageUrl)
   const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
+
+  const hue = NEIGHBORHOOD_HUES[hueIdx % NEIGHBORHOOD_HUES.length];
 
   const eatCount = gems.filter(g => {
     const t = (g.placeType ?? "").toLowerCase();
@@ -487,15 +639,17 @@ function NeighborhoodContainer({
   const doCount = gems.length - eatCount + activities.length;
   const stayCount = hotels.length;
   const svcCount = services.length;
+  const expertFirstName = expert?.name?.split(" ")[0] ?? null;
 
   const statParts = [
     doCount > 0 && `${doCount} to do`,
     eatCount > 0 && `${eatCount} to eat`,
     stayCount > 0 && `${stayCount} stay${stayCount !== 1 ? "s" : ""}`,
     svcCount > 0 && `${svcCount} bookable`,
-  ].filter(Boolean);
+    expertFirstName && `${expertFirstName} covers it`,
+  ].filter(Boolean) as string[];
 
-  const hasAboveContent = gems.length > 0 || hotels.length > 0 || activities.length > 0;
+  const hasGridContent = gems.length > 0 || hotels.length > 0 || services.length > 0;
 
   return (
     <div
@@ -503,75 +657,70 @@ function NeighborhoodContainer({
       data-testid={`neighborhood-container-${neighborhood.slug}`}
     >
       {/* Header */}
-      <div className="px-4 pt-4 pb-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <MapPin className="h-4 w-4 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base font-bold leading-tight" data-testid={`neighborhood-name-${neighborhood.slug}`}>
-                  {neighborhood.name}
-                </h3>
-                <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-wide">
-                  NEIGHBORHOOD
-                </Badge>
-                {neighborhood.isFeatured && (
-                  <Badge className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
-                    <Star className="h-2.5 w-2.5 mr-0.5 fill-amber-500 text-amber-500" />trending
-                  </Badge>
-                )}
-              </div>
-              {statParts.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-0.5">{statParts.join(" · ")}</p>
-              )}
-              {neighborhood.description && (
-                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{neighborhood.description}</p>
-              )}
-            </div>
+      <div className="px-4 pt-4 pb-4">
+        <div className="flex gap-4 items-start">
+          {/* 64px hued icon square */}
+          <div className={`w-16 h-16 rounded-xl ${hue.bg} flex items-center justify-center flex-shrink-0`}>
+            <MapPin className={`h-7 w-7 ${hue.icon}`} />
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <Button size="sm" className="text-xs h-8 px-3" data-testid={`btn-explore-${neighborhood.slug}`}>
-              <Compass className="h-3 w-3 mr-1" />Explore {neighborhood.name}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-8 px-3"
-              onClick={() => onAdd({ name: `${neighborhood.name} Day`, type: "neighborhood-day", description: `A day exploring ${neighborhood.name} in ${cityName}` })}
-              data-testid={`btn-add-day-${neighborhood.slug}`}
-            >
-              <Plus className="h-3 w-3 mr-1" />Add a {neighborhood.name.split(" ")[0]} day
-            </Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base font-bold leading-tight" data-testid={`neighborhood-name-${neighborhood.slug}`}>
+                {neighborhood.name}
+              </h3>
+              <span className="text-[10px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                NEIGHBORHOOD
+              </span>
+            </div>
+            {/* Green vibe line */}
+            {neighborhood.description && (
+              <p className="text-xs text-emerald-600 font-medium mt-1 line-clamp-1">
+                {neighborhood.isFeatured ? "trending · " : ""}{neighborhood.description}
+              </p>
+            )}
+            {/* Stats with expert attribution woven in */}
+            {statParts.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">{statParts.join(" · ")}</p>
+            )}
+            {/* CTA buttons below text block */}
+            <div className="flex gap-2 flex-wrap mt-3">
+              <Button size="sm" className="text-xs h-8 px-3" data-testid={`btn-explore-${neighborhood.slug}`}>
+                <Compass className="h-3 w-3 mr-1" />Explore {neighborhood.name}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-8 px-3"
+                onClick={() => onAdd({ name: `${neighborhood.name} Day`, type: "neighborhood-day", description: `A day exploring ${neighborhood.name} in ${cityName}` })}
+                data-testid={`btn-add-day-${neighborhood.slug}`}
+              >
+                <Plus className="h-3 w-3 mr-1" />Add a {neighborhood.name.split(" ")[0]} day
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Content area */}
-      <div className="px-4 pb-4">
-        {/* All hidden gems — 2-col GemCard bento (GemCard shows gradient when no image) */}
-        {gems.length > 0 && (
-          <div className="mb-3">
-            <div className="grid grid-cols-2 gap-3">
-              {gems.map((gem, idx) => (
-                <GemCard
-                  key={gem.id ?? idx}
-                  item={gem}
-                  idx={idx}
-                  onAdd={onAdd}
-                  testPrefix={`gem-${neighborhood.slug}`}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+      {/* Content section — gray enclosed with "IN [NAME]" label */}
+      <div className="border-t bg-muted/40 px-4 pb-4 pt-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+          IN {neighborhood.name.toUpperCase()}
+        </p>
 
-        {/* Hotels as full-width rows */}
-        {hotels.length > 0 && (
-          <div className={hasAboveContent ? "border-t pt-2 mt-1" : ""}>
+        {/* Unified 2-col grid: gems + hotel mini cards + service mini cards */}
+        {hasGridContent && (
+          <div className="grid grid-cols-2 gap-3">
+            {gems.map((gem, idx) => (
+              <GemCard
+                key={gem.id ?? idx}
+                item={gem}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`gem-${neighborhood.slug}`}
+              />
+            ))}
             {hotels.map((hotel, idx) => (
-              <HotelRow
+              <HotelMiniCard
                 key={hotel.id ?? idx}
                 item={hotel}
                 idx={idx}
@@ -579,12 +728,21 @@ function NeighborhoodContainer({
                 testPrefix={`hotel-${neighborhood.slug}`}
               />
             ))}
+            {services.map((svc, idx) => (
+              <ServiceMiniCard
+                key={svc.id ?? idx}
+                svc={svc}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`service-${neighborhood.slug}`}
+              />
+            ))}
           </div>
         )}
 
-        {/* AI activities as text rows */}
+        {/* AI text activities — below the grid (text-only, no image/booking URL) */}
         {activities.length > 0 && (
-          <div className={(gems.length > 0 || hotels.length > 0) ? "border-t pt-2 mt-1" : ""}>
+          <div className={`rounded-xl border bg-card px-4 py-2${hasGridContent ? " mt-3" : ""}`}>
             {activities.map((act, idx) => (
               <ActivityRow
                 key={act.id ?? idx}
@@ -594,38 +752,6 @@ function NeighborhoodContainer({
                 testPrefix={`activity-${neighborhood.slug}`}
               />
             ))}
-          </div>
-        )}
-
-        {/* Platform services — always "BOOK ON TRAVELOURE" */}
-        {services.length > 0 && (
-          <div className={(gems.length > 0 || hotels.length > 0 || activities.length > 0) ? "border-t pt-2 mt-1" : ""}>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-              BOOK ON TRAVELOURE
-            </p>
-            {services.map((svc, idx) => (
-              <ActivityRow
-                key={svc.id ?? idx}
-                item={{
-                  placeName: svc.serviceName,
-                  placeType: svc.serviceType ?? "service",
-                  price: svc.price ?? null,
-                  description: svc.shortDescription ?? svc.description,
-                  imageUrl: svc.serviceImage,
-                  bookingUrl: `/services/${svc.id}`,
-                }}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`service-${neighborhood.slug}`}
-                forceTraveloure
-              />
-            ))}
-          </div>
-        )}
-
-        {showExpertCard && (
-          <div className="mt-3">
-            <ExpertFeedCard expert={expert} cityName={cityName} />
           </div>
         )}
       </div>
@@ -903,72 +1029,75 @@ function AllGemsFeed({
           services={servicesBySlug.get(n.slug) ?? []}
           cityName={cityName}
           onAdd={onAdd}
-          showExpertCard={(nIdx + 1) % 2 === 0}
+          hueIdx={nIdx}
           expert={experts[nIdx % Math.max(experts.length, 1)]}
         />
       ))}
 
-      {hasElsewhere && (
-        <div className="rounded-2xl border bg-card overflow-hidden" data-testid="elsewhere-section">
-          <div className="px-4 pt-4 pb-2">
-            <div className="flex items-center gap-3">
-              <h3 className="text-base font-semibold whitespace-nowrap">Elsewhere in {cityName}</h3>
-              <div className="flex-1 h-px bg-border" />
+      {/* Next-neighborhood peek — faded header of the first neighborhood, acts as scroll hint */}
+      {ordered.length > 1 && (
+        <div className="opacity-70 pointer-events-none rounded-2xl border bg-card px-4 py-4 overflow-hidden">
+          <div className="flex gap-4 items-start">
+            <div className={`w-16 h-16 rounded-xl ${NEIGHBORHOOD_HUES[0].bg} flex items-center justify-center flex-shrink-0`}>
+              <MapPin className={`h-7 w-7 ${NEIGHBORHOOD_HUES[0].icon}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-bold">{ordered[0].name}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                  NEIGHBORHOOD
+                </span>
+              </div>
+              {ordered[0].description && (
+                <p className="text-xs text-emerald-600 font-medium mt-1 line-clamp-1">
+                  {ordered[0].description}
+                </p>
+              )}
             </div>
           </div>
-          <div className="px-4 pb-4">
-            {/* All elsewhere gems → GemCard bento */}
-            {elsewhereGems.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                {elsewhereGems.map((gem, idx) => (
-                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
-                ))}
-              </div>
-            )}
-            {elsewhereHotels.length > 0 && (
-              <div className={elsewhereGems.length > 0 ? "border-t pt-2 mt-1" : ""}>
-                {elsewhereHotels.map((hotel, idx) => (
-                  <HotelRow key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
-                ))}
-              </div>
-            )}
-            {elsewhereActivities.length > 0 && (
-              <div className={(elsewhereGems.length > 0 || elsewhereHotels.length > 0) ? "border-t pt-2 mt-1" : ""}>
-                {elsewhereActivities.map((act, idx) => (
-                  <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
-                ))}
-              </div>
-            )}
-            {elsewhereServices.length > 0 && (
-              <div className={(elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereActivities.length > 0) ? "border-t pt-2 mt-1" : ""}>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                  BOOK ON TRAVELOURE
-                </p>
-                {elsewhereServices.map((svc, idx) => (
-                  <ActivityRow
-                    key={svc.id ?? idx}
-                    item={{
-                      placeName: svc.serviceName,
-                      placeType: svc.serviceType ?? "service",
-                      price: svc.price ?? null,
-                      description: svc.shortDescription ?? svc.description,
-                      imageUrl: svc.serviceImage,
-                      bookingUrl: `/services/${svc.id}`,
-                    }}
-                    idx={idx}
-                    onAdd={onAdd}
-                    testPrefix="elsewhere-svc"
-                    forceTraveloure
-                  />
-                ))}
-              </div>
-            )}
-            {experts.length > 0 && (
-              <div className="mt-3">
-                <ExpertFeedCard expert={experts[0]} cityName={cityName} />
-              </div>
-            )}
+        </div>
+      )}
+
+      {/* Elsewhere section — lightweight divider + 2-col grid, no outer card wrapper */}
+      {hasElsewhere && (
+        <div data-testid="elsewhere-section">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
+              Elsewhere in {cityName}
+            </span>
+            <div className="flex-1 h-px bg-border" />
           </div>
+
+          {/* 2-col grid: gems + hotel mini cards + service mini cards */}
+          {(elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereServices.length > 0) && (
+            <div className="grid grid-cols-2 gap-3">
+              {elsewhereGems.map((gem, idx) => (
+                <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
+              ))}
+              {elsewhereHotels.map((hotel, idx) => (
+                <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
+              ))}
+              {elsewhereServices.map((svc, idx) => (
+                <ServiceMiniCard key={svc.id ?? idx} svc={svc} idx={idx} onAdd={onAdd} testPrefix="elsewhere-svc" />
+              ))}
+            </div>
+          )}
+
+          {/* AI text activities — below the grid */}
+          {elsewhereActivities.length > 0 && (
+            <div className={`rounded-xl border bg-card px-4 py-2${(elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereServices.length > 0) ? " mt-3" : ""}`}>
+              {elsewhereActivities.map((act, idx) => (
+                <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
+              ))}
+            </div>
+          )}
+
+          {/* Expert CTA at bottom of elsewhere */}
+          {experts.length > 0 && (
+            <div className="mt-3">
+              <ExpertFeedCard expert={experts[0]} cityName={cityName} />
+            </div>
+          )}
         </div>
       )}
     </div>
