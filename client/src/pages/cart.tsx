@@ -503,7 +503,7 @@ export default function CartPage() {
     }
     setCreatingComparison(true);
     
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string } | undefined;
+    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
     const storedContext = sessionStorage.getItem("experienceContext");
     if (storedContext) {
       try {
@@ -578,6 +578,8 @@ export default function CartPage() {
         budget: String(combinedTotal),
         travelers: experienceContext?.travelers || 2,
         baselineItems,
+        tripId: experienceContext?.tripId,
+        userExperienceId: experienceContext?.userExperienceId || experienceContext?.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
       });
       
@@ -612,7 +614,7 @@ export default function CartPage() {
     setGenerating(true);
     
     // Try to get experience context from session storage
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string } | undefined;
+    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
     const storedContext = sessionStorage.getItem("experienceContext");
     if (storedContext) {
       try {

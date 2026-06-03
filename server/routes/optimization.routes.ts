@@ -132,32 +132,31 @@ router.post("/api/optimization-preview", async (req, res) => {
  * Creates a Stripe PaymentIntent for the optimization fee.
  * Auth required. Returns { clientSecret, paymentIntentId, feeCents, freeRerun }.
  */
-/**
- * Resolve the event-type slug for a trip or experience from the DB.
- * Returns undefined if neither identifier matches.
- */
-async function resolveEventTypeFromDb(
+/** Resolve event-type slug AND owner user ID from DB for a given trip or experience. */
+async function resolveTargetFromDb(
   tripId: string | undefined,
   userExperienceId: string | undefined
-): Promise<string | undefined> {
+): Promise<{ eventType: string | undefined; ownerId: string | undefined }> {
   if (tripId) {
     const [row] = await db
-      .select({ eventType: trips.eventType })
+      .select({ eventType: trips.eventType, ownerId: trips.userId })
       .from(trips)
       .where(eq(trips.id, tripId))
       .limit(1);
-    return row?.eventType ?? undefined;
+    if (!row) return { eventType: undefined, ownerId: undefined };
+    return { eventType: row.eventType ?? undefined, ownerId: row.ownerId ?? undefined };
   }
   if (userExperienceId) {
     const [row] = await db
-      .select({ slug: experienceTypes.slug })
+      .select({ slug: experienceTypes.slug, ownerId: userExperiences.userId })
       .from(userExperiences)
       .innerJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
       .where(eq(userExperiences.id, userExperienceId))
       .limit(1);
-    return row?.slug ?? undefined;
+    if (!row) return { eventType: undefined, ownerId: undefined };
+    return { eventType: row.slug ?? undefined, ownerId: row.ownerId ?? undefined };
   }
-  return undefined;
+  return { eventType: undefined, ownerId: undefined };
 }
 
 router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
@@ -165,8 +164,23 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { tripId, userExperienceId, comparisonContext } = req.body;
 
-    // Derive tier exclusively from DB — never trust client-supplied eventType
-    const dbEventType = await resolveEventTypeFromDb(tripId, userExperienceId);
+    // Require a concrete optimization target — cannot omit both
+    if (!tripId && !userExperienceId) {
+      return res.status(400).json({
+        error: "target_required",
+        message: "Provide tripId or userExperienceId to determine optimization tier.",
+      });
+    }
+
+    // Resolve event type from DB and verify ownership
+    const { eventType: dbEventType, ownerId } = await resolveTargetFromDb(tripId, userExperienceId);
+    if (ownerId === undefined) {
+      return res.status(404).json({ error: "Target trip or experience not found" });
+    }
+    if (ownerId !== userId) {
+      return res.status(403).json({ error: "Not authorized to optimize this resource" });
+    }
+
     const tier = complexityTier(dbEventType);
     const { priceCents, currency } = await getFeeForTier(tier);
 
@@ -219,6 +233,8 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
         type: "optimization_fee",
         userId,
         complexityTier: tier,
+        targetTripId: tripId ?? "",
+        targetExperienceId: userExperienceId ?? "",
         context: JSON.stringify(comparisonContext || {}),
       },
       description: `Traveloure AI Optimization (${tier})`,

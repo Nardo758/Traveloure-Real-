@@ -36,6 +36,7 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   optimizationFees,
+  experienceTypes,
   type InsertContentPlacementRule,
 } from "@shared/schema";
 import {
@@ -46,6 +47,7 @@ import {
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
+import { complexityTier } from "../services/smart-sequencing.service";
 import Stripe from "stripe";
 
 const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -523,19 +525,41 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           if (pi.metadata?.type !== "optimization_fee") {
             return res.status(402).json({ error: "invalid_payment_type" });
           }
-          // Verify amount matches the server-set tier fee (prevents stale-fee exploits)
-          const piTier = pi.metadata?.complexityTier ?? "standard";
-          const [feeRow] = await db
+          // Verify PI is bound to the same resource being optimized
+          const piTargetTrip = pi.metadata?.targetTripId;
+          const piTargetExp = pi.metadata?.targetExperienceId;
+          if (piTargetTrip && tripId && piTargetTrip !== tripId) {
+            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different trip." });
+          }
+          if (piTargetExp && userExperienceId && piTargetExp !== userExperienceId) {
+            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different experience." });
+          }
+          // Re-derive expected tier from the actual comparison resource (not PI metadata)
+          const defaultFeeCents: Record<string, number> = { simple: 499, standard: 999, complex: 1999 };
+          let actualEventType: string | undefined;
+          if (tripId) {
+            const [tRow] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
+            actualEventType = tRow?.eventType ?? undefined;
+          } else if (userExperienceId) {
+            const [eRow] = await db
+              .select({ slug: experienceTypes.slug })
+              .from(userExperiences)
+              .innerJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+              .where(eq(userExperiences.id, userExperienceId))
+              .limit(1);
+            actualEventType = eRow?.slug ?? undefined;
+          }
+          const actualTier = complexityTier(actualEventType);
+          const [actualFeeRow] = await db
             .select({ priceCents: optimizationFees.priceCents })
             .from(optimizationFees)
-            .where(and(eq(optimizationFees.complexityTier, piTier), eq(optimizationFees.isActive, true)))
+            .where(and(eq(optimizationFees.complexityTier, actualTier), eq(optimizationFees.isActive, true)))
             .limit(1);
-          const defaultFeeCents: Record<string, number> = { simple: 499, standard: 999, complex: 1999 };
-          const expectedCents = feeRow?.priceCents ?? defaultFeeCents[piTier] ?? 999;
-          if (pi.amount !== expectedCents) {
+          const requiredCents = actualFeeRow?.priceCents ?? defaultFeeCents[actualTier] ?? 999;
+          if (pi.amount !== requiredCents) {
             return res.status(402).json({
               error: "payment_amount_mismatch",
-              message: "Payment amount does not match current optimization fee for this tier.",
+              message: `Payment amount does not match the required ${actualTier} tier fee for this resource.`,
             });
           }
         } catch (stripeErr: any) {
