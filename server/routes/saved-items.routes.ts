@@ -8,7 +8,7 @@ const router = Router();
 
 router.get("/api/saved-items", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.id;
+    const userId = (req.user as any)?.claims?.sub;
     const city = req.query.city as string | undefined;
 
     const conditions = [eq(savedItems.userId, userId)];
@@ -29,7 +29,7 @@ router.get("/api/saved-items", isAuthenticated, async (req, res) => {
 
 router.post("/api/saved-items", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.id;
+    const userId = (req.user as any)?.claims?.sub;
     const { contentType, contentId, contentName, contentImage, city } = req.body;
 
     if (!contentType || !contentId || !contentName) {
@@ -66,7 +66,7 @@ router.post("/api/saved-items", isAuthenticated, async (req, res) => {
 
 router.delete("/api/saved-items/:id", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.id;
+    const userId = (req.user as any)?.claims?.sub;
     const { id } = req.params;
 
     await db

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, setupFacebookAuth, setupEmailAuth, isAuthenticated } from "./replit_integrations/auth";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { db } from "./db";
 import { eq, and, inArray, sql } from "drizzle-orm";
@@ -138,7 +138,7 @@ export async function registerRoutes(
   app.use(savedItemsRouter);
 
   // AI Discovery routes (uses dynamic import internally)
-  await registerDiscoveryRoutes();
+  await registerDiscoveryRoutes(app);
 
   return httpServer;
 }

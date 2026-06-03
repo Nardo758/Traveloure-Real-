@@ -106,9 +106,9 @@ export function WishlistSection() {
                   className="text-[10px] h-6 px-2 flex-1"
                   onClick={() => {
                     setAddDialogItem({
-                      name: item.contentName,
+                      title: item.contentName,
                       type: item.contentType,
-                      imageUrl: item.contentImage ?? undefined,
+                      city: item.city ?? undefined,
                     });
                     setAddDialogOpen(true);
                   }}

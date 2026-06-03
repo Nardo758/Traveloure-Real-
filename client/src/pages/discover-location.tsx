@@ -2304,8 +2304,11 @@ function PlanningSticky({ city, userTrips }: { city: string; userTrips: any[] | 
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const ACTIVE_STATUSES = ["draft", "planning", "confirmed", "active", "in_progress"];
   const hasCityTrip = (userTrips ?? []).some(
-    (t: any) => (t.destination ?? "").toLowerCase().includes(city.toLowerCase()),
+    (t: any) =>
+      ACTIVE_STATUSES.includes(t.status) &&
+      (t.destination ?? "").toLowerCase().includes(city.toLowerCase()),
   );
 
   const createMutation = useMutation({
