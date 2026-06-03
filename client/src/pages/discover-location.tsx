@@ -26,6 +26,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout";
+import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -2022,6 +2023,8 @@ export default function DiscoverLocationPage() {
   const [activeFilter, setActiveFilter] = useState<FeedFilter>("all");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [requestingItem, setRequestingItem] = useState<AffiliateBookingTarget | null>(null);
+  const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
+  const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
   const trackedRef = useRef<Set<string>>(new Set());
 
   // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
