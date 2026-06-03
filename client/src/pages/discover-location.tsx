@@ -1130,20 +1130,31 @@ export default function DiscoverLocationPage() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const trackedRef = useRef<Set<string>>(new Set());
 
-  // Main orchestrator query
+  // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams();
       if (country) qs.set("country", country);
-      const res = await fetch(
-        `/api/discover/location/${encodeURIComponent(city)}${qs.toString() ? `?${qs}` : ""}`,
-      );
-      if (!res.ok) throw new Error(`Location view: ${res.status}`);
-      return res.json();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      const combined = signal
+        ? (() => { signal.addEventListener("abort", () => controller.abort()); return controller.signal; })()
+        : controller.signal;
+      try {
+        const res = await fetch(
+          `/api/discover/location/${encodeURIComponent(city)}${qs.toString() ? `?${qs}` : ""}`,
+          { signal: combined },
+        );
+        if (!res.ok) throw new Error(`Location view: ${res.status}`);
+        return res.json();
+      } finally {
+        clearTimeout(timer);
+      }
     },
     enabled: !!city,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   // Media fires in parallel — country from URL search params, no wait on hero
@@ -1188,7 +1199,67 @@ export default function DiscoverLocationPage() {
   const neighborhoods: Neighborhood[] = data?.neighborhoods?.data ?? [];
   const hotels: any[] = data?.recommendations?.data?.hotels ?? [];
   const activities: any[] = data?.recommendations?.data?.activities ?? [];
+  const experts: any[] = data?.recommendations?.data?.experts ?? [];
   const events: any[] = data?.events?.data?.events ?? [];
+
+  const feedItems: FeedItem[] = [
+    ...hiddenGems.map((g, idx) => ({
+      id: g.id,
+      name: g.placeName,
+      type: "hidden-gem",
+      placeType: g.placeType,
+      neighborhood: g.neighborhood,
+      imageUrl: g.imageUrl,
+      description: g.whyHidden,
+      rating: g.localRating,
+      bookingUrl: null,
+      source: "gem" as const,
+      sourceIdx: idx,
+    })),
+    ...hotels.map((h: any, idx: number) => ({
+      id: h.id || `hotel-${idx}`,
+      name: h.name,
+      type: "hotel",
+      placeType: "hotel",
+      neighborhood: h.neighborhood || null,
+      imageUrl: h.media?.[0]?.url || null,
+      description: h.address,
+      rating: h.starRating,
+      starRating: h.starRating,
+      bookingUrl: h.bookingUrl || null,
+      price: h.price,
+      source: "hotel" as const,
+      sourceIdx: idx,
+    })),
+    ...activities.map((a: any, idx: number) => ({
+      id: a.id || `activity-${idx}`,
+      name: a.title,
+      type: "activity",
+      placeType: a.type || "activity",
+      neighborhood: a.neighborhood || null,
+      imageUrl: a.media?.[0]?.url || null,
+      description: a.description,
+      rating: a.rating,
+      bookingUrl: a.bookingUrl || null,
+      price: a.price,
+      source: "activity" as const,
+      sourceIdx: idx,
+    })),
+    ...events.map((e: any, idx: number) => ({
+      id: e.id || `event-${idx}`,
+      name: e.title || e.name,
+      type: "event",
+      placeType: "event",
+      neighborhood: e.neighborhood || null,
+      imageUrl: e.imageUrl || e.media?.[0]?.url || null,
+      description: e.description,
+      rating: null,
+      bookingUrl: e.bookingUrl || e.ticketUrl || null,
+      price: e.price,
+      source: "event" as const,
+      sourceIdx: idx,
+    })),
+  ];
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
 
@@ -1332,6 +1403,7 @@ export default function DiscoverLocationPage() {
                 activities={activities}
                 cityName={city}
                 activeFilter={activeFilter}
+                experts={experts}
                 onAdd={openAdd}
               />
             </section>
