@@ -47,6 +47,7 @@ import {
   Umbrella
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DropdownMenu,
@@ -267,6 +268,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const { data: cartData } = useQuery<{ itemCount: number }>({
+    queryKey: ["/api/cart"],
+    staleTime: 30_000,
+  });
+  const cartCount = cartData?.itemCount ?? 0;
+
   const isActive = (path: string) => location === path;
 
   return (
@@ -296,6 +303,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Cart icon — visible for all users */}
+              <Link
+                href="/cart"
+                className="relative inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none"
+                data-testid="link-nav-cart"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {cartCount > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white leading-none"
+                    data-testid="badge-cart-count"
+                  >
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                )}
+              </Link>
+
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
