@@ -1,8 +1,9 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import DOMPurify from "dompurify";
 import { Layout } from "@/components/layout";
+import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -299,12 +300,15 @@ function HeroSection({
 }
 
 // ─── §3 BY-NEIGHBORHOOD ────────────────────────────────────────────────────
+// Phase C: Neighborhoods are addable as a unit — "Add a Marais day"
 function NeighborhoodSection({
   neighborhoods,
   city,
+  onAddToExperience,
 }: {
   neighborhoods: any[];
   city: string;
+  onAddToExperience: (item: any) => void;
 }) {
   if (!neighborhoods || neighborhoods.length === 0) {
     return (
@@ -352,7 +356,20 @@ function NeighborhoodSection({
                   Phase 5+ network fill will populate this neighborhood.
                 </p>
               ) : (
-                <Button size="sm" variant="outline" className="w-full" data-testid={`btn-add-day-${n.slug}`}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  data-testid={`btn-add-day-${n.slug}`}
+                  onClick={() =>
+                    onAddToExperience({
+                      title: `A day in ${n.name}`,
+                      description: n.description,
+                      city: city,
+                      type: "neighborhood",
+                    })
+                  }
+                >
                   <Plus className="w-3 h-3 mr-1" />
                   Add a {n.name} day
                 </Button>
@@ -367,7 +384,16 @@ function NeighborhoodSection({
 
 // ─── §4 GEMS BY CATEGORY ───────────────────────────────────────────────────
 // Reads from orchestrator's hero.data.hiddenGems (populated by Phase 4 network fill)
-function GemsSection({ gems, city }: { gems: any[]; city: string }) {
+// Phase C: Gems are addable to experiences
+function GemsSection({
+  gems,
+  city,
+  onAddToExperience,
+}: {
+  gems: any[];
+  city: string;
+  onAddToExperience: (item: any) => void;
+}) {
   if (!gems || gems.length === 0) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="gems-empty">
@@ -429,6 +455,14 @@ function GemsSection({ gems, city }: { gems: any[]; city: string }) {
               <Button
                 size="sm"
                 className="flex-1"
+                onClick={() =>
+                  onAddToExperience({
+                    title: gem.placeName,
+                    description: gem.description,
+                    city: city,
+                    type: "gem",
+                  })
+                }
                 data-testid={`gem-add-${gem.id}`}
               >
                 <Plus className="w-3 h-3 mr-1" />
@@ -450,12 +484,15 @@ function GemsSection({ gems, city }: { gems: any[]; city: string }) {
 // Reads from orchestrator's recommendations.data which contains:
 // - hotels: array of recommended hotels (AI-enhanced)
 // - activities: array of recommended activities/experiences (AI-enhanced)
+// Phase C: Supply items (hotels/activities) are addable to experiences
 function SupplySection({
   recommendationsData,
   city,
+  onAddToExperience,
 }: {
   recommendationsData: any;
   city: string;
+  onAddToExperience: (item: any) => void;
 }) {
   const hotels = recommendationsData?.hotels || [];
   const activities = recommendationsData?.activities || [];
@@ -499,7 +536,19 @@ function SupplySection({
                   )}
                   <div className="flex gap-2 pt-2">
                     <Button size="sm" className="flex-1">Book</Button>
-                    <Button size="sm" variant="outline" className="flex-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() =>
+                        onAddToExperience({
+                          title: hotel.name,
+                          description: hotel.address,
+                          city: city,
+                          type: "hotel",
+                        })
+                      }
+                    >
                       <Plus className="w-3 h-3 mr-1" />
                       Add
                     </Button>
@@ -538,7 +587,19 @@ function SupplySection({
                   )}
                   <div className="flex gap-2 pt-2">
                     <Button size="sm" className="flex-1">Book</Button>
-                    <Button size="sm" variant="outline" className="flex-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() =>
+                        onAddToExperience({
+                          title: activity.title,
+                          description: activity.description,
+                          city: city,
+                          type: "activity",
+                        })
+                      }
+                    >
                       <Plus className="w-3 h-3 mr-1" />
                       Add
                     </Button>
@@ -1163,6 +1224,10 @@ export default function DiscoverLocationPage() {
   const cityRaw = params?.city ?? "";
   const city = decodeURIComponent(cityRaw);
 
+  // Phase C: Add-to-experience dialog state
+  const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
+  const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
+
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country],
     queryFn: async () => {
@@ -1285,6 +1350,10 @@ export default function DiscoverLocationPage() {
                 <NeighborhoodSection
                   neighborhoods={data.neighborhoods.data || []}
                   city={city}
+                  onAddToExperience={(item) => {
+                    setAddToExperienceItem(item);
+                    setAddToExperienceOpen(true);
+                  }}
                 />
               )}
             </section>
@@ -1297,7 +1366,14 @@ export default function DiscoverLocationPage() {
                 title="Hidden Gems"
                 subtitle="Curated places locals love. Every gem is actionable."
               />
-              <GemsSection gems={data.hero.data?.hiddenGems || []} city={city} />
+              <GemsSection
+                gems={data.hero.data?.hiddenGems || []}
+                city={city}
+                onAddToExperience={(item) => {
+                  setAddToExperienceItem(item);
+                  setAddToExperienceOpen(true);
+                }}
+              />
             </section>
 
             {/* §5 SUPPLY (woven) */}
@@ -1314,7 +1390,14 @@ export default function DiscoverLocationPage() {
                   <AlertDescription>{data.recommendations.error}</AlertDescription>
                 </Alert>
               ) : (
-                <SupplySection recommendationsData={data.recommendations.data} city={city} />
+                <SupplySection
+                  recommendationsData={data.recommendations.data}
+                  city={city}
+                  onAddToExperience={(item) => {
+                    setAddToExperienceItem(item);
+                    setAddToExperienceOpen(true);
+                  }}
+                />
               )}
             </section>
 
@@ -1360,6 +1443,13 @@ export default function DiscoverLocationPage() {
             </section>
           </>
         )}
+
+        {/* Phase C: Add-to-experience dialog */}
+        <AddToExperienceDialog
+          item={addToExperienceItem}
+          open={addToExperienceOpen}
+          onOpenChange={setAddToExperienceOpen}
+        />
       </div>
     </Layout>
   );
