@@ -267,12 +267,10 @@ export async function seedPhase4KyotoFill(): Promise<{
     `[Phase 4] Gems: ${gemsInserted} inserted, ${gemsSkipped} already present.`,
   );
 
-  // For services, we'd need a user ID from the provider. For now, seed with a test user.
-  // In production, these would be created by actual provider accounts.
   console.log("[Phase 4] Seeding Kyoto provider services with neighborhood tags...");
 
-  // Use a placeholder provider user ID (in practice this would come from actual provider accounts)
-  const DEMO_PROVIDER_USER_ID = "demo-provider-kyoto-001";
+  // Use the seeded test provider (created by beta-launch-data.ts)
+  const DEMO_PROVIDER_USER_ID = "111b71d2-466c-45d6-9ffb-841fc2a92525";
 
   for (const service of KYOTO_SERVICES) {
     const existing = await db
