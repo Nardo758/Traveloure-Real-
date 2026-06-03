@@ -1,10 +1,15 @@
 /**
  * ESO Backfill Migration Script
  *
- * One-time, idempotent script that migrates existing service catalog rows into
+ * One-time, idempotent script that migrates ALL existing service catalog rows into
  * expert_service_offerings (ESO) as the canonical source of truth.
  *
- * Deduplication key: externalId (source row's UUID) — deterministic, not name-fragile.
+ * Scope:
+ *   - service_templates (all active rows) → ESO with isDefault=true, expertId=null
+ *   - expert_custom_services (ALL rows, all statuses, all active states) → ESO with
+ *     isDefault=false, expertId set, workflow fields preserved
+ *
+ * Deduplication key: externalId (source row UUID) — deterministic, not name-fragile.
  * Safe to re-run: skips rows where externalId already exists in ESO.
  *
  * Can be run standalone:
@@ -19,7 +24,7 @@ import {
   serviceTemplates,
   expertCustomServices,
 } from "@shared/schema";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigrated: number }> {
   let stMigrated = 0;
@@ -42,8 +47,7 @@ export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigr
   const fallbackCategoryId = categoryRow.id;
 
   // ── Backfill service_templates → ESO ─────────────────────────────────────
-  // Only rows whose id is NOT already recorded as externalId in ESO.
-  // isDefault=true: these were admin-managed templates (valid starting points).
+  // All active rows. isDefault=true: these are admin-managed templates.
   try {
     const stRows = await db
       .select()
@@ -51,7 +55,6 @@ export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigr
       .where(eq(serviceTemplates.isActive, true));
 
     if (stRows.length > 0) {
-      // Fetch already-migrated externalIds so we can skip them
       const alreadyMigrated = new Set(
         (
           await db
@@ -91,22 +94,17 @@ export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigr
     console.warn("[ESO Backfill] service_templates migration failed (non-fatal):", err);
   }
 
-  // ── Backfill approved expert_custom_services → ESO ──────────────────────
-  // isDefault=false: approved expert offerings are real services but are NOT
-  // seed templates for the template picker (which filters by isDefault=true).
-  // expertId is set so the offering is scoped to its creator.
+  // ── Backfill ALL expert_custom_services → ESO ────────────────────────────
+  // ALL rows regardless of status (draft/submitted/approved/rejected) and isActive flag.
+  // Workflow fields (status, submittedAt, reviewedAt, reviewedBy, rejectionReason, etc.)
+  // are preserved so ESO is the complete canonical record after migration.
+  // isDefault=false: expert offerings are not template-picker starting points.
   try {
-    const approvedCustom = await db
+    const allCustom = await db
       .select()
-      .from(expertCustomServices)
-      .where(
-        and(
-          eq(expertCustomServices.status, "approved"),
-          eq(expertCustomServices.isActive, true)
-        )
-      );
+      .from(expertCustomServices);
 
-    if (approvedCustom.length > 0) {
+    if (allCustom.length > 0) {
       const alreadyMigrated = new Set(
         (
           await db
@@ -115,24 +113,40 @@ export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigr
             .where(
               inArray(
                 expertServiceOfferings.externalId,
-                approvedCustom.map((r) => r.id)
+                allCustom.map((r) => r.id)
               )
             )
         ).map((r) => r.externalId)
       );
 
-      for (const cs of approvedCustom) {
+      for (const cs of allCustom) {
         if (alreadyMigrated.has(cs.id)) continue;
         const catId = cs.existingCategoryId ?? fallbackCategoryId;
         await db.insert(expertServiceOfferings).values({
-          categoryId: catId,
-          name: cs.title,
-          description: cs.description ?? undefined,
-          price: cs.price,
-          isDefault: false,
-          sortOrder: 300,
-          expertId: cs.expertId,
-          externalId: cs.id,
+          categoryId:         catId,
+          name:               cs.title,
+          description:        cs.description ?? null,
+          price:              cs.price,
+          isDefault:          false,
+          sortOrder:          300,
+          expertId:           cs.expertId,
+          externalId:         cs.id,
+          categoryName:       cs.categoryName ?? null,
+          // Preserve all workflow lifecycle fields
+          status:             cs.status ?? "draft",
+          submittedAt:        cs.submittedAt ?? null,
+          reviewedAt:         cs.reviewedAt ?? null,
+          reviewedBy:         cs.reviewedBy ?? null,
+          rejectionReason:    cs.rejectionReason ?? null,
+          // Preserve service detail fields
+          duration:           cs.duration ?? null,
+          deliverables:       (cs.deliverables as any) ?? [],
+          cancellationPolicy: cs.cancellationPolicy ?? null,
+          leadTime:           cs.leadTime ?? null,
+          imageUrl:           cs.imageUrl ?? null,
+          galleryImages:      (cs.galleryImages as any) ?? [],
+          experienceTypes:    (cs.experienceTypes as any) ?? [],
+          isActive:           cs.isActive ?? true,
         });
         customMigrated++;
       }
