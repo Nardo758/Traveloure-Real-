@@ -190,6 +190,12 @@ class LocationViewService {
             count: sql<number>`cast(count(*) as int)`,
           })
           .from(providerServices)
+          .where(
+            and(
+              eq(providerServices.status, "active"),
+              ilike(providerServices.location, `%${cityName}%`),
+            ),
+          )
           .groupBy(providerServices.neighborhood),
       ]);
 
