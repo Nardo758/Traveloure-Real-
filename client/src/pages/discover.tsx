@@ -184,87 +184,6 @@ const tripCategories = [
 ];
 
 
-const influencerContent = [
-  {
-    id: 1,
-    title: "My Top 10 Hidden Cafes in Bali",
-    category: "Food & Drink",
-    creator: "@wanderlust_sarah",
-    creatorName: "Sarah Mitchell",
-    followers: "125K",
-    platform: "instagram",
-    imageUrl: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&q=80",
-    destination: "Bali, Indonesia",
-    engagementRate: "4.8%",
-  },
-  {
-    id: 2,
-    title: "Ultimate Tokyo Street Food Guide",
-    category: "Destinations",
-    creator: "@nomadic_mike",
-    creatorName: "Mike Chen",
-    followers: "89K",
-    platform: "youtube",
-    imageUrl: "https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=600&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80",
-    destination: "Tokyo, Japan",
-    engagementRate: "6.2%",
-  },
-  {
-    id: 3,
-    title: "Budget Travel Hacks That Actually Work",
-    category: "Tips",
-    creator: "@thriftytraveler",
-    creatorName: "Emma Rodriguez",
-    followers: "250K",
-    platform: "tiktok",
-    imageUrl: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&q=80",
-    destination: "Multiple",
-    engagementRate: "8.5%",
-  },
-  {
-    id: 4,
-    title: "Romance in Paris: Local's Guide",
-    category: "Romantic",
-    creator: "@couples_abroad",
-    creatorName: "Alex & Jordan",
-    followers: "180K",
-    platform: "instagram",
-    imageUrl: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=600&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=100&q=80",
-    destination: "Paris, France",
-    engagementRate: "5.3%",
-  },
-  {
-    id: 5,
-    title: "Best Sunset Spots in Santorini",
-    category: "Photography",
-    creator: "@golden_hour_jen",
-    creatorName: "Jennifer Wu",
-    followers: "95K",
-    platform: "instagram",
-    imageUrl: "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=600&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80",
-    destination: "Santorini, Greece",
-    engagementRate: "7.1%",
-  },
-  {
-    id: 6,
-    title: "How I Plan Corporate Retreats",
-    category: "Business",
-    creator: "@eventpro_lisa",
-    creatorName: "Lisa Thompson",
-    followers: "45K",
-    platform: "linkedin",
-    imageUrl: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&q=80",
-    destination: "Corporate",
-    engagementRate: "3.9%",
-  },
-];
-
 function ServiceCard({ 
   service, 
   category,
@@ -704,8 +623,11 @@ export default function DiscoverPage() {
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
-  // Tab navigation state (read from URL)
-  const urlTab = urlParams.get("tab") || "travelpulse";
+  // Tab navigation state (read from URL).
+  // articles/packages tabs hidden in Phase 1a — fall back to travelpulse.
+  const VISIBLE_TABS = new Set(["travelpulse", "events", "services"]);
+  const rawUrlTab = urlParams.get("tab") || "travelpulse";
+  const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
   const urlCity = urlParams.get("city") || "";
   const [activeTab, setActiveTab] = useState(urlTab);
 
@@ -1226,14 +1148,8 @@ export default function DiscoverPage() {
                     <TrendingUp className="w-4 h-4 mr-2" />
                     TravelPulse
                   </TabsTrigger>
-                  <TabsTrigger
-                    value="articles"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-articles"
-                  >
-                    <BookOpen className="w-4 h-4 mr-2" />
-                    <span className="hidden md:inline">Influencer </span>Curated
-                  </TabsTrigger>
+                  {/* Influencer Curated tab hidden in Phase 1a — returns in Phase 5 with real DB-backed content */}
+                  {/* Trip Packages tab hidden in Phase 1a — converts to "Plan from here" CTA inside the location view in Phase 3 */}
                   <TabsTrigger
                     value="events"
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
@@ -1241,14 +1157,6 @@ export default function DiscoverPage() {
                   >
                     <Ticket className="w-4 h-4 mr-2" />
                     <span className="hidden lg:inline">Travel </span>Events
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-packages"
-                  >
-                    <Globe className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Trip </span>Packages
                   </TabsTrigger>
                   <TabsTrigger
                     value="services"

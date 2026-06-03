@@ -493,6 +493,8 @@ export const providerServices = pgTable("provider_services", {
   pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
   pickupAddress: text("pickup_address"), // Starting pickup location
   serviceRadius: integer("service_radius"), // km radius provider covers
+  // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
+  neighborhood: varchar("neighborhood", { length: 100 }),
   
   // What's Included & Requirements
   whatIncluded: jsonb("what_included").default([]), // Array of strings: ["3 hours shooting", "50+ edited photos"]
@@ -2290,6 +2292,10 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   aiGenerated: boolean("ai_generated").default(false),
   aiGeneratedAt: timestamp("ai_generated_at"),
   
+  // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug;
+  // populated by backfill-gem-neighborhoods.ts or set directly on AI generation.
+  neighborhood: varchar("neighborhood", { length: 100 }),
+
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),
@@ -5535,3 +5541,33 @@ export const visaRequirementsCache = pgTable("visa_requirements_cache", {
 export const insertVisaRequirementsCacheSchema = createInsertSchema(visaRequirementsCache).omit({ id: true, cachedAt: true });
 export type VisaRequirementsCache = typeof visaRequirementsCache.$inferSelect;
 export type InsertVisaRequirementsCache = z.infer<typeof insertVisaRequirementsCacheSchema>;
+
+// === City Neighborhoods Lookup (v2 spec §5.1) ===
+// Explicit, denormalized neighborhood tagging is preferred over pure proximity:
+// stable, cheap to query, and lets the location-view ecosystem-unit roll up by name.
+// This table provides centroids so gems (which have lat/lng) can auto-backfill,
+// and powers the provider listing form's neighborhood picker per selected city.
+export const cityNeighborhoods = pgTable("city_neighborhoods", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull(),
+
+  // Centroid + radius for nearest-match backfill of items with lat/lng.
+  centroidLat: decimal("centroid_lat", { precision: 10, scale: 7 }).notNull(),
+  centroidLng: decimal("centroid_lng", { precision: 10, scale: 7 }).notNull(),
+  radiusKm: decimal("radius_km", { precision: 5, scale: 2 }).default("1.50"),
+
+  description: text("description"),
+  isFeatured: boolean("is_featured").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqCitySlug: unique("city_neighborhoods_city_country_slug_uniq").on(table.city, table.country, table.slug),
+}));
+
+export const insertCityNeighborhoodSchema = createInsertSchema(cityNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
+export type CityNeighborhood = typeof cityNeighborhoods.$inferSelect;
+export type InsertCityNeighborhood = z.infer<typeof insertCityNeighborhoodSchema>;
