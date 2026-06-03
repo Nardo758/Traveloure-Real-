@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { feverEventCache } from "@shared/schema";
+import { feverEventCache, destinationEvents } from "@shared/schema";
 import { eq, and, gte, lte, ilike, or, sql, desc } from "drizzle-orm";
 import { feverService, FeverEvent } from "./fever.service";
 
@@ -126,6 +126,8 @@ class FeverCacheService {
             expiresAt,
           });
           result.refreshed++;
+          // Also write into the canonical destination_events table
+          await this.upsertFeverEventToCanonical(event);
         } catch (err: any) {
           result.errors.push(`Failed to cache event ${event.id}: ${err.message}`);
         }
@@ -219,6 +221,88 @@ class FeverCacheService {
     }
     
     return expiredEvents.length;
+  }
+
+  /**
+   * Maps a Fever category string to a destination_events eventType.
+   * destination_events.eventType is a free-form varchar(30) so any value ≤ 30 chars is fine.
+   */
+  private mapFeverCategoryToEventType(category: string): string {
+    const map: Record<string, string> = {
+      concerts: "concert",
+      music: "concert",
+      festivals: "festival",
+      art: "cultural",
+      arts: "cultural",
+      exhibitions: "cultural",
+      dance: "cultural",
+      sports: "sporting",
+      comedy: "entertainment",
+      theater: "entertainment",
+      theatre: "entertainment",
+      food: "food",
+      nightlife: "nightlife",
+      family: "family",
+      wellness: "wellness",
+      film: "entertainment",
+      cinema: "entertainment",
+    };
+    return map[category?.toLowerCase()] || "other";
+  }
+
+  /**
+   * Upserts a Fever event into destination_events (canonical table).
+   * Uses sourceType='fever' + sourceId=feverEventId as the deduplication key.
+   * Extended Fever metadata is stored in the metadata jsonb column.
+   */
+  private async upsertFeverEventToCanonical(event: FeverEvent): Promise<void> {
+    if (!event.dates?.startDate) return;
+
+    const specificDate = event.dates.startDate.split("T")[0];
+
+    const existing = await db
+      .select({ id: destinationEvents.id })
+      .from(destinationEvents)
+      .where(
+        and(
+          eq(destinationEvents.sourceType, "fever"),
+          eq(destinationEvents.sourceId, event.id)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) return;
+
+    try {
+      await db.insert(destinationEvents).values({
+        title: event.title,
+        city: event.city,
+        country: event.country,
+        description: event.description || event.shortDescription || null,
+        eventType: this.mapFeverCategoryToEventType(event.category),
+        specificDate,
+        isRecurring: false,
+        sourceType: "fever",
+        sourceId: event.id,
+        status: "approved",
+        metadata: {
+          imageUrl: event.imageUrl || null,
+          thumbnailUrl: event.thumbnailUrl || null,
+          bookingUrl: event.bookingUrl || null,
+          affiliateUrl: event.affiliateUrl || null,
+          minPrice: event.pricing?.minPrice ?? null,
+          maxPrice: event.pricing?.maxPrice ?? null,
+          isFree: event.isFree,
+          venueName: event.venue?.name || null,
+          venueAddress: event.venue?.address || null,
+          rating: event.rating ?? null,
+          tags: event.tags || [],
+          provider: "fever",
+        },
+      });
+    } catch (err: any) {
+      console.warn(`[FeverCache] Skipping canonical upsert for event ${event.id}: ${err.message}`);
+    }
   }
 
   private cacheToEvent(cached: typeof feverEventCache.$inferSelect): FeverEvent {
