@@ -7292,6 +7292,46 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
     }
   });
 
+  // ─── Content-to-Supply Matching ─────────────────────────────────────────────
+  // GET /api/content-match?type=restaurant&neighborhood=arashiyama&city=Kyoto&limit=3
+  // Returns matched provider services and experts for a given content context.
+
+  const contentMatchQuerySchema = z.object({
+    type: z.string().min(1, "type is required"),
+    neighborhood: z.string().optional().default(""),
+    city: z.string().optional().default(""),
+    lat: z.coerce.number().optional(),
+    lng: z.coerce.number().optional(),
+    limit: z.coerce.number().int().min(1).max(10).optional().default(3),
+  });
+
+  router.get("/api/content-match", async (req, res) => {
+    try {
+      const parsed = contentMatchQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid query parameters",
+          details: parsed.error.flatten().fieldErrors,
+        });
+      }
+
+      const { resolveMatches } = await import("../services/content-matching.service");
+      const result = await resolveMatches({
+        type: parsed.data.type,
+        neighborhood: parsed.data.neighborhood || undefined,
+        city: parsed.data.city || undefined,
+        lat: parsed.data.lat,
+        lng: parsed.data.lng,
+        limit: parsed.data.limit,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[content-match] error:", err.message);
+      res.status(500).json({ providers: [], experts: [], affiliateFallback: true });
+    }
+  });
+
 } // end registerDiscoveryRoutes
 
 export default router;
