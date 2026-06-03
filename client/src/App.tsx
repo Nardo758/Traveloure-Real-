@@ -77,6 +77,7 @@ import AdminServices from "@/pages/admin/services";
 import AdminAICosts from "@/pages/admin/ai-costs";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
+import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
@@ -640,6 +641,9 @@ function Router() {
       </Route>
       <Route path="/admin/routing-queue">
         {() => <ProtectedRoute component={AdminRoutingQueue} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/neighborhood-backfill">
+        {() => <ProtectedRoute component={AdminNeighborhoodBackfill} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
