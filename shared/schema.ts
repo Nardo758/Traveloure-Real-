@@ -938,6 +938,12 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isDefault: boolean("is_default").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // Migration 006: ESO canonicalization
+  // expertId=null → platform template; expertId set → expert-owned offering
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "cascade" }),
+  // externalId links back to the originating service_templates / expert_custom_services row
+  // Used for deterministic deduplication instead of fragile name-matching
+  externalId: varchar("external_id"),
 });
 
 // Link experts to their selected service offerings

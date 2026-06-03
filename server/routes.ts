@@ -99,70 +99,11 @@ export async function registerRoutes(
         console.log(`[Seed] Inserted ${esoInserted} canonical template(s) into expert_service_offerings.`);
       }
 
-      // ── Backfill legacy service_templates → ESO (one-time migration) ──────
-      // Any active service_templates rows not already present in ESO by name
-      // are upserted so old data is not lost.
-      try {
-        const stRows = await db.select().from(serviceTemplates).where(eq(serviceTemplates.isActive, true));
-        const currentEsoNames = new Set(
-          (await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings))
-            .map((r: any) => r.name)
-        );
-        let stBackfilled = 0;
-        for (const st of stRows) {
-          if (!currentEsoNames.has(st.title)) {
-            await db.insert(expertServiceOfferings).values({
-              categoryId,
-              name: st.title,
-              description: st.description ?? undefined,
-              price: st.suggestedPrice ?? "0",
-              isDefault: true,
-              sortOrder: (st.sortOrder ?? 0) + 200,
-            });
-            currentEsoNames.add(st.title);
-            stBackfilled++;
-          }
-        }
-        if (stBackfilled > 0) {
-          console.log(`[Backfill] Migrated ${stBackfilled} service_templates row(s) → expert_service_offerings.`);
-        }
-      } catch (bfErr) {
-        console.warn("[Backfill] service_templates → ESO failed (non-fatal):", bfErr);
-      }
-
-      // ── Backfill approved expert_custom_services → ESO ────────────────────
-      // isDefault is intentionally false: these are approved expert offerings,
-      // not seed templates. The template picker (GET /api/service-templates)
-      // only shows isDefault=true rows, keeping the template set clean.
-      try {
-        const approvedCustom = await db.select().from(expertCustomServices)
-          .where(and(eq(expertCustomServices.status, "approved"), eq(expertCustomServices.isActive, true)));
-        const currentEsoNames2 = new Set(
-          (await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings))
-            .map((r: any) => r.name)
-        );
-        let customBackfilled = 0;
-        for (const cs of approvedCustom) {
-          if (!currentEsoNames2.has(cs.title)) {
-            const catId = cs.existingCategoryId ?? categoryId;
-            await db.insert(expertServiceOfferings).values({
-              categoryId: catId,
-              name: cs.title,
-              description: cs.description ?? undefined,
-              price: cs.price,
-              isDefault: false,
-              sortOrder: 300 + customBackfilled,
-            });
-            currentEsoNames2.add(cs.title);
-            customBackfilled++;
-          }
-        }
-        if (customBackfilled > 0) {
-          console.log(`[Backfill] Migrated ${customBackfilled} expert_custom_services row(s) → expert_service_offerings.`);
-        }
-      } catch (bfErr2) {
-        console.warn("[Backfill] expert_custom_services → ESO failed (non-fatal):", bfErr2);
-      }
+      // ── Legacy backfill moved to dedicated script ─────────────────────────
+      // service_templates and expert_custom_services rows are backfilled into ESO
+      // by runEsoBackfill() (server/migrations/run-eso-backfill.ts), which is
+      // called at startup in index.ts before seeding. It uses externalId for
+      // deterministic deduplication rather than fragile name-matching.
     } catch (err) {
       console.warn("[Seed] Could not seed expert_service_offerings:", err);
     }
