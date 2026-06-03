@@ -956,7 +956,7 @@ export default function DiscoverPage() {
                   data-testid="button-plan-experience"
                 >
                   <Compass className="w-4 h-4 mr-2" />
-                  Build a Trip from a Template
+                  Plan Experience
                 </Button>
               </Link>
               {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}

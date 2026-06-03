@@ -238,7 +238,7 @@ function Router() {
       <Route path="/discover/location/:city">
         <DiscoverLocationPage />
       </Route>
-      
+
       <Route path="/services/:id">
         <ServiceDetailPage />
       </Route>
