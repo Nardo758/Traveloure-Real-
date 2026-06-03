@@ -11,6 +11,23 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   ShoppingCart, 
   Trash2, 
@@ -30,7 +47,8 @@ import {
   Lock,
   TrendingDown,
   Zap,
-  RefreshCw
+  RefreshCw,
+  Route,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -278,6 +296,14 @@ export default function CartPage() {
   } | null>(null);
   const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
 
+  // ── Start Planning flow ──────────────────────────────────────────────────
+  const [showPlanningDialog, setShowPlanningDialog] = useState(false);
+  const [planningTripMode, setPlanningTripMode] = useState<"existing" | "new">("existing");
+  const [planningTripId, setPlanningTripId] = useState<string>("");
+  const [newTripName, setNewTripName] = useState("");
+  const [newTripDestination, setNewTripDestination] = useState("");
+  const [selectedPlanItemIds, setSelectedPlanItemIds] = useState<Set<string>>(new Set());
+
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
     queryFn: async () => {
@@ -290,6 +316,35 @@ export default function CartPage() {
       return res.json();
     },
     enabled: !authLoading,
+  });
+
+  const { data: userTrips = [] } = useQuery<any[]>({
+    queryKey: ["/api/trips"],
+    enabled: !!user && showPlanningDialog,
+  });
+
+  const convertToItineraryMutation = useMutation({
+    mutationFn: async (payload: {
+      tripId?: string;
+      newTripName?: string;
+      destination?: string;
+      cartItemIds: string[];
+    }) => {
+      const res = await apiRequest("POST", "/api/cart/convert-to-itinerary", payload);
+      return res.json();
+    },
+    onSuccess: (data: { tripId: string; convertedCount: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      toast({
+        title: `${data.convertedCount} item${data.convertedCount !== 1 ? "s" : ""} added to your trip!`,
+        description: "View and arrange them in your trip itinerary.",
+      });
+      setShowPlanningDialog(false);
+      setLocation(`/trips/${data.tripId}`);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to add items to trip" });
+    },
   });
 
   // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
@@ -376,6 +431,50 @@ export default function CartPage() {
   const platformFee = parseFloat(cart?.platformFee || "0");
   const combinedTotal = combinedSubtotal + platformFee;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Content items (Discover saves) — eligible for "Start planning"
+  const contentItems = (cart?.items || []).filter(
+    (item) => item.isContentItem || (item.contentId && item.contentType) || item.contentMeta
+  );
+
+  const openPlanningDialog = () => {
+    if (!user) { openSignInModal(); return; }
+    setSelectedPlanItemIds(new Set(contentItems.map((i) => i.id)));
+    setPlanningTripMode("existing");
+    setPlanningTripId("");
+    setNewTripName("");
+    setNewTripDestination(
+      (contentItems[0]?.contentMeta as any)?.city ||
+      (contentItems[0]?.contentMeta as any)?.location ||
+      ""
+    );
+    setShowPlanningDialog(true);
+  };
+
+  const handleConvertToItinerary = () => {
+    const cartItemIds = Array.from(selectedPlanItemIds);
+    if (cartItemIds.length === 0) {
+      toast({ variant: "destructive", title: "Select at least one item" });
+      return;
+    }
+    if (planningTripMode === "existing") {
+      if (!planningTripId) {
+        toast({ variant: "destructive", title: "Please select a trip" });
+        return;
+      }
+      convertToItineraryMutation.mutate({ tripId: planningTripId, cartItemIds });
+    } else {
+      if (!newTripName.trim()) {
+        toast({ variant: "destructive", title: "Please enter a trip name" });
+        return;
+      }
+      convertToItineraryMutation.mutate({
+        newTripName: newTripName.trim(),
+        destination: newTripDestination.trim() || undefined,
+        cartItemIds,
+      });
+    }
+  };
 
   const [creatingComparison, setCreatingComparison] = useState(false);
 
@@ -1117,6 +1216,28 @@ export default function CartPage() {
                       </div>
                     </CardContent>
                     <CardFooter className="flex flex-col gap-3">
+                      {contentItems.length > 0 && (
+                        <div className="w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
+                          <div className="flex items-start gap-2 mb-2">
+                            <Route className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <h4 className="text-sm font-medium">Start Planning Your Trip</h4>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Add your {contentItems.length} saved discover item{contentItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                            size="sm"
+                            onClick={openPlanningDialog}
+                            data-testid="button-start-planning"
+                          >
+                            <Route className="w-4 h-4 mr-2" />
+                            Start Planning
+                          </Button>
+                        </div>
+                      )}
                       <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-[#FF385C]/20">
                         <div className="flex items-start gap-2 mb-2">
                           <Sparkles className="w-4 h-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
@@ -1668,6 +1789,165 @@ export default function CartPage() {
           </>
         )}
       </div>
+
+      {/* ── Start Planning Dialog ─────────────────────────────────────────── */}
+      <Dialog open={showPlanningDialog} onOpenChange={setShowPlanningDialog}>
+        <DialogContent className="max-w-lg" data-testid="dialog-start-planning">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Route className="w-5 h-5 text-emerald-600" />
+              Add to Trip Itinerary
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            {/* Item selection */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Select items to add ({selectedPlanItemIds.size} selected)
+              </Label>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {contentItems.map((item) => {
+                  const meta = item.contentMeta as any || {};
+                  const name = meta.name || item.contentId || "Discover item";
+                  const city = meta.city || meta.location || null;
+                  const checked = selectedPlanItemIds.has(item.id);
+                  return (
+                    <label
+                      key={item.id}
+                      className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                      data-testid={`label-plan-item-${item.id}`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          setSelectedPlanItemIds((prev) => {
+                            const next = new Set(prev);
+                            if (v) next.add(item.id); else next.delete(item.id);
+                            return next;
+                          });
+                        }}
+                        data-testid={`checkbox-plan-item-${item.id}`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{name}</p>
+                        {city && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />{city}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Trip selection */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">Add to which trip?</Label>
+              <div className="flex gap-2 mb-3">
+                <Button
+                  size="sm"
+                  variant={planningTripMode === "existing" ? "default" : "outline"}
+                  onClick={() => setPlanningTripMode("existing")}
+                  data-testid="button-mode-existing"
+                >
+                  Existing trip
+                </Button>
+                <Button
+                  size="sm"
+                  variant={planningTripMode === "new" ? "default" : "outline"}
+                  onClick={() => setPlanningTripMode("new")}
+                  data-testid="button-mode-new"
+                >
+                  Create new trip
+                </Button>
+              </div>
+
+              {planningTripMode === "existing" ? (
+                userTrips.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No trips yet.{" "}
+                    <button
+                      type="button"
+                      className="underline text-foreground"
+                      onClick={() => setPlanningTripMode("new")}
+                    >
+                      Create one instead
+                    </button>
+                  </p>
+                ) : (
+                  <Select value={planningTripId} onValueChange={setPlanningTripId}>
+                    <SelectTrigger data-testid="select-trip">
+                      <SelectValue placeholder="Select a trip…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {userTrips.map((trip: any) => (
+                        <SelectItem key={trip.id} value={trip.id}>
+                          {trip.title || "Untitled trip"} — {trip.destination}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="new-trip-name" className="text-xs text-muted-foreground mb-1 block">
+                      Trip name *
+                    </Label>
+                    <Input
+                      id="new-trip-name"
+                      placeholder="e.g. Tokyo Adventure"
+                      value={newTripName}
+                      onChange={(e) => setNewTripName(e.target.value)}
+                      data-testid="input-new-trip-name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new-trip-destination" className="text-xs text-muted-foreground mb-1 block">
+                      Destination (optional)
+                    </Label>
+                    <Input
+                      id="new-trip-destination"
+                      placeholder="e.g. Tokyo, Japan"
+                      value={newTripDestination}
+                      onChange={(e) => setNewTripDestination(e.target.value)}
+                      data-testid="input-new-trip-destination"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowPlanningDialog(false)}
+              data-testid="button-cancel-planning"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleConvertToItinerary}
+              disabled={convertToItineraryMutation.isPending || selectedPlanItemIds.size === 0}
+              data-testid="button-confirm-planning"
+            >
+              {convertToItineraryMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              {convertToItineraryMutation.isPending ? "Adding…" : `Add ${selectedPlanItemIds.size} item${selectedPlanItemIds.size !== 1 ? "s" : ""} to trip`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
