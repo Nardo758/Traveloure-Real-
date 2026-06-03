@@ -434,12 +434,15 @@ export default function CartPage() {
     if (!optimizationPreview) return;
     setPaymentLoading(true);
     try {
-      let eventType: string | undefined;
+      // Send DB identifiers so the server derives the tier server-side
+      let tripId: string | undefined;
+      let userExperienceId: string | undefined;
       try {
         const stored = sessionStorage.getItem("experienceContext");
         if (stored) {
           const ctx = JSON.parse(stored);
-          eventType = ctx.experienceType || ctx.eventType;
+          tripId = ctx.tripId;
+          userExperienceId = ctx.userExperienceId || ctx.id;
         }
       } catch { /* ignore */ }
 
@@ -447,7 +450,7 @@ export default function CartPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ eventType, comparisonContext: { destination: experienceTitle } }),
+        body: JSON.stringify({ tripId, userExperienceId, comparisonContext: { destination: experienceTitle } }),
       });
       if (!res.ok) throw new Error("Could not create payment");
       const data = await res.json();

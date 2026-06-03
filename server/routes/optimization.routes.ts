@@ -16,7 +16,7 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { optimizationFees, itineraryComparisons, users } from "@shared/schema";
+import { optimizationFees, itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
@@ -132,12 +132,42 @@ router.post("/api/optimization-preview", async (req, res) => {
  * Creates a Stripe PaymentIntent for the optimization fee.
  * Auth required. Returns { clientSecret, paymentIntentId, feeCents, freeRerun }.
  */
+/**
+ * Resolve the event-type slug for a trip or experience from the DB.
+ * Returns undefined if neither identifier matches.
+ */
+async function resolveEventTypeFromDb(
+  tripId: string | undefined,
+  userExperienceId: string | undefined
+): Promise<string | undefined> {
+  if (tripId) {
+    const [row] = await db
+      .select({ eventType: trips.eventType })
+      .from(trips)
+      .where(eq(trips.id, tripId))
+      .limit(1);
+    return row?.eventType ?? undefined;
+  }
+  if (userExperienceId) {
+    const [row] = await db
+      .select({ slug: experienceTypes.slug })
+      .from(userExperiences)
+      .innerJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+      .where(eq(userExperiences.id, userExperienceId))
+      .limit(1);
+    return row?.slug ?? undefined;
+  }
+  return undefined;
+}
+
 router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
   try {
     const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
-    const { eventType, comparisonContext } = req.body;
+    const { tripId, userExperienceId, comparisonContext } = req.body;
 
-    const tier = complexityTier(eventType);
+    // Derive tier exclusively from DB — never trust client-supplied eventType
+    const dbEventType = await resolveEventTypeFromDb(tripId, userExperienceId);
+    const tier = complexityTier(dbEventType);
     const { priceCents, currency } = await getFeeForTier(tier);
 
     // 24-hour free re-run check
@@ -238,23 +268,31 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
         .where(eq(itineraryComparisons.id, comparisonId));
     }
 
-    // Record platform revenue — use only Stripe-confirmed values
-    try {
-      await revenueTrackingService.recordRevenueEvent({
-        sourceType: "optimization_fee",
-        sourceId: paymentIntentId,
-        grossAmount: confirmedAmount,
-        description: `AI Optimization fee (${pi.metadata?.complexityTier ?? "standard"})`,
-        metadata: {
-          type: "optimization_fee",
-          complexityTier: pi.metadata?.complexityTier,
-          userId,
-          comparisonId,
-          currency: pi.currency?.toUpperCase() ?? "USD",
-        },
-      });
-    } catch (revErr) {
-      console.warn("[optimization-payments/confirm] revenue record failed (non-critical):", revErr);
+    // Idempotency: skip revenue recording if this PI was already recorded
+    const [existingRev] = await db
+      .select({ id: platformRevenue.id })
+      .from(platformRevenue)
+      .where(eq(platformRevenue.sourceId, paymentIntentId))
+      .limit(1);
+
+    if (!existingRev) {
+      try {
+        await revenueTrackingService.recordRevenueEvent({
+          sourceType: "optimization_fee",
+          sourceId: paymentIntentId,
+          grossAmount: confirmedAmount,
+          description: `AI Optimization fee (${pi.metadata?.complexityTier ?? "standard"})`,
+          metadata: {
+            type: "optimization_fee",
+            complexityTier: pi.metadata?.complexityTier,
+            userId,
+            comparisonId,
+            currency: pi.currency?.toUpperCase() ?? "USD",
+          },
+        });
+      } catch (revErr) {
+        console.warn("[optimization-payments/confirm] revenue record failed (non-critical):", revErr);
+      }
     }
 
     return res.json({ success: true });

@@ -35,6 +35,7 @@ import {
   expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
+  optimizationFees,
   type InsertContentPlacementRule,
 } from "@shared/schema";
 import {
@@ -521,6 +522,21 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           }
           if (pi.metadata?.type !== "optimization_fee") {
             return res.status(402).json({ error: "invalid_payment_type" });
+          }
+          // Verify amount matches the server-set tier fee (prevents stale-fee exploits)
+          const piTier = pi.metadata?.complexityTier ?? "standard";
+          const [feeRow] = await db
+            .select({ priceCents: optimizationFees.priceCents })
+            .from(optimizationFees)
+            .where(and(eq(optimizationFees.complexityTier, piTier), eq(optimizationFees.isActive, true)))
+            .limit(1);
+          const defaultFeeCents: Record<string, number> = { simple: 499, standard: 999, complex: 1999 };
+          const expectedCents = feeRow?.priceCents ?? defaultFeeCents[piTier] ?? 999;
+          if (pi.amount !== expectedCents) {
+            return res.status(402).json({
+              error: "payment_amount_mismatch",
+              message: "Payment amount does not match current optimization fee for this tier.",
+            });
           }
         } catch (stripeErr: any) {
           console.error("[itinerary-comparisons] Stripe verification error:", stripeErr.message);
