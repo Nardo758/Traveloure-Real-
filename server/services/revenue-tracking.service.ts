@@ -58,11 +58,13 @@ export interface UnifiedRevenueDashboard {
 
 class RevenueTrackingService {
   async recordRevenueEvent(event: RevenueEvent): Promise<void> {
+    // Optimization fees are 100% platform revenue — route through 'ai' source tier.
+    const isOptimizationFee = event.sourceType === 'optimization_fee';
     // Derive source flag for the resolver so affiliate events get the 70% tier.
     const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
     const rates = await resolveCommissionRates({
-      category: event.sourceType.replace('_commission', ''),
-      source: affiliateSource,
+      category: isOptimizationFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
+      source: isOptimizationFee ? 'ai' : affiliateSource,
     });
     const platformFee = event.grossAmount * rates.platformFeeRate;
     const processingFees = platformFee * PROCESSING_FEE_RATE;

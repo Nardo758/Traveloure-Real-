@@ -273,6 +273,29 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
       return res.status(400).json({ error: "Payment not yet confirmed" });
     }
 
+    // Ownership + type binding — prevent ledger pollution from unrelated PIs
+    if (pi.metadata?.type !== "optimization_fee") {
+      return res.status(400).json({ error: "invalid_payment_type", message: "PaymentIntent is not an optimization fee." });
+    }
+    if (pi.metadata?.userId && pi.metadata.userId !== userId) {
+      return res.status(403).json({ error: "payment_belongs_to_another_user" });
+    }
+
+    // If comparisonId provided, verify it belongs to the requesting user
+    if (comparisonId) {
+      const [compRow] = await db
+        .select({ ownerId: itineraryComparisons.userId })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, comparisonId))
+        .limit(1);
+      if (!compRow) {
+        return res.status(404).json({ error: "Comparison not found" });
+      }
+      if (compRow.ownerId !== userId) {
+        return res.status(403).json({ error: "Not authorized to update this comparison" });
+      }
+    }
+
     // Amount always comes from Stripe (never from client)
     const confirmedAmount = pi.amount / 100;
 
