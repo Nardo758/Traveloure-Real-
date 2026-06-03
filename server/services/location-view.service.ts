@@ -13,11 +13,13 @@
  *
  * Also surfaces the seeded neighborhoods for the page (`city_neighborhoods`),
  * since the Phase 3 ecosystem-unit needs them alongside the rest.
+ *
+ * Phase 262: also returns DB-sourced hidden gems and active platform services.
  */
 
 import { db } from "../db";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, ilike } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 
@@ -51,6 +53,10 @@ export interface LocationViewPayload {
   recommendations: SectionResult<any>;
   events: SectionResult<any>;
   neighborhoods: SectionResult<Neighborhood[]>;
+  /** All hidden gems for the city from the DB (all placeTypes, all neighborhoods). */
+  gems: SectionResult<any[]>;
+  /** Active provider services for the city from the DB. */
+  services: SectionResult<any[]>;
 }
 
 export interface LocationViewOptions {
@@ -204,11 +210,31 @@ class LocationViewService {
       }));
     })();
 
-    const [hero, recommendations, events, neighborhoods] = await Promise.all([
+    // DB hidden gems for the city — all placeTypes, all neighborhoods
+    const gemsPromise = db
+      .select()
+      .from(travelPulseHiddenGems)
+      .where(eq(travelPulseHiddenGems.city, cityName))
+      .orderBy(travelPulseHiddenGems.gemScore);
+
+    // Active platform services for this city — location field ILIKE city name
+    const servicesPromise = db
+      .select()
+      .from(providerServices)
+      .where(
+        and(
+          eq(providerServices.status, "active"),
+          ilike(providerServices.location, `%${cityName}%`),
+        ),
+      );
+
+    const [hero, recommendations, events, neighborhoods, gems, services] = await Promise.all([
       settle("hero", heroPromise),
       settle("recommendations", recommendationsPromise),
       settle("events", eventsPromise),
       settle("neighborhoods", neighborhoodsPromise),
+      settle("gems", gemsPromise),
+      settle("services", servicesPromise),
     ]);
 
     const payload: LocationViewPayload = {
@@ -219,6 +245,8 @@ class LocationViewService {
       recommendations,
       events,
       neighborhoods,
+      gems,
+      services,
     };
 
     locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });
