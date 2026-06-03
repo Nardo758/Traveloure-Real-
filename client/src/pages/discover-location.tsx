@@ -426,6 +426,7 @@ function WishlistButton({
 // ─── AddToPlanButton ─────────────────────────────────────────────────────────
 // Self-contained "＋ Add to plan" button that POSTs to the cart API.
 // Works for guests (localStorage session) and authenticated users alike.
+// Checks the cart on mount so already-saved items show "✓ In plan" persistently.
 
 function AddToPlanButton({
   contentId,
@@ -444,7 +445,21 @@ function AddToPlanButton({
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [added, setAdded] = useState(false);
+
+  const { data: cartData } = useQuery<{ items: Array<{ contentId?: string | null }> }>({
+    queryKey: ["/api/cart"],
+    queryFn: async () => {
+      const guestId = !user ? getGuestSessionId() : undefined;
+      const headers: Record<string, string> = {};
+      if (guestId) headers["X-Guest-Session"] = guestId;
+      const res = await fetch("/api/cart", { credentials: "include", headers });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const isInCart = (cartData?.items ?? []).some((item) => item.contentId === contentId);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -470,7 +485,6 @@ function AddToPlanButton({
       return res.json();
     },
     onSuccess: () => {
-      setAdded(true);
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (!user) {
         toast({
@@ -480,8 +494,6 @@ function AddToPlanButton({
       } else {
         toast({ title: "Added to your plan" });
       }
-      // Reset "added" state after a moment so it can be re-added
-      setTimeout(() => setAdded(false), 3000);
     },
     onError: (err: any) => {
       toast({ title: "Could not add", description: err.message, variant: "destructive" });
@@ -495,19 +507,19 @@ function AddToPlanButton({
   return (
     <Button
       size="sm"
-      variant={added ? "default" : "outline"}
-      className={`${sizeClasses} whitespace-nowrap ${added ? "bg-[#FF385C] hover:bg-[#E23350] text-white border-[#FF385C]" : ""} ${className ?? ""}`}
+      variant={isInCart ? "outline" : "outline"}
+      className={`${sizeClasses} whitespace-nowrap ${isInCart ? "bg-gray-100 text-gray-400 border-gray-200 cursor-default hover:bg-gray-100 hover:text-gray-400" : ""} ${className ?? ""}`}
       onClick={(e) => {
         e.stopPropagation();
-        if (!mutation.isPending && !added) mutation.mutate();
+        if (!mutation.isPending && !isInCart) mutation.mutate();
       }}
-      disabled={mutation.isPending}
+      disabled={mutation.isPending || isInCart}
       data-testid={`add-to-plan-${contentId}`}
     >
       {mutation.isPending ? (
         <Loader2 className="h-3 w-3 animate-spin mr-1" />
-      ) : added ? (
-        "✓ Added"
+      ) : isInCart ? (
+        "✓ In plan"
       ) : (
         "＋ Add to plan"
       )}
