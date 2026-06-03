@@ -94,7 +94,6 @@ interface LocationViewPayload {
     hiddenGems?: HiddenGem[];
   }>;
   recommendations: SectionResult<{ hotels?: any[]; activities?: any[] }>;
-  enriched: SectionResult<any>;
   events: SectionResult<{ events?: any[]; total?: number }>;
   neighborhoods: SectionResult<Neighborhood[]>;
 }
@@ -786,17 +785,18 @@ export default function DiscoverLocationPage() {
   });
 
   // §7 — media separate query (mirrors CityDetailView)
+  // Fires in parallel with the main orchestrator query — country is available
+  // from URL params at mount time, no need to wait for the hero response.
   const { data: mediaData } = useQuery<CityMediaResponse>({
-    queryKey: ["/api/travelpulse/media", city, data?.hero?.data?.city?.country ?? country],
+    queryKey: ["/api/travelpulse/media", city, country],
     queryFn: async () => {
       const qs = new URLSearchParams();
-      const c = data?.hero?.data?.city?.country ?? country;
-      if (c) qs.set("country", c);
+      if (country) qs.set("country", country);
       const res = await fetch(`/api/travelpulse/media/${encodeURIComponent(city)}?${qs}`);
       if (!res.ok) throw new Error("Media fetch failed");
       return res.json();
     },
-    enabled: !!city && !!data,
+    enabled: !!city,
     staleTime: 10 * 60 * 1000,
   });
 
