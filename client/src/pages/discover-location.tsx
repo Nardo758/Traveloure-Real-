@@ -161,6 +161,11 @@ function ExploreSpine() {
 }
 
 // ─── §1 HERO ───────────────────────────────────────────────────────────────
+// Reads from orchestrator's hero.data which contains:
+// - city: TravelPulseCity with 9 AI fields
+// - hiddenGems: array of gems (used in §4)
+// - happeningNow: array of happening now events
+// - liveActivity: array of live activity (used in §6)
 function HeroSection({
   city,
   country,
@@ -361,6 +366,7 @@ function NeighborhoodSection({
 }
 
 // ─── §4 GEMS BY CATEGORY ───────────────────────────────────────────────────
+// Reads from orchestrator's hero.data.hiddenGems (populated by Phase 4 network fill)
 function GemsSection({ gems, city }: { gems: any[]; city: string }) {
   if (!gems || gems.length === 0) {
     return (
@@ -441,6 +447,9 @@ function GemsSection({ gems, city }: { gems: any[]; city: string }) {
 }
 
 // ─── §5 SUPPLY (woven) ─────────────────────────────────────────────────────
+// Reads from orchestrator's recommendations.data which contains:
+// - hotels: array of recommended hotels (AI-enhanced)
+// - activities: array of recommended activities/experiences (AI-enhanced)
 function SupplySection({
   recommendationsData,
   city,
@@ -574,6 +583,7 @@ function getActivityIconForType(activityType: string) {
   }
 }
 
+// Reads from orchestrator's hero.data.liveActivity
 function LiveFeedSection({ liveActivity, city }: { liveActivity: any[]; city: string }) {
   if (!liveActivity || liveActivity.length === 0) {
     return (
@@ -628,7 +638,8 @@ function LiveFeedSection({ liveActivity, city }: { liveActivity: any[]; city: st
 }
 
 // ─── §7 MEDIA GALLERY ──────────────────────────────────────────────────────
-// Verbatim carry-over from CityDetailView's Media tab (lines 1121-1302).
+// Reads from separate /api/travelpulse/media/:city/:country query (not part of orchestrator).
+// Verbatim carry-over from CityDetailView's Media tab.
 function MediaSection({
   mediaData,
   city,
@@ -845,7 +856,20 @@ function MediaSection({
 
 // ─── §8 INSIGHTS — all 9 AI subcards verbatim ──────────────────────────────
 function InsightsSection({ cityIntel, city }: { cityIntel: any; city: string }) {
-  if (!cityIntel?.aiGeneratedAt) {
+  // Check if cityIntel exists and has at least one AI field populated
+  const hasAIFields = cityIntel && (
+    cityIntel.aiBestTimeToVisit ||
+    cityIntel.aiOptimalDuration ||
+    cityIntel.aiBudgetEstimate ||
+    cityIntel.aiMustSeeAttractions ||
+    cityIntel.aiTravelTips ||
+    cityIntel.aiLocalInsights ||
+    cityIntel.aiSafetyNotes ||
+    cityIntel.aiSeasonalHighlights ||
+    cityIntel.aiAvoidDates
+  );
+
+  if (!hasAIFields) {
     return (
       <Card className="p-8 text-center">
         <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
