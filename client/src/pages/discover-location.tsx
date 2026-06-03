@@ -739,15 +739,26 @@ function AllGemsFeed({
     const flatGems = gems.filter(g => matchesFilter(g, activeFilter));
     const flatHotels = isStayFilter ? hotels : [];
     const flatActivities = !isStayFilter && !isPhotoFilter ? activities.filter(a => matchesFilter(a, activeFilter)) : [];
-    const flatServices = activeFilter !== "events" && activeFilter !== "experts"
+
+    // For stay filter: accommodation services render via HotelRow;
+    // for all other filters: non-stay services render via ActivityRow.
+    const flatServicesRaw = activeFilter !== "events" && activeFilter !== "experts"
       ? platformServices.filter(s => matchesServiceFilter(s, activeFilter))
       : [];
+    const accommodationServiceTypes = ["accommodation", "hotel", "stay", "villa", "apartment", "hostel"];
+    const isAccomSvc = (s: PlatformService) =>
+      accommodationServiceTypes.some(t => (s.serviceType ?? "").toLowerCase().includes(t));
+    const flatAccomServices = isStayFilter ? flatServicesRaw.filter(isAccomSvc) : [];
+    const flatRowServices = isStayFilter
+      ? flatServicesRaw.filter(s => !isAccomSvc(s))
+      : flatServicesRaw;
 
     // Photo-spot gems go into image card bento; all others become ActivityRows
     const photoFlatGems = flatGems.filter(g => isPhotoSpotGem(g.placeType));
     const rowFlatGems = flatGems.filter(g => !isPhotoSpotGem(g.placeType));
 
-    const hasAny = flatGems.length > 0 || flatHotels.length > 0 || flatActivities.length > 0 || flatServices.length > 0;
+    const hasAny = flatGems.length > 0 || flatHotels.length > 0 || flatActivities.length > 0 ||
+      flatAccomServices.length > 0 || flatRowServices.length > 0;
     if (!hasAny) {
       return (
         <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
@@ -765,7 +776,7 @@ function AllGemsFeed({
             ))}
           </div>
         )}
-        {(rowFlatGems.length > 0 || flatActivities.length > 0 || flatServices.length > 0) && (
+        {(rowFlatGems.length > 0 || flatActivities.length > 0 || flatRowServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
             {rowFlatGems.map((item, idx) => (
               <ActivityRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
@@ -773,7 +784,7 @@ function AllGemsFeed({
             {flatActivities.map((item, idx) => (
               <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
             ))}
-            {flatServices.map((svc, idx) => (
+            {flatRowServices.map((svc, idx) => (
               <ActivityRow
                 key={svc.id ?? idx}
                 item={{
@@ -792,10 +803,28 @@ function AllGemsFeed({
             ))}
           </div>
         )}
-        {flatHotels.length > 0 && (
+        {/* Stay filter: AI hotels + accommodation platform services both via HotelRow */}
+        {(flatHotels.length > 0 || flatAccomServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
             {flatHotels.map((item, idx) => (
               <HotelRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-hotel`} />
+            ))}
+            {flatAccomServices.map((svc, idx) => (
+              <HotelRow
+                key={svc.id ?? idx}
+                item={{
+                  id: svc.id,
+                  name: svc.serviceName,
+                  address: svc.location ?? cityName,
+                  starRating: null,
+                  price: svc.price ?? null,
+                  bookingUrl: `/services/${svc.id}`,
+                  media: svc.serviceImage ? [{ url: svc.serviceImage }] : [],
+                }}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`flat-${activeFilter}-accom-svc`}
+              />
             ))}
           </div>
         )}
@@ -890,7 +919,7 @@ function AllGemsFeed({
           services={servicesBySlug.get(n.slug) ?? []}
           cityName={cityName}
           onAdd={onAdd}
-          showExpertCard={nIdx === 1 || nIdx === 3}
+          showExpertCard={(nIdx + 1) % 2 === 0}
           expert={experts[nIdx % Math.max(experts.length, 1)]}
         />
       ))}
@@ -1622,10 +1651,8 @@ export default function DiscoverLocationPage() {
   const hero = data?.hero?.data;
   const cityData = hero?.city;
   const happeningNow: any[] = hero?.happeningNow ?? [];
-  // Prefer DB-sourced gems (all categories, all neighborhoods); fall back to hero gems
-  const hiddenGems: HiddenGem[] = data?.gems?.data?.length
-    ? data.gems.data
-    : (hero?.hiddenGems ?? []);
+  // DB-sourced gems — all categories, all neighborhoods; hero.hiddenGems intentionally not used
+  const hiddenGems: HiddenGem[] = data?.gems?.data ?? [];
   const platformServices: PlatformService[] = data?.services?.data ?? [];
   const neighborhoods: Neighborhood[] = data?.neighborhoods?.data ?? [];
   const hotels: any[] = data?.recommendations?.data?.hotels ?? [];
