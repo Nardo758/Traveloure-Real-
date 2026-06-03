@@ -1,6 +1,23 @@
 /**
- * Stripe Payment Service
- * Handles Stripe payment intents, webhooks, and refunds
+ * Stripe Payment Service — Cart Bookings, Expert Services & Refunds
+ *
+ * OWNERSHIP: This service is the canonical owner of Stripe PaymentIntents and Checkout
+ * Sessions for cart-based bookings (multi-service checkout) and expert advisory service
+ * purchases (review-only, review-and-book, full-concierge). It also owns the central
+ * webhook event dispatcher: it routes `payment_intent.succeeded/failed/canceled`,
+ * `charge.refunded`, and `checkout.session.completed` events to the appropriate handler,
+ * delegating transport-booking confirmation to stripe.service.ts via
+ * `handleStripePaymentSuccess`. Refund creation (stripe.refunds.create) is owned here.
+ *
+ * DOES NOT OWN: Checkout Sessions for transport bookings (owned by stripe.service.ts),
+ * Connect account management or payouts to experts/providers (owned by
+ * stripe-connect.service.ts).
+ *
+ * Stripe API calls made here:
+ *   - stripe.paymentIntents.create    — cart checkout and expert service embedded checkout
+ *   - stripe.paymentIntents.retrieve  — payment intent status lookup
+ *   - stripe.checkout.sessions.create — expert service hosted checkout
+ *   - stripe.refunds.create           — booking refunds
  */
 
 import Stripe from 'stripe';
