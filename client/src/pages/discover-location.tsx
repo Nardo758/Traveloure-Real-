@@ -60,15 +60,27 @@ interface Neighborhood {
 }
 interface HiddenGem {
   id: string; placeName: string; placeType?: string | null; neighborhood?: string | null;
-  whyHidden?: string | null; imageUrl?: string | null; localRating?: number | null;
+  whyHidden?: string | null; description?: string | null; whyLocalsLoveIt?: string | null;
+  imageUrl?: string | null; localRating?: string | number | null;
+  priceRange?: string | null;
+}
+interface PlatformService {
+  id: string; serviceName: string; serviceType?: string | null;
+  shortDescription?: string | null; description?: string | null;
+  price?: string | null; priceType?: string | null;
+  serviceImage?: string | null; neighborhood?: string | null;
+  location?: string | null; averageRating?: string | null;
+  isFeatured?: boolean | null;
 }
 interface SectionResult<T> { data: T | null; error: string | null }
 interface LocationViewPayload {
   city: string; country: string | null; generatedAt: string;
   hero: SectionResult<{ city?: any; happeningNow?: any[]; liveActivity?: any[]; hiddenGems?: HiddenGem[] }>;
-  recommendations: SectionResult<{ hotels?: any[]; activities?: any[] }>;
+  recommendations: SectionResult<{ hotels?: any[]; activities?: any[]; experts?: any[] }>;
   events: SectionResult<{ events?: any[]; total?: number }>;
   neighborhoods: SectionResult<Neighborhood[]>;
+  gems?: SectionResult<HiddenGem[]>;
+  services?: SectionResult<PlatformService[]>;
 }
 interface AddDialogTarget { name: string; type: string; imageUrl?: string; description?: string }
 
@@ -214,52 +226,59 @@ function GemCard({
 
 // ─── ActivityRow — text-based row for bookable activities (like the mockup) ───
 
+function detectBadge(bookingUrl: string | null | undefined): {
+  badgeText: string; badgeClass: string; bookLabel: string; isPartner: boolean;
+} {
+  if (!bookingUrl) {
+    return { badgeText: "NOT BOOKABLE", badgeClass: "bg-muted text-muted-foreground border-border", bookLabel: "", isPartner: false };
+  }
+  let hostname = "";
+  try { hostname = new URL(bookingUrl).hostname.toLowerCase(); } catch { hostname = ""; }
+  const partner = hostname.includes("viator") || hostname.includes("tiqets") ||
+    hostname.includes("klook") || hostname.includes("getyourguide") ||
+    hostname.includes("booking.com") || hostname.includes("airbnb");
+  if (partner) {
+    return { badgeText: "VIA PARTNER", badgeClass: "bg-blue-50 text-blue-700 border-blue-200", bookLabel: "Book via partner", isPartner: true };
+  }
+  return { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false };
+}
+
 function ActivityRow({
-  item, idx, onAdd, testPrefix,
+  item, idx, onAdd, testPrefix, forceTraveloure,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
     placeType?: string | null; type?: string | null;
     bookingUrl?: string | null; price?: string | null;
-    description?: string | null; whyHidden?: string | null;
+    description?: string | null; whyHidden?: string | null; whyLocalsLoveIt?: string | null;
     imageUrl?: string | null; media?: any[];
   };
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
+  /** Force "BOOK ON TRAVELOURE" badge regardless of URL (for platform services). */
+  forceTraveloure?: boolean;
 }) {
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
-  const description = item.whyHidden ?? item.description ?? null;
-  const hasBooking = !!item.bookingUrl;
+  const description = item.whyHidden ?? item.whyLocalsLoveIt ?? item.description ?? null;
   const typeLabel = (item.placeType ?? item.type ?? "").toLowerCase();
+  const isPhotoSpot = typeLabel.includes("photo") || typeLabel.includes("viewpoint") || typeLabel.includes("scenic");
 
-  let badgeText = "NOT BOOKABLE";
-  let badgeClass = "bg-muted text-muted-foreground border-border";
-  let bookLabel = "";
-  let bookVariant: "default" | "outline" = "default";
+  const badge = forceTraveloure
+    ? { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false }
+    : detectBadge(item.bookingUrl);
 
-  if (hasBooking) {
-    if (typeLabel.includes("viator") || typeLabel.includes("via ") || typeLabel.includes("tiqet")) {
-      badgeText = "VIA PARTNER";
-      badgeClass = "bg-blue-50 text-blue-700 border-blue-200";
-      bookLabel = "Book via partner";
-      bookVariant = "outline";
-    } else {
-      badgeText = "BOOK ON TRAVELOURE";
-      badgeClass = "bg-green-50 text-green-700 border-green-200";
-      bookLabel = "Book now";
-    }
-  }
-
-  const isPhotoSpot = typeLabel.includes("photo") || typeLabel.includes("viewpoint");
+  const priceDisplay = item.price
+    ? (String(item.price).startsWith("€") || String(item.price).startsWith("$") || String(item.price).startsWith("£")
+      ? item.price : `€${item.price}`)
+    : null;
 
   return (
     <div
       className="flex items-start gap-3 py-3 border-b last:border-b-0"
       data-testid={`${testPrefix}-${idx}`}
     >
-      {/* Small thumbnail if available */}
       {image && (
         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
           <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
@@ -270,19 +289,29 @@ function ActivityRow({
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <p className="text-sm font-semibold leading-snug" data-testid={`${testPrefix}-name-${idx}`}>
             {displayName}
-            {item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
+            {priceDisplay && <span className="font-normal text-muted-foreground"> · {priceDisplay}</span>}
           </p>
-          <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badgeClass}`}>
-            {badgeText}
+          <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
+            {badge.badgeText}
           </span>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          {bookLabel && hasBooking && (
-            <Button size="sm" variant={bookVariant} className="text-xs h-7 px-2.5" asChild>
-              <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>
-                {bookLabel}
-              </a>
+          {badge.bookLabel && (item.bookingUrl || forceTraveloure) && (
+            <Button
+              size="sm"
+              variant={badge.isPartner ? "outline" : "default"}
+              className="text-xs h-7 px-2.5"
+              asChild={!!(item.bookingUrl && !forceTraveloure) || !!(item.bookingUrl && forceTraveloure)}
+              data-testid={`${testPrefix}-book-${idx}`}
+            >
+              {item.bookingUrl ? (
+                <a href={item.bookingUrl} target={badge.isPartner ? "_blank" : undefined} rel="noopener noreferrer">
+                  {badge.bookLabel}
+                </a>
+              ) : (
+                <span>{badge.bookLabel}</span>
+              )}
             </Button>
           )}
           <Button
@@ -421,40 +450,53 @@ function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }
   );
 }
 
-// ─── NeighborhoodContainer — bento 2-col gems + hotel/activity rows ───────────
+// ─── NeighborhoodContainer — bento 2-col photo gems + ActivityRow text rows ───
+
+function isPhotoSpotGem(placeType: string | null | undefined): boolean {
+  const t = (placeType ?? "").toLowerCase();
+  return t.includes("photo") || t.includes("viewpoint") || t.includes("scenic") || t.includes("vista");
+}
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, cityName, onAdd, showExpertCard, expert,
+  neighborhood, gems, hotels, activities, services, cityName, onAdd, showExpertCard, expert,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
   hotels: any[];
   activities: any[];
+  services: PlatformService[];
   cityName: string;
   onAdd: (t: AddDialogTarget) => void;
   showExpertCard: boolean;
   expert?: any;
 }) {
-  const total = gems.length + hotels.length + activities.length;
+  // Split gems into photo-spots (image card bento) vs everything else (text rows)
+  const photoGems = gems.filter(g => isPhotoSpotGem(g.placeType));
+  const rowGems = gems.filter(g => !isPhotoSpotGem(g.placeType));
+
+  const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
 
-  const doCount = gems.filter(g => {
+  const doCount = rowGems.filter(g => {
     const t = (g.placeType ?? "").toLowerCase();
     return !t.includes("eat") && !t.includes("restaurant") && !t.includes("cafe") && !t.includes("hotel");
-  }).length;
-  const eatCount = gems.filter(g => {
+  }).length + activities.length;
+  const eatCount = rowGems.filter(g => {
     const t = (g.placeType ?? "").toLowerCase();
     return t.includes("eat") || t.includes("restaurant") || t.includes("cafe") || t.includes("food");
   }).length;
   const stayCount = hotels.length;
-  const expertCount = neighborhood.serviceCount ?? 0;
+  const svcCount = services.length;
 
   const statParts = [
     doCount > 0 && `${doCount} to do`,
     eatCount > 0 && `${eatCount} to eat`,
     stayCount > 0 && `${stayCount} stay${stayCount !== 1 ? "s" : ""}`,
-    expertCount > 0 && `${expertCount} expert${expertCount !== 1 ? "s" : ""}`,
+    photoGems.length > 0 && `${photoGems.length} photo spot${photoGems.length !== 1 ? "s" : ""}`,
+    svcCount > 0 && `${svcCount} bookable`,
   ].filter(Boolean);
+
+  const hasAboveContent = rowGems.length > 0 || hotels.length > 0 || activities.length > 0;
 
   return (
     <div
@@ -509,29 +551,49 @@ function NeighborhoodContainer({
 
       {/* Content area */}
       <div className="px-4 pb-4">
-        {gems.length > 0 && (
-          <div className="mb-2">
+        {/* Photo spots — 2-col image card bento */}
+        {photoGems.length > 0 && (
+          <div className="mb-3">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-              IN {neighborhood.name.toUpperCase()}
+              PHOTO SPOTS
             </p>
-            {/* Bento 2-col grid for gems */}
             <div className="grid grid-cols-2 gap-3">
-              {gems.map((gem, idx) => (
+              {photoGems.map((gem, idx) => (
                 <GemCard
                   key={gem.id ?? idx}
                   item={gem}
                   idx={idx}
                   onAdd={onAdd}
-                  testPrefix={`gem-${neighborhood.slug}`}
+                  testPrefix={`photo-gem-${neighborhood.slug}`}
                 />
               ))}
             </div>
           </div>
         )}
 
+        {/* All other gems as ActivityRow text rows */}
+        {rowGems.length > 0 && (
+          <div className={photoGems.length > 0 ? "border-t pt-2" : ""}>
+            {photoGems.length === 0 && (
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                IN {neighborhood.name.toUpperCase()}
+              </p>
+            )}
+            {rowGems.map((gem, idx) => (
+              <ActivityRow
+                key={gem.id ?? idx}
+                item={gem}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`gem-row-${neighborhood.slug}`}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Hotels as full-width rows */}
         {hotels.length > 0 && (
-          <div className={gems.length > 0 ? "mt-3" : ""}>
+          <div className={hasAboveContent ? "border-t pt-2 mt-1" : ""}>
             {hotels.map((hotel, idx) => (
               <HotelRow
                 key={hotel.id ?? idx}
@@ -544,9 +606,9 @@ function NeighborhoodContainer({
           </div>
         )}
 
-        {/* Activities as text rows */}
+        {/* AI activities as text rows */}
         {activities.length > 0 && (
-          <div className={gems.length > 0 || hotels.length > 0 ? "mt-3" : ""}>
+          <div className={(rowGems.length > 0 || hotels.length > 0 || photoGems.length > 0) ? "border-t pt-2 mt-1" : ""}>
             {activities.map((act, idx) => (
               <ActivityRow
                 key={act.id ?? idx}
@@ -554,6 +616,32 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`activity-${neighborhood.slug}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Platform services — always "BOOK ON TRAVELOURE" */}
+        {services.length > 0 && (
+          <div className={(rowGems.length > 0 || hotels.length > 0 || activities.length > 0 || photoGems.length > 0) ? "border-t pt-2 mt-1" : ""}>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+              BOOK ON TRAVELOURE
+            </p>
+            {services.map((svc, idx) => (
+              <ActivityRow
+                key={svc.id ?? idx}
+                item={{
+                  placeName: svc.serviceName,
+                  placeType: svc.serviceType ?? "service",
+                  price: svc.price ?? null,
+                  description: svc.shortDescription ?? svc.description,
+                  imageUrl: svc.serviceImage,
+                  bookingUrl: `/services/${svc.id}`,
+                }}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`service-${neighborhood.slug}`}
+                forceTraveloure
               />
             ))}
           </div>
@@ -576,30 +664,52 @@ function matchesFilter(item: any, filter: FeedFilter): boolean {
   const t = (item.placeType ?? item.type ?? "").toLowerCase();
   if (filter === "eat")
     return t.includes("restaurant") || t.includes("cafe") || t.includes("food") ||
-           t.includes("eat") || t.includes("dining") || t.includes("ramen") || t.includes("sushi");
+           t.includes("eat") || t.includes("dining") || t.includes("ramen") || t.includes("sushi") ||
+           t.includes("culinary") || t.includes("cooking");
   if (filter === "do")
     return t.includes("attraction") || t.includes("museum") || t.includes("temple") ||
            t.includes("shrine") || t.includes("park") || t.includes("garden") ||
-           t.includes("castle") || t.includes("activity") || t.includes("tour") || t.includes("experience");
+           t.includes("castle") || t.includes("activity") || t.includes("tour") || t.includes("experience") ||
+           t.includes("action") || t.includes("planning") || t.includes("consultation") ||
+           t.includes("concierge") || t.includes("specialty");
   if (filter === "stay")
-    return t.includes("hotel") || t.includes("lodging") || t.includes("accommodation") || t.includes("ryokan");
+    return t.includes("hotel") || t.includes("lodging") || t.includes("accommodation") ||
+           t.includes("ryokan") || t.includes("hostel");
   if (filter === "events")
     return t.includes("event") || t.includes("festival") || t.includes("concert");
   if (filter === "photo-spots")
-    return t.includes("photo") || t.includes("spot") || t.includes("viewpoint") || t.includes("scenic");
+    return isPhotoSpotGem(t) || t.includes("spot") || t.includes("photography");
   return true;
+}
+
+function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean {
+  if (filter === "all") return true;
+  const t = (svc.serviceType ?? "").toLowerCase();
+  if (filter === "eat")
+    return t.includes("dining") || t.includes("food") || t.includes("culinary") ||
+           t.includes("restaurant") || t.includes("cooking") || t.includes("cafe");
+  if (filter === "do")
+    return t.includes("experience") || t.includes("tour") || t.includes("activity") ||
+           t.includes("action") || t.includes("planning") || t.includes("consultation") ||
+           t.includes("concierge") || t.includes("specialty");
+  if (filter === "stay")
+    return t.includes("accommodation") || t.includes("hotel") || t.includes("lodging");
+  if (filter === "photo-spots")
+    return t.includes("photo") || t.includes("photography");
+  return false;
 }
 
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, experts, cityName, activeFilter, onAdd,
+  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
   hotels: any[];
   activities: any[];
   experts: any[];
+  platformServices: PlatformService[];
   cityName: string;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
@@ -624,13 +734,20 @@ function AllGemsFeed({
     }
 
     const isStayFilter = activeFilter === "stay";
-    const isGemFilter = activeFilter === "photo-spots";
+    const isPhotoFilter = activeFilter === "photo-spots";
 
     const flatGems = gems.filter(g => matchesFilter(g, activeFilter));
     const flatHotels = isStayFilter ? hotels : [];
-    const flatActivities = !isStayFilter && !isGemFilter ? activities.filter(a => matchesFilter(a, activeFilter)) : [];
+    const flatActivities = !isStayFilter && !isPhotoFilter ? activities.filter(a => matchesFilter(a, activeFilter)) : [];
+    const flatServices = activeFilter !== "events" && activeFilter !== "experts"
+      ? platformServices.filter(s => matchesServiceFilter(s, activeFilter))
+      : [];
 
-    const hasAny = flatGems.length > 0 || flatHotels.length > 0 || flatActivities.length > 0;
+    // Photo-spot gems go into image card bento; all others become ActivityRows
+    const photoFlatGems = flatGems.filter(g => isPhotoSpotGem(g.placeType));
+    const rowFlatGems = flatGems.filter(g => !isPhotoSpotGem(g.placeType));
+
+    const hasAny = flatGems.length > 0 || flatHotels.length > 0 || flatActivities.length > 0 || flatServices.length > 0;
     if (!hasAny) {
       return (
         <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
@@ -640,11 +757,38 @@ function AllGemsFeed({
     }
 
     return (
-      <div data-testid="feed-flat" className="space-y-6">
-        {flatGems.length > 0 && (
+      <div data-testid="feed-flat" className="space-y-4">
+        {photoFlatGems.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
-            {flatGems.map((item, idx) => (
-              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
+            {photoFlatGems.map((item, idx) => (
+              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-photo`} />
+            ))}
+          </div>
+        )}
+        {(rowFlatGems.length > 0 || flatActivities.length > 0 || flatServices.length > 0) && (
+          <div className="rounded-xl border bg-card px-4 py-2">
+            {rowFlatGems.map((item, idx) => (
+              <ActivityRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
+            ))}
+            {flatActivities.map((item, idx) => (
+              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
+            ))}
+            {flatServices.map((svc, idx) => (
+              <ActivityRow
+                key={svc.id ?? idx}
+                item={{
+                  placeName: svc.serviceName,
+                  placeType: svc.serviceType ?? "service",
+                  price: svc.price ?? null,
+                  description: svc.shortDescription ?? svc.description,
+                  imageUrl: svc.serviceImage,
+                  bookingUrl: `/services/${svc.id}`,
+                }}
+                idx={idx}
+                onAdd={onAdd}
+                testPrefix={`flat-${activeFilter}-svc`}
+                forceTraveloure
+              />
             ))}
           </div>
         )}
@@ -655,13 +799,6 @@ function AllGemsFeed({
             ))}
           </div>
         )}
-        {flatActivities.length > 0 && (
-          <div className="rounded-xl border bg-card px-4 py-2">
-            {flatActivities.map((item, idx) => (
-              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
-            ))}
-          </div>
-        )}
       </div>
     );
   }
@@ -669,6 +806,7 @@ function AllGemsFeed({
   // ── Grouped mode — neighborhood containers ────────────────────────────────
   const neighborhoodSlugs = new Set(neighborhoods.map(n => n.slug));
 
+  // Gems → group by neighborhood slug
   const gemsBySlug = new Map<string, HiddenGem[]>();
   const elsewhereGems: HiddenGem[] = [];
   for (const gem of gems) {
@@ -678,6 +816,19 @@ function AllGemsFeed({
       gemsBySlug.get(slug)!.push(gem);
     } else {
       elsewhereGems.push(gem);
+    }
+  }
+
+  // Platform services → group by neighborhood slug
+  const servicesBySlug = new Map<string, PlatformService[]>();
+  const elsewhereServices: PlatformService[] = [];
+  for (const svc of platformServices) {
+    const slug = svc.neighborhood;
+    if (slug && neighborhoodSlugs.has(slug)) {
+      if (!servicesBySlug.has(slug)) servicesBySlug.set(slug, []);
+      servicesBySlug.get(slug)!.push(svc);
+    } else {
+      elsewhereServices.push(svc);
     }
   }
 
@@ -694,7 +845,7 @@ function AllGemsFeed({
   }
   const elsewhereActivities = activities.slice(activityOffset);
 
-  // Hotels → split first half into first neighborhood, rest into "elsewhere"
+  // Hotels → round-robin across neighborhoods; remainder → elsewhere
   const hotelsPerNeighborhood = neighborhoods.length > 0 ? Math.ceil(hotels.length / neighborhoods.length) : 0;
   const hotelsBySlug = new Map<string, any[]>();
   let hotelOffset = 0;
@@ -713,9 +864,11 @@ function AllGemsFeed({
   const hasNeighborhoodContent = ordered.some(n =>
     (gemsBySlug.get(n.slug)?.length ?? 0) > 0 ||
     (activitiesBySlug.get(n.slug)?.length ?? 0) > 0 ||
-    (hotelsBySlug.get(n.slug)?.length ?? 0) > 0
+    (hotelsBySlug.get(n.slug)?.length ?? 0) > 0 ||
+    (servicesBySlug.get(n.slug)?.length ?? 0) > 0
   );
-  const hasElsewhere = elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereActivities.length > 0;
+  const hasElsewhere = elsewhereGems.length > 0 || elsewhereHotels.length > 0 ||
+    elsewhereActivities.length > 0 || elsewhereServices.length > 0;
 
   if (!hasNeighborhoodContent && !hasElsewhere) {
     return (
@@ -734,10 +887,11 @@ function AllGemsFeed({
           gems={gemsBySlug.get(n.slug) ?? []}
           hotels={hotelsBySlug.get(n.slug) ?? []}
           activities={activitiesBySlug.get(n.slug) ?? []}
+          services={servicesBySlug.get(n.slug) ?? []}
           cityName={cityName}
           onAdd={onAdd}
           showExpertCard={nIdx === 1 || nIdx === 3}
-          expert={experts[nIdx % experts.length]}
+          expert={experts[nIdx % Math.max(experts.length, 1)]}
         />
       ))}
 
@@ -750,24 +904,56 @@ function AllGemsFeed({
             </div>
           </div>
           <div className="px-4 pb-4">
-            {elsewhereGems.length > 0 && (
+            {/* Photo-spot elsewhere gems get image cards; others get rows */}
+            {elsewhereGems.filter(g => isPhotoSpotGem(g.placeType)).length > 0 && (
               <div className="grid grid-cols-2 gap-3 mb-3">
-                {elsewhereGems.map((gem, idx) => (
-                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
+                {elsewhereGems.filter(g => isPhotoSpotGem(g.placeType)).map((gem, idx) => (
+                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-photo-gem" />
+                ))}
+              </div>
+            )}
+            {elsewhereGems.filter(g => !isPhotoSpotGem(g.placeType)).length > 0 && (
+              <div className={elsewhereGems.some(g => isPhotoSpotGem(g.placeType)) ? "border-t pt-2" : ""}>
+                {elsewhereGems.filter(g => !isPhotoSpotGem(g.placeType)).map((gem, idx) => (
+                  <ActivityRow key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
                 ))}
               </div>
             )}
             {elsewhereHotels.length > 0 && (
-              <div className="border-t pt-2">
+              <div className={elsewhereGems.length > 0 ? "border-t pt-2 mt-1" : ""}>
                 {elsewhereHotels.map((hotel, idx) => (
                   <HotelRow key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
                 ))}
               </div>
             )}
             {elsewhereActivities.length > 0 && (
-              <div className={elsewhereHotels.length > 0 ? "mt-1" : "border-t pt-2"}>
+              <div className={(elsewhereGems.length > 0 || elsewhereHotels.length > 0) ? "border-t pt-2 mt-1" : ""}>
                 {elsewhereActivities.map((act, idx) => (
                   <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
+                ))}
+              </div>
+            )}
+            {elsewhereServices.length > 0 && (
+              <div className={(elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereActivities.length > 0) ? "border-t pt-2 mt-1" : ""}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                  BOOK ON TRAVELOURE
+                </p>
+                {elsewhereServices.map((svc, idx) => (
+                  <ActivityRow
+                    key={svc.id ?? idx}
+                    item={{
+                      placeName: svc.serviceName,
+                      placeType: svc.serviceType ?? "service",
+                      price: svc.price ?? null,
+                      description: svc.shortDescription ?? svc.description,
+                      imageUrl: svc.serviceImage,
+                      bookingUrl: `/services/${svc.id}`,
+                    }}
+                    idx={idx}
+                    onAdd={onAdd}
+                    testPrefix="elsewhere-svc"
+                    forceTraveloure
+                  />
                 ))}
               </div>
             )}
@@ -1436,71 +1622,16 @@ export default function DiscoverLocationPage() {
   const hero = data?.hero?.data;
   const cityData = hero?.city;
   const happeningNow: any[] = hero?.happeningNow ?? [];
-  const hiddenGems: HiddenGem[] = hero?.hiddenGems ?? [];
+  // Prefer DB-sourced gems (all categories, all neighborhoods); fall back to hero gems
+  const hiddenGems: HiddenGem[] = data?.gems?.data?.length
+    ? data.gems.data
+    : (hero?.hiddenGems ?? []);
+  const platformServices: PlatformService[] = data?.services?.data ?? [];
   const neighborhoods: Neighborhood[] = data?.neighborhoods?.data ?? [];
   const hotels: any[] = data?.recommendations?.data?.hotels ?? [];
   const activities: any[] = data?.recommendations?.data?.activities ?? [];
   const experts: any[] = data?.recommendations?.data?.experts ?? [];
   const events: any[] = data?.events?.data?.events ?? [];
-
-  const feedItems: FeedItem[] = [
-    ...hiddenGems.map((g, idx) => ({
-      id: g.id,
-      name: g.placeName,
-      type: "hidden-gem",
-      placeType: g.placeType,
-      neighborhood: g.neighborhood,
-      imageUrl: g.imageUrl,
-      description: g.whyHidden,
-      rating: g.localRating,
-      bookingUrl: null,
-      source: "gem" as const,
-      sourceIdx: idx,
-    })),
-    ...hotels.map((h: any, idx: number) => ({
-      id: h.id || `hotel-${idx}`,
-      name: h.name,
-      type: "hotel",
-      placeType: "hotel",
-      neighborhood: h.neighborhood || null,
-      imageUrl: h.media?.[0]?.url || null,
-      description: h.address,
-      rating: h.starRating,
-      starRating: h.starRating,
-      bookingUrl: h.bookingUrl || null,
-      price: h.price,
-      source: "hotel" as const,
-      sourceIdx: idx,
-    })),
-    ...activities.map((a: any, idx: number) => ({
-      id: a.id || `activity-${idx}`,
-      name: a.title,
-      type: "activity",
-      placeType: a.type || "activity",
-      neighborhood: a.neighborhood || null,
-      imageUrl: a.media?.[0]?.url || null,
-      description: a.description,
-      rating: a.rating,
-      bookingUrl: a.bookingUrl || null,
-      price: a.price,
-      source: "activity" as const,
-      sourceIdx: idx,
-    })),
-    ...events.map((e: any, idx: number) => ({
-      id: e.id || `event-${idx}`,
-      name: e.title || e.name,
-      type: "event",
-      placeType: "event",
-      neighborhood: e.neighborhood || null,
-      imageUrl: e.imageUrl || e.media?.[0]?.url || null,
-      description: e.description,
-      rating: null,
-      bookingUrl: e.bookingUrl || e.ticketUrl || null,
-      price: e.price,
-      source: "event" as const,
-      sourceIdx: idx,
-    })),
-  ];
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
 
@@ -1642,6 +1773,7 @@ export default function DiscoverLocationPage() {
                 gems={hiddenGems}
                 hotels={hotels}
                 activities={activities}
+                platformServices={platformServices}
                 cityName={city}
                 activeFilter={activeFilter}
                 experts={experts}
