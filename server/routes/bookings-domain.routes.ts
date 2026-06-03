@@ -345,10 +345,19 @@ router.post("/api/cart/items", async (req, res) => {
         return res.status(400).json({ message: "Authentication or guest session required" });
       }
 
-      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
-      if (!serviceId && !customVenueId) {
-        return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
+      const { serviceId, customVenueId, contentType, contentId, contentMeta, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
+
+      if (!serviceId && !customVenueId && !contentId) {
+        return res.status(400).json({ message: "One of serviceId, customVenueId, or contentId is required" });
       }
+
+      if (contentId) {
+        const validTypes = ["gem", "hotel", "activity", "service"];
+        if (contentType && !validTypes.includes(contentType)) {
+          return res.status(400).json({ message: "Invalid contentType. Must be gem, hotel, activity, or service" });
+        }
+      }
+
       if (serviceId) {
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
@@ -372,6 +381,9 @@ router.post("/api/cart/items", async (req, res) => {
       const item = await storage.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
+        contentType: contentType || undefined,
+        contentId: contentId || undefined,
+        contentMeta: contentMeta || undefined,
         quantity: quantity || 1,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
