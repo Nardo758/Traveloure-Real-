@@ -4205,7 +4205,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
 
 // ─── Optimization Fee Tier Admin ─────────────────────────────────────────────
 
-router.get("/api/admin/optimization-fees", isAuthenticated, async (req, res) => {
+router.get("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
     const result = await db.execute(sql`
       SELECT id, complexity_tier, price_cents, currency, is_active, updated_by, updated_at
@@ -4224,7 +4224,7 @@ router.get("/api/admin/optimization-fees", isAuthenticated, async (req, res) => 
   }
 });
 
-router.post("/api/admin/optimization-fees", isAuthenticated, async (req, res) => {
+router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { complexityTier, priceCents, currency = "USD", isActive = true } = req.body;

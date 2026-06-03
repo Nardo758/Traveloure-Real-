@@ -203,6 +203,9 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
       return res.status(400).json({ error: "Payment not yet confirmed" });
     }
 
+    // Amount always comes from Stripe (never from client)
+    const confirmedAmount = pi.amount / 100;
+
     // Store payment ID on comparison if provided
     if (comparisonId) {
       await db
@@ -211,20 +214,19 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
         .where(eq(itineraryComparisons.id, comparisonId));
     }
 
-    // Record platform revenue
-    const amount = (feeCents ?? pi.amount) / 100;
+    // Record platform revenue — use only Stripe-confirmed values
     try {
       await revenueTrackingService.recordRevenueEvent({
         sourceType: "other",
         sourceId: paymentIntentId,
-        grossAmount: amount,
+        grossAmount: confirmedAmount,
         description: `AI Optimization fee (${pi.metadata?.complexityTier ?? "standard"})`,
         metadata: {
           type: "optimization_fee",
           complexityTier: pi.metadata?.complexityTier,
           userId,
           comparisonId,
-          currency,
+          currency: pi.currency?.toUpperCase() ?? "USD",
         },
       });
     } catch (revErr) {

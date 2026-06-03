@@ -45,6 +45,11 @@ import {
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
+import Stripe from "stripe";
+
+const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2024-12-18.acacia" as any,
+});
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
@@ -465,7 +470,51 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
+
+      // ── Server-side payment gate ────────────────────────────────────────────
+      // Check free 24h rerun eligibility first (no Stripe call needed)
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [recentRun] = await db
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(
+          and(
+            eq(itineraryComparisons.userId, userId),
+            sql`${itineraryComparisons.optimizedAt} >= ${cutoff.toISOString()}`
+          )
+        )
+        .limit(1);
+
+      if (!recentRun) {
+        // Not a free rerun — require a verified payment
+        if (!optimizationPaymentId) {
+          return res.status(402).json({
+            error: "payment_required",
+            message: "An optimization payment is required. Please complete payment before generating a comparison.",
+          });
+        }
+        // Verify with Stripe
+        try {
+          const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
+          if (pi.status !== "succeeded") {
+            return res.status(402).json({
+              error: "payment_not_confirmed",
+              message: "Optimization payment has not been confirmed.",
+            });
+          }
+          if (pi.metadata?.userId && pi.metadata.userId !== userId) {
+            return res.status(403).json({ error: "payment_belongs_to_another_user" });
+          }
+          if (pi.metadata?.type !== "optimization_fee") {
+            return res.status(402).json({ error: "invalid_payment_type" });
+          }
+        } catch (stripeErr: any) {
+          console.error("[itinerary-comparisons] Stripe verification error:", stripeErr.message);
+          return res.status(402).json({ error: "payment_verification_failed", message: stripeErr.message });
+        }
+      }
+      // ── End payment gate ────────────────────────────────────────────────────
 
       const [comparison] = await db
         .insert(itineraryComparisons)

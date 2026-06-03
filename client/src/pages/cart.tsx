@@ -478,13 +478,13 @@ export default function CartPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ paymentIntentId, feeCents: optimizationPayment?.feeCents }),
+        body: JSON.stringify({ paymentIntentId }),
       });
     } catch { /* non-critical */ }
-    await createComparison();
+    await createComparison(paymentIntentId);
   };
 
-  const createComparison = async () => {
+  const createComparison = async (optimizationPaymentId?: string) => {
     // Prevent double-clicks
     if (creatingComparison) return;
     
@@ -574,7 +574,8 @@ export default function CartPage() {
         endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: String(combinedTotal),
         travelers: experienceContext?.travelers || 2,
-        baselineItems
+        baselineItems,
+        ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
       });
       
       const comparison = await response.json();
@@ -1181,7 +1182,7 @@ export default function CartPage() {
                           paymentIntent={{
                             clientSecret: optimizationPayment.clientSecret,
                             paymentIntentId: optimizationPayment.paymentIntentId,
-                            amount: optimizationPayment.feeCents / 100,
+                            amount: optimizationPayment.feeCents,
                           }}
                           bookingIds={[]}
                           onSuccess={handleOptimizationPaymentSuccess}
