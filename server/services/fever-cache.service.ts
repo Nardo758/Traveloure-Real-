@@ -1,136 +1,88 @@
 import { db } from "../db";
-import { feverEventCache, destinationEvents } from "@shared/schema";
-import { eq, and, gte, lte, ilike, or, sql, desc } from "drizzle-orm";
+import { travelpayoutsCache, destinationEvents } from "@shared/schema";
+import { eq, and, gt } from "drizzle-orm";
 import { feverService, FeverEvent } from "./fever.service";
 import { sharedCache } from "./shared-cache.service";
 
 const CACHE_DURATION_HOURS = 24;
+const CACHE_TTL_MS = CACHE_DURATION_HOURS * 60 * 60 * 1000;
+const STALE_THRESHOLD_HOURS = 20;
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 2000;
+const NAMESPACE = "fever";
+
+interface FeverCachePayload {
+  events: FeverEvent[];
+  refreshedAt: string;
+}
 
 class FeverCacheService {
-  private getExpiryDate(): Date {
-    const expiry = new Date();
-    expiry.setHours(expiry.getHours() + CACHE_DURATION_HOURS);
-    return expiry;
-  }
-
   async getCachedEvents(cityCode: string): Promise<FeverEvent[]> {
-    const now = new Date();
-    const cached = await db.select()
-      .from(feverEventCache)
-      .where(and(
-        eq(feverEventCache.cityCode, cityCode.toUpperCase()),
-        gte(feverEventCache.expiresAt, now)
-      ))
-      .orderBy(desc(feverEventCache.startDate));
-
-    return cached.map(this.cacheToEvent);
+    const payload = await sharedCache.get<FeverCachePayload>(NAMESPACE, cityCode.toUpperCase());
+    return payload?.events ?? [];
   }
 
   async getCachedEventsByCity(cityName: string): Promise<FeverEvent[]> {
-    const now = new Date();
-    const cached = await db.select()
-      .from(feverEventCache)
-      .where(and(
-        ilike(feverEventCache.city, `%${cityName}%`),
-        gte(feverEventCache.expiresAt, now)
-      ))
-      .orderBy(desc(feverEventCache.startDate));
+    const allCities = feverService.getSupportedCities();
+    const matchingCodes = allCities
+      .filter(c => c.name.toLowerCase().includes(cityName.toLowerCase()))
+      .map(c => c.code.toUpperCase());
 
-    return cached.map(this.cacheToEvent);
+    const results: FeverEvent[] = [];
+    for (const code of matchingCodes) {
+      const payload = await sharedCache.get<FeverCachePayload>(NAMESPACE, code);
+      if (payload?.events) results.push(...payload.events);
+    }
+    return results;
   }
 
   async getCachedEventById(eventId: string): Promise<FeverEvent | null> {
-    const cached = await db.select()
-      .from(feverEventCache)
-      .where(eq(feverEventCache.eventId, eventId))
-      .limit(1);
-
-    return cached.length > 0 ? this.cacheToEvent(cached[0]) : null;
+    const allCities = feverService.getSupportedCities();
+    for (const city of allCities) {
+      const payload = await sharedCache.get<FeverCachePayload>(NAMESPACE, city.code.toUpperCase());
+      if (payload?.events) {
+        const match = payload.events.find(e => e.id === eventId);
+        if (match) return match;
+      }
+    }
+    return null;
   }
 
   async isCacheStale(cityCode: string): Promise<boolean> {
-    const now = new Date();
+    const payload = await sharedCache.get<FeverCachePayload>(NAMESPACE, cityCode.toUpperCase());
+    if (!payload) return true;
     const staleThreshold = new Date();
-    staleThreshold.setHours(staleThreshold.getHours() - 20);
-
-    const cached = await db.select({ count: sql<number>`count(*)` })
-      .from(feverEventCache)
-      .where(and(
-        eq(feverEventCache.cityCode, cityCode.toUpperCase()),
-        gte(feverEventCache.expiresAt, now),
-        gte(feverEventCache.lastUpdated, staleThreshold)
-      ));
-
-    return !cached[0] || Number(cached[0].count) === 0;
+    staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
+    return new Date(payload.refreshedAt) < staleThreshold;
   }
 
   async refreshCityCache(cityCode: string): Promise<{ refreshed: number; errors: string[] }> {
     const result = { refreshed: 0, errors: [] as string[] };
-    
+
     try {
       console.log(`[FeverCache] Refreshing events for city: ${cityCode}`);
-      
+
       const response = await feverService.searchEvents({ city: cityCode, limit: 100 });
-      
+
       if (!response || !response.events || response.events.length === 0) {
         console.log(`[FeverCache] No events found for ${cityCode}`);
         return result;
       }
 
       const normalizedCityCode = cityCode.toUpperCase();
-      
-      await db.delete(feverEventCache)
-        .where(eq(feverEventCache.cityCode, normalizedCityCode));
+      const payload: FeverCachePayload = {
+        events: response.events,
+        refreshedAt: new Date().toISOString(),
+      };
+      await sharedCache.set<FeverCachePayload>(NAMESPACE, normalizedCityCode, payload, CACHE_TTL_MS);
+      result.refreshed = response.events.length;
 
-      const expiresAt = this.getExpiryDate();
-      const events = response.events;
-
-      for (const event of events) {
+      // Also write each event into the canonical destination_events table
+      for (const event of response.events) {
         try {
-          await db.insert(feverEventCache).values({
-            eventId: event.id,
-            title: event.title,
-            slug: event.slug,
-            description: event.description || null,
-            shortDescription: event.shortDescription || null,
-            imageUrl: event.imageUrl || null,
-            thumbnailUrl: event.thumbnailUrl || null,
-            category: event.category,
-            subcategory: event.subcategory || null,
-            city: event.city,
-            cityCode: normalizedCityCode,
-            country: event.country,
-            countryCode: null,
-            venueName: event.venue?.name || null,
-            venueAddress: event.venue?.address || null,
-            latitude: event.venue?.coordinates?.lat?.toString() || null,
-            longitude: event.venue?.coordinates?.lng?.toString() || null,
-            startDate: event.dates.startDate ? new Date(event.dates.startDate) : null,
-            endDate: event.dates.endDate ? new Date(event.dates.endDate) : null,
-            sessions: event.dates.sessions || [],
-            currency: event.pricing.currency || "USD",
-            minPrice: event.pricing.minPrice?.toString() || null,
-            maxPrice: event.pricing.maxPrice?.toString() || null,
-            priceRange: event.pricing.priceRange || null,
-            isFree: event.isFree,
-            isSoldOut: event.isSoldOut,
-            rating: event.rating?.toString() || null,
-            reviewCount: event.reviewCount || 0,
-            bookingUrl: event.bookingUrl,
-            affiliateUrl: event.affiliateUrl || null,
-            tags: event.tags || [],
-            highlights: event.highlights || [],
-            provider: "fever",
-            rawData: event,
-            expiresAt,
-          });
-          result.refreshed++;
-          // Also write into the canonical destination_events table
           await this.upsertFeverEventToCanonical(event);
         } catch (err: any) {
-          result.errors.push(`Failed to cache event ${event.id}: ${err.message}`);
+          result.errors.push(`Failed canonical upsert for event ${event.id}: ${err.message}`);
         }
       }
 
@@ -149,7 +101,7 @@ class FeverCacheService {
 
     for (let i = 0; i < cities.length; i += BATCH_SIZE) {
       const batch = cities.slice(i, i + BATCH_SIZE);
-      
+
       for (const city of batch) {
         const isStale = await this.isCacheStale(city.code);
         if (isStale) {
@@ -169,11 +121,9 @@ class FeverCacheService {
 
   async getEventsOrRefresh(cityCode: string): Promise<FeverEvent[]> {
     const isStale = await this.isCacheStale(cityCode);
-    
     if (isStale) {
       await this.refreshCityCache(cityCode);
     }
-
     return this.getCachedEvents(cityCode);
   }
 
@@ -184,40 +134,46 @@ class FeverCacheService {
     newestCache: Date | null;
   }> {
     const now = new Date();
+    const prefix = `${NAMESPACE}::`;
+    const rows = await db
+      .select()
+      .from(travelpayoutsCache)
+      .where(
+        and(
+          eq(travelpayoutsCache.brand, NAMESPACE),
+          gt(travelpayoutsCache.expiresAt, now)
+        )
+      );
 
-    const [count, cities, oldest, newest] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` })
-        .from(feverEventCache)
-        .where(gte(feverEventCache.expiresAt, now)),
-      db.selectDistinct({ cityCode: feverEventCache.cityCode })
-        .from(feverEventCache)
-        .where(gte(feverEventCache.expiresAt, now)),
-      db.select({ lastUpdated: feverEventCache.lastUpdated })
-        .from(feverEventCache)
-        .orderBy(feverEventCache.lastUpdated)
-        .limit(1),
-      db.select({ lastUpdated: feverEventCache.lastUpdated })
-        .from(feverEventCache)
-        .orderBy(desc(feverEventCache.lastUpdated))
-        .limit(1),
-    ]);
+    let totalCachedEvents = 0;
+    const citiesWithCache: string[] = [];
+    let oldestCache: Date | null = null;
+    let newestCache: Date | null = null;
 
-    return {
-      totalCachedEvents: Number(count[0]?.count || 0),
-      citiesWithCache: cities.map(c => c.cityCode),
-      oldestCache: oldest[0]?.lastUpdated || null,
-      newestCache: newest[0]?.lastUpdated || null,
-    };
+    for (const row of rows) {
+      const payload = row.data as FeverCachePayload | null;
+      const events = payload?.events ?? [];
+      totalCachedEvents += events.length;
+
+      const cityCode = row.cacheKey.startsWith(prefix)
+        ? row.cacheKey.slice(prefix.length)
+        : row.cacheKey;
+      citiesWithCache.push(cityCode);
+
+      const refreshedAt = payload?.refreshedAt ? new Date(payload.refreshedAt) : null;
+      if (refreshedAt) {
+        if (!oldestCache || refreshedAt < oldestCache) oldestCache = refreshedAt;
+        if (!newestCache || refreshedAt > newestCache) newestCache = refreshedAt;
+      }
+    }
+
+    return { totalCachedEvents, citiesWithCache, oldestCache, newestCache };
   }
 
   async cleanupExpiredCache(): Promise<number> {
-    return sharedCache.cleanupDomainTable(feverEventCache, feverEventCache.expiresAt);
+    return sharedCache.flushExpired(NAMESPACE);
   }
 
-  /**
-   * Maps a Fever category string to a destination_events eventType.
-   * destination_events.eventType is a free-form varchar(30) so any value ≤ 30 chars is fine.
-   */
   private mapFeverCategoryToEventType(category: string): string {
     const map: Record<string, string> = {
       concerts: "concert",
@@ -241,11 +197,6 @@ class FeverCacheService {
     return map[category?.toLowerCase()] || "other";
   }
 
-  /**
-   * Upserts a Fever event into destination_events (canonical table).
-   * Uses sourceType='fever' + sourceId=feverEventId as the deduplication key.
-   * Extended Fever metadata is stored in the metadata jsonb column.
-   */
   private async upsertFeverEventToCanonical(event: FeverEvent): Promise<void> {
     if (!event.dates?.startDate) return;
 
@@ -294,50 +245,6 @@ class FeverCacheService {
     } catch (err: any) {
       console.warn(`[FeverCache] Skipping canonical upsert for event ${event.id}: ${err.message}`);
     }
-  }
-
-  private cacheToEvent(cached: typeof feverEventCache.$inferSelect): FeverEvent {
-    return {
-      id: cached.eventId,
-      title: cached.title,
-      slug: cached.slug || "",
-      description: cached.description || undefined,
-      shortDescription: cached.shortDescription || undefined,
-      imageUrl: cached.imageUrl || undefined,
-      thumbnailUrl: cached.thumbnailUrl || undefined,
-      category: cached.category,
-      subcategory: cached.subcategory || undefined,
-      city: cached.city,
-      cityCode: cached.cityCode,
-      country: cached.country,
-      venue: cached.venueName ? {
-        name: cached.venueName,
-        address: cached.venueAddress || undefined,
-        coordinates: cached.latitude && cached.longitude ? {
-          lat: parseFloat(cached.latitude),
-          lng: parseFloat(cached.longitude),
-        } : undefined,
-      } : undefined,
-      dates: {
-        startDate: cached.startDate?.toISOString() || "",
-        endDate: cached.endDate?.toISOString() || undefined,
-        sessions: cached.sessions as any[] || undefined,
-      },
-      pricing: {
-        currency: cached.currency || "USD",
-        minPrice: cached.minPrice ? parseFloat(cached.minPrice) : undefined,
-        maxPrice: cached.maxPrice ? parseFloat(cached.maxPrice) : undefined,
-        priceRange: cached.priceRange || undefined,
-      },
-      rating: cached.rating ? parseFloat(cached.rating) : undefined,
-      reviewCount: cached.reviewCount || undefined,
-      isFree: cached.isFree || false,
-      isSoldOut: cached.isSoldOut || false,
-      bookingUrl: cached.bookingUrl,
-      affiliateUrl: cached.affiliateUrl || undefined,
-      tags: cached.tags as string[] || undefined,
-      highlights: cached.highlights as string[] || undefined,
-    };
   }
 
   private delay(ms: number): Promise<void> {

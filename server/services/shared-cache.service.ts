@@ -5,10 +5,6 @@ import type { PgTable, PgColumn } from "drizzle-orm/pg-core";
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function buildCacheKey(namespace: string, key: string): string {
-  return `${namespace}:${key}`;
-}
-
 function log(hit: boolean, namespace: string, key: string): void {
   const status = hit ? "HIT" : "MISS";
   console.log(`[Cache] ${status} ${namespace}:${key}`);
@@ -17,9 +13,9 @@ function log(hit: boolean, namespace: string, key: string): void {
 export class SharedCachePrimitive {
   /**
    * Retrieve a cached value. Returns null on miss or expiry.
+   * `namespace` maps to the `brand` column; `key` maps to `cacheKey` as-is.
    */
   async get<T>(namespace: string, key: string): Promise<T | null> {
-    const cacheKey = buildCacheKey(namespace, key);
     try {
       const now = new Date();
       const rows = await db
@@ -27,7 +23,8 @@ export class SharedCachePrimitive {
         .from(travelpayoutsCache)
         .where(
           and(
-            eq(travelpayoutsCache.cacheKey, cacheKey),
+            eq(travelpayoutsCache.brand, namespace),
+            eq(travelpayoutsCache.cacheKey, key),
             gt(travelpayoutsCache.expiresAt, now)
           )
         )
@@ -35,8 +32,7 @@ export class SharedCachePrimitive {
 
       if (rows.length > 0) {
         log(true, namespace, key);
-        const data = rows[0].data;
-        return data as T;
+        return rows[0].data as T;
       }
 
       log(false, namespace, key);
@@ -49,14 +45,14 @@ export class SharedCachePrimitive {
 
   /**
    * Store a value under namespace/key with optional TTL (defaults to 24 h).
+   * `namespace` is stored in `brand`; `key` is stored in `cacheKey` unchanged.
    */
   async set<T>(namespace: string, key: string, data: T, ttlMs: number = DEFAULT_TTL_MS): Promise<void> {
-    const cacheKey = buildCacheKey(namespace, key);
     const expiresAt = new Date(Date.now() + ttlMs);
     try {
       await db
         .insert(travelpayoutsCache)
-        .values({ brand: namespace, cacheKey, data: data as any, expiresAt })
+        .values({ brand: namespace, cacheKey: key, data: data as any, expiresAt })
         .onConflictDoUpdate({
           target: travelpayoutsCache.cacheKey,
           set: { data: data as any, expiresAt, brand: namespace },
@@ -67,14 +63,18 @@ export class SharedCachePrimitive {
   }
 
   /**
-   * Delete a single entry.
+   * Delete a single entry by namespace and key.
    */
   async del(namespace: string, key: string): Promise<void> {
-    const cacheKey = buildCacheKey(namespace, key);
     try {
       await db
         .delete(travelpayoutsCache)
-        .where(eq(travelpayoutsCache.cacheKey, cacheKey));
+        .where(
+          and(
+            eq(travelpayoutsCache.brand, namespace),
+            eq(travelpayoutsCache.cacheKey, key)
+          )
+        );
     } catch (err) {
       console.warn(`[Cache] Delete error ${namespace}:${key}:`, err instanceof Error ? err.message : err);
     }
@@ -143,8 +143,8 @@ export class SharedCachePrimitive {
 
   /**
    * Generic helper for deleting expired rows from any domain-specific table that
-   * has an `expiresAt` column. Used by fever-cache and amadeus cache to route
-   * their cleanup through a shared surface without changing their DB tables.
+   * has an `expiresAt` column. Allows domain caches (e.g. hotel, flight) to route
+   * their cleanup through a single shared surface without changing their DB tables.
    */
   async cleanupDomainTable(
     table: PgTable,
@@ -160,6 +160,29 @@ export class SharedCachePrimitive {
     } catch (err) {
       console.warn(`[Cache] Domain table cleanup error:`, err instanceof Error ? err.message : err);
       return 0;
+    }
+  }
+
+  /**
+   * List all non-expired entries for a namespace.
+   * Returns an array of { key, data, expiresAt } objects.
+   */
+  async listNamespace<T>(namespace: string): Promise<Array<{ key: string; data: T; expiresAt: Date }>> {
+    const now = new Date();
+    try {
+      const rows = await db
+        .select()
+        .from(travelpayoutsCache)
+        .where(
+          and(
+            eq(travelpayoutsCache.brand, namespace),
+            gt(travelpayoutsCache.expiresAt, now)
+          )
+        );
+      return rows.map(r => ({ key: r.cacheKey, data: r.data as T, expiresAt: r.expiresAt }));
+    } catch (err) {
+      console.warn(`[Cache] ListNamespace error for "${namespace}":`, err instanceof Error ? err.message : err);
+      return [];
     }
   }
 }
