@@ -233,6 +233,7 @@ export interface IStorage {
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
   getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
+  getCartItemById(id: string): Promise<any | undefined>;
   addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
   updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
@@ -1340,6 +1341,11 @@ export class DatabaseStorage implements IStorage {
       whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug));
     }
     return this._enrichCartItems(whereCondition);
+  }
+
+  async getCartItemById(id: string): Promise<any | undefined> {
+    const [item] = await db.select().from(cartItems).where(eq(cartItems.id, id));
+    return item;
   }
 
   private async _enrichCartItems(whereCondition: any): Promise<any[]> {

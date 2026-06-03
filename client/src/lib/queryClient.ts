@@ -9,10 +9,12 @@ async function throwIfResNotOk(res: Response) {
 
 function buildHeaders(base: Record<string, string> = {}): Record<string, string> {
   try {
-    const guestId = localStorage.getItem("traveloure_guest_session");
-    if (guestId) {
-      return { ...base, "X-Guest-Session": guestId };
+    let guestId = localStorage.getItem("traveloure_guest_session");
+    if (!guestId) {
+      guestId = crypto.randomUUID();
+      localStorage.setItem("traveloure_guest_session", guestId);
     }
+    return { ...base, "X-Guest-Session": guestId };
   } catch {
   }
   return base;

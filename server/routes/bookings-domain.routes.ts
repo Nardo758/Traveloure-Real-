@@ -698,16 +698,23 @@ router.post("/api/cart/migrate", isAuthenticated, async (req, res) => {
 
 router.patch("/api/cart/:id", async (req, res) => {
     try {
+      const existing = await storage.getCartItemById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Cart item not found" });
+
+      // Ownership check: must be authenticated owner OR matching guest session
+      const userId = req.user ? (req.user as any).claims.sub : null;
+      const guestSessionId = req.headers["x-guest-session"] as string | undefined;
+      const isOwner =
+        (userId && existing.userId === userId) ||
+        (guestSessionId && existing.guestSessionId === guestSessionId);
+      if (!isOwner) return res.status(403).json({ message: "Forbidden" });
+
       const { quantity, scheduledDate, notes } = req.body;
       const updated = await storage.updateCartItem(req.params.id, {
         quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
       });
-      
-      if (!updated) {
-        return res.status(404).json({ message: "Cart item not found" });
-      }
       
       res.json(updated);
     } catch (err) {
@@ -719,6 +726,17 @@ router.patch("/api/cart/:id", async (req, res) => {
 
 router.delete("/api/cart/:id", async (req, res) => {
     try {
+      const existing = await storage.getCartItemById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Cart item not found" });
+
+      // Ownership check: must be authenticated owner OR matching guest session
+      const userId = req.user ? (req.user as any).claims.sub : null;
+      const guestSessionId = req.headers["x-guest-session"] as string | undefined;
+      const isOwner =
+        (userId && existing.userId === userId) ||
+        (guestSessionId && existing.guestSessionId === guestSessionId);
+      if (!isOwner) return res.status(403).json({ message: "Forbidden" });
+
       await storage.removeFromCart(req.params.id);
       res.status(204).send();
     } catch (err) {

@@ -46,14 +46,19 @@ export function SignInModal({
     try {
       const guestSessionId = localStorage.getItem("traveloure_guest_session");
       if (!guestSessionId) return;
-      await fetch("/api/cart/migrate", {
+      const res = await fetch("/api/cart/migrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guestSessionId }),
         credentials: "include",
       });
+      if (!res.ok) {
+        console.warn("[cart] Guest cart migration returned", res.status);
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-    } catch {
+    } catch (err) {
+      console.warn("[cart] Guest cart migration failed", err);
     }
   };
 

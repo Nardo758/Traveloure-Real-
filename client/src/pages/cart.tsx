@@ -244,7 +244,7 @@ export default function CartPage() {
       if (!res.ok) throw new Error("Failed to fetch cart");
       return res.json();
     },
-    enabled: !!experienceSlug,
+    enabled: !authLoading,
   });
 
   // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
