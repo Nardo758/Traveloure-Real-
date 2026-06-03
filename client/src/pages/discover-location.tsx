@@ -189,6 +189,7 @@ function GemCard({
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const description = item.whyHidden ?? item.description ?? null;
@@ -293,9 +294,10 @@ function GemCard({
             data-testid={`${testPrefix}-add-${idx}`}>
             + Add
           </Button>
-          <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2"
+          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
+            onClick={() => navigate(`/chat?about=${encodeURIComponent(displayName)}`)}
             data-testid={`${testPrefix}-ask-${idx}`}>
-            💬 Ask
+            💬 Ask expert
           </Button>
         </div>
       </div>
@@ -586,12 +588,12 @@ function ActivityRow({
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
             className="text-xs h-7 px-2"
-            onClick={stopNav}
+            onClick={(e) => { e.stopPropagation(); navigate(`/chat?about=${encodeURIComponent(displayName)}`); }}
             data-testid={`${testPrefix}-ask-${idx}`}
           >
-            <UserCheck className="h-3 w-3 mr-1" />Ask an expert
+            <UserCheck className="h-3 w-3 mr-1" />Ask expert
           </Button>
           {isPhotoSpot && (
             <span className="text-xs text-muted-foreground self-center" onClick={stopNav}>
@@ -705,6 +707,7 @@ function HotelMiniCard({
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const bd = detectBadge(item.bookingUrl);
@@ -764,9 +767,10 @@ function HotelMiniCard({
             data-testid={`${testPrefix}-add-${idx}`}>
             + Add
           </Button>
-          <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2"
+          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
+            onClick={() => navigate(`/chat?about=${encodeURIComponent(displayName)}`)}
             data-testid={`${testPrefix}-ask-${idx}`}>
-            💬 Ask
+            💬 Ask expert
           </Button>
         </div>
       </div>

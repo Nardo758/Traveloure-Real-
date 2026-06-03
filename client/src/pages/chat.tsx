@@ -70,6 +70,8 @@ export default function Chat() {
   // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
   // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
   const clientIdFromUrl = urlParams.get("clientId");
+  // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
+  const aboutFromUrl = urlParams.get("about");
 
   const { data: linkedExpert } = useQuery<any>({
     queryKey: ["/api/experts", expertIdFromUrl],
@@ -114,6 +116,13 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [selectedExpert, setSelectedExpert] = useState<typeof sampleExperts[0] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Pre-fill message when arriving from "Ask expert" on a gem/activity card
+  useEffect(() => {
+    if (aboutFromUrl) {
+      setMessage(`I'm interested in ${aboutFromUrl} — can you share any tips or help me plan this?`);
+    }
+  }, [aboutFromUrl]);
 
   useEffect(() => {
     if (linkedExpert && !selectedExpert) {
