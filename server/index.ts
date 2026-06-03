@@ -110,12 +110,10 @@ async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
   logger.info("Database seeding started");
 
-  // Apply SQL schema migrations first (idempotent, safe to re-run)
-  try {
-    await runMigrations();
-  } catch (err) {
-    logger.error({ err }, "Failed to run schema migrations");
-  }
+  // Apply SQL schema migrations first (idempotent, safe to re-run).
+  // Fail-fast: if migrations fail, ESO columns may be missing and all ESO writes/reads
+  // will produce runtime errors. Throw so the server does not start in a broken state.
+  await runMigrations();
 
   // Run ESO backfill: migrates legacy service_templates + approved expert_custom_services
   // into expert_service_offerings as the canonical service catalog.
