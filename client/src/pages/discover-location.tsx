@@ -918,7 +918,12 @@ function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }
           )}
         </p>
       </div>
-      <Button size="sm" className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap mt-0.5" data-testid="button-plan-with-expert">
+      <Button
+        size="sm"
+        className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap"
+        data-testid={`button-plan-with-expert-${expert?.id ?? "unknown"}`}
+        onClick={() => navigate(expert?.id ? `/chat?expertId=${expert.id}` : "/chat")}
+      >
         Plan with {expert?.name?.split(" ")[0] ?? "expert"}
       </Button>
     </div>
@@ -945,6 +950,7 @@ function NeighborhoodContainer({
   hueIdx: number;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
 
@@ -1006,7 +1012,12 @@ function NeighborhoodContainer({
             )}
             {/* CTA buttons below text block */}
             <div className="flex gap-2 flex-wrap mt-3">
-              <Button size="sm" className="text-xs h-8 px-3" data-testid={`btn-explore-${neighborhood.slug}`}>
+              <Button
+                size="sm"
+                className="text-xs h-8 px-3"
+                data-testid={`btn-explore-${neighborhood.slug}`}
+                onClick={() => navigate(`/discover/location/${encodeURIComponent(cityName)}?neighborhood=${neighborhood.slug}`)}
+              >
                 <Compass className="h-3 w-3 mr-1" />Explore {neighborhood.name}
               </Button>
               <Button
@@ -1165,7 +1176,7 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd, onRequestBooking,
+  neighborhoods, gems, hotels, activities, experts, platformServices, events, cityName, activeFilter, onAdd, onRequestBooking,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
@@ -1173,11 +1184,13 @@ function AllGemsFeed({
   activities: any[];
   experts: any[];
   platformServices: PlatformService[];
+  events: any[];
   cityName: string;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   // ── Flat filter mode ──────────────────────────────────────────────────────
   if (activeFilter !== "all") {
     if (activeFilter === "experts") {
@@ -1193,6 +1206,98 @@ function AllGemsFeed({
           {experts.map((exp, idx) => (
             <ExpertFeedCard key={exp.id ?? idx} expert={exp} cityName={cityName} />
           ))}
+        </div>
+      );
+    }
+
+    if (activeFilter === "events") {
+      if (events.length === 0) {
+        return (
+          <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
+            <p>No upcoming events found in {cityName} right now.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              asChild
+              data-testid="button-browse-events"
+            >
+              <a href={`/discover?tab=events&city=${encodeURIComponent(cityName)}`}>Browse all events</a>
+            </Button>
+          </div>
+        );
+      }
+      return (
+        <div className="rounded-xl border bg-card px-4 py-2" data-testid="feed-events">
+          {events.map((ev: any, idx: number) => {
+            const title = ev.title ?? ev.name ?? "Event";
+            const venue = ev.venue ?? ev.venueName ?? ev.location ?? null;
+            const rawDate = ev.startDate ?? ev.date ?? ev.startTime ?? null;
+            const dateStr = rawDate
+              ? (() => { try { return new Date(rawDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return null; } })()
+              : null;
+            const [day, month] = dateStr ? dateStr.split(" ") : [null, null];
+            const ticketUrl = ev.url ?? ev.ticketUrl ?? ev.bookingUrl ?? null;
+            const badge = detectBadge(ticketUrl);
+            return (
+              <div
+                key={ev.id ?? idx}
+                className="flex items-start gap-3 py-3 border-b last:border-b-0"
+                data-testid={`event-row-${idx}`}
+              >
+                {dateStr ? (
+                  <div className="flex-shrink-0 w-10 text-center rounded-lg bg-primary/10 px-1 py-1.5">
+                    <p className="text-[10px] font-bold uppercase text-primary leading-none">{month}</p>
+                    <p className="text-base font-bold leading-none text-primary mt-0.5">{day}</p>
+                  </div>
+                ) : (
+                  <div className="flex-shrink-0 w-10 h-12 rounded-lg bg-muted flex items-center justify-center">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <p className="text-sm font-semibold leading-snug" data-testid={`event-title-${idx}`}>{title}</p>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
+                      {badge.badgeText}
+                    </span>
+                  </div>
+                  {venue && <p className="text-xs text-muted-foreground">{venue}</p>}
+                </div>
+                {badge.bookLabel && ticketUrl && (
+                  badge.isPartner ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 px-2.5 flex-shrink-0 border-violet-300 text-violet-700 hover:bg-violet-50"
+                      data-testid={`event-ticket-${idx}`}
+                      onClick={() => onRequestBooking?.({
+                        itemName: title,
+                        partnerName: badge.partnerName || "Partner",
+                        affiliateUrl: ticketUrl,
+                        partnerCategory: "event",
+                        itemDescription: venue ?? undefined,
+                      })}
+                    >
+                      {badge.bookLabel}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="text-xs h-7 px-2.5 flex-shrink-0"
+                      asChild
+                      data-testid={`event-ticket-${idx}`}
+                    >
+                      <a href={ticketUrl} target="_blank" rel="noopener noreferrer">
+                        <Ticket className="h-3 w-3 mr-1" />{badge.bookLabel}
+                      </a>
+                    </Button>
+                  )
+                )}
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -2110,7 +2215,9 @@ function AddItemDialog({
 export default function DiscoverLocationPage() {
   const rawParams = useParams<{ city: string }>();
   const searchString = useSearch();
-  const country = new URLSearchParams(searchString).get("country");
+  const urlParams = new URLSearchParams(searchString);
+  const country = urlParams.get("country");
+  const neighborhoodSlug = urlParams.get("neighborhood");
   const city = decodeURIComponent(rawParams?.city ?? "");
 
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
@@ -2162,6 +2269,15 @@ export default function DiscoverLocationPage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Scroll to neighborhood container when ?neighborhood=<slug> is in the URL
+  useEffect(() => {
+    if (!neighborhoodSlug || isLoading) return;
+    const el = document.querySelector(`[data-testid="neighborhood-container-${neighborhoodSlug}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [neighborhoodSlug, isLoading]);
+
   // Unsplash download tracking (API compliance)
   useEffect(() => {
     if (!mediaData) return;
@@ -2208,9 +2324,10 @@ export default function DiscoverLocationPage() {
       const hotelCount = f === "stay" ? hotels.length : 0;
       counts[f] = itemCount + svcCount + hotelCount;
     }
+    counts.events = (counts.events ?? 0) + events.length;
     counts.experts = experts.length;
     return counts;
-  }, [hiddenGems, activities, hotels, experts, platformServices]);
+  }, [hiddenGems, activities, hotels, experts, platformServices, events]);
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
   const openRequestBooking = (target: AffiliateBookingTarget) => setRequestingItem(target);
@@ -2354,6 +2471,7 @@ export default function DiscoverLocationPage() {
                 hotels={hotels}
                 activities={activities}
                 platformServices={platformServices}
+                events={events}
                 cityName={city}
                 activeFilter={activeFilter}
                 experts={experts}
