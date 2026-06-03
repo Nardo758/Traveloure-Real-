@@ -1355,28 +1355,26 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims.sub;
       const experience = await storage.createUserExperience({ ...req.body, userId });
 
-      // Auto-create a linked trip if not already provided
-      if (!experience.tripId) {
-        try {
-          const expType = experience.experienceTypeId
-            ? await db.select().from(experienceTypes).where(eq(experienceTypes.id, experience.experienceTypeId)).then(r => r[0])
-            : null;
-          const today = new Date().toISOString().split("T")[0];
-          const startDate = experience.eventDate || today;
-          const trip = await storage.createTrip({
-            userId,
-            title: experience.title || (expType ? `${expType.name} Trip` : "My Trip"),
-            destination: experience.location || "TBD",
-            startDate,
-            endDate: startDate,
-            eventType: expType?.slug || "vacation",
-            status: "draft",
-          });
-          const updated = await storage.updateUserExperience(experience.id, { tripId: trip.id });
-          return res.status(201).json(updated || { ...experience, tripId: trip.id });
-        } catch (tripErr) {
-          console.error("Failed to auto-create trip for experience:", tripErr);
-        }
+      // Auto-create a linked trip
+      let tripId: string | null = experience.tripId ?? null;
+      if (!tripId) {
+        const expType = experience.experienceTypeId
+          ? await db.select().from(experienceTypes).where(eq(experienceTypes.id, experience.experienceTypeId)).then(r => r[0])
+          : null;
+        const today = new Date().toISOString().split("T")[0];
+        const startDate = experience.eventDate || today;
+        const trip = await storage.createTrip({
+          userId,
+          title: experience.title || (expType ? `${expType.name} Trip` : "My Trip"),
+          destination: experience.location || "TBD",
+          startDate,
+          endDate: startDate,
+          eventType: expType?.slug || "vacation",
+          status: "draft",
+        });
+        tripId = trip.id;
+        const updated = await storage.updateUserExperience(experience.id, { tripId });
+        return res.status(201).json(updated || { ...experience, tripId });
       }
 
       res.status(201).json(experience);

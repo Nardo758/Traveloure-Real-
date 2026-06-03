@@ -1225,9 +1225,9 @@ export default function ExperienceTemplatePage() {
     staleTime: 30_000,
   });
 
-  const linkedExperience = allUserExperiences?.find(
-    (e) => e.experienceTypeId === experienceType?.id
-  );
+  const linkedExperience = allUserExperiences
+    ?.filter((e) => e.experienceTypeId === experienceType?.id && !!e.tripId)
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())[0];
   const linkedTripId = linkedExperience?.tripId ?? null;
 
   const [localExternalCart, setLocalExternalCart] = useState<CartItem[]>(() => {
