@@ -1175,9 +1175,23 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
 
 // ─── Expert Recruit Card ──────────────────────────────────────────────────────
 
-function ExpertRecruitCard({ cityName, userRole }: { cityName: string; userRole?: string | null }) {
-  const isSupply = userRole === "expert" || userRole === "provider";
-  const cityParam = encodeURIComponent(cityName);
+const SUPPLY_ROLES = ["expert", "local_expert", "travel_expert", "event_planner", "service_provider"];
+
+function buildCityParams(cityName: string, countryName?: string | null): string {
+  const params = new URLSearchParams({ city: cityName });
+  if (countryName) params.set("country", countryName);
+  return params.toString();
+}
+
+function ExpertRecruitCard({
+  cityName, countryName, userRole,
+}: {
+  cityName: string;
+  countryName?: string | null;
+  userRole?: string | null;
+}) {
+  const isSupply = SUPPLY_ROLES.includes(userRole ?? "");
+  const qs = buildCityParams(cityName, countryName);
 
   if (isSupply) {
     return (
@@ -1195,7 +1209,7 @@ function ExpertRecruitCard({ cityName, userRole }: { cityName: string; userRole?
           Get discovered by travellers actively planning a trip here.
         </p>
         <Button size="sm" asChild data-testid="btn-promote-services">
-          <a href={`/expert/services/new?city=${cityParam}`}>Promote services →</a>
+          <a href={`/expert/apply?${qs}&type=local_expert`}>Promote services →</a>
         </Button>
       </div>
     );
@@ -1216,7 +1230,7 @@ function ExpertRecruitCard({ cityName, userRole }: { cityName: string; userRole?
         Share your local knowledge, earn from itinerary planning, and help travellers discover the city like a local.
       </p>
       <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white border-none" asChild data-testid="btn-apply-expert">
-        <a href={`/become-expert?city=${cityParam}&type=local_expert`}>Apply to join →</a>
+        <a href={`/expert/apply?${qs}&type=local_expert`}>Apply to join →</a>
       </Button>
     </div>
   );
@@ -1225,16 +1239,17 @@ function ExpertRecruitCard({ cityName, userRole }: { cityName: string; userRole?
 // ─── Provider Recruit Banner ──────────────────────────────────────────────────
 
 function ProviderRecruitBanner({
-  cityName, serviceCount, userRole,
+  cityName, countryName, serviceCount, userRole,
 }: {
   cityName: string;
+  countryName?: string | null;
   serviceCount: number;
   userRole?: string | null;
 }) {
   if (serviceCount >= 3) return null;
 
-  const cityParam = encodeURIComponent(cityName);
-  const isSupply = userRole === "expert" || userRole === "provider";
+  const isSupply = SUPPLY_ROLES.includes(userRole ?? "");
+  const qs = buildCityParams(cityName, countryName);
 
   if (isSupply) {
     return (
@@ -1248,7 +1263,7 @@ function ProviderRecruitBanner({
           {" — "}get discovered by travellers planning here.
         </p>
         <Button size="sm" variant="outline" className="flex-shrink-0 text-xs h-7 px-3" asChild data-testid="btn-promote-provider">
-          <a href={`/provider/services/new?city=${cityParam}`}>Promote →</a>
+          <a href={`/provider/new-service?${qs}&prefill=true`}>Promote →</a>
         </Button>
       </div>
     );
@@ -1265,7 +1280,7 @@ function ProviderRecruitBanner({
         <span className="font-medium text-foreground">List your service free.</span>
       </p>
       <Button size="sm" variant="outline" className="flex-shrink-0 text-xs h-7 px-3" asChild data-testid="btn-list-service">
-        <a href={`/become-provider?city=${cityParam}&prefill=true`}>Get listed →</a>
+        <a href={`/provider/new-service?${qs}&prefill=true`}>Get listed →</a>
       </Button>
     </div>
   );
@@ -1274,7 +1289,7 @@ function ProviderRecruitBanner({
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, experts, platformServices, events, cityName, activeFilter, onAdd, onRequestBooking,
+  neighborhoods, gems, hotels, activities, experts, platformServices, events, cityName, countryName, activeFilter, onAdd, onRequestBooking,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
@@ -1284,6 +1299,7 @@ function AllGemsFeed({
   platformServices: PlatformService[];
   events: any[];
   cityName: string;
+  countryName?: string | null;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
@@ -1298,7 +1314,7 @@ function AllGemsFeed({
       if (experts.length === 0) {
         return (
           <div className="py-8" data-testid="feed-empty-experts">
-            <ExpertRecruitCard cityName={cityName} userRole={userRole} />
+            <ExpertRecruitCard cityName={cityName} countryName={countryName} userRole={userRole} />
           </div>
         );
       }
@@ -1718,7 +1734,7 @@ function AllGemsFeed({
       )}
 
       {/* Provider recruitment banner — shown when city has fewer than 3 platform services */}
-      <ProviderRecruitBanner cityName={cityName} serviceCount={platformServices.length} userRole={userRole} />
+      <ProviderRecruitBanner cityName={cityName} countryName={countryName} serviceCount={platformServices.length} userRole={userRole} />
     </div>
   );
 }
@@ -2577,6 +2593,7 @@ export default function DiscoverLocationPage() {
                 platformServices={platformServices}
                 events={events}
                 cityName={city}
+                countryName={country}
                 activeFilter={activeFilter}
                 experts={experts}
                 onAdd={openAdd}

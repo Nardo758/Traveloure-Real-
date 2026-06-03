@@ -350,6 +350,13 @@ function Router() {
       <Route path="/become-provider">
         <ServicesProviderPage />
       </Route>
+      {/* Supply recruitment entry points from location feed CTAs */}
+      <Route path="/expert/apply">
+        <TravelExpertsPage />
+      </Route>
+      <Route path="/provider/new-service">
+        <ServicesProviderPage />
+      </Route>
       
       <Route path="/layout-mock">
         <LayoutMock />
