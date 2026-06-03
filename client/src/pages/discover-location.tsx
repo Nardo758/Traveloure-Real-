@@ -262,8 +262,13 @@ function ActivityRow({
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const description = item.whyHidden ?? item.whyLocalsLoveIt ?? item.description ?? null;
-  const typeLabel = (item.placeType ?? item.type ?? "").toLowerCase();
+  const rawType = (item.placeType ?? item.type ?? "").trim();
+  const typeLabel = rawType.toLowerCase();
   const isPhotoSpot = typeLabel.includes("photo") || typeLabel.includes("viewpoint") || typeLabel.includes("scenic");
+  // Normalized display type: capitalize first letter, truncate at 24 chars for layout
+  const displayType = rawType.length > 0
+    ? rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase().replace(/_/g, " ").slice(0, 23)
+    : null;
 
   const badge = forceTraveloure
     ? { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false }
@@ -289,6 +294,7 @@ function ActivityRow({
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <p className="text-sm font-semibold leading-snug" data-testid={`${testPrefix}-name-${idx}`}>
             {displayName}
+            {displayType && <span className="font-normal text-muted-foreground"> · {displayType}</span>}
             {priceDisplay && <span className="font-normal text-muted-foreground"> · {priceDisplay}</span>}
           </p>
           <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
