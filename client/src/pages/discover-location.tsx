@@ -763,34 +763,25 @@ function BundleBookingModal({
   const [travelDate, setTravelDate] = useState("");
   const [travelers, setTravelers] = useState(1);
 
-  const hotelPriceNum = parseFloat(String(hotel.price ?? 0)) || 0;
   const transportPriceNum = parseFloat(String(transport.price ?? 0)) || 0;
-  const totalPrice = hotelPriceNum + transportPriceNum;
-
-  const [, navigate] = useLocation();
 
   const mutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/bundle-bookings", {
-      hotelServiceId: hotel.serviceId,
-      hotelName: hotel.name,
       transportServiceId: transport.serviceId,
-      transportName: transport.name,
       travelDate: travelDate || null,
       travelers,
     }),
     onSuccess: (data: any) => {
-      if (data?.clientSecret) {
-        // Server created a Stripe PaymentIntent — navigate to payment page for confirmation
+      if (data?.checkoutUrl) {
         toast({
-          title: "Bundle reserved!",
-          description: "Redirecting to payment confirmation…",
+          title: "Transfer reserved!",
+          description: "Redirecting to Stripe to complete payment…",
         });
         onOpenChange(false);
         setTravelDate(""); setTravelers(1);
-        // Navigate to bookings page where user can see pending booking and complete payment
-        navigate("/my-bookings");
+        window.location.href = data.checkoutUrl;
       } else {
-        toast({ title: "Bundle booked!", description: "Hotel + transfer bookings are pending. Check My Bookings." });
+        toast({ title: "Transfer reserved!", description: "Pending booking created. Check My Bookings." });
         onOpenChange(false);
         setTravelDate(""); setTravelers(1);
       }
@@ -812,33 +803,44 @@ function BundleBookingModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-4 w-4 text-primary" />
-            Book together
+            Book transfer + hotel
           </DialogTitle>
-          <DialogDescription>Hotel + private transfer — one checkout</DialogDescription>
+          <DialogDescription>Book your airport transfer through Traveloure, then complete the hotel on its own booking page.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-1">
           {/* Side-by-side items */}
           <div className="grid grid-cols-2 gap-2">
-            {[hotel, transport].map((item) => (
-              <div key={item.serviceId} className="rounded-lg border bg-muted/40 p-3">
-                <span className={`text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${item.type === "hotel" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"}`}>
-                  {item.type === "hotel" ? "HOTEL" : "TRANSFER"}
-                </span>
-                <p className="text-xs font-semibold mt-1.5 leading-snug line-clamp-2">{item.name}</p>
-                {item.price && (
-                  <p className="text-sm font-bold mt-1 text-primary">
-                    {formatServicePrice(item.price, item.priceType)}
-                  </p>
-                )}
-              </div>
-            ))}
+            {/* Hotel — external booking */}
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
+                HOTEL
+              </span>
+              <p className="text-xs font-semibold mt-1.5 leading-snug line-clamp-2">{hotel.name}</p>
+              {hotel.price && (
+                <p className="text-sm font-bold mt-1 text-primary">{hotel.price}</p>
+              )}
+              <p className="text-[9px] text-muted-foreground mt-1">Book via hotel site</p>
+            </div>
+            {/* Transfer — booked through Traveloure */}
+            <div className="rounded-lg border bg-violet-50/60 border-violet-200 p-3">
+              <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-violet-50 text-violet-700 border-violet-200">
+                TRANSFER
+              </span>
+              <p className="text-xs font-semibold mt-1.5 leading-snug line-clamp-2">{transport.name}</p>
+              {transport.price && (
+                <p className="text-sm font-bold mt-1 text-primary">
+                  {formatServicePrice(transport.price, transport.priceType)}
+                </p>
+              )}
+              <p className="text-[9px] text-violet-600 mt-1 font-medium">Via Traveloure ✓</p>
+            </div>
           </div>
-          {/* Combined price */}
-          {totalPrice > 0 && (
+          {/* Transfer price — what you pay now */}
+          {transportPriceNum > 0 && (
             <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 flex items-center justify-between">
-              <span className="text-xs font-medium">Combined total</span>
+              <span className="text-xs font-medium">Transfer payment today</span>
               <span className="text-base font-bold text-primary">
-                from €{totalPrice.toFixed(0)}
+                from €{transportPriceNum.toFixed(0)}
               </span>
             </div>
           )}
@@ -864,7 +866,7 @@ function BundleBookingModal({
             <Button className="flex-1" onClick={() => mutation.mutate()} disabled={mutation.isPending}
               data-testid="button-bundle-confirm">
               {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
-              Book bundle
+              Book transfer
             </Button>
           </div>
         </div>

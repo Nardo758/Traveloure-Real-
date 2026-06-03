@@ -8283,94 +8283,109 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
     }
   });
 
-  // ─── Bundle Bookings — hotel + transfer in one PaymentIntent ─────────────────
-  // Creates two service bookings (hotel + transport) under a single Stripe
-  // PaymentIntent so the traveler checks out both items in one step.
+  // ─── Bundle Bookings — hotel + transfer bundle ───────────────────────────────
+  // Books the platform transport service via Stripe Checkout Session (redirect).
+  // Hotel is an external AI recommendation — not booked through this endpoint.
+  // One service_bookings row is created for the transport (correct schema columns:
+  // travelerId, providerId, totalAmount from providerServices — never client-trusted).
   app.post("/api/bundle-bookings", isAuthenticated, async (req, res) => {
     try {
-      const {
-        hotelServiceId, hotelName,
-        transportServiceId, transportName,
-        travelDate, travelers,
-      } = req.body;
+      const { transportServiceId, travelDate, travelers } = req.body;
 
-      if (!hotelServiceId || !transportServiceId) {
-        return res.status(400).json({ message: "hotelServiceId and transportServiceId are required" });
+      if (!transportServiceId) {
+        return res.status(400).json({ message: "transportServiceId is required" });
       }
 
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-      // ── Server-side price resolution — never trust client-submitted prices ──
+      // ── Server-side resolution of the platform-bookable transport service ──
       const { providerServices } = await import("@shared/schema");
-      const [hotelSvc] = await db.select({ price: providerServices.price, name: providerServices.serviceName })
-        .from(providerServices).where(eq(providerServices.id, hotelServiceId)).limit(1);
-      const [transportSvc] = await db.select({ price: providerServices.price, name: providerServices.serviceName })
-        .from(providerServices).where(eq(providerServices.id, transportServiceId)).limit(1);
+      const [transportSvc] = await db
+        .select()
+        .from(providerServices)
+        .where(eq(providerServices.id, transportServiceId))
+        .limit(1);
 
-      const hotelPriceNum = parseFloat(String(hotelSvc?.price ?? 0)) || 0;
-      const transportPriceNum = parseFloat(String(transportSvc?.price ?? 0)) || 0;
-      const totalCents = Math.round((hotelPriceNum + transportPriceNum) * 100);
+      if (!transportSvc) {
+        return res.status(404).json({ message: "Transport service not found" });
+      }
+      if (!transportSvc.userId) {
+        return res.status(422).json({ message: "Transport service has no associated provider" });
+      }
 
-      const resolvedHotelName = hotelSvc?.name ?? hotelName ?? "Hotel";
-      const resolvedTransportName = transportSvc?.name ?? transportName ?? "Transfer";
+      const transportPriceNum = parseFloat(String(transportSvc.price ?? 0)) || 0;
+      const transportCents = Math.round(transportPriceNum * 100);
 
-      // Create Stripe PaymentIntent for the combined amount (fail-fast if Stripe errors)
-      let paymentIntentId: string | null = null;
-      let clientSecret: string | null = null;
-      if (totalCents > 0) {
-        const { stripeService } = await import("./replit_integrations/stripe.service");
-        const stripe = (stripeService as any).stripe;
-        if (!stripe) {
-          return res.status(503).json({ message: "Payment service unavailable" });
-        }
-        const pi = await stripe.paymentIntents.create({
-          amount: totalCents,
-          currency: "eur",
+      const { getBaseUrl } = await import("./services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: "2024-12-18.acacia" as any,
+      });
+      const baseUrl = getBaseUrl();
+      const user = await storage.getUser(userId);
+
+      let checkoutUrl: string | null = null;
+      let sessionId: string | null = null;
+
+      if (transportCents > 0) {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          mode: "payment",
+          customer_email: user?.email || undefined,
+          line_items: [{
+            price_data: {
+              currency: "eur",
+              product_data: {
+                name: transportSvc.serviceName ?? "Private Transfer",
+                description: "Airport / hotel private transfer — Traveloure Bundle",
+              },
+              unit_amount: transportCents,
+            },
+            quantity: Math.max(1, parseInt(String(travelers ?? 1)) || 1),
+          }],
           metadata: {
             bundle: "hotel_transfer",
-            hotelServiceId,
             transportServiceId,
             userId,
             travelDate: travelDate ?? "",
             travelers: String(travelers ?? 1),
           },
-          description: `Bundle: ${resolvedHotelName} + ${resolvedTransportName}`,
+          success_url: `${baseUrl}/my-bookings?bundle=success`,
+          cancel_url: `${baseUrl}/discover?bundle=cancelled`,
         });
-        paymentIntentId = pi.id;
-        clientSecret = pi.client_secret ?? null;
+        checkoutUrl = session.url;
+        sessionId = session.id;
       }
 
-      // Persist two service booking records; use .rows[] to read back RETURNING values
-      const hotelResult = await db.execute(sql`
-        INSERT INTO service_bookings
-          (id, user_id, service_id, booking_date, number_of_people, total_price, status, special_requests, created_at, updated_at)
-        VALUES
-          (gen_random_uuid(), ${userId}, ${hotelServiceId}, ${travelDate ?? null},
-           ${travelers ?? 1}, ${hotelPriceNum.toFixed(2)}, 'pending',
-           ${paymentIntentId ? `Bundle PI: ${paymentIntentId}` : "Bundle booking"}, NOW(), NOW())
-        RETURNING id
-      `);
-      const transferResult = await db.execute(sql`
-        INSERT INTO service_bookings
-          (id, user_id, service_id, booking_date, number_of_people, total_price, status, special_requests, created_at, updated_at)
-        VALUES
-          (gen_random_uuid(), ${userId}, ${transportServiceId}, ${travelDate ?? null},
-           ${travelers ?? 1}, ${transportPriceNum.toFixed(2)}, 'pending',
-           ${paymentIntentId ? `Bundle PI: ${paymentIntentId}` : "Bundle booking"}, NOW(), NOW())
-        RETURNING id
-      `);
+      // Create one platform service booking for the transport (hotel is booked externally)
+      const booking = await storage.createServiceBooking({
+        serviceId: transportServiceId,
+        travelerId: userId,
+        providerId: transportSvc.userId,
+        totalAmount: transportPriceNum.toFixed(2),
+        status: "pending",
+        stripePaymentIntentId: sessionId,
+        bookingDetails: {
+          travelDate: travelDate ?? null,
+          travelers: travelers ?? 1,
+          bundleType: "hotel_transfer",
+        },
+        bookingMetadata: {
+          checkoutSessionId: sessionId,
+          bundle: "hotel_transfer",
+        },
+      } as any);
 
       return res.status(201).json({
         success: true,
-        paymentIntentId,
-        clientSecret,
-        hotelBookingId: (hotelResult as any)?.rows?.[0]?.id ?? null,
-        transferBookingId: (transferResult as any)?.rows?.[0]?.id ?? null,
-        totalAmount: (hotelPriceNum + transportPriceNum).toFixed(2),
-        message: totalCents > 0
-          ? "Bundle created — use clientSecret to confirm payment."
-          : "Bundle created as pending bookings.",
+        checkoutUrl,
+        sessionId,
+        transferBookingId: booking.id,
+        totalAmount: transportPriceNum.toFixed(2),
+        message: checkoutUrl
+          ? "Transfer reserved — complete payment to confirm."
+          : "Transfer booked as pending.",
       });
     } catch (err: any) {
       console.error("[bundle-bookings] error:", err);
