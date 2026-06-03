@@ -55,14 +55,14 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 interface CheckResult {
   name: string;
-  passed: boolean;
+  status: "pass" | "fail" | "skip";
   detail: string;
 }
 
 const results: CheckResult[] = [];
-function record(name: string, passed: boolean, detail: string) {
-  results.push({ name, passed, detail });
-  const tag = passed ? "PASS" : "FAIL";
+function record(name: string, status: "pass" | "fail" | "skip", detail: string) {
+  results.push({ name, status, detail });
+  const tag = status === "pass" ? "PASS" : status === "fail" ? "FAIL" : "SKIP";
   console.log(`[${tag}] ${name}\n      ${detail.split("\n").join("\n      ")}`);
 }
 
@@ -76,14 +76,14 @@ async function checkKyotoRollup() {
   if (kyotoNeighborhoods.length === 0) {
     record(
       "[A] Kyoto neighborhoods seeded",
-      false,
+      "fail",
       "No Kyoto neighborhoods found. Did you run server/seeds/city-neighborhoods.seed.ts?",
     );
     return;
   }
   record(
     "[A.1] Kyoto neighborhoods seeded",
-    kyotoNeighborhoods.length >= 8,
+    kyotoNeighborhoods.length >= 8 ? "pass" : "fail",
     `Found ${kyotoNeighborhoods.length} Kyoto neighborhoods (expected 8 from seed).`,
   );
 
@@ -117,7 +117,7 @@ async function checkKyotoRollup() {
   const sparse = avgPerNeighborhood < 2;
   record(
     "[A.2] Kyoto rollup density",
-    true, // Informational — we don't fail on sparsity, we flag it.
+    "pass", // Informational — we don't fail on sparsity, we flag it.
     `Total: ${totalGems} gems + ${totalServices} services across ${kyotoNeighborhoods.length} neighborhoods.\n` +
       `Average per neighborhood: ${avgPerNeighborhood.toFixed(1)}.\n` +
       (sparse
@@ -130,26 +130,48 @@ async function checkKyotoRollup() {
 
 // ─── [B] Gem centroid sanity ───────────────────────────────────────────────
 async function checkGemBackfillCorrectness() {
-  const matched = await db
+  // Source pool: gems with coordinates — these are the ones the backfill
+  // CAN process. If this is zero, there's nothing to verify (SKIP). If it's
+  // nonzero but matched is zero, the backfill is broken (FAIL).
+  const sourcePool = await db
     .select()
     .from(travelPulseHiddenGems)
     .where(
       and(
-        isNotNull(travelPulseHiddenGems.neighborhood),
         isNotNull(travelPulseHiddenGems.latitude),
         isNotNull(travelPulseHiddenGems.longitude),
       ),
     );
 
-  if (matched.length === 0) {
+  if (sourcePool.length === 0) {
     record(
-      "[B] Gem backfill ran",
-      false,
-      "No gems have neighborhood + lat/lng populated. Did you run backfill-gem-neighborhoods.ts?",
+      "[B] Gem centroid sanity",
+      "skip",
+      "No gems in the DB have lat/lng — nothing for the backfill to process. " +
+        "This is expected on dev (TravelPulse gems may not be seeded). " +
+        "Will become a real check in any env where gems with coordinates exist.",
     );
     return;
   }
-  record("[B.1] Gem backfill produced matches", true, `${matched.length} gems have a neighborhood assigned.`);
+
+  const matched = sourcePool.filter(
+    (g) => g.neighborhood !== null && g.neighborhood !== undefined,
+  );
+
+  if (matched.length === 0) {
+    record(
+      "[B] Gem backfill ran",
+      "fail",
+      `${sourcePool.length} gem(s) with lat/lng exist but none have a neighborhood assigned. ` +
+        "The backfill is broken or wasn't run. Try: tsx server/scripts/backfill-gem-neighborhoods.ts",
+    );
+    return;
+  }
+  record(
+    "[B.1] Gem backfill produced matches",
+    "pass",
+    `${matched.length} / ${sourcePool.length} gems with coordinates have a neighborhood assigned.`,
+  );
 
   const allNeighborhoods = await db.select().from(cityNeighborhoods);
 
@@ -200,7 +222,7 @@ async function checkGemBackfillCorrectness() {
   }
   record(
     "[B.2] Gem centroid assignments correct",
-    mismatches === 0,
+    mismatches === 0 ? "pass" : "fail",
     `Spot-checked ${sample.length} gems, ${mismatches} mismatch(es).\n` + sampleLines.join("\n"),
   );
 }
@@ -241,7 +263,7 @@ function checkFeaturedGuardrail() {
 
   record(
     "[C.1] Featured low-quality does NOT bury better unfeatured (the rule)",
-    ruleHeld,
+    ruleHeld ? "pass" : "fail",
     `Sort order: ${order.join(" > ")}\n` +
       `Scores: A=${scoreA} B=${scoreB} C=${scoreC}\n` +
       (ruleHeld
@@ -250,12 +272,12 @@ function checkFeaturedGuardrail() {
   );
   record(
     "[C.2] Featured high beats comparable unfeatured (boost works)",
-    comparableBoost,
+    comparableBoost ? "pass" : "fail",
     `C (featured high) ${comparableBoost ? "ranks at-or-above" : "is below"} B (unfeatured high).`,
   );
   record(
     "[C.3] Score math: boost = +10 above floor, no boost below",
-    mathOK,
+    mathOK ? "pass" : "fail",
     `Expected A=50 B=90 C=95, got A=${scoreA} B=${scoreB} C=${scoreC}.`,
   );
 }
@@ -270,9 +292,17 @@ async function main() {
   checkFeaturedGuardrail();
   console.log();
 
-  const failed = results.filter((r) => !r.passed);
+  const passed = results.filter((r) => r.status === "pass");
+  const failed = results.filter((r) => r.status === "fail");
+  const skipped = results.filter((r) => r.status === "skip");
   console.log("=== Summary ===");
-  console.log(`Total: ${results.length}  Passed: ${results.length - failed.length}  Failed: ${failed.length}`);
+  console.log(
+    `Total: ${results.length}  Passed: ${passed.length}  Failed: ${failed.length}  Skipped: ${skipped.length}`,
+  );
+  if (skipped.length > 0) {
+    console.log("\nSkipped checks (no source data — not a regression):");
+    for (const r of skipped) console.log(`  - ${r.name}`);
+  }
   if (failed.length > 0) {
     console.log("\nFailed checks:");
     for (const r of failed) console.log(`  - ${r.name}`);
