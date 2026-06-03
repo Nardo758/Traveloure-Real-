@@ -267,9 +267,11 @@ async function resolveProviders(
         conditions.push(neighborhoodMatch);
       }
     } else if (lat !== undefined && lng !== undefined && city) {
-      // No neighborhood specified; use city + radius as geo coverage signal
+      // No neighborhood specified; require BOTH city-level text match AND a declared
+      // service radius. Using OR here would admit providers from unrelated cities
+      // whenever serviceRadius is set — tightening to AND avoids that false positive.
       conditions.push(
-        or(
+        and(
           ilike(providerServices.location, `%${city}%`),
           isNotNull(providerServices.serviceRadius),
         )!
@@ -402,7 +404,9 @@ async function resolveExperts(
   limit: number,
 ): Promise<ExpertMatch[]> {
   try {
-    const destination = neighborhood || city || "";
+    // Prefer city for destination scoring: experts declare cities_covered (city names),
+    // not neighborhood slugs. Neighborhoods are used only when city is absent.
+    const destination = city || neighborhood || "";
     if (!destination) return [];
 
     const topic = rule.expertSpecialties[0] ?? "";
