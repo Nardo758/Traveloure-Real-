@@ -336,6 +336,90 @@ router.get("/api/bookings/user", isAuthenticated, async (req, res) => {
   });
 
 
+router.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { experienceSlug, userExperienceId } = req.body;
+
+    // 1. Get all cart items for this user (optionally filtered by experience slug)
+    const items: any[] = experienceSlug
+      ? await storage.getCartItems(userId, experienceSlug)
+      : await storage.getCartItems(userId);
+
+    // 2. Reuse an existing tripId if any cart item already has one
+    const existingTripId = items.find((i) => i.tripId)?.tripId;
+    if (existingTripId) {
+      const trip = await storage.getTrip(existingTripId);
+      if (trip && trip.userId === userId) {
+        return res.json({ tripId: existingTripId, created: false, trip });
+      }
+    }
+
+    // 3. Infer destination: most common city across cart items
+    const cityCounts: Record<string, number> = {};
+    for (const item of items) {
+      const city =
+        (item.contentMeta as any)?.city ||
+        item.service?.location ||
+        null;
+      if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
+    }
+    const destination =
+      Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+      "Your Destination";
+
+    // 4. Infer start date: earliest scheduledDate, or today + 30 days
+    const scheduledDates = items
+      .map((i) => (i.scheduledDate ? new Date(i.scheduledDate) : null))
+      .filter(Boolean) as Date[];
+    const defaultStart = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const inferredStart =
+      scheduledDates.length > 0
+        ? scheduledDates.reduce((min, d) => (d < min ? d : min), scheduledDates[0])
+        : defaultStart;
+    const inferredEnd = new Date(inferredStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const startDate = inferredStart.toISOString().split("T")[0];
+    const endDate = inferredEnd.toISOString().split("T")[0];
+
+    // 5. Create the trip with inferred metadata
+    const title = `Your ${destination} trip`;
+    const trip = await storage.createTrip({
+      userId,
+      title,
+      destination,
+      startDate,
+      endDate,
+      numberOfTravelers: 2,
+      status: "draft",
+    });
+
+    // 6. Backfill tripId on all matching cart items
+    const whereClause = experienceSlug
+      ? and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug))
+      : eq(cartItems.userId, userId);
+    await db.update(cartItems).set({ tripId: trip.id }).where(whereClause);
+
+    // 7. Link to user_experience if one was provided (idempotent)
+    if (userExperienceId) {
+      await db
+        .update(userExperiences)
+        .set({ tripId: trip.id })
+        .where(
+          and(
+            eq(userExperiences.id, userExperienceId),
+            eq(userExperiences.userId, userId)
+          )
+        );
+    }
+
+    res.json({ tripId: trip.id, created: true, trip });
+  } catch (err) {
+    console.error("Error resolving cart trip:", err);
+    res.status(500).json({ message: "Failed to resolve trip" });
+  }
+});
+
 router.post("/api/cart/items", async (req, res) => {
     try {
       const userId = req.user ? (req.user as any).claims.sub : null;
