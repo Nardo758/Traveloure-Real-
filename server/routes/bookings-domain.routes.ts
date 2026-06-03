@@ -356,11 +356,15 @@ router.post("/api/cart/items", async (req, res) => {
         }
       }
       if (customVenueId) {
+        // Custom venues are user-owned resources — guests cannot add them
+        if (!userId) {
+          return res.status(403).json({ message: "Authentication required to add custom venues to cart" });
+        }
         const venue = await storage.getCustomVenue(customVenueId);
         if (!venue) {
           return res.status(404).json({ message: "Custom venue not found" });
         }
-        if (userId && venue.userId !== userId) {
+        if (venue.userId !== userId) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       }
@@ -647,11 +651,15 @@ router.post("/api/cart", async (req, res) => {
       }
       
       if (customVenueId) {
+        // Custom venues are user-owned resources — guests cannot add them
+        if (!userId) {
+          return res.status(403).json({ message: "Authentication required to add custom venues to cart" });
+        }
         const venue = await storage.getCustomVenue(customVenueId);
         if (!venue) {
           return res.status(404).json({ message: "Custom venue not found" });
         }
-        if (userId && venue.userId !== userId) {
+        if (venue.userId !== userId) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       }
