@@ -9,9 +9,21 @@
  * • AFFINITY_RULES is the single config that drives all matching — extend it,
  *   never add per-endpoint logic.
  * • Provider path wraps provider-matching.service for availability/scheduling
- *   signals, then intersects with affinity + location filters.
+ *   signals, then intersects with hard affinity + location eligibility filters.
  * • Expert path wraps lead-routing.service for destination + specialty scoring.
  * • Sparse markets degrade gracefully: empty arrays + affiliateFallback flag.
+ * • Unknown content types degrade to affiliateFallback:true (no arbitrary supply
+ *   surfaces without an affinity rule — prevents category noise).
+ *
+ * Geo radius limitation
+ * ─────────────────────
+ * providerServices.serviceRadius is a coverage claim (km), but neither
+ * providerServices nor users store provider coordinates. True haversine
+ * distance cannot be computed server-side. When lat/lng are supplied the
+ * resolver therefore falls back to city-level text matching via
+ * providerServices.location (e.g., "Kyoto, Japan") combined with serviceRadius
+ * IS NOT NULL as a coverage eligibility signal. Any future migration that adds
+ * provider lat/lng to the DB can replace this with a real distance check.
  */
 
 import { db } from "../db";
@@ -20,15 +32,15 @@ import { providerServices, users } from "@shared/schema";
 import { leadRoutingService, type ExpertScore } from "./lead-routing.service";
 import {
   findMatchingProviders,
-  type MatchedProvider,
 } from "./provider-matching.service";
 
 // ─── Affinity Rules Config ────────────────────────────────────────────────────
 // Maps gem/content type → provider serviceType enum values + expert specialty topics.
 //
-// serviceTypes: values stored in providerServices.serviceType
-//   allowed: consultation | planning | action | concierge | experience | specialty
-// expertSpecialties: topic strings passed to lead-routing specialty scoring
+// serviceTypes: values from the providerServices.serviceType enum —
+//   consultation | planning | action | concierge | experience | specialty
+//
+// expertSpecialties: topic strings forwarded to lead-routing specialty scoring.
 
 export interface AffinityRule {
   /** providerServices.serviceType values eligible for this content type */
@@ -78,7 +90,7 @@ export const AFFINITY_RULES: Readonly<Record<string, AffinityRule>> = {
     serviceTypes: ["action", "concierge", "experience"],
     expertSpecialties: ["foodie", "culinary"],
   },
-  // Neighborhoods → local experience + specialty services
+  // Neighborhoods → local experience + specialty + planning
   neighborhood: {
     serviceTypes: ["experience", "specialty", "planning"],
     expertSpecialties: ["local"],
@@ -98,7 +110,7 @@ export const AFFINITY_RULES: Readonly<Record<string, AffinityRule>> = {
     serviceTypes: ["planning", "consultation", "concierge"],
     expertSpecialties: ["itinerary", "planning"],
   },
-  // Generic activity/adventure
+  // Generic activity / adventure
   activity: {
     serviceTypes: ["experience", "specialty"],
     expertSpecialties: [],
@@ -130,7 +142,7 @@ export interface ProviderMatch {
   isFeatured: boolean;
   averageRating: string | null;
   bookingsCount: number;
-  /** Combined relevance score: availability signals + quality tiebreakers */
+  /** Availability + quality score (featured is a tiebreaker in sort, not additive) */
   relevanceScore: number;
   providerId: string;
   providerName: string;
@@ -158,7 +170,7 @@ export interface ContentMatchInput {
   type: string;
   neighborhood?: string;
   city?: string;
-  /** WGS-84 latitude of the content item (enables serviceRadius coverage check) */
+  /** WGS-84 latitude of the content item (enables city-level location matching) */
   lat?: number;
   /** WGS-84 longitude of the content item */
   lng?: number;
@@ -177,13 +189,22 @@ export async function resolveMatches(input: ContentMatchInput): Promise<ContentM
   const normalizedNeighborhood = (input.neighborhood ?? "").toLowerCase().trim();
   const normalizedCity = (input.city ?? "").toLowerCase().trim();
 
-  const rule: AffinityRule = AFFINITY_RULES[normalizedType] ?? {
-    serviceTypes: [],
-    expertSpecialties: [],
-  };
+  const rule: AffinityRule | undefined = AFFINITY_RULES[normalizedType];
+
+  // Unknown content type: surface nothing (never pollute recommendations with
+  // off-affinity supply). Experts can still resolve by destination.
+  if (!rule) {
+    const experts = await resolveExperts(
+      { serviceTypes: [], expertSpecialties: [] },
+      normalizedCity,
+      normalizedNeighborhood,
+      limit,
+    );
+    return { providers: [], experts, affiliateFallback: true };
+  }
 
   const [matchedProviders, matchedExperts] = await Promise.all([
-    resolveProviders(rule, normalizedNeighborhood, input.lat, input.lng, limit),
+    resolveProviders(rule, normalizedNeighborhood, normalizedCity, input.lat, input.lng, limit),
     resolveExperts(rule, normalizedCity, normalizedNeighborhood, limit),
   ]);
 
@@ -196,50 +217,65 @@ export async function resolveMatches(input: ContentMatchInput): Promise<ContentM
 
 // ─── Provider resolver ────────────────────────────────────────────────────────
 //
-// Two-stage approach:
-// 1. DB query with hard eligibility filters (serviceType affinity + location)
-// 2. Enrich with availability/scheduling signals from provider-matching.service
-//    then rank: availability score (primary) → rating → featured (tiebreakers)
+// Two-stage:
+// 1. Hard eligibility WHERE: serviceType affinity + location filter
+// 2. Availability/scheduling enrichment from provider-matching.service
+//    Ranking: availability score (primary) → quality signals → featured (tiebreaker)
 
 async function resolveProviders(
   rule: AffinityRule,
   neighborhood: string,
+  city: string,
   lat: number | undefined,
   lng: number | undefined,
   limit: number,
 ): Promise<ProviderMatch[]> {
   try {
-    // ── Step 1: Build eligibility WHERE conditions ─────────────────────────
-    const conditions: any[] = [eq(providerServices.status, "active")];
+    // ── Step 1: Build hard eligibility WHERE conditions ────────────────────
+    const conditions: any[] = [
+      eq(providerServices.status, "active"),
+      // Affinity: serviceType must be in the configured set for this content type
+      inArray(providerServices.serviceType as any, rule.serviceTypes),
+    ];
 
-    // Affinity filter: serviceType must be in the rule's eligible set.
-    // When the rule has no serviceTypes (unknown content type), skip this filter
-    // so we degrade to returning any active service rather than nothing.
-    if (rule.serviceTypes.length > 0) {
-      conditions.push(inArray(providerServices.serviceType as any, rule.serviceTypes));
-    }
+    // Location eligibility (hard filter — provider must pass at least one criterion):
+    //
+    // Priority A: Exact neighborhood match (case-insensitive LIKE)
+    // Priority B: City-level match via providerServices.location text + serviceRadius
+    //             coverage claim. Note: provider coordinates are not stored in this
+    //             schema, so haversine distance cannot be computed. City text match
+    //             is the closest available proxy. serviceRadius IS NOT NULL confirms
+    //             the provider explicitly claims geographic coverage.
+    // If no location context at all: no restriction (show any eligible service).
 
-    // Location eligibility — hard filter, not just a scoring bonus:
-    //   INCLUDE if neighborhood matches (case-insensitive), OR
-    //   INCLUDE if no neighborhood supplied but lat/lng given and provider has
-    //   a serviceRadius (claims geographic coverage), OR
-    //   INCLUDE if no location context at all (show any eligible service)
     if (neighborhood) {
-      // Must match neighborhood OR have radius coverage when we have coordinates
       const neighborhoodMatch = ilike(providerServices.neighborhood, `%${neighborhood}%`);
-      if (lat !== undefined && lng !== undefined) {
-        // Either neighborhood matches OR provider offers radius-based coverage
+
+      if (lat !== undefined && lng !== undefined && city) {
+        // Neighborhood match OR (city-level location match AND radius coverage claim)
         conditions.push(
-          or(neighborhoodMatch, isNotNull(providerServices.serviceRadius))!
+          or(
+            neighborhoodMatch,
+            and(
+              ilike(providerServices.location, `%${city}%`),
+              isNotNull(providerServices.serviceRadius),
+            )!,
+          )!
         );
       } else {
+        // Neighborhood only
         conditions.push(neighborhoodMatch);
       }
-    } else if (lat !== undefined && lng !== undefined) {
-      // No neighborhood string but coordinates given: require radius coverage
-      conditions.push(isNotNull(providerServices.serviceRadius));
+    } else if (lat !== undefined && lng !== undefined && city) {
+      // No neighborhood specified; use city + radius as geo coverage signal
+      conditions.push(
+        or(
+          ilike(providerServices.location, `%${city}%`),
+          isNotNull(providerServices.serviceRadius),
+        )!
+      );
     }
-    // When neither neighborhood nor lat/lng provided, no location restriction.
+    // No location context → no restriction
 
     // ── Step 2: Fetch eligible services with provider display name ─────────
     const candidateRows = await db
@@ -267,12 +303,11 @@ async function resolveProviders(
 
     if (candidateRows.length === 0) return [];
 
-    // ── Step 3: Get availability signals from provider-matching.service ────
-    // Use today's date with a broad daytime window to check scheduling.
-    // This gives us preferred-slot and booking-conflict signals from the
-    // existing service without needing a traveller-specific date.
+    // ── Step 3: Availability signals from provider-matching.service ────────
+    // Call with today's date and a broad daytime window to get scheduling-based
+    // matchScore for each provider. Non-critical: falls back to quality signals.
     const today = new Date().toISOString().split("T")[0];
-    let availabilityScoreMap = new Map<string, number>();
+    const availabilityScoreMap = new Map<string, number>();
 
     try {
       const matchResult = await findMatchingProviders({
@@ -280,23 +315,25 @@ async function resolveProviders(
         startTime: "09:00",
         endTime: "18:00",
       });
-      // Map providerId (user_id) → matchScore for O(1) lookup
       for (const mp of matchResult.providers) {
         availabilityScoreMap.set(mp.providerId, mp.matchScore);
       }
     } catch {
-      // Non-critical — fall back to pure quality-signal ranking
+      // Scheduling data unavailable; pure quality-signal ranking below
     }
 
-    // ── Step 4: Score and rank eligible candidates ─────────────────────────
-    // Primary: availability matchScore from provider-matching (0–100)
-    // Tiebreakers: exact neighborhood match, rating, featured flag, bookings
+    // ── Step 4: Score eligible candidates ─────────────────────────────────
+    // Scoring components (featured is NOT additive — applied as sort tiebreaker):
+    //   Availability (from provider-matching.service):  0–100
+    //   Exact neighborhood match bonus:                  +20 / +10 partial
+    //   Smaller serviceRadius bonus (tighter coverage):  0–10
+    //   Rating:                                          0–15
+    //   Bookings popularity:                             0–5
 
     const scored = candidateRows.map((row) => {
-      // Availability signal from provider-matching (0 if provider has no schedule)
       const availScore = availabilityScoreMap.get(row.userId) ?? 0;
 
-      // Neighborhood proximity bonus (tiebreaker, not gating)
+      // Neighborhood proximity bonus
       let neighborhoodBonus = 0;
       const svcNeighborhood = (row.neighborhood ?? "").toLowerCase().trim();
       if (neighborhood && svcNeighborhood) {
@@ -304,21 +341,18 @@ async function resolveProviders(
         else if (svcNeighborhood.includes(neighborhood) || neighborhood.includes(svcNeighborhood)) neighborhoodBonus = 10;
       }
 
-      // For lat/lng coverage: providers with smaller declared radius are more
-      // precisely located → higher relevance (inverse of radius, capped at 10)
-      let geoBonus = 0;
-      if (lat !== undefined && lng !== undefined && row.serviceRadius) {
-        // Tighter radius = more likely locally relevant
-        geoBonus = Math.max(0, 10 - Math.floor(row.serviceRadius / 10));
-      }
+      // Tighter serviceRadius = more locally specific provider (if radius is set)
+      const geoBonus =
+        row.serviceRadius
+          ? Math.max(0, 10 - Math.floor(row.serviceRadius / 10))
+          : 0;
 
-      // Quality tiebreakers
+      // Quality signals
       const rating = parseFloat(row.averageRating ?? "0");
       const ratingBonus = rating >= 4.5 ? 15 : rating >= 4.0 ? 10 : rating >= 3.5 ? 5 : 0;
-      const featuredBonus = row.isFeatured ? 5 : 0;
       const popularityBonus = Math.min(Math.floor((row.bookingsCount ?? 0) / 5), 5);
 
-      const totalScore = availScore + neighborhoodBonus + geoBonus + ratingBonus + featuredBonus + popularityBonus;
+      const totalScore = availScore + neighborhoodBonus + geoBonus + ratingBonus + popularityBonus;
 
       const providerName =
         [row.providerFirstName, row.providerLastName].filter(Boolean).join(" ").trim() ||
@@ -328,26 +362,29 @@ async function resolveProviders(
       return { row, totalScore, providerName };
     });
 
-    return scored
-      .sort((a, b) => b.totalScore - a.totalScore)
-      .slice(0, limit)
-      .map(({ row, totalScore, providerName }): ProviderMatch => ({
-        serviceId: row.id,
-        serviceName: row.serviceName,
-        shortDescription: row.shortDescription ?? null,
-        serviceType: row.serviceType ?? null,
-        price: row.price ?? null,
-        priceType: row.priceType ?? null,
-        neighborhood: row.neighborhood ?? null,
-        location: row.location ?? null,
-        serviceRadius: row.serviceRadius ?? null,
-        isFeatured: row.isFeatured ?? false,
-        averageRating: row.averageRating ?? null,
-        bookingsCount: row.bookingsCount ?? 0,
-        relevanceScore: totalScore,
-        providerId: row.userId,
-        providerName,
-      }));
+    // Sort: relevance score descending, featured as tiebreaker (not additive)
+    scored.sort((a, b) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      return (b.row.isFeatured ? 1 : 0) - (a.row.isFeatured ? 1 : 0);
+    });
+
+    return scored.slice(0, limit).map(({ row, totalScore, providerName }): ProviderMatch => ({
+      serviceId: row.id,
+      serviceName: row.serviceName,
+      shortDescription: row.shortDescription ?? null,
+      serviceType: row.serviceType ?? null,
+      price: row.price ?? null,
+      priceType: row.priceType ?? null,
+      neighborhood: row.neighborhood ?? null,
+      location: row.location ?? null,
+      serviceRadius: row.serviceRadius ?? null,
+      isFeatured: row.isFeatured ?? false,
+      averageRating: row.averageRating ?? null,
+      bookingsCount: row.bookingsCount ?? 0,
+      relevanceScore: totalScore,
+      providerId: row.userId,
+      providerName,
+    }));
   } catch (err: any) {
     console.error("[ContentMatching] resolveProviders error:", err.message);
     return [];
@@ -355,7 +392,7 @@ async function resolveProviders(
 }
 
 // ─── Expert resolver ──────────────────────────────────────────────────────────
-// Delegates entirely to lead-routing.service scoring:
+// Delegates entirely to lead-routing.service:
 //   destination 40 / specialty 25 / availability 20 / response 15
 
 async function resolveExperts(
@@ -368,7 +405,6 @@ async function resolveExperts(
     const destination = neighborhood || city || "";
     if (!destination) return [];
 
-    // Use the first specialty keyword as the topic for the lead-routing scorer
     const topic = rule.expertSpecialties[0] ?? "";
 
     const scores = await leadRoutingService.scoreExperts({ destination, topic });
