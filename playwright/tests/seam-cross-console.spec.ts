@@ -740,18 +740,16 @@ test('[Seam 4] Supply → feed: admin/services activation → /discover/location
       (s) => s.id === targetServiceId || (s.serviceName ?? '') === targetServiceName
     );
 
-    // The service should NOT be in the feed because it's inactive.
-    // If it's already there, the discover feed is not honouring active-status filtering — that's worth noting.
-    if (foundBefore) {
-      console.warn(
-        `[Seam 4 NOTE] Service "${targetServiceName}" (id=${targetServiceId}) is already visible ` +
-          'in the discover feed despite being inactive. The feed may not filter by status — ' +
-          'proceeding with activation to verify the seam still functions.'
-      );
-    }
-
-    // Store pre-activation state for use in the post-activation assertion.
-    (page as any).__s4foundBefore = !!foundBefore;
+    // Hard assertion: the inactive service must NOT appear in the discover feed.
+    // If it does, the discover feed is not filtering by status — that is itself a bug
+    // and means the subsequent "presence-after" check would prove nothing causal.
+    expect(
+      foundBefore,
+      `[Seam 4 BROKEN — PRECONDITION] Service "${targetServiceName}" (id=${targetServiceId}) ` +
+        'is already visible in GET /api/discover/location/kyoto before activation. ' +
+        'The discover feed is not honouring active-status filtering — the supply→feed seam is broken ' +
+        'because deactivated services are still shown to users.'
+    ).toBeUndefined();
   });
 
   await test.step('Admin: PATCH /api/admin/services/:id/status to "active" must return status="active"', async () => {
