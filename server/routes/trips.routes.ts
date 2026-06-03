@@ -475,7 +475,11 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims.sub;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
 
-      // ── Server-side payment gate ────────────────────────────────────────────
+      // ── Optimization authorization gate ──────────────────────────────────────
+      // Comparison records are ALWAYS created (never blocked).
+      // The AI optimizer only runs when payment is verified OR a 24h free rerun applies.
+      let canRunOptimizer = false;
+
       // Check free 24h rerun eligibility first (no Stripe call needed)
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const [recentRun] = await db
@@ -489,14 +493,10 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
         )
         .limit(1);
 
-      if (!recentRun) {
-        // Not a free rerun — require a verified payment
-        if (!optimizationPaymentId) {
-          return res.status(402).json({
-            error: "payment_required",
-            message: "An optimization payment is required. Please complete payment before generating a comparison.",
-          });
-        }
+      if (recentRun) {
+        canRunOptimizer = true;
+      } else if (optimizationPaymentId) {
+        // Paid run path — verify payment before allowing optimizer
         // Reject reuse: check if this PI is already tied to any existing comparison
         const [alreadyUsed] = await db
           .select({ id: itineraryComparisons.id })
@@ -510,7 +510,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           });
         }
 
-        // Require a concrete optimization target — no ambiguous fallbacks
+        // Require a concrete target when using a payment
         if (!tripId && !userExperienceId) {
           return res.status(400).json({
             error: "target_required",
@@ -522,10 +522,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
         try {
           const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
           if (pi.status !== "succeeded") {
-            return res.status(402).json({
-              error: "payment_not_confirmed",
-              message: "Optimization payment has not been confirmed.",
-            });
+            return res.status(402).json({ error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." });
           }
           if (pi.metadata?.userId && pi.metadata.userId !== userId) {
             return res.status(403).json({ error: "payment_belongs_to_another_user" });
@@ -533,8 +530,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           if (pi.metadata?.type !== "optimization_fee") {
             return res.status(402).json({ error: "invalid_payment_type" });
           }
-          // Strict PI-to-target binding: if PI metadata names a target, the request
-          // MUST supply the same target (no omission fallback).
+          // Strict PI-to-target binding: PI metadata target must match the request target
           const piTargetTrip = pi.metadata?.targetTripId || undefined;
           const piTargetExp = pi.metadata?.targetExperienceId || undefined;
           if (piTargetTrip && piTargetTrip !== tripId) {
@@ -549,16 +545,15 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           if (tripId) {
             const [tRow] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
             actualEventType = tRow?.eventType ?? undefined;
-          } else if (userExperienceId) {
+          } else {
             const [eRow] = await db
               .select({ slug: experienceTypes.slug })
               .from(userExperiences)
               .innerJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
-              .where(eq(userExperiences.id, userExperienceId))
+              .where(eq(userExperiences.id, userExperienceId!))
               .limit(1);
             actualEventType = eRow?.slug ?? undefined;
           }
-          // actualEventType is guaranteed set (target_required guard above)
           const actualTier = complexityTier(actualEventType);
           const [actualFeeRow] = await db
             .select({ priceCents: optimizationFees.priceCents })
@@ -572,12 +567,17 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
               message: `Payment amount does not match the required ${actualTier} tier fee for this resource.`,
             });
           }
+          canRunOptimizer = true;
         } catch (stripeErr: any) {
-          console.error("[itinerary-comparisons] Stripe verification error:", stripeErr.message);
-          return res.status(402).json({ error: "payment_verification_failed", message: stripeErr.message });
+          if ((stripeErr as any).statusCode || (stripeErr as any).type === "StripeInvalidRequestError") {
+            return res.status(402).json({ error: "payment_verification_failed", message: stripeErr.message });
+          }
+          throw stripeErr;
         }
       }
-      // ── End payment gate ────────────────────────────────────────────────────
+      // ── End authorization gate ──────────────────────────────────────────────
+      // canRunOptimizer=false → comparison created with status "pending_payment"
+      // canRunOptimizer=true  → comparison created with status "generating" + optimizer triggered
 
       const [comparison] = await db
         .insert(itineraryComparisons)
@@ -592,7 +592,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           budget: budget?.toString(),
           travelers: travelers || 1,
           experienceTypeSlug: experienceTypeSlug || null,
-          status: "generating",
+          status: canRunOptimizer ? "generating" : "pending_payment",
           ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
         })
         .returning();
@@ -642,8 +642,8 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
         }));
       }
 
-      // Trigger AI optimization in background if we have items
-      if (baselineItems.length > 0) {
+      // Trigger AI optimization in background only when authorized (payment verified or free rerun)
+      if (canRunOptimizer && baselineItems.length > 0) {
         const availableServices = await db
           .select()
           .from(providerServices)
