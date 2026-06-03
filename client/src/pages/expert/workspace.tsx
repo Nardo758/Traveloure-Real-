@@ -9,8 +9,8 @@ import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-goog
 import {
   Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2,
   AlertTriangle, Send, MessageSquare, Plus, Filter, Zap,
-  Navigation, Train, Footprints, Car, Lock, Eye, EyeOff,
-  FileText, DollarSign, CheckCircle, Clock, LayoutTemplate,
+  Navigation, Lock, Eye, EyeOff,
+  FileText, DollarSign, CheckCircle, Clock,
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Activity, Battery, Shield, BatteryLow,
@@ -44,65 +44,6 @@ function Bdg({ children, c = "gray" }: { children: any; c?: string }) {
 
 function Chip({ children, active = false, onClick }: any) {
   return <button data-testid={`chip-${String(children).toLowerCase().replace(/[^a-z0-9]/g, "-")}`} onClick={onClick} style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 500, cursor: "pointer", border: active ? `1.5px solid ${P}` : `1.5px solid ${G[200]}`, background: active ? `${P}0F` : "white", color: active ? P : G[600] }}>{children}</button>;
-}
-
-function TConn({ mode, dur }: { mode: string; dur: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0 2px 10px", margin: "1px 0" }}>
-      <div style={{ width: 1, height: 12, background: G[200], marginLeft: 3 }} />
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", background: G[50], border: `1px solid ${G[200]}`, borderRadius: 99, color: G[500], fontSize: 11 }}>
-        {mode === "walk" ? <Footprints style={{ width: 10, height: 10 }} /> : mode === "taxi" ? <Car style={{ width: 10, height: 10 }} /> : <Train style={{ width: 10, height: 10 }} />}
-        {dur}
-      </div>
-    </div>
-  );
-}
-
-const CAT_DOTS: Record<string, string> = { food: "#EA580C", culture: "#2563EB", activity: "#2563EB", hotel: "#7C3AED", transport: "#16A34A", accommodation: "#7C3AED", dining: "#EA580C" };
-
-function ARow({ time, cat, name, price, edited, alts, gap, onAddOne, onEdit }: any) {
-  if (gap) return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, border: `1.5px dashed ${P}50`, background: `${P}06`, margin: "3px 0" }}>
-      <AlertTriangle style={{ width: 13, height: 13, color: P, flexShrink: 0 }} />
-      <span style={{ fontSize: 12, color: P, fontWeight: 500 }}>No dinner booked — <span onClick={onAddOne} style={{ textDecoration: "underline", cursor: "pointer" }}>Add one?</span></span>
-    </div>
-  );
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 8, background: "white", border: `1px solid ${G[100]}`, margin: "2px 0" }}>
-      <span style={{ fontSize: 11, color: G[400], minWidth: 40, fontFamily: "monospace", flexShrink: 0 }}>{time || "—"}</span>
-      <div style={{ width: 7, height: 7, borderRadius: "50%", background: CAT_DOTS[cat] || G[400], flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: G[900], fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-      {price && <span style={{ fontSize: 11, color: G[500], background: G[100], padding: "2px 6px", borderRadius: 6, flexShrink: 0 }}>{price}</span>}
-      {edited && <Bdg c="amber">edited</Bdg>}
-      {alts && <button style={{ fontSize: 11, color: P, background: `${P}10`, border: `1px solid ${P}30`, borderRadius: 6, padding: "2px 7px", cursor: "pointer", flexShrink: 0, fontWeight: 500 }}>Find Alternatives</button>}
-      {onEdit && <button onClick={onEdit} data-testid={`button-edit-item-${name?.slice(0, 20)}`} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: G[400], flexShrink: 0, display: "flex" }}><Pencil style={{ width: 11, height: 11 }} /></button>}
-    </div>
-  );
-}
-
-function DayCard({ day, date, loc, children, onAdd, onTemplate }: any) {
-  return (
-    <div style={{ background: "white", borderRadius: 12, border: `1px solid ${G[200]}`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", marginBottom: 12, overflow: "hidden" }}>
-      <div style={{ padding: "9px 14px", borderBottom: `1px solid ${G[100]}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: `${P}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: P }}>{day}</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>Day {day} · {date}</div>
-            {loc && <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: G[500] }}><MapPin style={{ width: 10, height: 10 }} />{loc}</div>}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 5 }}>
-          <button onClick={onTemplate} data-testid={`button-template-day-${day}`} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: G[600], background: G[50], border: `1px solid ${G[200]}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 500 }}>
-            <LayoutTemplate style={{ width: 11, height: 11 }} /> Template
-          </button>
-          <button onClick={onAdd} data-testid={`button-add-day-${day}`} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: P, background: `${P}10`, border: `1px solid ${P}30`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 500 }}>
-            <Plus style={{ width: 11, height: 11 }} /> Add
-          </button>
-        </div>
-      </div>
-      <div style={{ padding: "8px 10px" }}>{children}</div>
-    </div>
-  );
 }
 
 function formatRelativeTime(date: Date): string {
