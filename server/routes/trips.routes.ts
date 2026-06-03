@@ -510,6 +510,14 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           });
         }
 
+        // Require a concrete optimization target — no ambiguous fallbacks
+        if (!tripId && !userExperienceId) {
+          return res.status(400).json({
+            error: "target_required",
+            message: "Provide tripId or userExperienceId for paid optimization.",
+          });
+        }
+
         // Verify with Stripe
         try {
           const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
@@ -525,13 +533,14 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           if (pi.metadata?.type !== "optimization_fee") {
             return res.status(402).json({ error: "invalid_payment_type" });
           }
-          // Verify PI is bound to the same resource being optimized
-          const piTargetTrip = pi.metadata?.targetTripId;
-          const piTargetExp = pi.metadata?.targetExperienceId;
-          if (piTargetTrip && tripId && piTargetTrip !== tripId) {
+          // Strict PI-to-target binding: if PI metadata names a target, the request
+          // MUST supply the same target (no omission fallback).
+          const piTargetTrip = pi.metadata?.targetTripId || undefined;
+          const piTargetExp = pi.metadata?.targetExperienceId || undefined;
+          if (piTargetTrip && piTargetTrip !== tripId) {
             return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different trip." });
           }
-          if (piTargetExp && userExperienceId && piTargetExp !== userExperienceId) {
+          if (piTargetExp && piTargetExp !== userExperienceId) {
             return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different experience." });
           }
           // Re-derive expected tier from the actual comparison resource (not PI metadata)
@@ -549,6 +558,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
               .limit(1);
             actualEventType = eRow?.slug ?? undefined;
           }
+          // actualEventType is guaranteed set (target_required guard above)
           const actualTier = complexityTier(actualEventType);
           const [actualFeeRow] = await db
             .select({ priceCents: optimizationFees.priceCents })
