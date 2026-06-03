@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +36,6 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CityDetailView } from "./CityDetailView";
 import { useTripQueue, QueuedCity } from "@/contexts/TripQueueContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";

@@ -2310,6 +2310,13 @@ export default function DiscoverLocationPage() {
             </section>
           </>
         )}
+
+        {/* Phase C: Add-to-experience dialog */}
+        <AddToExperienceDialog
+          item={addToExperienceItem}
+          open={addToExperienceOpen}
+          onOpenChange={setAddToExperienceOpen}
+        />
       </div>
 
       {/* Phase C: Add to trip / experience dialog */}
