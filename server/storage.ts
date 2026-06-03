@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { PROCESSING_FEE_RATE, resolveCommissionRates } from "./services/commission";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
@@ -1143,8 +1144,8 @@ export class DatabaseStorage implements IStorage {
           trackingNumber: updated.trackingNumber || undefined,
           grossAmount: String(grossAmount),
           platformFee: String(platformFee),
-          netAmount: String(platformFee * 0.97),
-          processingFees: String(platformFee * 0.03),
+          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+          processingFees: String(platformFee * PROCESSING_FEE_RATE),
           providerId: updated.providerId,
           providerEarnings: String(providerEarningsAmount),
           description: `Booking commission from ${updated.trackingNumber || id}`,
@@ -2371,8 +2372,8 @@ export class DatabaseStorage implements IStorage {
           trackingNumber: template?.trackingNumber || undefined,
           grossAmount: String(grossAmount),
           platformFee: String(platformFee),
-          netAmount: String(platformFee * 0.97),
-          processingFees: String(platformFee * 0.03),
+          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+          processingFees: String(platformFee * PROCESSING_FEE_RATE),
           expertId: newPurchase.expertId || undefined,
           expertEarnings: String(expertEarningsAmount),
           description: `Template sale commission`,
@@ -2485,11 +2486,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpertTip(tip: InsertExpertTip): Promise<ExpertTip> {
-    // Get the revenue split for tips
-    const split = await this.getRevenueSplit('tip');
-    const platformPct = parseFloat(split?.platformPercentage || '5') / 100;
+    // Resolve tip commission rates from booking_fee_configs (canonical source).
+    // Falls back to hardcoded 25/75 if no "tip" row exists, but the startup seed
+    // inserts a "tip" row with platform_fee=5 / expert_share=95 to match legacy behaviour.
+    const { platformFeeRate } = await resolveCommissionRates({ category: 'tip' });
     const tipAmount = parseFloat(String(tip.amount));
-    const platformFee = tipAmount * platformPct;
+    const platformFee = tipAmount * platformFeeRate;
     const expertAmount = tipAmount - platformFee;
 
     // Generate tracking number for content registry
@@ -2533,8 +2535,8 @@ export class DatabaseStorage implements IStorage {
         trackingNumber,
         grossAmount: String(tipAmount),
         platformFee: String(platformFee),
-        netAmount: String(platformFee * 0.97),
-        processingFees: String(platformFee * 0.03),
+        netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+        processingFees: String(platformFee * PROCESSING_FEE_RATE),
         expertId: tip.expertId,
         expertEarnings: String(expertAmount),
         description: `Tip commission from ${tip.travelerId || 'traveler'}`,
