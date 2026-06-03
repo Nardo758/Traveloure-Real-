@@ -34,7 +34,18 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 
 interface CartItem {
   id: string;
-  serviceId: string;
+  serviceId: string | null;
+  contentType: string | null;
+  contentId: string | null;
+  contentMeta: Record<string, any> | null;
+  isContentItem?: boolean;
+  contentDisplay?: {
+    name: string;
+    imageUrl: string | null;
+    city: string | null;
+    description: string | null;
+    price: string | null;
+  } | null;
   quantity: number;
   scheduledDate: string | null;
   notes: string | null;
@@ -678,7 +689,79 @@ export default function CartPage() {
             {flowStep === "cart" && (
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-4">
-                  {(cart?.items || []).map((item) => (
+                  {(cart?.items || []).map((item) => {
+                    const isContent = item.isContentItem || (item.contentId && item.contentType);
+                    const contentDisplay = item.contentDisplay ?? (item.contentMeta ? {
+                      name: (item.contentMeta as any).name || item.contentId || "Item",
+                      imageUrl: (item.contentMeta as any).imageUrl || null,
+                      city: (item.contentMeta as any).city || null,
+                      description: (item.contentMeta as any).description || null,
+                      price: (item.contentMeta as any).price || null,
+                    } : null);
+
+                    const contentTypeLabel = item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : "Discover Item";
+
+                    if (isContent && contentDisplay) {
+                      return (
+                        <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
+                          <CardContent className="p-4">
+                            <div className="flex gap-4">
+                              {contentDisplay.imageUrl && (
+                                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+                                  <img src={contentDisplay.imageUrl} alt={contentDisplay.name} className="w-full h-full object-cover" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="font-semibold truncate" data-testid={`text-service-name-${item.id}`}>
+                                    {contentDisplay.name}
+                                  </h3>
+                                  <Badge variant="outline" className="text-xs border-[#FF385C]/40 text-[#FF385C] flex-shrink-0">
+                                    {contentTypeLabel}
+                                  </Badge>
+                                </div>
+                                {contentDisplay.description && (
+                                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                                    {contentDisplay.description}
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
+                                  {contentDisplay.city && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {contentDisplay.city}
+                                    </span>
+                                  )}
+                                  {contentDisplay.price && (
+                                    <span className="flex items-center gap-1 font-medium text-foreground">
+                                      {contentDisplay.price}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Saved from Discover — will be resolved at checkout
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex justify-end mt-3">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                onClick={() => removeItemMutation.mutate(item.id)}
+                                disabled={removeItemMutation.isPending}
+                                data-testid={`button-remove-${item.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Remove
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+
+                    return (
                     <Card key={item.id} data-testid={`card-cart-item-${item.id}`}>
                       <CardContent className="p-4">
                         <div className="flex gap-4">
@@ -752,7 +835,8 @@ export default function CartPage() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                    );
+                  })}
                   
                   {externalItems.map((item) => (
                     <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
