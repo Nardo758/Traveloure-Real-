@@ -14,6 +14,7 @@ import adminRouter from "./routes/admin.routes";
 import paymentsRouter from "./routes/payments.routes";
 import contentRouter, { registerDiscoveryRoutes } from "./routes/content.routes";
 import savedItemsRouter from "./routes/saved-items.routes";
+import crossSellRouter from "./routes/cross-sell.routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -137,6 +138,9 @@ export async function registerRoutes(
 
   // saved items (wishlist)
   app.use(savedItemsRouter);
+
+  // cross-sell conversion tracking
+  app.use(crossSellRouter);
 
   // AI Discovery routes (uses dynamic import internally)
   await registerDiscoveryRoutes(app);

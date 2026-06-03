@@ -103,6 +103,7 @@ import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
+import AdminCrossSellAnalytics from "@/pages/admin/cross-sell-analytics";
 import ExpertAnalytics from "@/pages/expert/analytics";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
@@ -651,6 +652,9 @@ function Router() {
       </Route>
       <Route path="/admin/neighborhood-backfill">
         {() => <ProtectedRoute component={AdminNeighborhoodBackfill} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/analytics/cross-sell">
+        {() => <ProtectedRoute component={AdminCrossSellAnalytics} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
