@@ -17,6 +17,9 @@
 import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import DOMPurify from "dompurify";
 import { formatDistanceToNow } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -38,7 +41,7 @@ import {
   ExternalLink, Star, Clock, Wallet, Lightbulb, Shield, Sun, Heart,
   CalendarX, AlertCircle, Activity, Users, Gem, ChevronRight, ChevronDown,
   Plus, Loader2, Package, Compass, Zap, Utensils, Hotel, Ticket, UserCheck,
-  BookOpen,
+  BookOpen, Send, X as XIcon, Calendar,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -70,7 +73,7 @@ interface PlatformService {
   price?: string | null; priceType?: string | null;
   serviceImage?: string | null; neighborhood?: string | null;
   location?: string | null; averageRating?: string | null;
-  isFeatured?: boolean | null;
+  isFeatured?: boolean | null; bookingsCount?: number | null;
 }
 interface SectionResult<T> { data: T | null; error: string | null }
 interface LocationViewPayload {
@@ -167,10 +170,10 @@ function resolveMatch(item: {
   return { primaryLabel: null, badgeLabel: "Not bookable", badgeClass: "bg-muted text-muted-foreground border-border", Icon: null };
 }
 
-// ─── GemCard — full-bleed image card for 2-col bento grid ────────────────────
+// ─── GemCard — compact bento card (2-col half or span-2 row) ─────────────────
 
 function GemCard({
-  item, idx, onAdd, testPrefix,
+  item, idx, onAdd, testPrefix, onRequestBooking,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -183,21 +186,25 @@ function GemCard({
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const description = item.whyHidden ?? item.description ?? null;
   const rating = item.localRating ?? item.starRating ?? null;
-  const match = resolveMatch(item);
   const catBadge = resolveCategoryBadge(item.placeType ?? item.type);
+  const bd = detectBadge(item.bookingUrl);
+  const t = (item.placeType ?? item.type ?? "").toLowerCase();
+  const isPhoto = t.includes("photo") || t.includes("viewpoint") || t.includes("scenic") || t.includes("vista");
+  const isAttraction = t.includes("attraction") || t.includes("museum") || t.includes("temple") || t.includes("shrine") || t.includes("castle");
 
   return (
     <div
       className="rounded-xl border bg-card overflow-hidden flex flex-col"
       data-testid={`${testPrefix}-${idx}`}
     >
-      {/* Image — crisp 4:3, fills full card width */}
-      <div className="relative aspect-[4/3] bg-muted flex-shrink-0 w-full">
+      {/* Image — compact fixed height (reference spec: 104px) */}
+      <div className="relative h-[104px] bg-muted flex-shrink-0 w-full overflow-hidden">
         {image ? (
           <img
             src={image}
@@ -207,7 +214,7 @@ function GemCard({
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-muted/60">
-            <Gem className="h-10 w-10 text-muted-foreground/30" />
+            <Gem className="h-8 w-8 text-muted-foreground/30" />
           </div>
         )}
         {rating && (
@@ -217,39 +224,77 @@ function GemCard({
         )}
       </div>
 
-      <div className="p-3 flex flex-col flex-1 gap-2">
-        <div>
-          <span className={`text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${catBadge.className}`}>
-            {catBadge.label}
-          </span>
-          <p className="font-semibold text-sm leading-snug line-clamp-1 mt-1" data-testid={`${testPrefix}-name-${idx}`}>
-            {displayName}
-            {item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
-          </p>
-          {description && (
-            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{description}</p>
+      <div className="p-2.5 flex flex-col flex-1 gap-1.5">
+        {/* Category badge */}
+        <span className={`text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 self-start ${catBadge.className}`}>
+          {catBadge.label}
+        </span>
+
+        {/* Name */}
+        <p className="font-semibold text-sm leading-snug line-clamp-2" data-testid={`${testPrefix}-name-${idx}`}>
+          {displayName}
+        </p>
+
+        {/* Description */}
+        {description && (
+          <p className="text-[11px] text-muted-foreground line-clamp-2">{description}</p>
+        )}
+
+        {/* Price + booking badge strip */}
+        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+          {item.price && (
+            <span className="text-sm font-bold">{item.price}</span>
           )}
+          <span className={`text-[9px] font-semibold border rounded px-1.5 py-0.5 ${bd.badgeClass}`}>
+            {bd.badgeText}
+          </span>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
-          {match.primaryLabel && item.bookingUrl && (
-            <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
-              <a href={item.bookingUrl} target="_blank" rel="noopener noreferrer">{match.primaryLabel}</a>
+        {/* Match strip — photographer (photo spots) or guide (attractions) */}
+        {isPhoto && (
+          <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5 flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">📷 photographer available</span>
+            <Button size="sm" className="text-[10px] h-6 px-2 flex-shrink-0" data-testid={`${testPrefix}-shoot-${idx}`}
+              onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: "Photographer", affiliateUrl: "", partnerCategory: "photography" })}>
+              Book shoot
             </Button>
-          )}
-          {match.primaryLabel && !item.bookingUrl && (
-            <Button size="sm" className="text-xs h-7 px-2.5" data-testid={`${testPrefix}-book-${idx}`}>
-              {match.primaryLabel}
+          </div>
+        )}
+        {isAttraction && (
+          <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5 flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">🧭 local guide available</span>
+            <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 flex-shrink-0" data-testid={`${testPrefix}-guide-${idx}`}>
+              Book guide
             </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 px-2.5"
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex flex-wrap gap-1 mt-auto pt-1">
+          {/* Primary book button */}
+          {item.bookingUrl && (() => {
+            if (bd.isPartner) {
+              return (
+                <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 border-violet-300 text-violet-700 hover:bg-violet-50" data-testid={`${testPrefix}-book-${idx}`}
+                  onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Partner", affiliateUrl: item.bookingUrl!, partnerCategory: item.placeType ?? item.type ?? "activity", itemDescription: description ?? undefined })}>
+                  Request booking
+                </Button>
+              );
+            }
+            return (
+              <Button size="sm" className="text-[10px] h-6 px-2" asChild data-testid={`${testPrefix}-book-${idx}`}>
+                <a href={item.bookingUrl} rel="noopener noreferrer">Book</a>
+              </Button>
+            );
+          })()}
+          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
-            data-testid={`${testPrefix}-add-${idx}`}
-          >
-            <Plus className="h-3 w-3 mr-1" />Add
+            data-testid={`${testPrefix}-add-${idx}`}>
+            + Add
+          </Button>
+          <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2"
+            data-testid={`${testPrefix}-ask-${idx}`}>
+            💬 Ask
           </Button>
         </div>
       </div>
@@ -259,39 +304,163 @@ function GemCard({
 
 // ─── ActivityRow — text-based row for bookable activities (like the mockup) ───
 
+// ─── AffiliateBookingModal ────────────────────────────────────────────────────
+
+interface AffiliateBookingTarget {
+  itemName: string;
+  partnerName: string;
+  affiliateUrl: string;
+  partnerCategory?: string;
+  itemDescription?: string;
+}
+
+function AffiliateBookingModal({
+  item, open, onOpenChange,
+}: {
+  item: AffiliateBookingTarget | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [travelDate, setTravelDate] = useState("");
+  const [travelers, setTravelers] = useState(1);
+  const [notes, setNotes] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!item) return;
+      return apiRequest("POST", "/api/affiliate-booking-requests", {
+        itemName: item.itemName,
+        itemDescription: item.itemDescription ?? null,
+        partnerName: item.partnerName,
+        partnerCategory: item.partnerCategory ?? "activity",
+        affiliateUrl: item.affiliateUrl,
+        travelDate: travelDate || null,
+        travelers,
+        userNotes: notes || null,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Booking requested!", description: "An expert will handle this for you." });
+      onOpenChange(false);
+      setTravelDate(""); setTravelers(1); setNotes("");
+    },
+    onError: () => {
+      toast({ title: "Sign in required", description: "Please sign in to request a booking.", variant: "destructive" });
+    },
+  });
+
+  if (!item) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="affiliate-booking-modal">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5">{item.partnerName}</span>
+            Request Expert Booking
+          </DialogTitle>
+          <DialogDescription>{item.itemName}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <div className="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 flex items-start gap-2">
+            <UserCheck className="h-4 w-4 text-violet-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-violet-700">A Traveloure expert will book this on your behalf using the platform's tracked link. You'll be notified when it's confirmed.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="abm-date" className="text-xs font-medium">Travel date</Label>
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input id="abm-date" type="date" className="pl-8 text-sm" value={travelDate} onChange={e => setTravelDate(e.target.value)} data-testid="input-travel-date" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="abm-travelers" className="text-xs font-medium">Number of travelers</Label>
+            <Input id="abm-travelers" type="number" min={1} max={12} className="text-sm" value={travelers} onChange={e => setTravelers(parseInt(e.target.value) || 1)} data-testid="input-travelers" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="abm-notes" className="text-xs font-medium">Notes for the expert <span className="text-muted-foreground">(optional)</span></Label>
+            <Textarea id="abm-notes" placeholder="Any special requests, dietary needs, accessibility requirements…" className="text-sm resize-none h-20" value={notes} onChange={e => setNotes(e.target.value)} data-testid="textarea-booking-notes" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} data-testid="button-cancel-booking">
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={() => mutation.mutate()} disabled={mutation.isPending} data-testid="button-submit-booking">
+              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              Request booking
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Format a raw DB price decimal as a locale-aware currency string. */
+function formatServicePrice(
+  price: string | null | undefined,
+  priceType?: string | null,
+): string | null {
+  if (!price) return null;
+  const raw = String(price).trim();
+  // Already has a currency symbol — respect it but still normalize decimals
+  const hasSymbol = /^[€$£¥₹]/.test(raw) || /[€$£¥₹]$/.test(raw);
+  if (hasSymbol) {
+    return priceType === "variable" ? `From ${raw}` : raw;
+  }
+  const num = parseFloat(raw);
+  if (isNaN(num)) return raw;
+  const formatted = new Intl.NumberFormat("en-EU", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: num % 1 === 0 ? 0 : 2,
+  }).format(num);
+  return priceType === "variable" ? `From ${formatted}` : formatted;
+}
+
 function detectBadge(bookingUrl: string | null | undefined): {
-  badgeText: string; badgeClass: string; bookLabel: string; isPartner: boolean;
+  badgeText: string; badgeClass: string; bookLabel: string; isPartner: boolean; partnerName: string;
 } {
   if (!bookingUrl) {
-    return { badgeText: "NOT BOOKABLE", badgeClass: "bg-muted text-muted-foreground border-border", bookLabel: "", isPartner: false };
+    return { badgeText: "NOT BOOKABLE", badgeClass: "bg-muted text-muted-foreground border-border", bookLabel: "", isPartner: false, partnerName: "" };
   }
   let hostname = "";
   try { hostname = new URL(bookingUrl).hostname.toLowerCase(); } catch { hostname = ""; }
-  const partner = hostname.includes("viator") || hostname.includes("tiqets") ||
-    hostname.includes("klook") || hostname.includes("getyourguide") ||
-    hostname.includes("booking.com") || hostname.includes("airbnb");
+  let partnerName = "";
+  if (hostname.includes("viator")) partnerName = "Viator";
+  else if (hostname.includes("tiqets")) partnerName = "Tiqets";
+  else if (hostname.includes("klook")) partnerName = "Klook";
+  else if (hostname.includes("getyourguide")) partnerName = "GetYourGuide";
+  else if (hostname.includes("booking.com")) partnerName = "Booking.com";
+  else if (hostname.includes("airbnb")) partnerName = "Airbnb";
+  else if (hostname.includes("12go")) partnerName = "12Go";
+  const partner = !!partnerName;
   if (partner) {
-    return { badgeText: "VIA PARTNER", badgeClass: "bg-blue-50 text-blue-700 border-blue-200", bookLabel: "Book via partner", isPartner: true };
+    return { badgeText: "VIA EXPERT", badgeClass: "bg-violet-50 text-violet-700 border-violet-200", bookLabel: "Request booking", isPartner: true, partnerName };
   }
-  return { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false };
+  return { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false, partnerName: "" };
 }
 
 function ActivityRow({
-  item, idx, onAdd, testPrefix, forceTraveloure,
+  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
     placeType?: string | null; type?: string | null;
-    bookingUrl?: string | null; price?: string | null;
+    bookingUrl?: string | null; price?: string | null; priceType?: string | null;
     description?: string | null; whyHidden?: string | null; whyLocalsLoveIt?: string | null;
     imageUrl?: string | null; media?: any[];
+    bookingsCount?: number | null;
   };
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
   /** Force "BOOK ON TRAVELOURE" badge regardless of URL (for platform services). */
   forceTraveloure?: boolean;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
   const description = item.whyHidden ?? item.whyLocalsLoveIt ?? item.description ?? null;
@@ -307,15 +476,33 @@ function ActivityRow({
     ? { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false }
     : detectBadge(item.bookingUrl);
 
-  const priceDisplay = item.price
-    ? (String(item.price).startsWith("€") || String(item.price).startsWith("$") || String(item.price).startsWith("£")
-      ? item.price : `€${item.price}`)
-    : null;
+  // Locale-aware price — for platform services use priceType to decide "From" prefix
+  const priceDisplay = forceTraveloure
+    ? formatServicePrice(item.price, item.priceType)
+    : (item.price
+      ? (String(item.price).startsWith("€") || String(item.price).startsWith("$") || String(item.price).startsWith("£")
+        ? item.price : `€${item.price}`)
+      : null);
+
+  // Is this an internal Traveloure service URL we can navigate to directly?
+  const isInternalService = item.bookingUrl?.startsWith("/services/");
+
+  /** For internal service rows: navigate on row click, but let child buttons handle their own events. */
+  const handleRowClick = isInternalService && item.bookingUrl
+    ? () => navigate(item.bookingUrl!)
+    : undefined;
+
+  /** Stops the row-level navigation click from firing when a child button is clicked. */
+  const stopNav = isInternalService
+    ? (e: React.MouseEvent) => e.stopPropagation()
+    : undefined;
 
   return (
     <div
-      className="flex items-start gap-3 py-3 border-b last:border-b-0"
+      className={`flex items-start gap-3 py-3 border-b last:border-b-0${isInternalService ? " cursor-pointer hover:bg-muted/40 rounded-lg px-1 -mx-1 transition-colors" : ""}`}
       data-testid={`${testPrefix}-${idx}`}
+      onClick={handleRowClick}
+      role={isInternalService ? "link" : undefined}
     >
       {image && (
         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
@@ -328,45 +515,85 @@ function ActivityRow({
           <p className="text-sm font-semibold leading-snug" data-testid={`${testPrefix}-name-${idx}`}>
             {displayName}
             {displayType && <span className="font-normal text-muted-foreground"> · {displayType}</span>}
-            {priceDisplay && <span className="font-normal text-muted-foreground"> · {priceDisplay}</span>}
           </p>
           <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
             {badge.badgeText}
           </span>
+          {priceDisplay && (
+            <span
+              className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200"
+              data-testid={`${testPrefix}-price-${idx}`}
+            >
+              {priceDisplay}
+            </span>
+          )}
+          {(item.bookingsCount ?? 0) > 0 && (
+            <span
+              className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-0.5"
+              data-testid={`${testPrefix}-bookings-${idx}`}
+            >
+              <Users className="w-2.5 h-2.5" />{item.bookingsCount} booked
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          {badge.bookLabel && (item.bookingUrl || forceTraveloure) && (
-            <Button
-              size="sm"
-              variant={badge.isPartner ? "outline" : "default"}
-              className="text-xs h-7 px-2.5"
-              asChild={!!(item.bookingUrl && !forceTraveloure) || !!(item.bookingUrl && forceTraveloure)}
-              data-testid={`${testPrefix}-book-${idx}`}
-            >
-              {item.bookingUrl ? (
-                <a href={item.bookingUrl} target={badge.isPartner ? "_blank" : undefined} rel="noopener noreferrer">
-                  {badge.bookLabel}
-                </a>
-              ) : (
-                <span>{badge.bookLabel}</span>
-              )}
-            </Button>
+          {badge.bookLabel && (item.bookingUrl || forceTraveloure) && !isInternalService && (
+            badge.isPartner ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-7 px-2.5 border-violet-300 text-violet-700 hover:bg-violet-50"
+                data-testid={`${testPrefix}-book-${idx}`}
+                onClick={() => onRequestBooking?.({
+                  itemName: displayName,
+                  partnerName: badge.partnerName || "Partner",
+                  affiliateUrl: item.bookingUrl!,
+                  partnerCategory: item.placeType ?? item.type ?? "activity",
+                  itemDescription: description ?? undefined,
+                })}
+              >
+                {badge.bookLabel}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="default"
+                className="text-xs h-7 px-2.5"
+                data-testid={`${testPrefix}-book-${idx}`}
+                asChild={!!item.bookingUrl}
+              >
+                {item.bookingUrl ? (
+                  <a href={item.bookingUrl} rel="noopener noreferrer">{badge.bookLabel}</a>
+                ) : (
+                  <span>{badge.bookLabel}</span>
+                )}
+              </Button>
+            )
           )}
           <Button
             size="sm"
             variant="outline"
             className="text-xs h-7 px-2.5"
-            onClick={() => onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd({ name: displayName, type: item.placeType ?? item.type ?? "activity", imageUrl: image ?? undefined, description: description ?? undefined });
+            }}
             data-testid={`${testPrefix}-add-${idx}`}
           >
             Add to experience
           </Button>
-          <Button size="sm" variant="ghost" className="text-xs h-7 px-2" data-testid={`${testPrefix}-ask-${idx}`}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs h-7 px-2"
+            onClick={stopNav}
+            data-testid={`${testPrefix}-ask-${idx}`}
+          >
             <UserCheck className="h-3 w-3 mr-1" />Ask an expert
           </Button>
           {isPhotoSpot && (
-            <span className="text-xs text-muted-foreground self-center">
+            <span className="text-xs text-muted-foreground self-center" onClick={stopNav}>
               · photographer available → <button className="underline text-primary">Book shoot</button>
             </span>
           )}
@@ -379,7 +606,7 @@ function ActivityRow({
 // ─── HotelRow — full-width with small thumbnail + "Book both" ─────────────────
 
 function HotelRow({
-  item, idx, onAdd, testPrefix,
+  item, idx, onAdd, testPrefix, onRequestBooking,
 }: {
   item: {
     id?: string; name?: string; title?: string; placeName?: string;
@@ -391,6 +618,7 @@ function HotelRow({
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
@@ -425,13 +653,23 @@ function HotelRow({
       </div>
 
       <div className="flex-shrink-0 flex flex-col gap-1.5 items-end">
-        {hasBooking ? (
-          <Button size="sm" className="text-xs h-7 px-3 whitespace-nowrap" asChild>
-            <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>
-              Book both
-            </a>
-          </Button>
-        ) : (
+        {hasBooking ? (() => {
+          const bd = detectBadge(item.bookingUrl);
+          if (bd.isPartner) {
+            return (
+              <Button size="sm" variant="outline" className="text-xs h-7 px-3 whitespace-nowrap border-violet-300 text-violet-700 hover:bg-violet-50"
+                data-testid={`${testPrefix}-book-${idx}`}
+                onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Booking.com", affiliateUrl: item.bookingUrl!, partnerCategory: "hotel" })}>
+                Request booking
+              </Button>
+            );
+          }
+          return (
+            <Button size="sm" className="text-xs h-7 px-3 whitespace-nowrap" asChild>
+              <a href={item.bookingUrl!} rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>Book both</a>
+            </Button>
+          );
+        })() : (
           <Button
             size="sm"
             variant="outline"
@@ -447,10 +685,12 @@ function HotelRow({
   );
 }
 
-// ─── HotelMiniCard — half-width card for 2-col grid inside neighborhood ──────
+// ─── HotelMiniCard — full-width row card (span-2) for marquee stays ──────────
+// Always renders as a horizontal row so it occupies the full bento width.
+// Caller must add "col-span-2" to the grid wrapper or place it in its own row.
 
 function HotelMiniCard({
-  item, idx, onAdd, testPrefix,
+  item, idx, onAdd, testPrefix, onRequestBooking,
 }: {
   item: {
     id?: string; name?: string; title?: string; placeName?: string;
@@ -462,47 +702,70 @@ function HotelMiniCard({
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
-  const hasBooking = !!item.bookingUrl;
+  const bd = detectBadge(item.bookingUrl);
 
   return (
     <div
-      className="rounded-xl border bg-card overflow-hidden flex flex-col"
+      className="col-span-2 rounded-xl border bg-card overflow-hidden flex flex-row"
       data-testid={`${testPrefix}-mini-${idx}`}
     >
-      <div className="relative aspect-[4/3] bg-muted flex-shrink-0 w-full">
+      {/* Left image strip — 96px wide */}
+      <div className="w-24 flex-shrink-0 bg-blue-50 flex items-center justify-center self-stretch">
         {image ? (
-          <img src={image} alt={displayName} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+          <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-            <Hotel className="h-10 w-10 text-blue-300" />
-          </div>
+          <Hotel className="h-8 w-8 text-blue-300" />
         )}
       </div>
-      <div className="p-3 flex flex-col flex-1 gap-2">
-        <div>
-          <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
-            MARQUEE STAY
+
+      <div className="p-3 flex flex-col flex-1 gap-1.5 min-w-0">
+        <span className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 self-start bg-blue-50 text-blue-700 border-blue-200">
+          MARQUEE STAY
+        </span>
+        <p className="font-semibold text-sm leading-snug line-clamp-1" data-testid={`${testPrefix}-name-${idx}`}>
+          {displayName}
+        </p>
+
+        {/* Price + booking badge */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {item.price && <span className="text-sm font-bold">{item.price}</span>}
+          <span className={`text-[9px] font-semibold border rounded px-1.5 py-0.5 ${bd.badgeClass}`}>
+            {bd.badgeText}
           </span>
-          <p className="font-semibold text-sm leading-snug line-clamp-1 mt-1" data-testid={`${testPrefix}-name-${idx}`}>
-            {displayName}{item.price && <span className="font-normal text-muted-foreground"> · {item.price}</span>}
-          </p>
-          {item.address && <p className="text-xs text-muted-foreground line-clamp-1">{item.address}</p>}
         </div>
-        <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
-          {hasBooking && (
-            <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
-              <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer">Book</a>
-            </Button>
-          )}
-          <Button
-            size="sm" variant="outline" className="text-xs h-7 px-2.5"
+
+        {/* Transport match strip */}
+        <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">🚗 private transfer available</span>
+          {item.bookingUrl ? (
+            bd.isPartner ? (
+              <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 flex-shrink-0 border-violet-300 text-violet-700 hover:bg-violet-50"
+                data-testid={`${testPrefix}-book-both-${idx}`}
+                onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Booking.com", affiliateUrl: item.bookingUrl!, partnerCategory: "hotel" })}>
+                Request booking
+              </Button>
+            ) : (
+              <Button size="sm" className="text-[10px] h-6 px-2 flex-shrink-0" asChild data-testid={`${testPrefix}-book-both-${idx}`}>
+                <a href={item.bookingUrl} rel="noopener noreferrer">Book both</a>
+              </Button>
+            )
+          ) : null}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-1 pt-0.5">
+          <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
-            data-testid={`${testPrefix}-add-${idx}`}
-          >
-            <Plus className="h-3 w-3 mr-1" />Add
+            data-testid={`${testPrefix}-add-${idx}`}>
+            + Add
+          </Button>
+          <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2"
+            data-testid={`${testPrefix}-ask-${idx}`}>
+            💬 Ask
           </Button>
         </div>
       </div>
@@ -615,7 +878,7 @@ function isPhotoSpotGem(placeType: string | null | undefined): boolean {
 }
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, expert,
+  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, onRequestBooking,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
@@ -625,7 +888,7 @@ function NeighborhoodContainer({
   cityName: string;
   onAdd: (t: AddDialogTarget) => void;
   hueIdx: number;
-  expert?: any;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
@@ -639,14 +902,12 @@ function NeighborhoodContainer({
   const doCount = gems.length - eatCount + activities.length;
   const stayCount = hotels.length;
   const svcCount = services.length;
-  const expertFirstName = expert?.name?.split(" ")[0] ?? null;
 
   const statParts = [
     doCount > 0 && `${doCount} to do`,
     eatCount > 0 && `${eatCount} to eat`,
     stayCount > 0 && `${stayCount} stay${stayCount !== 1 ? "s" : ""}`,
     svcCount > 0 && `${svcCount} bookable`,
-    expertFirstName && `${expertFirstName} covers it`,
   ].filter(Boolean) as string[];
 
   // Split activities: card-worthy (has image/booking/price) go in 2-col grid;
@@ -723,6 +984,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`gem-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
             {cardActivities.map((act, idx) => (
@@ -732,6 +994,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`act-card-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
             {hotels.map((hotel, idx) => (
@@ -741,6 +1004,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`hotel-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
             {services.map((svc, idx) => (
@@ -765,10 +1029,12 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`activity-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
           </div>
         )}
+
       </div>
     </div>
   );
@@ -820,7 +1086,7 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd,
+  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd, onRequestBooking,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
@@ -831,6 +1097,7 @@ function AllGemsFeed({
   cityName: string;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   // ── Flat filter mode ──────────────────────────────────────────────────────
   if (activeFilter !== "all") {
@@ -887,14 +1154,14 @@ function AllGemsFeed({
         {flatGems.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
             {flatGems.map((item, idx) => (
-              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
+              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} onRequestBooking={onRequestBooking} />
             ))}
           </div>
         )}
         {(flatActivities.length > 0 || flatRowServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
             {flatActivities.map((item, idx) => (
-              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
+              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} onRequestBooking={onRequestBooking} />
             ))}
             {flatRowServices.map((svc, idx) => (
               <ActivityRow
@@ -903,9 +1170,11 @@ function AllGemsFeed({
                   placeName: svc.serviceName,
                   placeType: svc.serviceType ?? "service",
                   price: svc.price ?? null,
+                  priceType: svc.priceType ?? null,
                   description: svc.shortDescription ?? svc.description,
                   imageUrl: svc.serviceImage,
                   bookingUrl: `/services/${svc.id}`,
+                  bookingsCount: svc.bookingsCount ?? null,
                 }}
                 idx={idx}
                 onAdd={onAdd}
@@ -919,7 +1188,7 @@ function AllGemsFeed({
         {(flatHotels.length > 0 || flatAccomServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
             {flatHotels.map((item, idx) => (
-              <HotelRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-hotel`} />
+              <HotelRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-hotel`} onRequestBooking={onRequestBooking} />
             ))}
             {flatAccomServices.map((svc, idx) => (
               <HotelRow
@@ -1033,91 +1302,133 @@ function AllGemsFeed({
     );
   }
 
+  // Separate platform services used for "Complete Your Trip" strip
+  // (logistics-type: transport, insurance, connectivity, kimono, luggage)
+  const tripComplements = platformServices.filter(s => {
+    const t = (s.serviceType ?? s.serviceName ?? "").toLowerCase();
+    return t.includes("transfer") || t.includes("transport") || t.includes("insurance") ||
+           t.includes("esim") || t.includes("sim") || t.includes("luggage") || t.includes("storage") ||
+           t.includes("kimono") || t.includes("rental") || t.includes("connectivity");
+  });
+
   return (
     <div className="space-y-6" data-testid="feed-grouped">
+      {/* Neighborhood containers with expert cards injected between them */}
       {ordered.map((n, nIdx) => (
-        <NeighborhoodContainer
-          key={n.id}
-          neighborhood={n}
-          gems={gemsBySlug.get(n.slug) ?? []}
-          hotels={hotelsBySlug.get(n.slug) ?? []}
-          activities={activitiesBySlug.get(n.slug) ?? []}
-          services={servicesBySlug.get(n.slug) ?? []}
-          cityName={cityName}
-          onAdd={onAdd}
-          hueIdx={nIdx}
-          expert={experts[nIdx % Math.max(experts.length, 1)]}
-        />
+        <div key={n.id}>
+          <NeighborhoodContainer
+            neighborhood={n}
+            gems={gemsBySlug.get(n.slug) ?? []}
+            hotels={hotelsBySlug.get(n.slug) ?? []}
+            activities={activitiesBySlug.get(n.slug) ?? []}
+            services={servicesBySlug.get(n.slug) ?? []}
+            cityName={cityName}
+            onAdd={onAdd}
+            hueIdx={nIdx}
+            onRequestBooking={onRequestBooking}
+          />
+          {/* Expert card between every other neighborhood container */}
+          {experts.length > 0 && nIdx % 2 === 0 && nIdx < ordered.length - 1 && (
+            <div className="mt-6">
+              <ExpertFeedCard expert={experts[(nIdx / 2) % experts.length]} cityName={cityName} />
+            </div>
+          )}
+        </div>
       ))}
 
-      {/* Next-neighborhood peek — faded header of the first neighborhood, acts as scroll hint */}
-      {ordered.length > 1 && (
-        <div className="opacity-70 pointer-events-none rounded-2xl border bg-card px-4 py-4 overflow-hidden">
-          <div className="flex gap-4 items-start">
-            <div className={`w-16 h-16 rounded-xl ${NEIGHBORHOOD_HUES[0].bg} flex items-center justify-center flex-shrink-0`}>
-              <MapPin className={`h-7 w-7 ${NEIGHBORHOOD_HUES[0].icon}`} />
+      {/* "ACROSS {city}" section — gems not tied to any neighborhood */}
+      {hasElsewhere && (() => {
+        const elsewhereCardActs = elsewhereActivities.filter(a => !!(a.imageUrl ?? a.media?.[0]?.url) || !!a.bookingUrl || !!a.price);
+        const elsewhereTextActs = elsewhereActivities.filter(a => !(a.imageUrl ?? a.media?.[0]?.url) && !a.bookingUrl && !a.price);
+        const hasElsewhereGrid = elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereCardActs.length > 0;
+        return (
+          <div data-testid="elsewhere-section">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
+                ACROSS {cityName.toUpperCase()} · not tied to one neighborhood
+              </span>
+              <div className="flex-1 h-px bg-border" />
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-bold">{ordered[0].name}</span>
-                <span className="text-[10px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground border border-border rounded px-1.5 py-0.5">
-                  NEIGHBORHOOD
-                </span>
-              </div>
-              {ordered[0].description && (
-                <p className="text-xs text-emerald-600 font-medium mt-1 line-clamp-1">
-                  {ordered[0].description}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Elsewhere section — lightweight divider + 2-col grid, no outer card wrapper */}
-      {hasElsewhere && (
-        <div data-testid="elsewhere-section">
-          <div className="flex items-center gap-3 mb-3">
+            {hasElsewhereGrid && (
+              <div className="grid grid-cols-2 gap-3">
+                {elsewhereGems.map((gem, idx) => (
+                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="across-gem" onRequestBooking={onRequestBooking} />
+                ))}
+                {elsewhereCardActs.map((act, idx) => (
+                  <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act" onRequestBooking={onRequestBooking} />
+                ))}
+                {elsewhereHotels.map((hotel, idx) => (
+                  <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="across-hotel" onRequestBooking={onRequestBooking} />
+                ))}
+              </div>
+            )}
+
+            {elsewhereTextActs.length > 0 && (
+              <div className={`rounded-xl border bg-card px-4 py-2${hasElsewhereGrid ? " mt-3" : ""}`}>
+                {elsewhereTextActs.map((act, idx) => (
+                  <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act-row" onRequestBooking={onRequestBooking} />
+                ))}
+              </div>
+            )}
+
+            {/* Expert card at the bottom of the "Across" section */}
+            {experts.length > 0 && ordered.length % 2 === 0 && (
+              <div className="mt-3">
+                <ExpertFeedCard expert={experts[0]} cityName={cityName} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* "COMPLETE YOUR TRIP" — compact horizontal logistics strip */}
+      {tripComplements.length > 0 && (
+        <div data-testid="complete-trip-section">
+          <div className="flex items-center gap-2 mb-3">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
-              Elsewhere in {cityName}
+              COMPLETE YOUR {cityName.toUpperCase()} TRIP · complements any itinerary
             </span>
             <div className="flex-1 h-px bg-border" />
           </div>
-
-          {/* 2-col grid: gems + card-worthy activities + hotel mini cards + service mini cards */}
-          {(() => {
-            const elsewhereCardActs = elsewhereActivities.filter(a => !!(a.imageUrl ?? a.media?.[0]?.url) || !!a.bookingUrl || !!a.price);
-            const elsewhereTextActs = elsewhereActivities.filter(a => !(a.imageUrl ?? a.media?.[0]?.url) && !a.bookingUrl && !a.price);
-            const hasElsewhereGrid = elsewhereGems.length > 0 || elsewhereHotels.length > 0 || elsewhereServices.length > 0 || elsewhereCardActs.length > 0;
-            return (
-              <>
-                {hasElsewhereGrid && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {elsewhereGems.map((gem, idx) => (
-                      <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
-                    ))}
-                    {elsewhereCardActs.map((act, idx) => (
-                      <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act-card" />
-                    ))}
-                    {elsewhereHotels.map((hotel, idx) => (
-                      <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
-                    ))}
-                    {elsewhereServices.map((svc, idx) => (
-                      <ServiceMiniCard key={svc.id ?? idx} svc={svc} idx={idx} onAdd={onAdd} testPrefix="elsewhere-svc" />
-                    ))}
+          <div className="flex gap-3 flex-wrap">
+            {tripComplements.map((svc, idx) => {
+              const price = formatServicePrice(svc.price, svc.priceType);
+              return (
+                <div
+                  key={svc.id ?? idx}
+                  className="flex-1 min-w-[168px] max-w-[220px] rounded-xl border bg-card p-3"
+                  data-testid={`complement-card-${idx}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-[18px] flex-shrink-0">
+                      {(svc.serviceType ?? "").toLowerCase().includes("transfer") ? "🚖"
+                        : (svc.serviceType ?? "").toLowerCase().includes("insurance") ? "🛡️"
+                        : (svc.serviceType ?? "").toLowerCase().includes("esim") || (svc.serviceType ?? "").toLowerCase().includes("sim") ? "📶"
+                        : (svc.serviceType ?? "").toLowerCase().includes("kimono") ? "👘"
+                        : (svc.serviceType ?? "").toLowerCase().includes("luggage") ? "🧳"
+                        : "✈️"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold leading-snug line-clamp-1">{svc.serviceName}</p>
+                      <p className="text-[10px] text-muted-foreground line-clamp-1">{svc.serviceType ?? "Service"}</p>
+                    </div>
                   </div>
-                )}
-                {/* Pure text-only activities — ActivityRow rows below grid */}
-                {elsewhereTextActs.length > 0 && (
-                  <div className={`rounded-xl border bg-card px-4 py-2${hasElsewhereGrid ? " mt-3" : ""}`}>
-                    {elsewhereTextActs.map((act, idx) => (
-                      <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
-                    ))}
+                  <div className="flex items-center gap-1.5 mt-2">
+                    {price && <span className="text-sm font-bold">{price}</span>}
+                    <Button size="sm" className="text-[10px] h-6 px-2 ml-auto" asChild data-testid={`complement-book-${idx}`}>
+                      <a href={`/services/${svc.id}`}>Book</a>
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
+                      onClick={() => onAdd({ name: svc.serviceName, type: svc.serviceType ?? "service" })}
+                      data-testid={`complement-add-${idx}`}>
+                      + Add
+                    </Button>
                   </div>
-                )}
-              </>
-            );
-          })()}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -1710,6 +2021,7 @@ export default function DiscoverLocationPage() {
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
   const [activeFilter, setActiveFilter] = useState<FeedFilter>("all");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [requestingItem, setRequestingItem] = useState<AffiliateBookingTarget | null>(null);
   const trackedRef = useRef<Set<string>>(new Set());
 
   // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
@@ -1787,6 +2099,7 @@ export default function DiscoverLocationPage() {
   const events: any[] = data?.events?.data?.events ?? [];
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
+  const openRequestBooking = (target: AffiliateBookingTarget) => setRequestingItem(target);
 
   if (!city) {
     return (
@@ -1931,6 +2244,7 @@ export default function DiscoverLocationPage() {
                 activeFilter={activeFilter}
                 experts={experts}
                 onAdd={openAdd}
+                onRequestBooking={openRequestBooking}
               />
             </section>
 
@@ -2003,6 +2317,13 @@ export default function DiscoverLocationPage() {
         target={addDialog}
         open={!!addDialog}
         onOpenChange={v => { if (!v) setAddDialog(null); }}
+      />
+
+      {/* Affiliate booking modal — routes partner bookings through experts */}
+      <AffiliateBookingModal
+        item={requestingItem}
+        open={!!requestingItem}
+        onOpenChange={v => { if (!v) setRequestingItem(null); }}
       />
     </Layout>
   );

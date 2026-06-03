@@ -18,6 +18,7 @@ import {
   CheckCircle,
   Loader2,
   User,
+  Users,
   ShieldCheck,
   Building2,
 } from "lucide-react";
@@ -34,9 +35,11 @@ interface Service {
   description: string;
   categoryId: string;
   price: string;
+  priceType: string | null;
   location: string;
   averageRating: string;
   reviewCount: number;
+  bookingsCount: number;
   status: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
@@ -123,7 +126,17 @@ export default function ServiceDetailPage() {
   }
 
   const rating = parseFloat(service.averageRating || "0") || 0;
-  const price = parseFloat(service.price || "0") || 0;
+  const priceNum = parseFloat(service.price || "0") || 0;
+  const priceDisplay = priceNum > 0
+    ? new Intl.NumberFormat("en-EU", {
+        style: "currency",
+        currency: "EUR",
+        maximumFractionDigits: priceNum % 1 === 0 ? 0 : 2,
+      }).format(priceNum)
+    : null;
+  const priceLabel = service.priceType === "variable" && priceDisplay
+    ? `From ${priceDisplay}`
+    : (priceDisplay ?? "Contact for price");
 
   return (
     <Layout>
@@ -248,9 +261,17 @@ export default function ServiceDetailPage() {
               <CardContent className="p-6">
                 <div className="text-center mb-4">
                   <p className="text-3xl font-bold" data-testid="text-price">
-                    ${price.toFixed(0)}
+                    {priceLabel}
                   </p>
-                  <p className="text-sm text-muted-foreground">per service</p>
+                  <p className="text-sm text-muted-foreground">
+                    {service.priceType === "variable" ? "starting price" : "per service"}
+                  </p>
+                  {(service.bookingsCount ?? 0) > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1" data-testid="text-bookings-count">
+                      <Users className="w-3 h-3" />
+                      {service.bookingsCount} booking{service.bookingsCount !== 1 ? "s" : ""}
+                    </p>
+                  )}
                 </div>
 
                 <Separator className="my-4" />

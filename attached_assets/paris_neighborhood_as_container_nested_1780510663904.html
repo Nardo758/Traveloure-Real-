@@ -1,0 +1,68 @@
+<h2 class="sr-only">A neighborhood rendered as a container in the All-gems feed: the neighborhood header on top, then its belonging gems and matched services enclosed and labeled inside it.</h2>
+
+<div style="padding: 1rem 0; max-width: 640px; margin: 0 auto; display:flex; flex-direction:column; gap:14px;">
+
+  <!-- NEIGHBORHOOD CONTAINER -->
+  <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); overflow:hidden;">
+
+    <!-- header -->
+    <div style="padding:0.9rem 1rem; display:flex; gap:12px;">
+      <div style="flex:0 0 64px; height:64px; border-radius:var(--border-radius-md); background:#E1F5EE; display:flex; align-items:center; justify-content:center;"><i class="ti ti-map-2" style="font-size:26px; color:#0F6E56;" aria-hidden="true"></i></div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <p style="margin:0; font-size:17px; font-weight:500;">Le Marais</p>
+          <span style="font-size:10px; padding:2px 7px; border-radius:var(--border-radius-md); background:var(--color-background-secondary); color:var(--color-text-secondary);">NEIGHBORHOOD</span>
+        </div>
+        <p style="margin:3px 0 0; font-size:12px; color:#0F6E56;">trending · cultural + romantic · 4 creators featured it</p>
+        <p style="margin:4px 0 0; font-size:12px; color:var(--color-text-secondary);">5 to do · 8 to eat · 2 stays · Sofia covers it</p>
+      </div>
+    </div>
+    <div style="padding:0 1rem 0.6rem; display:flex; gap:8px;">
+      <button style="font-size:12px; padding:6px 13px; border-radius:var(--border-radius-md); background:#0F6E56; color:#E1F5EE; border:none;">Explore Le Marais</button>
+      <button style="font-size:12px; padding:6px 13px; border-radius:var(--border-radius-md);">+ Add a Marais day</button>
+    </div>
+
+    <!-- enclosed belonging content -->
+    <div style="background:var(--color-background-secondary); border-top:0.5px solid var(--color-border-tertiary); padding:0.8rem 1rem;">
+      <p style="margin:0 0 8px; font-size:11px; color:var(--color-text-tertiary); letter-spacing:0.03em;">IN LE MARAIS</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+
+        <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); padding:0.65rem 0.75rem;">
+          <span style="font-size:9px; padding:2px 6px; border-radius:var(--border-radius-md); background:#E1F5EE; color:#0F6E56;">PHOTO SPOT</span>
+          <p style="margin:5px 0 5px; font-size:13px; font-weight:500;">Place des Vosges</p>
+          <div style="border-top:0.5px solid var(--color-border-tertiary); padding-top:5px;">
+            <p style="margin:0 0 5px; font-size:10px; color:var(--color-text-secondary);"><i class="ti ti-camera" style="font-size:12px; vertical-align:-2px; color:#993556;" aria-hidden="true"></i> photographer · €120</p>
+            <button style="font-size:11px; padding:4px 10px; border-radius:var(--border-radius-md); background:#0F6E56; color:#E1F5EE; border:none;">Book shoot</button>
+          </div>
+        </div>
+
+        <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); padding:0.65rem 0.75rem;">
+          <span style="font-size:9px; padding:2px 6px; border-radius:var(--border-radius-md); background:#FAEEDA; color:#854F0B;">ATTRACTION</span>
+          <p style="margin:5px 0 8px; font-size:13px; font-weight:500;">Musée Picasso · €14</p>
+          <div style="display:flex; gap:5px;"><button style="font-size:11px; padding:4px 9px; border-radius:var(--border-radius-md); background:#0F6E56; color:#E1F5EE; border:none;">Book</button><button style="font-size:11px; padding:4px 8px; border-radius:var(--border-radius-md);">+ Add</button></div>
+        </div>
+
+        <div style="grid-column:span 2; background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); padding:0.65rem 0.8rem; display:flex; align-items:center; gap:10px;">
+          <i class="ti ti-building" style="font-size:22px; color:#185FA5;" aria-hidden="true"></i>
+          <div style="flex:1; min-width:0;">
+            <span style="font-size:9px; padding:2px 6px; border-radius:var(--border-radius-md); background:var(--color-background-warning); color:var(--color-text-warning);">MARQUEE STAY</span>
+            <p style="margin:4px 0 2px; font-size:13px; font-weight:500;">Hôtel du Marais · €210</p>
+            <p style="margin:0; font-size:10px; color:var(--color-text-secondary);"><i class="ti ti-car" style="font-size:12px; vertical-align:-2px; color:#0F6E56;" aria-hidden="true"></i> matched: private car · €45</p>
+          </div>
+          <button style="font-size:11px; padding:5px 11px; border-radius:var(--border-radius-md); background:#0F6E56; color:#E1F5EE; border:none; flex:0 0 auto;">Book both</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- next container peek -->
+  <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:0.9rem 1rem; display:flex; align-items:center; gap:12px; opacity:0.7;">
+    <div style="flex:0 0 48px; height:48px; border-radius:var(--border-radius-md); background:#FBEAF0; display:flex; align-items:center; justify-content:center;"><i class="ti ti-map-2" style="font-size:22px; color:#993556;" aria-hidden="true"></i></div>
+    <div>
+      <div style="display:flex; align-items:center; gap:8px;"><p style="margin:0; font-size:15px; font-weight:500;">Montmartre</p><span style="font-size:10px; padding:2px 7px; border-radius:var(--border-radius-md); background:var(--color-background-secondary); color:var(--color-text-secondary);">NEIGHBORHOOD</span></div>
+      <p style="margin:3px 0 0; font-size:12px; color:var(--color-text-secondary);">6 to do · 5 to eat · 3 stays · 2 experts</p>
+    </div>
+  </div>
+
+</div>
