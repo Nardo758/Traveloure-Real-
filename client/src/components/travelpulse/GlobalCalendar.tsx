@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -178,7 +179,6 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [view, setView] = useState<CalendarView>("month-destinations");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedVibe, setSelectedVibe] = useState("all");
-  const [selectedCity, setSelectedCity] = useState<{ name: string; country: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const [selectedWeek, setSelectedWeek] = useState<number | undefined>(undefined);
@@ -260,13 +260,13 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     staleTime: 1000 * 60 * 30,
   });
 
-  const handleCityClick = (cityName: string, country: string) => {
-    setSelectedCity({ name: cityName, country });
-    onCityClick?.(cityName, country);
-  };
+  const [, navigate] = useLocation();
 
-  const handleBackFromCity = () => {
-    setSelectedCity(null);
+  const handleCityClick = (cityName: string, country: string) => {
+    onCityClick?.(cityName, country);
+    navigate(
+      `/discover/location/${encodeURIComponent(cityName)}?country=${encodeURIComponent(country)}`
+    );
   };
 
   const handleMonthClick = (month: number) => {
@@ -301,14 +301,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     setSelectedDay(undefined);
   };
 
-  if (selectedCity) {
-    return (
-      <CityDetailView
-        cityName={selectedCity.name}
-        onBack={handleBackFromCity}
-      />
-    );
-  }
+
 
   if (isLoading && view !== "year") {
     return (

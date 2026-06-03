@@ -511,33 +511,31 @@ function CityGridSkeleton() {
 }
 
 export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
-  const [selectedCity, setSelectedCity] = useState<TravelPulseCity | null>(null);
-  const [hasAutoSelected, setHasAutoSelected] = useState(false);
+  const [, navigate] = useLocation();
 
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
   });
 
-  // Auto-select city from URL param when data loads
+  // Phase B: auto-navigate when selectedCityName prop is set and data loads
   useEffect(() => {
-    if (selectedCityName && data?.cities && !hasAutoSelected) {
+    if (selectedCityName && data?.cities) {
       const matchedCity = data.cities.find(
         (city) => city.cityName.toLowerCase() === selectedCityName.toLowerCase()
       );
       if (matchedCity) {
-        setSelectedCity(matchedCity);
-        setHasAutoSelected(true);
+        navigate(
+          `/discover/location/${encodeURIComponent(matchedCity.cityName)}?country=${encodeURIComponent(matchedCity.country || "")}`
+        );
       }
     }
-  }, [selectedCityName, data?.cities, hasAutoSelected]);
+  }, [selectedCityName, data?.cities, navigate]);
 
   const handleCityClick = (city: TravelPulseCity) => {
-    setSelectedCity(city);
     onCitySelect?.(city);
-  };
-
-  const handleBack = () => {
-    setSelectedCity(null);
+    navigate(
+      `/discover/location/${encodeURIComponent(city.cityName)}?country=${encodeURIComponent(city.country || "")}`
+    );
   };
 
   if (isLoading) {
@@ -563,15 +561,6 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   }
 
   const cities = data?.cities || [];
-
-  if (selectedCity) {
-    return (
-      <CityDetailView
-        cityName={selectedCity.cityName}
-        onBack={handleBack}
-      />
-    );
-  }
 
   return (
     <div className="space-y-6">

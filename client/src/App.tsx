@@ -233,10 +233,13 @@ function Router() {
       <Route path="/discover">
         <DiscoverPage />
       </Route>
-      {/* Phase 2 shell for the new location view (v2 spec §3, Decision #5). */}
-      {/* Phase 3 fills the section renderers; the orchestrator endpoint and IA are live now. */}
+      {/* Phase 3 LocationView — 9-section city marketplace (Decision #5 = Replace). */}
       <Route path="/discover/location/:city">
         <DiscoverLocationPage />
+      </Route>
+      {/* Phase B: /city/:slug deep-link redirect (CityDetailView retirement). */}
+      <Route path="/city/:slug">
+        {(params: any) => <Redirect to={`/discover/location/${params.slug}`} />}
       </Route>
 
       <Route path="/services/:id">
