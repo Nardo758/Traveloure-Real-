@@ -182,6 +182,7 @@ export function UnifiedResultCard({
   };
 
   return (
+    <>
     <Card 
       className="overflow-hidden hover-elevate cursor-pointer"
       onClick={handleCardClick}
@@ -324,6 +325,7 @@ export function UnifiedResultCard({
         </DialogContent>
       </Dialog>
     )}
+    </>
   );
 }
 
