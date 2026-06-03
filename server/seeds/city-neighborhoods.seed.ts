@@ -38,6 +38,60 @@ interface CitySeed {
 // city districts so backfill assignments stay specific.
 const SEED_DATA: CitySeed[] = [
   {
+    city: "Tokyo",
+    country: "Japan",
+    neighborhoods: [
+      {
+        name: "Shimokitazawa",
+        slug: "shimokitazawa",
+        centroidLat: "35.6613000",
+        centroidLng: "139.6680000",
+        radiusKm: "1.00",
+        description: "Bohemian southwest Tokyo — vintage clothing, indie live houses, cosy coffee shops, theater scene.",
+      },
+      {
+        name: "Yanaka",
+        slug: "yanaka",
+        centroidLat: "35.7258000",
+        centroidLng: "139.7649000",
+        radiusKm: "1.00",
+        description: "Old-town atmosphere surviving earthquakes and war — narrow alleys, temples, Yanaka Cemetery cherry blossoms.",
+      },
+      {
+        name: "Nakameguro",
+        slug: "nakameguro",
+        centroidLat: "35.6440000",
+        centroidLng: "139.6985000",
+        radiusKm: "1.20",
+        description: "Canal-side cool — cherry-blossom walkway, gallery cafes, boutique fashion, understated nightlife.",
+      },
+      {
+        name: "Asakusa",
+        slug: "asakusa",
+        centroidLat: "35.7148000",
+        centroidLng: "139.7967000",
+        radiusKm: "1.20",
+        description: "Traditional downtown — Senso-ji temple, Nakamise shopping street, rickshaws, old craft shops.",
+      },
+      {
+        name: "Shinjuku",
+        slug: "shinjuku",
+        centroidLat: "35.6896000",
+        centroidLng: "139.6917000",
+        radiusKm: "1.50",
+        description: "Mega-hub — Golden Gai tiny bars, Kabukicho nightlife, Omoide Yokocho yakitori, sprawling station.",
+      },
+      {
+        name: "Daikanyama",
+        slug: "daikanyama",
+        centroidLat: "35.6494000",
+        centroidLng: "139.7031000",
+        radiusKm: "0.80",
+        description: "Tokyo's most liveable village — Tsutaya Books T-site, European café terraces, design studios.",
+      },
+    ],
+  },
+  {
     city: "Kyoto",
     country: "Japan",
     neighborhoods: [
