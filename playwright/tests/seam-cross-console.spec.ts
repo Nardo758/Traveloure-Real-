@@ -671,12 +671,15 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
     ).toBeDefined();
 
     // Navigate to the expert earnings page and confirm it renders without an error banner.
+    // Note: if the error banner element is absent from the DOM, Playwright treats it as
+    // not visible — so .not.toBeVisible() passes correctly. The .catch() was removed
+    // to ensure a visible error banner causes a genuine test failure.
     await navigateTo(page, '/expert/earnings');
     await verifyRouteAccessible(page);
     await expect(
       page.locator('[data-testid="error-banner"], [data-testid="alert-error"]').first(),
       '[Seam 3 BROKEN] /expert/earnings shows an error banner for kyotoExpert (Aiko Yamamoto).'
-    ).not.toBeVisible({ timeout: 10000 }).catch(() => { /* no error element is also acceptable */ });
+    ).not.toBeVisible({ timeout: 10000 });
 
     // Switch back to provider for subsequent earnings steps.
     await logout(page).catch(() => null);
