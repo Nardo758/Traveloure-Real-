@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Select,
   SelectContent,
@@ -24,7 +26,10 @@ import {
   DollarSign,
   Package,
   AlertCircle,
-  StickyNote
+  StickyNote,
+  Sparkles,
+  PenLine,
+  Zap,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -32,6 +37,21 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+
+interface ServiceTemplate {
+  id: string;
+  title: string;
+  description: string | null;
+  categoryId: string | null;
+  serviceType: string | null;
+  deliveryMethod: string | null;
+  deliveryTimeframe: string | null;
+  suggestedPrice: string | null;
+  requirements: unknown;
+  whatIncluded: unknown;
+  isActive: boolean;
+  sortOrder: number | null;
+}
 
 interface ServiceFormData {
   serviceName: string;
@@ -89,6 +109,7 @@ const steps = [
 ];
 
 export default function ServiceWizard() {
+  const [startMode, setStartMode] = useState<'choose' | 'template' | 'scratch'>('choose');
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<ServiceFormData>(initialFormData);
   const [errors, setErrors] = useState<Partial<Record<keyof ServiceFormData, string>>>({});
@@ -98,6 +119,48 @@ export default function ServiceWizard() {
   const { data: categories = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/service-categories"],
   });
+
+  const { data: serviceTemplates = [], isLoading: templatesLoading } = useQuery<ServiceTemplate[]>({
+    queryKey: ["/api/service-templates"],
+    enabled: startMode === 'template',
+  });
+
+  const createFromTemplateMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      return apiRequest("POST", `/api/expert/services/from-template/${templateId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      toast({ title: "Service created from template. You can now customize it." });
+      navigate("/expert/services");
+    },
+    onError: () => {
+      toast({ title: "Failed to create service from template", variant: "destructive" });
+    },
+  });
+
+  const applyTemplateToForm = (t: ServiceTemplate) => {
+    const arrayToText = (v: unknown): string => {
+      if (!v) return "";
+      if (typeof v === "string") return v;
+      if (Array.isArray(v)) return (v as string[]).join("\n");
+      return "";
+    };
+    setFormData({
+      ...initialFormData,
+      serviceName: t.title,
+      description: t.description ?? "",
+      categoryId: t.categoryId ?? "",
+      serviceType: t.serviceType ?? "consultation",
+      deliveryMethod: t.deliveryMethod ?? "video",
+      deliveryTimeframe: t.deliveryTimeframe ?? "",
+      price: t.suggestedPrice ?? "",
+      requirements: arrayToText(t.requirements),
+      whatIncluded: arrayToText(t.whatIncluded),
+    });
+    setStartMode('scratch');
+    setCurrentStep(1);
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: ServiceFormData) => {
@@ -541,17 +604,181 @@ export default function ServiceWizard() {
     </div>
   );
 
+  const renderChooseScreen = () => (
+    <div className="space-y-6">
+      <div>
+        <Button
+          variant="ghost"
+          onClick={() => navigate("/expert/services")}
+          className="mb-4"
+          data-testid="button-back-to-services"
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" /> Back to Services
+        </Button>
+        <h1 className="text-2xl font-bold text-gray-900">Create New Service</h1>
+        <p className="text-gray-600 mt-1">Choose how you'd like to get started</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div
+          onClick={() => setStartMode('template')}
+          className="p-6 rounded-xl border-2 border-gray-200 hover:border-[#FF385C] cursor-pointer transition-colors group"
+          data-testid="option-start-from-template"
+        >
+          <div className="w-12 h-12 rounded-xl bg-[#FF385C]/10 flex items-center justify-center mb-4">
+            <Sparkles className="w-6 h-6 text-[#FF385C]" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Start from a Template</h3>
+          <p className="text-sm text-gray-600">
+            Choose from platform-curated service templates. Pre-fills all details — ready to customize and publish in minutes.
+          </p>
+          <div className="mt-4 flex items-center text-[#FF385C] text-sm font-medium">
+            Browse templates <ChevronRight className="w-4 h-4 ml-1" />
+          </div>
+        </div>
+
+        <div
+          onClick={() => setStartMode('scratch')}
+          className="p-6 rounded-xl border-2 border-gray-200 hover:border-[#FF385C] cursor-pointer transition-colors group"
+          data-testid="option-start-from-scratch"
+        >
+          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-4">
+            <PenLine className="w-6 h-6 text-gray-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Start from Scratch</h3>
+          <p className="text-sm text-gray-600">
+            Build a fully custom service from the ground up. Set your own pricing, delivery method, and requirements.
+          </p>
+          <div className="mt-4 flex items-center text-gray-600 text-sm font-medium">
+            Start wizard <ChevronRight className="w-4 h-4 ml-1" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTemplateScreen = () => (
+    <div className="space-y-6">
+      <div>
+        <Button
+          variant="ghost"
+          onClick={() => setStartMode('choose')}
+          className="mb-4"
+          data-testid="button-back-to-choose"
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" /> Back
+        </Button>
+        <h1 className="text-2xl font-bold text-gray-900">Choose a Template</h1>
+        <p className="text-gray-600 mt-1">Select a platform-curated template to get started quickly</p>
+      </div>
+
+      {templatesLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Skeleton key={i} className="h-44 rounded-xl" />
+          ))}
+        </div>
+      ) : serviceTemplates.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <Package className="w-10 h-10 text-gray-400 mb-3" />
+            <p className="font-medium text-gray-700">No templates available yet</p>
+            <p className="text-sm text-gray-500 mt-1">Start from scratch to create your custom service</p>
+            <Button className="mt-4 bg-[#FF385C]" onClick={() => setStartMode('scratch')} data-testid="button-switch-to-scratch">
+              Start from Scratch
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {serviceTemplates.map((t) => (
+            <Card key={t.id} className="border hover:border-[#FF385C] transition-colors" data-testid={`card-template-${t.id}`}>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-base">{t.title}</CardTitle>
+                  {t.suggestedPrice && (
+                    <Badge variant="outline" className="shrink-0 text-green-700 border-green-200 bg-green-50">
+                      ${t.suggestedPrice}
+                    </Badge>
+                  )}
+                </div>
+                {t.description && (
+                  <CardDescription className="text-sm line-clamp-2">{t.description}</CardDescription>
+                )}
+              </CardHeader>
+              <CardContent className="pt-0 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {t.serviceType && (
+                    <Badge variant="secondary" className="text-xs capitalize">{t.serviceType}</Badge>
+                  )}
+                  {t.deliveryMethod && (
+                    <Badge variant="secondary" className="text-xs capitalize">{t.deliveryMethod}</Badge>
+                  )}
+                  {t.deliveryTimeframe && (
+                    <Badge variant="outline" className="text-xs">
+                      <Clock className="w-3 h-3 mr-1" />{t.deliveryTimeframe}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => applyTemplateToForm(t)}
+                    data-testid={`button-customize-template-${t.id}`}
+                  >
+                    <PenLine className="w-3 h-3 mr-1" /> Customize
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-[#FF385C]"
+                    onClick={() => createFromTemplateMutation.mutate(t.id)}
+                    disabled={createFromTemplateMutation.isPending}
+                    data-testid={`button-quick-create-${t.id}`}
+                  >
+                    <Zap className="w-3 h-3 mr-1" /> Quick Create
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  if (startMode === 'choose') {
+    return (
+      <ExpertLayout title="Create Service">
+        <div className="p-6 max-w-3xl mx-auto">
+          {renderChooseScreen()}
+        </div>
+      </ExpertLayout>
+    );
+  }
+
+  if (startMode === 'template') {
+    return (
+      <ExpertLayout title="Create Service">
+        <div className="p-6 max-w-3xl mx-auto">
+          {renderTemplateScreen()}
+        </div>
+      </ExpertLayout>
+    );
+  }
+
   return (
     <ExpertLayout title="Create Service">
       <div className="p-6 max-w-3xl mx-auto">
         <div className="mb-6">
           <Button 
             variant="ghost" 
-            onClick={() => navigate("/expert/services")}
+            onClick={() => setStartMode('choose')}
             className="mb-4"
             data-testid="button-back-to-services"
           >
-            <ChevronLeft className="w-4 h-4 mr-1" /> Back to Services
+            <ChevronLeft className="w-4 h-4 mr-1" /> Back
           </Button>
           <h1 className="text-2xl font-bold text-gray-900">Create New Service</h1>
           <p className="text-gray-600">
