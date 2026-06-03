@@ -1,0 +1,241 @@
+/**
+ * Optimization Routes
+ *
+ * G3 + G4: Free heuristic preview + payment-gated full LLM optimization.
+ *
+ * POST /api/optimization-preview
+ *   Runs smart-sequencing scoring only (no AI calls). Returns an instant
+ *   estimate of potential improvement plus the complexity-tiered fee.
+ *   Visible to authenticated and guest users (no auth required).
+ *
+ * POST /api/optimization-payments
+ *   Validates the trip/tier, checks the 24-hour free-rerun window, and
+ *   creates a Stripe PaymentIntent for the optimization fee.
+ *   Requires authentication.
+ */
+
+import { Router } from "express";
+import { db } from "../db";
+import { optimizationFees, itineraryComparisons } from "@shared/schema";
+import { eq, and, gte } from "drizzle-orm";
+import { isAuthenticated } from "../replit_integrations/auth";
+import {
+  calculateItineraryMetrics,
+  complexityTier,
+} from "../services/smart-sequencing.service";
+import { revenueTrackingService } from "../services/revenue-tracking.service";
+import Stripe from "stripe";
+
+const router = Router();
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2024-12-18.acacia" as any,
+});
+
+// ── Default fee fallbacks if DB rows are missing ─────────────────────────────
+const DEFAULT_FEE_CENTS: Record<string, number> = {
+  simple: 499,
+  standard: 999,
+  complex: 1999,
+};
+
+async function getFeeForTier(tier: string): Promise<{ priceCents: number; currency: string }> {
+  const [row] = await db
+    .select({ priceCents: optimizationFees.priceCents, currency: optimizationFees.currency })
+    .from(optimizationFees)
+    .where(and(eq(optimizationFees.complexityTier, tier), eq(optimizationFees.isActive, true)));
+
+  return {
+    priceCents: row?.priceCents ?? DEFAULT_FEE_CENTS[tier] ?? 499,
+    currency: row?.currency ?? "USD",
+  };
+}
+
+/**
+ * POST /api/optimization-preview
+ * Body: { items: [{serviceType, price?, duration?, dayNumber?}[]], eventType?, travelers? }
+ * Returns heuristic estimate + fee — no LLM, no auth required.
+ */
+router.post("/api/optimization-preview", async (req, res) => {
+  try {
+    const { items = [], eventType, travelers = 1 } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "items array is required" });
+    }
+
+    const normalizedItems = items.map((it: any, i: number) => ({
+      serviceType: it.serviceType || it.type || it.category || "sightseeing",
+      price: it.price ?? 0,
+      duration: it.duration ?? 90,
+      dayNumber: it.dayNumber ?? Math.floor(i / 3) + 1,
+    }));
+
+    const metrics = calculateItineraryMetrics(normalizedItems, Number(travelers) || 1);
+    const tier = complexityTier(eventType);
+    const { priceCents, currency } = await getFeeForTier(tier);
+
+    // Estimate improvement potential:
+    // overallScore is 0–100; lower score means more room to improve.
+    const improvementRoom = Math.max(0, 100 - metrics.overallScore);
+    const estimatedSavingsPct = Math.round(improvementRoom * 0.25); // up to 25% savings
+    const estimatedScheduleTighteningPct = Math.round(
+      (metrics.paceScore < 70 ? 70 - metrics.paceScore : 0) * 0.3
+    );
+    const estimatedCostDelta =
+      metrics.totalCost > 0
+        ? -Math.round(metrics.totalCost * (estimatedSavingsPct / 100))
+        : 0;
+
+    // Check free re-run for authenticated users
+    let freeRerun = false;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    if (userId) {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [recent] = await db
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(
+          and(
+            eq(itineraryComparisons.userId, userId),
+            gte(itineraryComparisons.optimizedAt, cutoff)
+          )
+        )
+        .limit(1);
+      if (recent) freeRerun = true;
+    }
+
+    return res.json({
+      estimatedSavingsPct,
+      estimatedCostDelta,
+      estimatedScheduleTighteningPct,
+      currentScore: Math.round(metrics.overallScore),
+      complexityTier: tier,
+      feeCents: priceCents,
+      currency,
+      freeRerun,
+      metrics: {
+        balanceScore: Math.round(metrics.balanceScore),
+        wellnessScore: Math.round(metrics.wellnessScore),
+        paceScore: Math.round(metrics.paceScore),
+        diversityScore: Math.round(metrics.diversityScore),
+      },
+    });
+  } catch (err: any) {
+    console.error("[optimization-preview] error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/optimization-payments
+ * Creates a Stripe PaymentIntent for the optimization fee.
+ * Auth required. Returns { clientSecret, paymentIntentId, feeCents, freeRerun }.
+ */
+router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const { eventType, comparisonContext } = req.body;
+
+    const tier = complexityTier(eventType);
+    const { priceCents, currency } = await getFeeForTier(tier);
+
+    // 24-hour free re-run check
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [recent] = await db
+      .select({ id: itineraryComparisons.id, optimizedAt: itineraryComparisons.optimizedAt })
+      .from(itineraryComparisons)
+      .where(
+        and(
+          eq(itineraryComparisons.userId, userId),
+          gte(itineraryComparisons.optimizedAt, cutoff)
+        )
+      )
+      .limit(1);
+
+    if (recent) {
+      return res.json({ freeRerun: true, feeCents: 0, comparisonId: recent.id });
+    }
+
+    // Create Stripe PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: priceCents,
+      currency: currency.toLowerCase(),
+      metadata: {
+        type: "optimization_fee",
+        userId,
+        complexityTier: tier,
+        context: JSON.stringify(comparisonContext || {}),
+      },
+      description: `Traveloure AI Optimization (${tier})`,
+    });
+
+    return res.json({
+      freeRerun: false,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      feeCents: priceCents,
+      currency,
+      complexityTier: tier,
+    });
+  } catch (err: any) {
+    console.error("[optimization-payments] error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/optimization-payments/confirm
+ * Called after Stripe payment succeeds on the client. Records revenue.
+ */
+router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const { paymentIntentId, comparisonId, feeCents, currency = "USD" } = req.body;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: "paymentIntentId required" });
+    }
+
+    // Verify payment with Stripe
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (pi.status !== "succeeded") {
+      return res.status(400).json({ error: "Payment not yet confirmed" });
+    }
+
+    // Store payment ID on comparison if provided
+    if (comparisonId) {
+      await db
+        .update(itineraryComparisons)
+        .set({ optimizationPaymentId: paymentIntentId })
+        .where(eq(itineraryComparisons.id, comparisonId));
+    }
+
+    // Record platform revenue
+    const amount = (feeCents ?? pi.amount) / 100;
+    try {
+      await revenueTrackingService.recordRevenueEvent({
+        sourceType: "other",
+        sourceId: paymentIntentId,
+        grossAmount: amount,
+        description: `AI Optimization fee (${pi.metadata?.complexityTier ?? "standard"})`,
+        metadata: {
+          type: "optimization_fee",
+          complexityTier: pi.metadata?.complexityTier,
+          userId,
+          comparisonId,
+          currency,
+        },
+      });
+    } catch (revErr) {
+      console.warn("[optimization-payments/confirm] revenue record failed (non-critical):", revErr);
+    }
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("[optimization-payments/confirm] error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;

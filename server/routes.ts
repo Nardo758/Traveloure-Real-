@@ -15,6 +15,7 @@ import paymentsRouter from "./routes/payments.routes";
 import contentRouter, { registerDiscoveryRoutes } from "./routes/content.routes";
 import savedItemsRouter from "./routes/saved-items.routes";
 import crossSellRouter from "./routes/cross-sell.routes";
+import optimizationRouter from "./routes/optimization.routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -35,6 +36,40 @@ export async function registerRoutes(
   // expert_service_offerings is now the canonical template catalog.
   // The ESO seed block below handles all 6 canonical templates and also
   // backfills any legacy service_templates / expert_custom_services rows.
+
+  // ─── Seed / backfill optimization_fees table (idempotent) ──────────────────
+  (async () => {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS optimization_fees (
+          id          varchar PRIMARY KEY,
+          complexity_tier varchar(20) NOT NULL UNIQUE,
+          price_cents integer NOT NULL,
+          currency    varchar(3) NOT NULL DEFAULT 'USD',
+          is_active   boolean NOT NULL DEFAULT true,
+          updated_by  varchar(255),
+          created_at  timestamp DEFAULT NOW(),
+          updated_at  timestamp DEFAULT NOW()
+        )
+      `);
+      await db.execute(sql`
+        INSERT INTO optimization_fees (id, complexity_tier, price_cents, currency, is_active, created_at, updated_at)
+        VALUES
+          (gen_random_uuid(), 'simple',   499,  'USD', true, NOW(), NOW()),
+          (gen_random_uuid(), 'standard', 999,  'USD', true, NOW(), NOW()),
+          (gen_random_uuid(), 'complex',  1999, 'USD', true, NOW(), NOW())
+        ON CONFLICT (complexity_tier) DO NOTHING
+      `);
+      // Add optimized_at + optimization_payment_id columns to itinerary_comparisons if missing
+      await db.execute(sql`
+        ALTER TABLE itinerary_comparisons
+          ADD COLUMN IF NOT EXISTS optimized_at timestamp,
+          ADD COLUMN IF NOT EXISTS optimization_payment_id varchar(255)
+      `);
+    } catch (err) {
+      console.warn("[Seed] Could not seed optimization_fees / migrate itinerary_comparisons:", err);
+    }
+  })();
 
   // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
   (async () => {
@@ -141,6 +176,7 @@ export async function registerRoutes(
 
   // cross-sell conversion tracking
   app.use(crossSellRouter);
+  app.use(optimizationRouter);
 
   // AI Discovery routes (uses dynamic import internally)
   await registerDiscoveryRoutes(app);

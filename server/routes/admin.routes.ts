@@ -4203,4 +4203,54 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
     }
   });
 
+// ─── Optimization Fee Tier Admin ─────────────────────────────────────────────
+
+router.get("/api/admin/optimization-fees", isAuthenticated, async (req, res) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id, complexity_tier, price_cents, currency, is_active, updated_by, updated_at
+      FROM optimization_fees
+      ORDER BY
+        CASE complexity_tier
+          WHEN 'simple'   THEN 1
+          WHEN 'standard' THEN 2
+          WHEN 'complex'  THEN 3
+          ELSE 4
+        END
+    `);
+    res.json(result.rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/admin/optimization-fees", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { complexityTier, priceCents, currency = "USD", isActive = true } = req.body;
+
+    if (!complexityTier || !["simple", "standard", "complex"].includes(complexityTier)) {
+      return res.status(400).json({ error: "complexityTier must be simple | standard | complex" });
+    }
+    if (typeof priceCents !== "number" || priceCents < 0) {
+      return res.status(400).json({ error: "priceCents must be a non-negative integer" });
+    }
+
+    await db.execute(sql`
+      INSERT INTO optimization_fees (id, complexity_tier, price_cents, currency, is_active, updated_by, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${complexityTier}, ${priceCents}, ${currency}, ${isActive}, ${userId}, NOW(), NOW())
+      ON CONFLICT (complexity_tier) DO UPDATE SET
+        price_cents = EXCLUDED.price_cents,
+        currency    = EXCLUDED.currency,
+        is_active   = EXCLUDED.is_active,
+        updated_by  = EXCLUDED.updated_by,
+        updated_at  = NOW()
+    `);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

@@ -814,9 +814,27 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   experienceTypeSlug: varchar("experience_type_slug", { length: 50 }),
   status: varchar("status", { length: 30 }).default("pending"),
   selectedVariantId: varchar("selected_variant_id"),
+  optimizedAt: timestamp("optimized_at"),
+  optimizationPaymentId: varchar("optimization_payment_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// === Optimization Fee Tiers ===
+export const optimizationFees = pgTable("optimization_fees", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  complexityTier: varchar("complexity_tier", { length: 20 }).notNull().unique(), // simple | standard | complex
+  priceCents: integer("price_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOptimizationFeeSchema = createInsertSchema(optimizationFees).omit({ id: true, createdAt: true, updatedAt: true });
+export type OptimizationFee = typeof optimizationFees.$inferSelect;
+export type InsertOptimizationFee = z.infer<typeof insertOptimizationFeeSchema>;
 
 export const itineraryVariants = pgTable("itinerary_variants", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

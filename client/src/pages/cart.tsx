@@ -26,7 +26,11 @@ import {
   DollarSign,
   CheckCircle,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  TrendingDown,
+  Zap,
+  RefreshCw
 } from "lucide-react";
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -124,7 +128,31 @@ interface OptimizationResult {
   warnings: string[];
 }
 
-type FlowStep = "cart" | "itinerary" | "payment";
+type FlowStep = "cart" | "optimize" | "itinerary" | "payment";
+
+interface OptimizationPreview {
+  estimatedSavingsPct: number;
+  estimatedCostDelta: number;
+  estimatedScheduleTighteningPct: number;
+  currentScore: number;
+  complexityTier: "simple" | "standard" | "complex";
+  feeCents: number;
+  currency: string;
+  freeRerun: boolean;
+  metrics: {
+    balanceScore: number;
+    wellnessScore: number;
+    paceScore: number;
+    diversityScore: number;
+  };
+}
+
+interface OptimizationPaymentState {
+  clientSecret: string;
+  paymentIntentId: string;
+  feeCents: number;
+  currency: string;
+}
 
 export default function CartPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -138,6 +166,12 @@ export default function CartPage() {
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
   const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
+
+  // Optimization preview + payment state (G3 + G4)
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [optimizationPreview, setOptimizationPreview] = useState<OptimizationPreview | null>(null);
+  const [optimizationPayment, setOptimizationPayment] = useState<OptimizationPaymentState | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   // Initialize guest session ID on first visit (ensures localStorage entry exists)
   useEffect(() => {
@@ -333,6 +367,122 @@ export default function CartPage() {
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const [creatingComparison, setCreatingComparison] = useState(false);
+
+  // ── G4: Call heuristic preview before full optimization ──────────────────
+  const fetchPreview = async () => {
+    if (previewLoading) return;
+    if (isLoading) {
+      toast({ title: "Loading cart...", description: "Please wait a moment" });
+      return;
+    }
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
+      return;
+    }
+
+    let eventType: string | undefined;
+    try {
+      const stored = sessionStorage.getItem("experienceContext");
+      if (stored) {
+        const ctx = JSON.parse(stored);
+        eventType = ctx.experienceType || ctx.eventType;
+      }
+    } catch { /* ignore */ }
+
+    const items = [
+      ...platformItems.map(item => ({
+        serviceType: item.service?.serviceType || "sightseeing",
+        price: parseFloat(item.service?.price || "0"),
+        duration: 90,
+        dayNumber: 1,
+      })),
+      ...externalItems.map((item, i) => ({
+        serviceType: item.type || "activity",
+        price: item.price,
+        duration: 120,
+        dayNumber: Math.floor(i / 3) + 1,
+      })),
+    ];
+
+    setPreviewLoading(true);
+    try {
+      const res = await fetch("/api/optimization-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ items, eventType }),
+      });
+      if (!res.ok) throw new Error("Preview failed");
+      const preview: OptimizationPreview = await res.json();
+      setOptimizationPreview(preview);
+      setOptimizationPayment(null);
+      setFlowStep("optimize");
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Could not load preview", description: err.message });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
+  const requestOptimizationPayment = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (!optimizationPreview) return;
+    setPaymentLoading(true);
+    try {
+      let eventType: string | undefined;
+      try {
+        const stored = sessionStorage.getItem("experienceContext");
+        if (stored) {
+          const ctx = JSON.parse(stored);
+          eventType = ctx.experienceType || ctx.eventType;
+        }
+      } catch { /* ignore */ }
+
+      const res = await fetch("/api/optimization-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ eventType, comparisonContext: { destination: experienceTitle } }),
+      });
+      if (!res.ok) throw new Error("Could not create payment");
+      const data = await res.json();
+
+      if (data.freeRerun) {
+        // Skip payment for 24h free re-run
+        await createComparison();
+        return;
+      }
+
+      setOptimizationPayment({
+        clientSecret: data.clientSecret,
+        paymentIntentId: data.paymentIntentId,
+        feeCents: data.feeCents,
+        currency: data.currency || "USD",
+      });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Payment setup failed", description: err.message });
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  // Called after optimization payment succeeds
+  const handleOptimizationPaymentSuccess = async (paymentIntentId: string) => {
+    try {
+      await fetch("/api/optimization-payments/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ paymentIntentId, feeCents: optimizationPayment?.feeCents }),
+      });
+    } catch { /* non-critical */ }
+    await createComparison();
+  };
 
   const createComparison = async () => {
     // Prevent double-clicks
@@ -569,10 +719,15 @@ export default function CartPage() {
     <DashboardLayout>
       <div className="container py-8 max-w-5xl mx-auto">
         {/* Flow Steps Indicator */}
-        <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "cart" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
             <ShoppingCart className="w-4 h-4" />
             <span className="text-sm font-medium">Cart</span>
+          </div>
+          <div className="w-8 h-px bg-border" />
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "optimize" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
+            <Lock className="w-4 h-4" />
+            <span className="text-sm font-medium">Optimize</span>
           </div>
           <div className="w-8 h-px bg-border" />
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "itinerary" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
@@ -593,6 +748,10 @@ export default function CartPage() {
             onClick={() => {
               if (flowStep === "cart") {
                 window.history.back();
+              } else if (flowStep === "optimize") {
+                setFlowStep("cart");
+                setOptimizationPreview(null);
+                setOptimizationPayment(null);
               } else if (flowStep === "itinerary") {
                 setFlowStep("cart");
               } else {
@@ -606,6 +765,7 @@ export default function CartPage() {
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
               {flowStep === "cart" && "Your Cart"}
+              {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}
             </h1>
@@ -880,16 +1040,16 @@ export default function CartPage() {
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
-                          onClick={createComparison}
-                          disabled={creatingComparison}
+                          onClick={fetchPreview}
+                          disabled={previewLoading}
                           data-testid="button-generate-itinerary-comparison"
                         >
-                          {creatingComparison ? (
+                          {previewLoading ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           ) : (
                             <Sparkles className="w-4 h-4 mr-2" />
                           )}
-                          {creatingComparison ? "Creating..." : "Generate Itinerary"}
+                          {previewLoading ? "Analyzing..." : "Generate Itinerary"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
@@ -908,6 +1068,198 @@ export default function CartPage() {
                         </>
                       )}
                     </CardFooter>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* Step 1.5: Optimization Preview + Payment Gate */}
+            {flowStep === "optimize" && optimizationPreview && (
+              <div className="grid gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Preview estimate card */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                        Optimization Preview
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Our AI scanned your {(cart?.items?.length || 0) + externalItems.length} items and found room for improvement. 
+                        Unlock the full optimizer to get your personalised plan.
+                      </p>
+
+                      {/* Current score */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium">Current efficiency score</span>
+                          <span className="text-sm font-bold text-[#FF385C]">{optimizationPreview.currentScore}/100</span>
+                        </div>
+                        <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#FF385C] transition-all"
+                            style={{ width: `${optimizationPreview.currentScore}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Estimate highlights */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {optimizationPreview.estimatedSavingsPct > 0 && (
+                          <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-3 text-center">
+                            <TrendingDown className="w-5 h-5 text-green-600 mx-auto mb-1" />
+                            <p className="text-xl font-bold text-green-700 dark:text-green-300">
+                              ~{optimizationPreview.estimatedSavingsPct}%
+                            </p>
+                            <p className="text-xs text-muted-foreground">Potential savings</p>
+                            {optimizationPreview.estimatedCostDelta < 0 && (
+                              <p className="text-xs text-green-600 font-medium mt-0.5">
+                                ~${Math.abs(optimizationPreview.estimatedCostDelta / 100).toFixed(0)} less
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {optimizationPreview.estimatedScheduleTighteningPct > 0 && (
+                          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 text-center">
+                            <Clock className="w-5 h-5 text-blue-600 mx-auto mb-1" />
+                            <p className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                              ~{optimizationPreview.estimatedScheduleTighteningPct}%
+                            </p>
+                            <p className="text-xs text-muted-foreground">Schedule improvement</p>
+                          </div>
+                        )}
+                        <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-center">
+                          <Zap className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                          <p className="text-sm font-bold text-amber-700 dark:text-amber-300 capitalize">
+                            {optimizationPreview.complexityTier}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Trip complexity</p>
+                        </div>
+                      </div>
+
+                      {/* Score breakdown */}
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Score breakdown</p>
+                        {(["balanceScore", "wellnessScore", "paceScore", "diversityScore"] as const).map(key => {
+                          const labels: Record<string, string> = {
+                            balanceScore: "Balance",
+                            wellnessScore: "Wellness",
+                            paceScore: "Pace",
+                            diversityScore: "Diversity",
+                          };
+                          const val = optimizationPreview.metrics[key];
+                          return (
+                            <div key={key} className="flex items-center gap-3">
+                              <span className="text-xs w-20 text-muted-foreground">{labels[key]}</span>
+                              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-[#FF385C]/70 rounded-full"
+                                  style={{ width: `${val}%` }}
+                                />
+                              </div>
+                              <span className="text-xs w-8 text-right text-muted-foreground">{val}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Payment gate — show Stripe Elements after user clicks "Unlock" */}
+                  {optimizationPayment && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Lock className="w-5 h-5 text-[#FF385C]" />
+                          Pay Optimization Fee
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <StripeCheckout
+                          paymentIntent={{
+                            clientSecret: optimizationPayment.clientSecret,
+                            paymentIntentId: optimizationPayment.paymentIntentId,
+                            amount: optimizationPayment.feeCents / 100,
+                          }}
+                          bookingIds={[]}
+                          onSuccess={handleOptimizationPaymentSuccess}
+                          onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
+                          onCancel={() => setOptimizationPayment(null)}
+                        />
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+
+                {/* Sidebar CTA */}
+                <div className="lg:col-span-1">
+                  <Card className="sticky top-4">
+                    <CardHeader>
+                      <CardTitle className="text-base">Full AI Optimization</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <ul className="space-y-2 text-sm text-muted-foreground">
+                        <li className="flex items-start gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                          AI-sequenced day plans for minimum travel time
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                          3 alternative itinerary variants to compare
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                          Cost & wellness scoring for each variant
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                          Free re-run within 24 hours
+                        </li>
+                      </ul>
+
+                      <Separator />
+
+                      {optimizationPreview.freeRerun ? (
+                        <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-3">
+                          <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                            <RefreshCw className="w-4 h-4" />
+                            <span className="text-sm font-semibold">Free re-run active!</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            You optimized recently — this run is on us.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-foreground">
+                            ${(optimizationPreview.feeCents / 100).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">one-time fee</p>
+                        </div>
+                      )}
+
+                      {!optimizationPayment && (
+                        <Button
+                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          size="lg"
+                          onClick={requestOptimizationPayment}
+                          disabled={paymentLoading || creatingComparison}
+                          data-testid="button-unlock-optimization"
+                        >
+                          {paymentLoading || creatingComparison ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Lock className="w-4 h-4 mr-2" />
+                          )}
+                          {optimizationPreview.freeRerun
+                            ? (creatingComparison ? "Building..." : "Run Full Optimization")
+                            : (paymentLoading ? "Setting up..." : "Unlock Full Optimization")
+                          }
+                        </Button>
+                      )}
+                    </CardContent>
                   </Card>
                 </div>
               </div>
