@@ -14,7 +14,7 @@
  * Perf fixes preserved: parallel media query, no enriched call, 5-min staleTime.
  */
 
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState, useMemo, createContext, useContext } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -38,12 +38,16 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
+} from "@/components/ui/tooltip";
+import {
   MapPin, Sparkles, Brain, Image as ImageIcon, Play, Camera,
   ExternalLink, Star, Clock, Wallet, Lightbulb, Shield, Sun, Heart,
   CalendarX, AlertCircle, Activity, Users, Gem, ChevronRight, ChevronDown,
   Plus, Loader2, Package, Compass, Zap, Utensils, Hotel, Ticket, UserCheck,
-  BookOpen, Send, X as XIcon, Calendar,
+  BookOpen, Send, X as XIcon, Calendar, List, Map as MapIcon,
 } from "lucide-react";
+import { APIProvider, Map as GMap, Marker, InfoWindow } from "@vis.gl/react-google-maps";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +70,7 @@ interface HiddenGem {
   id: string; placeName: string; placeType?: string | null; neighborhood?: string | null;
   whyHidden?: string | null; description?: string | null; whyLocalsLoveIt?: string | null;
   imageUrl?: string | null; localRating?: string | number | null;
-  priceRange?: string | null;
+  priceRange?: string | null; reviewCount?: number | null;
 }
 interface PlatformService {
   id: string; serviceName: string; serviceType?: string | null;
@@ -75,6 +79,7 @@ interface PlatformService {
   serviceImage?: string | null; neighborhood?: string | null;
   location?: string | null; averageRating?: string | null;
   isFeatured?: boolean | null; bookingsCount?: number | null;
+  reviewCount?: number | null;
 }
 interface SectionResult<T> { data: T | null; error: string | null }
 interface LocationViewPayload {
@@ -174,7 +179,7 @@ function resolveMatch(item: {
 // ─── GemCard — compact bento card (2-col half or span-2 row) ─────────────────
 
 function GemCard({
-  item, idx, onAdd, testPrefix, onRequestBooking,
+  item, idx, onAdd, testPrefix, onRequestBooking, cityName,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -188,6 +193,7 @@ function GemCard({
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  cityName?: string;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
@@ -219,9 +225,19 @@ function GemCard({
             <Gem className="h-8 w-8 text-muted-foreground/30" />
           </div>
         )}
+        <WishlistButton
+          contentId={item.id ?? displayName}
+          contentName={displayName}
+          contentType={item.placeType ?? item.type ?? "gem"}
+          contentImage={image}
+          className="absolute top-1.5 left-1.5"
+        />
         {rating && (
-          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm">
+          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm" data-testid={`${testPrefix}-rating-${idx}`}>
             <Star className="h-2.5 w-2.5 fill-white text-white" />{rating}
+            {(item.reviewCount ?? 0) > 0 && (
+              <span className="opacity-90"> · {item.reviewCount} reviews</span>
+            )}
           </span>
         )}
       </div>
@@ -300,6 +316,15 @@ function GemCard({
             💬 Ask expert
           </Button>
         </div>
+
+        {/* Cross-sell strip */}
+        <CrossSellStrip
+          placeType={item.placeType ?? item.type ?? "gem"}
+          neighborhood={item.neighborhood}
+          cityName={cityName}
+          sourceContentId={item.id ?? displayName}
+          sourceContentType={item.placeType ?? item.type ?? "gem"}
+        />
       </div>
     </div>
   );
@@ -315,6 +340,239 @@ interface AffiliateBookingTarget {
   affiliateUrl: string;
   partnerCategory?: string;
   itemDescription?: string;
+}
+
+// ─── Saved Items Context ──────────────────────────────────────────────────────
+
+interface SavedItemsContextValue {
+  savedMap: Map<string, string>; // contentId → savedItem.id
+  onSave: (item: { contentId: string; contentName: string; contentType: string; contentImage?: string | null; city?: string }) => void;
+  onUnsave: (savedItemId: string) => void;
+  isAuth: boolean;
+}
+
+const SavedItemsContext = createContext<SavedItemsContextValue>({
+  savedMap: new Map(),
+  onSave: () => {},
+  onUnsave: () => {},
+  isAuth: false,
+});
+
+function WishlistButton({
+  contentId, contentName, contentType, contentImage, city, className,
+}: {
+  contentId: string;
+  contentName: string;
+  contentType: string;
+  contentImage?: string | null;
+  city?: string;
+  className?: string;
+}) {
+  const { savedMap, onSave, onUnsave, isAuth } = useContext(SavedItemsContext);
+  const { toast } = useToast();
+  const savedId = savedMap.get(contentId);
+  const isSaved = !!savedId;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuth) {
+      toast({ title: "Sign in to save places", description: "Create an account to build your wishlist." });
+      return;
+    }
+    if (isSaved) {
+      onUnsave(savedId!);
+    } else {
+      onSave({ contentId, contentName, contentType, contentImage, city });
+    }
+  };
+
+  return (
+    <button
+      className={`p-1.5 rounded-full bg-white/85 hover:bg-white transition-colors shadow-sm ${className ?? ""}`}
+      onClick={handleClick}
+      data-testid={`wishlist-btn-${contentId}`}
+      aria-label={isSaved ? "Remove from saved" : "Save to wishlist"}
+    >
+      <Heart className={`h-3.5 w-3.5 transition-colors ${isSaved ? "fill-rose-500 text-rose-500" : "text-gray-500"}`} />
+    </button>
+  );
+}
+
+// ─── CrossSellStrip ───────────────────────────────────────────────────────────
+// Horizontal-scroll strip of matched provider services.
+// Appears below the primary action buttons on GemCard, HotelMiniCard, and ActivityRow.
+// Automatically hidden when zero providers match (no layout shift).
+
+interface CrossSellProvider {
+  serviceId: string;
+  serviceName: string;
+  shortDescription: string | null;
+  serviceType: string | null;
+  price: string | null;
+  priceType: string | null;
+  providerId: string;
+  providerName: string;
+  isFeatured: boolean;
+  averageRating: string | null;
+  bookingsCount: number;
+  /** Optional external partner URL — when present, opens AffiliateBookingModal instead of navigating */
+  affiliateUrl?: string | null;
+}
+
+function isTransportService(serviceType: string | null): boolean {
+  const t = (serviceType ?? "").toLowerCase();
+  return t.includes("action") || t.includes("concierge") || t.includes("transfer") || t.includes("transport");
+}
+
+function CrossSellStrip({
+  placeType,
+  neighborhood,
+  cityName,
+  sourceContentId,
+  sourceContentType,
+}: {
+  placeType: string;
+  neighborhood?: string | null;
+  cityName?: string;
+  sourceContentId: string;
+  sourceContentType: string;
+}) {
+  const [, navigate] = useLocation();
+  const [affiliateTarget, setAffiliateTarget] = useState<AffiliateBookingTarget | null>(null);
+  const [affiliateOpen, setAffiliateOpen] = useState(false);
+
+  const params = new URLSearchParams({ type: placeType, limit: "3" });
+  if (neighborhood) params.set("neighborhood", neighborhood);
+  if (cityName) params.set("city", cityName);
+
+  const { data, isLoading } = useQuery<{ providers: CrossSellProvider[]; affiliateFallback: boolean }>({
+    queryKey: ["/api/content-match", placeType, neighborhood ?? "", cityName ?? ""],
+    queryFn: () => fetch(`/api/content-match?${params.toString()}`).then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const providers = data?.providers ?? [];
+
+  const fireCrossSellClick = async (targetServiceId: string) => {
+    try {
+      await apiRequest("POST", "/api/cross-sell-events", {
+        sourceContentId,
+        sourceContentType,
+        targetServiceId,
+        eventType: "click",
+      });
+    } catch {
+      // Non-blocking — tracking failure must never block navigation
+    }
+  };
+
+  /**
+   * Chip click: fire tracking first, then route.
+   * All content-match results are native Traveloure services → navigate to /services/:id.
+   * If a service ever carries an external affiliateUrl, open the AffiliateBookingModal instead.
+   */
+  const handleChipClick = async (svc: CrossSellProvider) => {
+    await fireCrossSellClick(svc.serviceId);
+    if (svc.affiliateUrl) {
+      setAffiliateTarget({
+        itemName: svc.serviceName,
+        partnerName: svc.providerName,
+        affiliateUrl: svc.affiliateUrl,
+        partnerCategory: svc.serviceType ?? "service",
+        itemDescription: svc.shortDescription ?? undefined,
+      });
+      setAffiliateOpen(true);
+    } else {
+      navigate(`/services/${svc.serviceId}`);
+    }
+  };
+
+  // Detect strip label from matched service types — transport/concierge → "Getting there", else "Also popular"
+  const stripLabel = providers.length > 0 && providers.every(p => isTransportService(p.serviceType))
+    ? "Getting there"
+    : "Also popular";
+
+  if (isLoading) {
+    return (
+      <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5">
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
+          Users also book
+        </span>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+          {[0, 1].map(i => (
+            <Skeleton key={i} className="h-7 w-24 rounded-full flex-shrink-0" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (providers.length === 0) return null;
+
+  return (
+    <>
+      <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 mt-0.5" data-testid={`cross-sell-strip-${sourceContentId}`}>
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
+          {stripLabel}
+        </span>
+        <TooltipProvider delayDuration={300}>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            {providers.slice(0, 3).map((svc) => {
+              const initials = svc.providerName
+                .split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+              const priceDisplay = formatServicePrice(svc.price, svc.priceType);
+
+              return (
+                <Tooltip key={svc.serviceId}>
+                  <TooltipTrigger asChild>
+                    {/* Chip container is the primary click target — fires tracking on any tap/click */}
+                    <div
+                      className="flex items-center gap-1 bg-muted/70 hover:bg-muted border border-border rounded-full px-2 py-1 flex-shrink-0 cursor-pointer transition-colors group"
+                      data-testid={`cross-sell-chip-${svc.serviceId}`}
+                      onClick={() => handleChipClick(svc)}
+                    >
+                      {/* Provider avatar */}
+                      <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[8px] font-bold flex items-center justify-center flex-shrink-0">
+                        {initials}
+                      </span>
+                      {/* Service name + price */}
+                      <span className="text-[10px] font-medium leading-none max-w-[80px] truncate">
+                        {svc.serviceName}
+                      </span>
+                      {priceDisplay && (
+                        <span className="text-[9px] text-muted-foreground leading-none flex-shrink-0">
+                          {priceDisplay}
+                        </span>
+                      )}
+                      {/* Book button — stopPropagation so chip onClick doesn't double-fire */}
+                      <Button
+                        size="sm"
+                        className="text-[9px] h-5 px-1.5 rounded-full flex-shrink-0 ml-0.5"
+                        data-testid={`cross-sell-book-${svc.serviceId}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleChipClick(svc);
+                        }}
+                      >
+                        Book
+                      </Button>
+                    </div>
+                  </TooltipTrigger>
+                  {svc.shortDescription && (
+                    <TooltipContent side="top" className="max-w-[200px] text-xs">
+                      {svc.shortDescription}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
+      </div>
+      <AffiliateBookingModal item={affiliateTarget} open={affiliateOpen} onOpenChange={setAffiliateOpen} />
+    </>
+  );
 }
 
 function AffiliateBookingModal({
@@ -446,7 +704,7 @@ function detectBadge(bookingUrl: string | null | undefined): {
 }
 
 function ActivityRow({
-  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking,
+  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking, cityName, neighborhood,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -462,6 +720,8 @@ function ActivityRow({
   /** Force "BOOK ON TRAVELOURE" badge regardless of URL (for platform services). */
   forceTraveloure?: boolean;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  cityName?: string;
+  neighborhood?: string | null;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
@@ -595,12 +855,28 @@ function ActivityRow({
           >
             <UserCheck className="h-3 w-3 mr-1" />Ask expert
           </Button>
+          <WishlistButton
+            contentId={(item as any).id ?? displayName}
+            contentName={displayName}
+            contentType={item.placeType ?? item.type ?? "activity"}
+            contentImage={image}
+            className="border border-border h-7 w-7 flex-shrink-0"
+          />
           {isPhotoSpot && (
             <span className="text-xs text-muted-foreground self-center" onClick={stopNav}>
               · photographer available → <button className="underline text-primary">Book shoot</button>
             </span>
           )}
         </div>
+
+        {/* Cross-sell strip */}
+        <CrossSellStrip
+          placeType={item.placeType ?? item.type ?? "activity"}
+          neighborhood={neighborhood}
+          cityName={cityName}
+          sourceContentId={(item as any).id ?? displayName}
+          sourceContentType={item.placeType ?? item.type ?? "activity"}
+        />
       </div>
     </div>
   );
@@ -693,7 +969,7 @@ function HotelRow({
 // Caller must add "col-span-2" to the grid wrapper or place it in its own row.
 
 function HotelMiniCard({
-  item, idx, onAdd, testPrefix, onRequestBooking,
+  item, idx, onAdd, testPrefix, onRequestBooking, cityName,
 }: {
   item: {
     id?: string; name?: string; title?: string; placeName?: string;
@@ -701,11 +977,13 @@ function HotelMiniCard({
     imageUrl?: string | null; media?: any[];
     price?: string | null; address?: string | null;
     bookingUrl?: string | null; starRating?: number | null;
+    neighborhood?: string | null;
   };
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  cityName?: string;
 }) {
   const [, navigate] = useLocation();
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
@@ -718,12 +996,19 @@ function HotelMiniCard({
       data-testid={`${testPrefix}-mini-${idx}`}
     >
       {/* Left image strip — 96px wide */}
-      <div className="w-24 flex-shrink-0 bg-blue-50 flex items-center justify-center self-stretch">
+      <div className="w-24 flex-shrink-0 bg-blue-50 flex items-center justify-center self-stretch relative">
         {image ? (
           <img src={image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
         ) : (
           <Hotel className="h-8 w-8 text-blue-300" />
         )}
+        <WishlistButton
+          contentId={item.id ?? displayName}
+          contentName={displayName}
+          contentType="hotel"
+          contentImage={image}
+          className="absolute top-1.5 left-1.5"
+        />
       </div>
 
       <div className="p-3 flex flex-col flex-1 gap-1.5 min-w-0">
@@ -742,26 +1027,21 @@ function HotelMiniCard({
           </span>
         </div>
 
-        {/* Transport match strip */}
-        <div className="border-t border-dashed border-muted-foreground/20 pt-1.5 flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">🚗 private transfer available</span>
+        {/* Actions */}
+        <div className="flex gap-1 pt-0.5">
           {item.bookingUrl ? (
             bd.isPartner ? (
-              <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 flex-shrink-0 border-violet-300 text-violet-700 hover:bg-violet-50"
+              <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 border-violet-300 text-violet-700 hover:bg-violet-50"
                 data-testid={`${testPrefix}-book-both-${idx}`}
                 onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Booking.com", affiliateUrl: item.bookingUrl!, partnerCategory: "hotel" })}>
                 Request booking
               </Button>
             ) : (
-              <Button size="sm" className="text-[10px] h-6 px-2 flex-shrink-0" asChild data-testid={`${testPrefix}-book-both-${idx}`}>
-                <a href={item.bookingUrl} rel="noopener noreferrer">Book both</a>
+              <Button size="sm" className="text-[10px] h-6 px-2" asChild data-testid={`${testPrefix}-book-both-${idx}`}>
+                <a href={item.bookingUrl} rel="noopener noreferrer">Book</a>
               </Button>
             )
           ) : null}
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-1 pt-0.5">
           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2"
             onClick={() => onAdd({ name: displayName, type: "hotel", description: item.address ?? undefined })}
             data-testid={`${testPrefix}-add-${idx}`}>
@@ -773,6 +1053,15 @@ function HotelMiniCard({
             💬 Ask expert
           </Button>
         </div>
+
+        {/* Cross-sell strip — auto-labels "Getting there" when matched services are transport types */}
+        <CrossSellStrip
+          placeType="hotel"
+          neighborhood={item.neighborhood}
+          cityName={cityName}
+          sourceContentId={item.id ?? displayName}
+          sourceContentType="hotel"
+        />
       </div>
     </div>
   );
@@ -816,6 +1105,21 @@ function ServiceMiniCard({
           </p>
           {description && <p className="text-xs text-muted-foreground line-clamp-2">{description}</p>}
         </div>
+        {/* Trust signals: rating + bookings demand */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {svc.averageRating && (
+            <span className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-0.5" data-testid={`${testPrefix}-rating-${idx}`}>
+              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+              {typeof svc.averageRating === "number" ? Number(svc.averageRating).toFixed(1) : svc.averageRating}
+              {(svc.reviewCount ?? 0) > 0 && <span className="opacity-80"> · {svc.reviewCount} reviews</span>}
+            </span>
+          )}
+          {(svc.bookingsCount ?? 0) > 0 && (
+            <span className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-0.5" data-testid={`${testPrefix}-bookings-${idx}`}>
+              <Users className="w-2.5 h-2.5" />Booked {svc.bookingsCount} times
+            </span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
           <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
             <a href={`/services/${svc.id}`}>Book now</a>
@@ -836,20 +1140,31 @@ function ServiceMiniCard({
 // ─── ExpertFeedCard — "Plan it for me" CTA row ───────────────────────────────
 
 function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }) {
+  const [, navigate] = useLocation();
   const initials = expert?.name
     ? expert.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
     : "LC";
   const expertName = expert?.name ?? `Local ${cityName} Expert`;
   const rating = expert?.rating ?? expert?.averageRating ?? null;
-  const specialization = expert?.specialization ?? expert?.bio ?? "Itinerary planning";
-  const price = expert?.hourlyRate ? `from €${expert.hourlyRate}` : null;
+  const reviewCount = expert?.reviewCount ?? null;
+  const price = expert?.hourlyRate ? `from €${expert.hourlyRate}/hr` : null;
+
+  // Specialisation tags: prefer array, fall back to single string split by comma
+  const rawSpec = expert?.specializations ?? expert?.specialization ?? null;
+  const specializationTags: string[] = Array.isArray(rawSpec)
+    ? rawSpec.slice(0, 3)
+    : rawSpec
+      ? String(rawSpec).split(",").map((s: string) => s.trim()).filter(Boolean).slice(0, 3)
+      : ["Itinerary planning"];
+
+  const expertId = expert?.id ?? null;
 
   return (
     <div
-      className="flex items-center gap-3 py-3 px-4 rounded-xl border border-primary/20 bg-primary/[0.03] mt-1"
+      className="flex items-start gap-3 py-3 px-4 rounded-xl border border-primary/20 bg-primary/[0.03] mt-1"
       data-testid="expert-feed-card"
     >
-      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary">
+      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary mt-0.5">
         {initials}
       </div>
       <div className="flex-1 min-w-0">
@@ -857,18 +1172,43 @@ function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }
         <p className="text-sm font-semibold leading-snug line-clamp-1">
           {expertName} turns your picks into a day-by-day plan
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span>{specialization}</span>
+        {/* Specialisation tags */}
+        <div className="flex items-center gap-1 flex-wrap mt-1">
+          {specializationTags.map((tag, i) => (
+            <span
+              key={i}
+              className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-primary/5 text-primary border-primary/20"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
           {rating && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5" data-testid="expert-rating">
               <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
               {typeof rating === "number" ? rating.toFixed(1) : rating}
+              {(reviewCount ?? 0) > 0 && <span className="opacity-70">({reviewCount} reviews)</span>}
             </span>
           )}
-          {price && <span>{price}</span>}
+          {price && <span className="font-medium text-foreground/80">{price}</span>}
+          {expertId && (
+            <button
+              className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
+              onClick={() => navigate(`/experts/${expertId}`)}
+              data-testid="link-expert-profile"
+            >
+              View profile →
+            </button>
+          )}
         </p>
       </div>
-      <Button size="sm" className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap" data-testid="button-plan-with-expert">
+      <Button
+        size="sm"
+        className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap"
+        data-testid={`button-plan-with-expert-${expert?.id ?? "unknown"}`}
+        onClick={() => navigate(expert?.id ? `/chat?expertId=${expert.id}` : "/chat")}
+      >
         Plan with {expert?.name?.split(" ")[0] ?? "expert"}
       </Button>
     </div>
@@ -895,6 +1235,7 @@ function NeighborhoodContainer({
   hueIdx: number;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
   const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
 
@@ -956,7 +1297,12 @@ function NeighborhoodContainer({
             )}
             {/* CTA buttons below text block */}
             <div className="flex gap-2 flex-wrap mt-3">
-              <Button size="sm" className="text-xs h-8 px-3" data-testid={`btn-explore-${neighborhood.slug}`}>
+              <Button
+                size="sm"
+                className="text-xs h-8 px-3"
+                data-testid={`btn-explore-${neighborhood.slug}`}
+                onClick={() => navigate(`/discover/location/${encodeURIComponent(cityName)}?neighborhood=${neighborhood.slug}`)}
+              >
                 <Compass className="h-3 w-3 mr-1" />Explore {neighborhood.name}
               </Button>
               <Button
@@ -990,6 +1336,7 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`gem-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
               />
             ))}
             {cardActivities.map((act, idx) => (
@@ -1000,6 +1347,7 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`act-card-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
               />
             ))}
             {hotels.map((hotel, idx) => (
@@ -1010,6 +1358,7 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`hotel-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
               />
             ))}
             {services.map((svc, idx) => (
@@ -1035,6 +1384,8 @@ function NeighborhoodContainer({
                 onAdd={onAdd}
                 testPrefix={`activity-${neighborhood.slug}`}
                 onRequestBooking={onRequestBooking}
+                cityName={cityName}
+                neighborhood={neighborhood.slug}
               />
             ))}
           </div>
@@ -1112,10 +1463,123 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
   return false;
 }
 
+// ─── Expert Recruit Card ──────────────────────────────────────────────────────
+
+const SUPPLY_ROLES = ["expert", "local_expert", "travel_expert", "event_planner", "service_provider"];
+
+function buildCityParams(cityName: string, countryName?: string | null): string {
+  const params = new URLSearchParams({ city: cityName });
+  if (countryName) params.set("country", countryName);
+  return params.toString();
+}
+
+function ExpertRecruitCard({
+  cityName, countryName, userRole,
+}: {
+  cityName: string;
+  countryName?: string | null;
+  userRole?: string | null;
+}) {
+  const isSupply = SUPPLY_ROLES.includes(userRole ?? "");
+  const qs = buildCityParams(cityName, countryName);
+
+  if (isSupply) {
+    return (
+      <div
+        className="rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center space-y-3"
+        data-testid="expert-promote-card"
+      >
+        <div className="flex justify-center">
+          <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
+            <Zap className="w-6 h-6 text-primary" />
+          </span>
+        </div>
+        <p className="font-semibold text-base">Promote your {cityName} services</p>
+        <p className="text-sm text-muted-foreground">
+          Get discovered by travellers actively planning a trip here.
+        </p>
+        <Button size="sm" asChild data-testid="btn-promote-services">
+          <a href={`/expert/apply?${qs}&type=local_expert`}>Promote services →</a>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-2xl border border-dashed border-amber-400/60 bg-amber-50 dark:bg-amber-950/20 p-6 text-center space-y-3"
+      data-testid="expert-recruit-card"
+    >
+      <div className="flex justify-center">
+        <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/40">
+          <UserCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+        </span>
+      </div>
+      <p className="font-semibold text-base">Become a local expert for {cityName}</p>
+      <p className="text-sm text-muted-foreground">
+        Share your local knowledge, earn from itinerary planning, and help travellers discover the city like a local.
+      </p>
+      <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white border-none" asChild data-testid="btn-apply-expert">
+        <a href={`/expert/apply?${qs}&type=local_expert`}>Apply to join →</a>
+      </Button>
+    </div>
+  );
+}
+
+// ─── Provider Recruit Banner ──────────────────────────────────────────────────
+
+function ProviderRecruitBanner({
+  cityName, countryName, serviceCount, userRole,
+}: {
+  cityName: string;
+  countryName?: string | null;
+  serviceCount: number;
+  userRole?: string | null;
+}) {
+  if (serviceCount >= 3) return null;
+
+  const isSupply = SUPPLY_ROLES.includes(userRole ?? "");
+  const qs = buildCityParams(cityName, countryName);
+
+  if (isSupply) {
+    return (
+      <div
+        className="mt-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3"
+        data-testid="provider-promote-banner"
+      >
+        <Package className="w-4 h-4 text-primary flex-shrink-0" />
+        <p className="text-sm flex-1">
+          <span className="font-medium">Promote your {cityName} services</span>
+          {" — "}get discovered by travellers planning here.
+        </p>
+        <Button size="sm" variant="outline" className="flex-shrink-0 text-xs h-7 px-3" asChild data-testid="btn-promote-provider">
+          <a href={`/provider/new-service?${qs}&prefill=true`}>Promote →</a>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-4 flex items-center gap-3 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/30 px-4 py-3"
+      data-testid="provider-recruit-banner"
+    >
+      <Package className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      <p className="text-sm flex-1 text-muted-foreground">
+        Are you a guide, driver, or photographer in <span className="font-medium text-foreground">{cityName}</span>?{" "}
+        <span className="font-medium text-foreground">List your service free.</span>
+      </p>
+      <Button size="sm" variant="outline" className="flex-shrink-0 text-xs h-7 px-3" asChild data-testid="btn-list-service">
+        <a href={`/provider/new-service?${qs}&prefill=true`}>Get listed →</a>
+      </Button>
+    </div>
+  );
+}
+
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd, onRequestBooking,
+  neighborhoods, gems, hotels, activities, experts, platformServices, events, cityName, countryName, activeFilter, onAdd, onRequestBooking,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
@@ -1123,18 +1587,24 @@ function AllGemsFeed({
   activities: any[];
   experts: any[];
   platformServices: PlatformService[];
+  events: any[];
   cityName: string;
+  countryName?: string | null;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
+  const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const userRole = user?.role ?? null;
+
   // ── Flat filter mode ──────────────────────────────────────────────────────
   if (activeFilter !== "all") {
     if (activeFilter === "experts") {
       if (experts.length === 0) {
         return (
-          <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
-            No local experts found for {cityName} yet.
+          <div className="py-8" data-testid="feed-empty-experts">
+            <ExpertRecruitCard cityName={cityName} countryName={countryName} userRole={userRole} />
           </div>
         );
       }
@@ -1143,6 +1613,98 @@ function AllGemsFeed({
           {experts.map((exp, idx) => (
             <ExpertFeedCard key={exp.id ?? idx} expert={exp} cityName={cityName} />
           ))}
+        </div>
+      );
+    }
+
+    if (activeFilter === "events") {
+      if (events.length === 0) {
+        return (
+          <div className="py-12 text-center text-sm text-muted-foreground" data-testid="feed-empty">
+            <p>No upcoming events found in {cityName} right now.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              asChild
+              data-testid="button-browse-events"
+            >
+              <a href={`/discover?tab=events&city=${encodeURIComponent(cityName)}`}>Browse all events</a>
+            </Button>
+          </div>
+        );
+      }
+      return (
+        <div className="rounded-xl border bg-card px-4 py-2" data-testid="feed-events">
+          {events.map((ev: any, idx: number) => {
+            const title = ev.title ?? ev.name ?? "Event";
+            const venue = ev.venue ?? ev.venueName ?? ev.location ?? null;
+            const rawDate = ev.startDate ?? ev.date ?? ev.startTime ?? null;
+            const dateStr = rawDate
+              ? (() => { try { return new Date(rawDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return null; } })()
+              : null;
+            const [day, month] = dateStr ? dateStr.split(" ") : [null, null];
+            const ticketUrl = ev.url ?? ev.ticketUrl ?? ev.bookingUrl ?? null;
+            const badge = detectBadge(ticketUrl);
+            return (
+              <div
+                key={ev.id ?? idx}
+                className="flex items-start gap-3 py-3 border-b last:border-b-0"
+                data-testid={`event-row-${idx}`}
+              >
+                {dateStr ? (
+                  <div className="flex-shrink-0 w-10 text-center rounded-lg bg-primary/10 px-1 py-1.5">
+                    <p className="text-[10px] font-bold uppercase text-primary leading-none">{month}</p>
+                    <p className="text-base font-bold leading-none text-primary mt-0.5">{day}</p>
+                  </div>
+                ) : (
+                  <div className="flex-shrink-0 w-10 h-12 rounded-lg bg-muted flex items-center justify-center">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <p className="text-sm font-semibold leading-snug" data-testid={`event-title-${idx}`}>{title}</p>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${badge.badgeClass}`}>
+                      {badge.badgeText}
+                    </span>
+                  </div>
+                  {venue && <p className="text-xs text-muted-foreground">{venue}</p>}
+                </div>
+                {badge.bookLabel && ticketUrl && (
+                  badge.isPartner ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 px-2.5 flex-shrink-0 border-violet-300 text-violet-700 hover:bg-violet-50"
+                      data-testid={`event-ticket-${idx}`}
+                      onClick={() => onRequestBooking?.({
+                        itemName: title,
+                        partnerName: badge.partnerName || "Partner",
+                        affiliateUrl: ticketUrl,
+                        partnerCategory: "event",
+                        itemDescription: venue ?? undefined,
+                      })}
+                    >
+                      {badge.bookLabel}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="text-xs h-7 px-2.5 flex-shrink-0"
+                      asChild
+                      data-testid={`event-ticket-${idx}`}
+                    >
+                      <a href={ticketUrl} target="_blank" rel="noopener noreferrer">
+                        <Ticket className="h-3 w-3 mr-1" />{badge.bookLabel}
+                      </a>
+                    </Button>
+                  )
+                )}
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -1460,6 +2022,342 @@ function AllGemsFeed({
           </div>
         </div>
       )}
+
+      {/* Provider recruitment banner — shown when city has fewer than 3 platform services */}
+      <ProviderRecruitBanner cityName={cityName} countryName={countryName} serviceCount={platformServices.length} userRole={userRole} />
+    </div>
+  );
+}
+
+// ─── Location Feed Map ────────────────────────────────────────────────────────
+
+type ViewMode = "list" | "map";
+
+interface MapItem {
+  id: string;
+  name: string;
+  category: "gem" | "hotel" | "activity" | "service";
+  placeType?: string | null;
+  lat: number;
+  lng: number;
+  price?: string | null;
+  imageUrl?: string | null;
+  bookingUrl?: string | null;
+}
+
+function extractLatLng(item: any): { lat: number; lng: number } | null {
+  if (typeof item.lat === "number" && typeof item.lng === "number") return { lat: item.lat, lng: item.lng };
+  if (item.geoCode?.latitude != null && item.geoCode?.longitude != null)
+    return { lat: Number(item.geoCode.latitude), lng: Number(item.geoCode.longitude) };
+  if (typeof item.latitude === "number" && typeof item.longitude === "number")
+    return { lat: item.latitude, lng: item.longitude };
+  return null;
+}
+
+const PIN_COLORS: Record<MapItem["category"], string> = {
+  gem: "#22C55E",
+  hotel: "#3B82F6",
+  activity: "#F59E0B",
+  service: "#8B5CF6",
+};
+
+function makePinSvg(color: string): string {
+  return (
+    "data:image/svg+xml," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${color}" stroke="white" stroke-width="2"/><circle cx="14" cy="14" r="5" fill="white"/></svg>`
+    )
+  );
+}
+
+function LocationFeedMapContent({
+  items,
+  cityCenter,
+  onAdd,
+  onRequestBooking,
+}: {
+  items: MapItem[];
+  cityCenter: { lat: number; lng: number };
+  onAdd: (t: AddDialogTarget) => void;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
+}) {
+  const [selected, setSelected] = useState<MapItem | null>(null);
+
+  return (
+    <GMap
+      defaultCenter={cityCenter}
+      defaultZoom={13}
+      gestureHandling="greedy"
+      disableDefaultUI={false}
+      zoomControl={true}
+      fullscreenControl={true}
+      mapTypeControl={false}
+      streetViewControl={false}
+      className="w-full h-full"
+      style={{ width: "100%", height: "100%" }}
+    >
+      {items.map((item) => (
+        <Marker
+          key={`${item.category}-${item.id}`}
+          position={{ lat: item.lat, lng: item.lng }}
+          onClick={() => setSelected(item)}
+          icon={{ url: makePinSvg(PIN_COLORS[item.category]) } as any}
+        />
+      ))}
+
+      {selected && (
+        <InfoWindow
+          position={{ lat: selected.lat, lng: selected.lng }}
+          onCloseClick={() => setSelected(null)}
+        >
+          <div className="p-1 max-w-[220px] font-sans">
+            <div className="flex items-start gap-1.5 mb-1.5">
+              <span className="font-semibold text-[13px] leading-tight flex-1">{selected.name}</span>
+              <span
+                className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 flex-shrink-0 text-white"
+                style={{ backgroundColor: PIN_COLORS[selected.category] }}
+              >
+                {selected.category === "gem" ? "GEM" :
+                 selected.category === "hotel" ? "STAY" :
+                 selected.category === "activity" ? "DO" : "SERVICE"}
+              </span>
+            </div>
+            {selected.placeType && (
+              <p className="text-[11px] text-gray-500 mb-1 capitalize">{selected.placeType.replace(/_/g, " ")}</p>
+            )}
+            {selected.price && (
+              <p className="text-[11px] font-medium text-gray-700 mb-2">{selected.price}</p>
+            )}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                className="text-[11px] font-medium px-2 py-1 rounded bg-primary text-white hover:bg-primary/90 transition-colors"
+                onClick={() => {
+                  setSelected(null);
+                  onAdd({ name: selected.name, type: selected.placeType ?? selected.category, imageUrl: selected.imageUrl ?? undefined });
+                }}
+                data-testid={`map-pin-add-${selected.id}`}
+              >
+                + Add to trip
+              </button>
+              {selected.bookingUrl && onRequestBooking && (
+                <button
+                  className="text-[11px] font-medium px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    setSelected(null);
+                    onRequestBooking({ name: selected.name, type: selected.placeType ?? selected.category, bookingUrl: selected.bookingUrl! });
+                  }}
+                  data-testid={`map-pin-book-${selected.id}`}
+                >
+                  Book
+                </button>
+              )}
+            </div>
+          </div>
+        </InfoWindow>
+      )}
+    </GMap>
+  );
+}
+
+function LocationFeedMap({
+  gems,
+  hotels,
+  activities,
+  platformServices,
+  cityName,
+  activeFilter,
+  onAdd,
+  onRequestBooking,
+}: {
+  gems: HiddenGem[];
+  hotels: any[];
+  activities: any[];
+  platformServices: PlatformService[];
+  cityName: string;
+  activeFilter: FeedFilter;
+  onAdd: (t: AddDialogTarget) => void;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
+}) {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  const [neighborhoodCoords, setNeighborhoodCoords] = useState<Map<string, { lat: number; lng: number }>>(new Map());
+  const [cityCenter, setCityCenter] = useState<{ lat: number; lng: number } | null>(null);
+
+  const uniqueNeighborhoods = useMemo(() => {
+    const slugs = new Set<string>();
+    gems.forEach(g => { if (g.neighborhood) slugs.add(g.neighborhood); });
+    platformServices.forEach(s => { if (s.neighborhood) slugs.add(s.neighborhood); });
+    return Array.from(slugs);
+  }, [gems, platformServices]);
+
+  useEffect(() => {
+    if (!apiKey || !cityName) return;
+    fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cityName)}&key=${apiKey}`
+    )
+      .then(r => r.json())
+      .then(json => {
+        const loc = json.results?.[0]?.geometry?.location;
+        if (loc) setCityCenter({ lat: loc.lat, lng: loc.lng });
+      })
+      .catch(() => {});
+  }, [cityName, apiKey]);
+
+  useEffect(() => {
+    if (!apiKey || uniqueNeighborhoods.length === 0) return;
+    const unresolved = uniqueNeighborhoods.filter(n => !neighborhoodCoords.has(n));
+    if (unresolved.length === 0) return;
+    Promise.all(
+      unresolved.map(async (neighborhood) => {
+        try {
+          const res = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(neighborhood + ", " + cityName)}&key=${apiKey}`
+          );
+          const json = await res.json();
+          const loc = json.results?.[0]?.geometry?.location;
+          if (loc) return { neighborhood, lat: loc.lat as number, lng: loc.lng as number };
+        } catch {}
+        return null;
+      })
+    ).then(results => {
+      setNeighborhoodCoords(prev => {
+        const next = new Map(prev);
+        results.forEach(r => { if (r) next.set(r.neighborhood, { lat: r.lat, lng: r.lng }); });
+        return next;
+      });
+    });
+  }, [uniqueNeighborhoods.join(","), cityName, apiKey]);
+
+  const mapItems = useMemo((): MapItem[] => {
+    const items: MapItem[] = [];
+
+    const filteredGems = activeFilter === "all" ? gems : gems.filter(g => matchesFilter(g, activeFilter));
+    for (const gem of filteredGems) {
+      const coords = gem.neighborhood ? neighborhoodCoords.get(gem.neighborhood) : null;
+      if (coords) {
+        const jitter = (Math.random() - 0.5) * 0.003;
+        items.push({
+          id: gem.id,
+          name: gem.placeName,
+          category: "gem",
+          placeType: gem.placeType,
+          lat: coords.lat + jitter,
+          lng: coords.lng + jitter,
+          price: gem.priceRange ?? null,
+          imageUrl: gem.imageUrl ?? null,
+        });
+      }
+    }
+
+    const showHotels = activeFilter === "all" || activeFilter === "stay";
+    if (showHotels) {
+      for (const hotel of hotels) {
+        const coords = extractLatLng(hotel);
+        if (coords) {
+          items.push({
+            id: hotel.id ?? hotel.hotelId ?? String(Math.random()),
+            name: hotel.name ?? hotel.placeName ?? "Hotel",
+            category: "hotel",
+            placeType: "hotel",
+            lat: coords.lat,
+            lng: coords.lng,
+            price: hotel.price ?? (hotel.offers?.[0]?.price?.total ? `$${hotel.offers[0].price.total}` : null),
+            imageUrl: hotel.media?.[0]?.url ?? null,
+            bookingUrl: hotel.bookingUrl ?? null,
+          });
+        }
+      }
+    }
+
+    const filteredActivities = activeFilter === "all" ? activities : activities.filter(a => matchesFilter(a, activeFilter));
+    for (const act of filteredActivities) {
+      const coords = extractLatLng(act);
+      if (coords) {
+        items.push({
+          id: act.id ?? String(Math.random()),
+          name: act.placeName ?? act.name ?? act.title ?? "Activity",
+          category: "activity",
+          placeType: act.placeType ?? act.type ?? null,
+          lat: coords.lat,
+          lng: coords.lng,
+          price: act.price ?? null,
+          imageUrl: act.imageUrl ?? act.media?.[0]?.url ?? null,
+          bookingUrl: act.bookingUrl ?? null,
+        });
+      }
+    }
+
+    if (activeFilter === "all" || activeFilter !== "experts") {
+      const filteredServices = platformServices.filter(s => matchesServiceFilter(s, activeFilter));
+      for (const svc of filteredServices) {
+        const coords = svc.neighborhood ? neighborhoodCoords.get(svc.neighborhood) : null;
+        if (coords) {
+          const jitter = (Math.random() - 0.5) * 0.003;
+          items.push({
+            id: svc.id,
+            name: svc.serviceName,
+            category: "service",
+            placeType: svc.serviceType ?? null,
+            lat: coords.lat + jitter,
+            lng: coords.lng + jitter,
+            price: svc.price ?? null,
+            imageUrl: svc.serviceImage ?? null,
+            bookingUrl: `/services/${svc.id}`,
+          });
+        }
+      }
+    }
+
+    return items;
+  }, [gems, hotels, activities, platformServices, activeFilter, neighborhoodCoords]);
+
+  if (!apiKey) {
+    return (
+      <div className="flex items-center justify-center bg-muted rounded-xl h-[60vh]">
+        <div className="text-center p-6">
+          <MapPin className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+          <p className="font-medium">Map unavailable</p>
+          <p className="text-sm text-muted-foreground">Google Maps API key not configured</p>
+        </div>
+      </div>
+    );
+  }
+
+  const center = cityCenter ?? { lat: 35.6762, lng: 139.6503 };
+
+  return (
+    <div className="relative rounded-xl overflow-hidden border h-[60vh] md:h-[calc(100vh-180px)]" data-testid="location-feed-map">
+      <APIProvider apiKey={apiKey}>
+        <LocationFeedMapContent
+          items={mapItems}
+          cityCenter={center}
+          onAdd={onAdd}
+          onRequestBooking={onRequestBooking}
+        />
+      </APIProvider>
+      <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-lg shadow px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5">
+          <MapPin className="h-3 w-3 text-muted-foreground" />
+          {mapItems.length} place{mapItems.length !== 1 ? "s" : ""}
+        </div>
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-lg shadow px-2 py-1.5 flex flex-wrap gap-1.5">
+          {(["gem", "hotel", "activity", "service"] as MapItem["category"][]).map(cat => {
+            const count = mapItems.filter(i => i.category === cat).length;
+            if (count === 0) return null;
+            return (
+              <span key={cat} className="text-[10px] font-semibold flex items-center gap-0.5">
+                <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: PIN_COLORS[cat] }} />
+                {count} {cat === "gem" ? "gems" : cat === "hotel" ? "stays" : cat === "activity" ? "activities" : "services"}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      {!cityCenter && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur rounded-lg shadow px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading map…
+        </div>
+      )}
     </div>
   );
 }
@@ -1481,47 +2379,79 @@ const SPINE_FILTERS: {
 ];
 
 function ExploreSpine({
-  active, onChange, counts,
+  active, onChange, counts, viewMode, onViewModeChange,
 }: {
   active: FeedFilter;
   onChange: (f: FeedFilter) => void;
   counts?: Partial<Record<FeedFilter, number>>;
+  viewMode: ViewMode;
+  onViewModeChange: (m: ViewMode) => void;
 }) {
   return (
     <nav
       className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-background/95 backdrop-blur border-b"
       data-testid="explore-spine"
     >
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {SPINE_FILTERS.map(({ label, value, Icon }) => {
-          const count = value !== "all" ? (counts?.[value] ?? 0) : null;
-          const isActive = active === value;
-          return (
-            <button
-              key={value}
-              onClick={() => onChange(value)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border
-                ${isActive
-                  ? "bg-primary text-white border-primary"
-                  : "bg-background text-foreground border-border hover:bg-muted"
-                }`}
-              data-testid={`spine-chip-${value}`}
-            >
-              <Icon className="h-3 w-3" />
-              {label}
-              {count !== null && count > 0 && (
-                <span
-                  className={`text-[10px] font-semibold rounded-full px-1.5 min-w-[16px] text-center leading-4 ${
-                    isActive ? "bg-white/25 text-white" : "bg-muted text-muted-foreground"
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex gap-2 overflow-x-auto pb-1 min-w-0">
+          {SPINE_FILTERS.map(({ label, value, Icon }) => {
+            const count = value !== "all" ? (counts?.[value] ?? 0) : null;
+            const isActive = active === value;
+            return (
+              <button
+                key={value}
+                onClick={() => onChange(value)}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border
+                  ${isActive
+                    ? "bg-primary text-white border-primary"
+                    : "bg-background text-foreground border-border hover:bg-muted"
                   }`}
-                  data-testid={`spine-count-${value}`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                data-testid={`spine-chip-${value}`}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+                {count !== null && count > 0 && (
+                  <span
+                    className={`text-[10px] font-semibold rounded-full px-1.5 min-w-[16px] text-center leading-4 ${
+                      isActive ? "bg-white/25 text-white" : "bg-muted text-muted-foreground"
+                    }`}
+                    data-testid={`spine-count-${value}`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex-shrink-0 flex items-center gap-0 rounded-full border overflow-hidden bg-background ml-1">
+          <button
+            onClick={() => onViewModeChange("list")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "list"
+                ? "bg-primary text-white"
+                : "text-foreground hover:bg-muted"
+            }`}
+            data-testid="toggle-view-list"
+            aria-label="List view"
+          >
+            <List className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">List</span>
+          </button>
+          <button
+            onClick={() => onViewModeChange("map")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "map"
+                ? "bg-primary text-white"
+                : "text-foreground hover:bg-muted"
+            }`}
+            data-testid="toggle-view-map"
+            aria-label="Map view"
+          >
+            <MapIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Map</span>
+          </button>
+        </div>
       </div>
     </nav>
   );
@@ -2057,19 +2987,148 @@ function AddItemDialog({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── PlanningSticky ───────────────────────────────────────────────────────────
+// Appears after 300px scroll; hidden once user has a trip for this city.
+
+function PlanningSticky({ city, userTrips }: { city: string; userTrips: any[] | null | undefined }) {
+  const [visible, setVisible] = useState(false);
+  const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const handleScroll = () => setVisible(window.scrollY > 300);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const ACTIVE_STATUSES = ["draft", "planning", "confirmed", "active", "in_progress"];
+  const hasCityTrip = (userTrips ?? []).some(
+    (t: any) =>
+      ACTIVE_STATUSES.includes(t.status) &&
+      (t.destination ?? "").toLowerCase().includes(city.toLowerCase()),
+  );
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const today = new Date();
+      const start = new Date(today);
+      start.setDate(today.getDate() + 14);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 7);
+      const res = await apiRequest("POST", "/api/trips", {
+        destination: city,
+        startDate: start.toISOString().slice(0, 10),
+        endDate: end.toISOString().slice(0, 10),
+        title: `My trip to ${city}`,
+        status: "draft",
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+      navigate(`/trip/${data.id}`);
+    },
+    onError: () => {
+      toast({ title: "Sign in required", description: "Please sign in to start planning.", variant: "destructive" });
+    },
+  });
+
+  if (!visible || hasCityTrip) return null;
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pb-4 pointer-events-none">
+      <div
+        className="pointer-events-auto flex items-center gap-3 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-5 py-3 max-w-sm w-full"
+        data-testid="planning-sticky-bar"
+      >
+        <p className="flex-1 text-sm font-medium truncate text-gray-700">
+          Inspired by {city}?
+        </p>
+        <Button
+          size="sm"
+          className="flex-shrink-0 rounded-full text-white text-xs px-4"
+          style={{ background: "#FF385C" }}
+          onClick={() => {
+            if (!user) {
+              toast({ title: "Sign in to plan", description: "Create an account to start your trip." });
+              return;
+            }
+            createMutation.mutate();
+          }}
+          disabled={createMutation.isPending}
+          data-testid="button-plan-my-trip"
+        >
+          {createMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
+          Plan my trip to {city}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function DiscoverLocationPage() {
   const rawParams = useParams<{ city: string }>();
   const searchString = useSearch();
-  const country = new URLSearchParams(searchString).get("country");
+  const urlParams = new URLSearchParams(searchString);
+  const country = urlParams.get("country");
+  const neighborhoodSlug = urlParams.get("neighborhood");
   const city = decodeURIComponent(rawParams?.city ?? "");
+
+  const { user } = useAuth();
 
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
   const [activeFilter, setActiveFilter] = useState<FeedFilter>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [requestingItem, setRequestingItem] = useState<AffiliateBookingTarget | null>(null);
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
   const trackedRef = useRef<Set<string>>(new Set());
+  const listScrollRef = useRef<number>(0);
+
+  // Saved items (wishlist) — scoped to the logged-in user
+  const { data: savedItemsData } = useQuery<any[]>({
+    queryKey: ["/api/saved-items"],
+    enabled: !!user,
+  });
+
+  const savedMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of savedItemsData ?? []) {
+      map.set(item.contentId, item.id);
+    }
+    return map;
+  }, [savedItemsData]);
+
+  const saveItemMutation = useMutation({
+    mutationFn: async (item: { contentId: string; contentName: string; contentType: string; contentImage?: string | null; city?: string }) => {
+      const res = await apiRequest("POST", "/api/saved-items", { ...item, city: item.city ?? city });
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/saved-items"] }),
+  });
+
+  const unsaveItemMutation = useMutation({
+    mutationFn: async (savedItemId: string) => {
+      await apiRequest("DELETE", `/api/saved-items/${savedItemId}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/saved-items"] }),
+  });
+
+  const savedItemsCtxValue = useMemo(() => ({
+    savedMap,
+    onSave: (item: any) => saveItemMutation.mutate(item),
+    onUnsave: (id: string) => unsaveItemMutation.mutate(id),
+    isAuth: !!user,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [savedMap, user]);
+
+  // User trips — for sticky bar city-match check
+  const { data: userTripsData } = useQuery<any[]>({
+    queryKey: ["/api/trips"],
+    enabled: !!user,
+  });
 
   // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
@@ -2111,6 +3170,15 @@ export default function DiscoverLocationPage() {
     enabled: !!city,
     staleTime: 10 * 60 * 1000,
   });
+
+  // Scroll to neighborhood container when ?neighborhood=<slug> is in the URL
+  useEffect(() => {
+    if (!neighborhoodSlug || isLoading) return;
+    const el = document.querySelector(`[data-testid="neighborhood-container-${neighborhoodSlug}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [neighborhoodSlug, isLoading]);
 
   // Unsplash download tracking (API compliance)
   useEffect(() => {
@@ -2158,9 +3226,10 @@ export default function DiscoverLocationPage() {
       const hotelCount = f === "stay" ? hotels.length : 0;
       counts[f] = itemCount + svcCount + hotelCount;
     }
+    counts.events = (counts.events ?? 0) + events.length;
     counts.experts = experts.length;
     return counts;
-  }, [hiddenGems, activities, hotels, experts, platformServices]);
+  }, [hiddenGems, activities, hotels, experts, platformServices, events]);
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
   const openRequestBooking = (target: AffiliateBookingTarget) => setRequestingItem(target);
@@ -2179,6 +3248,7 @@ export default function DiscoverLocationPage() {
   }
 
   return (
+    <SavedItemsContext.Provider value={savedItemsCtxValue}>
     <Layout>
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
 
@@ -2294,22 +3364,50 @@ export default function DiscoverLocationPage() {
             </section>
 
             {/* ── §2 EXPLORE SPINE (active filter) ─────────────────────────── */}
-            <ExploreSpine active={activeFilter} onChange={setActiveFilter} counts={filterCounts} />
+            <ExploreSpine
+              active={activeFilter}
+              onChange={setActiveFilter}
+              counts={filterCounts}
+              viewMode={viewMode}
+              onViewModeChange={(m) => {
+                if (m === "map") {
+                  listScrollRef.current = window.scrollY;
+                } else {
+                  requestAnimationFrame(() => window.scrollTo({ top: listScrollRef.current, behavior: "instant" }));
+                }
+                setViewMode(m);
+              }}
+            />
 
-            {/* ── §3 ALL GEMS FEED ─────────────────────────────────────────── */}
+            {/* ── §3 ALL GEMS FEED / MAP ───────────────────────────────────── */}
             <section id="gems-feed" data-testid="section-gems-feed">
-              <AllGemsFeed
-                neighborhoods={neighborhoods}
-                gems={hiddenGems}
-                hotels={hotels}
-                activities={activities}
-                platformServices={platformServices}
-                cityName={city}
-                activeFilter={activeFilter}
-                experts={experts}
-                onAdd={openAdd}
-                onRequestBooking={openRequestBooking}
-              />
+              {viewMode === "map" ? (
+                <LocationFeedMap
+                  gems={hiddenGems}
+                  hotels={hotels}
+                  activities={activities}
+                  platformServices={platformServices}
+                  cityName={city}
+                  activeFilter={activeFilter}
+                  onAdd={openAdd}
+                  onRequestBooking={openRequestBooking}
+                />
+              ) : (
+                <AllGemsFeed
+                  neighborhoods={neighborhoods}
+                  gems={hiddenGems}
+                  hotels={hotels}
+                  activities={activities}
+                  platformServices={platformServices}
+                  events={events}
+                  cityName={city}
+                  countryName={country}
+                  activeFilter={activeFilter}
+                  experts={experts}
+                  onAdd={openAdd}
+                  onRequestBooking={openRequestBooking}
+                />
+              )}
             </section>
 
             {/* ── §5 "About {city}" collapsed accordion ────────────────────── */}
@@ -2396,6 +3494,10 @@ export default function DiscoverLocationPage() {
         open={!!requestingItem}
         onOpenChange={v => { if (!v) setRequestingItem(null); }}
       />
+
+      {/* Sticky planning bar — appears after scrolling past the hero */}
+      <PlanningSticky city={city} userTrips={userTripsData} />
     </Layout>
+    </SavedItemsContext.Provider>
   );
 }

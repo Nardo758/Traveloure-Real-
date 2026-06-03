@@ -8,6 +8,7 @@ import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbul
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
+import { openMapsDeepLink } from "@/lib/maps";
 import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
 } from "./plancard-types";
@@ -367,10 +368,7 @@ function PlanCardSummary({
       <div className="flex gap-[7px]" style={{ padding: "0 14px 12px" }}>
         <button
           onClick={() => {
-            const query = encodeURIComponent(trip.destination);
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            if (isIOS) window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
-            else window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+            openMapsDeepLink({ places: [{ name: trip.destination }] });
           }}
           className="flex-none py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:bg-[#F3F3EE] transition-colors"
           style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF", color: "#1A1A18" }}

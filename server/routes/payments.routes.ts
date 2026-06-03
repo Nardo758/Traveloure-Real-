@@ -1,0 +1,604 @@
+import { Router } from "express";
+import { storage } from "../storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+import { isAuthenticated } from "../replit_integrations/auth";
+import { db } from "../db";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import Anthropic from "@anthropic-ai/sdk";
+import { 
+  users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
+  aiBlueprints, vendors, insertVendorSchema,
+  insertLocalExpertFormSchema, insertServiceProviderFormSchema,
+  insertProviderServiceSchema, insertServiceCategorySchema,
+  insertServiceSubcategorySchema, insertFaqSchema,
+  insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
+  itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
+  userExperienceItems, userExperiences, providerServices, cartItems, trips,
+  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  insertCustomVenueSchema, insertGeneratedItinerarySchema,
+  insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
+  temporalAnchors, itineraryItems, generatedItineraries,
+  userAndExpertChats, insertUserAndExpertChatSchema,
+  expertPayouts, providerPayouts,
+  eaClientRelationships,
+  eaExecutives, insertEaExecutiveSchema,
+  eaEvents, insertEaEventSchema,
+  eaTravelArrangements, insertEaTravelArrangementSchema,
+  eaGifts, insertEaGiftSchema,
+  eaSavedVenues, insertEaSavedVenueSchema,
+  eaCommunications, insertEaCommunicationSchema,
+  eaAiTasks, insertEaAiTaskSchema,
+  userAndExpertContracts,
+  expertSelectedServices,
+  localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
+  contentPlacementRules,
+  type InsertContentPlacementRule,
+} from "@shared/schema";
+import {
+  TAB_CONTENT_TYPE_MAP,
+  TAB_AFFILIATE_CATEGORIES,
+  SURFACE_DEFAULT_CONTENT_TYPES,
+  SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
+  SURFACE_SLUGS,
+} from "@shared/content-surface-map";
+import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
+import { amadeusService } from "../services/amadeus.service";
+import { viatorService } from "../services/viator.service";
+import { cacheService } from "../services/cache.service";
+import { cacheSchedulerService } from "../services/cache-scheduler.service";
+import { claudeService } from "../services/claude.service";
+import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
+import { aiOrchestrator } from "../services/ai-orchestrator";
+import { grokService } from "../services/grok.service";
+import { feverService } from "../services/fever.service";
+import { feverCacheService } from "../services/fever-cache.service";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { coordinationService } from "../services/coordination.service";
+import { vendorManagementService } from "../services/vendor-management.service";
+import { budgetService } from "../services/budget.service";
+import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
+import { emergencyService } from "../services/emergency.service";
+import { experienceCatalogService } from "../services/experience-catalog.service";
+import { opportunityEngineService } from "../services/opportunity-engine.service";
+import { aiUsageService } from "../services/ai-usage.service";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
+import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
+import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
+import { generateKml } from "../services/kml-generator";
+import { generateGpx } from "../services/gpx-generator";
+import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "../infrastructure";
+import { 
+  insertTripParticipantSchema, 
+  insertVendorContractSchema, 
+  insertTripTransactionSchema,
+  insertItineraryItemSchema,
+  insertTripEmergencyContactSchema,
+  insertTripAlertSchema,
+  insertProviderAvailabilityScheduleSchema,
+  insertProviderBlackoutDateSchema,
+  tripExpertAdvisors,
+} from "@shared/schema";
+import {
+  EXPERT_SHARE_RATE,
+  PLATFORM_FEE_RATE,
+  resolveCommissionRates,
+  type CommissionRates,
+} from "../services/commission";
+
+const router = Router();
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '')
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
+
+function sanitizeObject<T extends Record<string, any>>(obj: T): T {
+  const result = { ...obj };
+  for (const key of Object.keys(result)) {
+    if (typeof result[key] === 'string') {
+      (result as Record<string, any>)[key] = sanitizeInput(result[key]);
+    }
+  }
+  return result;
+}
+
+async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
+  const trip = await storage.getTrip(tripId);
+  return trip?.userId === userId;
+}
+
+function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
+  return storage.createItineraryChange({
+    tripId,
+    activityId: activityId || null,
+    who,
+    action,
+    changeType,
+    role,
+    metadata: metadata || {},
+  }).catch(err => console.error("Failed to log itinerary change:", err));
+}
+
+function mapFeverCategoryToEventType(category: string): string {
+  const categoryMap: Record<string, string> = {
+    'experiences': 'cultural', 'concerts': 'cultural', 'theater': 'cultural',
+    'exhibitions': 'cultural', 'festivals': 'cultural', 'nightlife': 'nightlife',
+    'food-drink': 'culinary', 'sports': 'sports', 'wellness': 'wellness',
+    'tours': 'cultural', 'classes': 'cultural', 'family': 'family',
+  };
+  return categoryMap[category] || 'other';
+}
+
+function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
+  if (!slug) return "default";
+  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
+  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
+  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
+  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
+  if (/flight|air|airline/.test(slug)) return "flights";
+  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
+  if (/insurance|safety|security/.test(slug)) return "insurance";
+  return "default";
+}
+
+
+router.get("/api/wallet", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const wallet = await storage.getOrCreateWallet(userId);
+    res.json(wallet);
+  });
+
+  // Get wallet transactions
+
+router.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const wallet = await storage.getWallet(userId);
+    if (!wallet) {
+      return res.json([]);
+    }
+    const transactions = await storage.getCreditTransactions(wallet.id);
+    res.json(transactions);
+  });
+
+  // Add credits (admin only - for production, integrate with payment provider)
+
+router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
+    try {
+      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { userId, amount, description } = req.body;
+      if (!userId || !amount || amount <= 0) {
+        return res.status(400).json({ message: "Invalid userId or amount" });
+      }
+      const transaction = await storage.addCredits(userId, amount, description || "Credit purchase");
+      res.status(201).json(transaction);
+    } catch (err) {
+      console.error("Error adding credits:", err);
+      res.status(500).json({ message: "Failed to add credits" });
+    }
+  });
+
+  // Purchase credits via Stripe Checkout
+  const CREDIT_PACKAGES = [
+    { id: 1, credits: 50, price: 49 },
+    { id: 2, credits: 100, price: 89 },
+    { id: 3, credits: 250, price: 199 },
+    { id: 4, credits: 500, price: 349 },
+  ];
+
+
+router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { packageId } = req.body;
+
+      const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
+      if (!pkg) {
+        return res.status(400).json({ message: "Invalid package" });
+      }
+
+      const { credits, price } = pkg;
+
+      const userRecord = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const userEmail = userRecord?.email || undefined;
+
+      const { getBaseUrl } = await import("../services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      const baseUrl = getBaseUrl();
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${credits} Credits`,
+                description: `Traveloure credit package - ${credits} credits`,
+              },
+              unit_amount: Math.round(price * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          type: 'credit_purchase',
+          userId,
+          credits: credits.toString(),
+          packageId: packageId?.toString() || '',
+        },
+        success_url: `${baseUrl}/credits-billing?purchase=success&credits=${credits}`,
+        cancel_url: `${baseUrl}/credits-billing?purchase=cancelled`,
+      });
+
+      res.json({
+        sessionId: session.id,
+        url: session.url,
+      });
+    } catch (err: any) {
+      console.error("Credit purchase error:", err);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // === Service Templates Routes (Admin manages, Experts browse) ===
+  
+  // Get all active service templates
+  // expert_service_offerings is the canonical template catalog.
+  // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
+
+router.get("/api/revenue-splits", async (req, res) => {
+    try {
+      const splits = await storage.getRevenueSplits();
+      res.json(splits);
+    } catch (err) {
+      console.error("Error fetching revenue splits:", err);
+      res.status(500).json({ message: "Failed to fetch revenue splits" });
+    }
+  });
+
+  // Expert Tips - Create a tip for an expert
+
+router.post("/api/checkout", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId, notes } = req.body;
+      
+      // Get cart items
+      const cartData = await storage.getCartItems(userId);
+      
+      if (cartData.length === 0) {
+        return res.status(400).json({ message: "Cart is empty" });
+      }
+      
+      // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+
+      // Preload category slugs once to avoid N+1 queries in the item loops below.
+      // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
+      const distinctCatIds = Array.from(new Set(
+        cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+      ));
+      const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
+      if (distinctCatIds.length > 0) {
+        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+          .from(serviceCategories)
+          .where(inArray(serviceCategories.id, distinctCatIds));
+        for (const row of catRows) {
+          catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+        }
+      }
+
+      // Calculate totals — resolve per-item rates from booking_fee_configs then sum
+      let checkoutSubtotal = 0;
+      let checkoutPlatformFeeTotal = 0;
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        // Per-service revenueShareRate is the final override (takes priority over config)
+        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        checkoutSubtotal += itemPrice;
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare);
+      }
+      const subtotal = checkoutSubtotal;
+      // For Stripe total, charge subtotal + weighted-average platform fee
+      const platformFee = checkoutPlatformFeeTotal;
+      const total = subtotal + platformFee;
+      
+      // Create bookings for each cart item
+      const bookings = [];
+      for (const item of cartData) {
+        if (!item.service) continue;
+        
+        const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory2 = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
+        const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
+        const expertEarningsAmt = price * expertShareRate;
+        const platformFeeAmt = price - expertEarningsAmt;
+        
+        // Create contract for this booking
+        const contract = await storage.createContract({
+          title: `Booking: ${item.service.serviceName}`,
+          tripTo: item.service.location || "N/A",
+          description: `Service booking for ${item.service.serviceName}. ${notes || ""}`,
+          amount: price.toFixed(2),
+        });
+        
+        // Create booking
+        const booking = await storage.createServiceBooking({
+          serviceId: item.serviceId,
+          travelerId: userId,
+          providerId: item.service.userId,
+          contractId: contract.id,
+          tripId: tripId || item.tripId,
+          bookingDetails: {
+            scheduledDate: item.scheduledDate,
+            notes: item.notes || notes,
+            quantity: item.quantity || 1,
+          },
+          totalAmount: price.toFixed(2),
+          platformFee: platformFeeAmt.toFixed(2),
+          providerEarnings: expertEarningsAmt.toFixed(2),
+          status: "pending",
+        } as any);
+        
+        // Increment bookings count for the service
+        await storage.incrementServiceBookings(item.serviceId, 1);
+        
+        // Create notification for provider
+        try {
+          const traveler = await storage.getUser(userId);
+          const travelerName = traveler
+            ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+            : "A traveler";
+          await storage.createNotification({
+            userId: item.service.userId,
+            type: "booking_request",
+            title: "New Booking Request",
+            message: `${travelerName} booked "${item.service.serviceName}" ($${price.toFixed(2)})`,
+            relatedId: booking.id,
+            relatedType: "booking",
+            data: {
+              bookingId: booking.id,
+              serviceName: item.service.serviceName,
+              travelerName,
+              amount: price.toFixed(2),
+            },
+          });
+
+          // Send email alert to the provider
+          const provider = await storage.getUser(item.service.userId);
+          if (provider?.email) {
+            const { sendBookingAlertEmail } = await import("../services/email.service");
+            const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
+            await sendBookingAlertEmail({
+              providerEmail: provider.email,
+              providerName,
+              bookingId: booking.id,
+              serviceName: item.service.serviceName,
+              travelerName,
+              amount: price.toFixed(2),
+            });
+          }
+        } catch (notifErr) {
+          console.error("Failed to create checkout booking notification:", notifErr);
+        }
+        
+        bookings.push({ booking, contract });
+      }
+      
+      // Clear cart after successful checkout
+      await storage.clearCart(userId);
+
+      // Create Stripe payment intent for the total
+      const { stripePaymentService } = await import("../services/stripe-payment.service");
+      const paymentIntent = await stripePaymentService.createPaymentIntent(
+        userId,
+        bookings.map((b: any) => b.booking),
+        total,
+        false
+      );
+      
+      res.status(201).json({
+        success: true,
+        bookings,
+        total: total.toFixed(2),
+        paymentIntent,
+        message: "Booking created successfully. Complete payment.",
+      });
+    } catch (err) {
+      console.error("Checkout error:", err);
+      res.status(500).json({ message: "Checkout failed" });
+    }
+  });
+
+  // Get contract details
+
+router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const invoices = await storage.getInvoicesByCustomer(user.claims.sub);
+      res.json(invoices);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get invoices", error: error.message });
+    }
+  });
+
+  // =============================================
+  // AI Usage & Cost Tracking Endpoints (Admin)
+  // =============================================
+
+  // Get AI usage summary with cost breakdown
+
+router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!['expert', 'service_provider'].includes(user.role || '')) {
+        return res.status(403).json({ error: "Only experts and providers can onboard for payouts" });
+      }
+
+      const existing = await storage.getUserStripeAccount(userId);
+      if (existing.stripeAccountId && existing.stripeAccountStatus === 'active') {
+        return res.status(400).json({ error: "Stripe account already active" });
+      }
+
+      const { stripeConnectService } = await import('../services/stripe-connect.service');
+      let accountId = existing.stripeAccountId;
+      if (!accountId) {
+        const result = await stripeConnectService.createConnectedAccount(
+          userId, user.email!, user.role === 'expert' ? 'expert' : 'provider', (user as any).name || undefined
+        );
+        accountId = result.accountId;
+        await storage.updateUserStripeAccount(userId, accountId!, 'onboarding_incomplete');
+      }
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const link = await stripeConnectService.createOnboardingLink(
+        accountId!,
+        `${baseUrl}/stripe/connect/return`,
+        `${baseUrl}/stripe/connect/refresh`
+      );
+      res.json({ url: link.url, accountId });
+    } catch (error: any) {
+      console.error('Stripe Connect onboard error:', error);
+      res.status(500).json({ message: "Failed to start Stripe onboarding", error: error.message });
+    }
+  });
+
+
+router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const account = await storage.getUserStripeAccount(userId);
+      if (!account.stripeAccountId) {
+        return res.json({ connected: false, status: 'not_connected' });
+      }
+
+      const { stripeConnectService } = await import('../services/stripe-connect.service');
+      const status = await stripeConnectService.getAccountStatus(account.stripeAccountId);
+
+      if (status.status !== account.stripeAccountStatus) {
+        await storage.updateUserStripeAccount(userId, account.stripeAccountId, status.status);
+      }
+
+      res.json({
+        connected: true,
+        accountId: account.stripeAccountId,
+        ...status,
+      });
+    } catch (error: any) {
+      console.error('Stripe Connect status error:', error);
+      res.status(500).json({ message: "Failed to check Stripe status", error: error.message });
+    }
+  });
+
+
+router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const account = await storage.getUserStripeAccount(userId);
+      if (!account.stripeAccountId) {
+        return res.status(400).json({ error: "No Stripe account connected" });
+      }
+
+      const { stripeConnectService } = await import('../services/stripe-connect.service');
+      const link = await stripeConnectService.createLoginLink(account.stripeAccountId);
+      res.json({ url: link.url });
+    } catch (error: any) {
+      console.error('Stripe dashboard link error:', error);
+      res.status(500).json({ message: "Failed to create dashboard link", error: error.message });
+    }
+  });
+
+
+router.get("/stripe/connect/return", (_req, res) => {
+    res.redirect("/dashboard?stripe=connected");
+  });
+
+
+router.get("/stripe/connect/refresh", (_req, res) => {
+    res.redirect("/dashboard?stripe=refresh");
+  });
+
+  // === Admin Payouts Management ===
+
+
+router.get("/api/booking-fee-config", async (req, res) => {
+    try {
+      const category = (req.query.category as string) || "default";
+      const result = await db.execute(sql`
+        SELECT
+          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
+          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
+          ai_keeps_100,
+          CAST(min_fee AS FLOAT) AS min_fee,
+          CAST(max_fee AS FLOAT) AS max_fee
+        FROM booking_fee_configs
+        WHERE category = ${category} AND is_active = true
+        LIMIT 1
+      `);
+
+      if (result.rows && result.rows.length > 0) {
+        return res.json(result.rows[0]);
+      }
+
+      // Fallback defaults
+      const defaults: Record<string, number> = {
+        accommodation: 15, activities: 12, transportation: 10,
+        flights: 8, insurance: 10, car_rental: 10, dining: 8, esim: 9, luggage: 10,
+      };
+      res.json({
+        platform_fee_percent: defaults[category] ?? 12,
+        expert_share_percent: 75,
+        ai_keeps_100: true,
+        min_fee: null,
+        max_fee: null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ─── Smart Lead Routing ──────────────────────────────────────────────────────
+  // POST /api/leads/route  — score experts and auto-assign
+
+export default router;

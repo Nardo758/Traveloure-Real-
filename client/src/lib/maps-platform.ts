@@ -1,20 +1,47 @@
-export function detectMapsPlatform(): "apple" | "google" {
-  const ua = navigator.userAgent;
-  const isApple = /iPad|iPhone|iPod|Macintosh/.test(ua) && !ua.includes("Android");
-  return isApple ? "apple" : "google";
-}
+import {
+  buildGoogleMapsDeepLink,
+  buildAppleMapsDeepLink,
+  type Place,
+  type TransportMode,
+} from "@/lib/maps";
+
+export { detectClientPlatform as detectMapsPlatform } from "@/lib/maps";
 
 export function openInMaps(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+/**
+ * Build both Google and Apple Maps URLs for a sequence of places and open the
+ * appropriate one based on the detected platform.
+ *
+ * Coordinates that are missing or exactly {0,0} fall back to a name search,
+ * so users are never sent to null island.
+ */
 export function openDayInMaps(googleUrl: string, appleUrl: string, appleWebUrl: string) {
-  const platform = detectMapsPlatform();
-  if (platform === "apple") {
+  const ua = navigator.userAgent;
+  const isApple = /iPad|iPhone|iPod|Macintosh/.test(ua) && !ua.includes("Android");
+  if (isApple) {
     openInMaps(appleUrl || appleWebUrl || googleUrl);
   } else {
     openInMaps(googleUrl);
   }
+}
+
+/**
+ * Build platform-appropriate Maps deep-link URLs from a list of places.
+ * Use this instead of constructing raw URL strings inline.
+ */
+export function buildDayMapsUrls(places: Place[], mode?: TransportMode): {
+  googleUrl: string;
+  appleUrl: string;
+  appleWebUrl: string;
+} {
+  return {
+    googleUrl: buildGoogleMapsDeepLink(places, mode),
+    appleUrl: buildAppleMapsDeepLink(places, mode).replace("https://maps.apple.com", "maps://"),
+    appleWebUrl: buildAppleMapsDeepLink(places, mode),
+  };
 }
 
 export const TRANSPORT_MODE_ICONS: Record<string, string> = {

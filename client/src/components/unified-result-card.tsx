@@ -182,148 +182,150 @@ export function UnifiedResultCard({
   };
 
   return (
-    <Card 
-      className="overflow-hidden hover-elevate cursor-pointer"
-      onClick={handleCardClick}
-      data-testid={`card-result-${result.id}`}
-    >
-      <div className="relative">
-        {imageUrl ? (
-          <div 
-            className="h-40 bg-cover bg-center"
-            style={{ backgroundImage: `url(${imageUrl})` }}
-          />
-        ) : (
-          <div className="h-40 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
-            <span className="text-muted-foreground text-sm">No image</span>
+    <>
+      <Card 
+        className="overflow-hidden hover-elevate cursor-pointer"
+        onClick={handleCardClick}
+        data-testid={`card-result-${result.id}`}
+      >
+        <div className="relative">
+          {imageUrl ? (
+            <div 
+              className="h-40 bg-cover bg-center"
+              style={{ backgroundImage: `url(${imageUrl})` }}
+            />
+          ) : (
+            <div className="h-40 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
+              <span className="text-muted-foreground text-sm">No image</span>
+            </div>
+          )}
+          
+          {isPartner && (
+            <Badge 
+              className="absolute top-2 left-2 bg-[#FF385C] text-white border-none"
+              data-testid={`badge-partner-${result.id}`}
+            >
+              <Check className="h-3 w-3 mr-1" />
+              Traveloure Partner
+            </Badge>
+          )}
+        </div>
+
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <h3 className="font-semibold text-base line-clamp-1" title={displayName}>
+              {displayName}
+            </h3>
+            {renderRating()}
           </div>
-        )}
-        
-        {isPartner && (
-          <Badge 
-            className="absolute top-2 left-2 bg-[#FF385C] text-white border-none"
-            data-testid={`badge-partner-${result.id}`}
-          >
-            <Check className="h-3 w-3 mr-1" />
-            Traveloure Partner
-          </Badge>
-        )}
-      </div>
 
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-semibold text-base line-clamp-1" title={displayName}>
-            {displayName}
-          </h3>
-          {renderRating()}
-        </div>
-
-        {result.description && (
-          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-            {result.description}
-          </p>
-        )}
-
-        <div className="space-y-1.5 mb-4">
-          {result.address && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="line-clamp-1">{result.address}</span>
-            </div>
+          {result.description && (
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+              {result.description}
+            </p>
           )}
-          
-          {result.phone && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Phone className="h-3.5 w-3.5 flex-shrink-0" />
-              <span>{result.phone}</span>
-            </div>
-          )}
-        </div>
 
-        <div className="flex items-center justify-between">
-          {renderPrice()}
-          
-          <div className="flex gap-2">
-            {showInquiryButton && !isPartner && onInquiry && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleInquiry();
-                }}
-                data-testid={`button-inquiry-${result.id}`}
-              >
-                <MessageSquare className="h-3.5 w-3.5 mr-1" />
-                Contact
-              </Button>
+          <div className="space-y-1.5 mb-4">
+            {result.address && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="line-clamp-1">{result.address}</span>
+              </div>
             )}
             
-            {(result.bookingUrl || websiteUrl) && (
-              <Button
-                size="sm"
-                variant={hasPartnerBookingUrl ? "outline" : "default"}
-                className={hasPartnerBookingUrl ? "border-violet-300 text-violet-700 hover:bg-violet-50" : ""}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleViewDetails();
-                }}
-                data-testid={`button-view-${result.id}`}
-              >
-                {hasPartnerBookingUrl ? (
-                  <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
-                ) : (
-                  <><ExternalLink className="h-3.5 w-3.5 mr-1" />{isPartner ? "Book" : "View"}</>
-                )}
-              </Button>
+            {result.phone && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>{result.phone}</span>
+              </div>
             )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
 
-    {/* Inline affiliate booking modal for partner items */}
-    {hasPartnerBookingUrl && (
-      <Dialog open={bookingModalOpen} onOpenChange={setBookingModalOpen}>
-        <DialogContent className="max-w-md" data-testid={`booking-modal-${result.id}`}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5">{partnerName}</span>
-              Request Expert Booking
-            </DialogTitle>
-            <DialogDescription>{displayName}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-1">
-            <div className="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 flex items-start gap-2">
-              <UserCheck className="h-4 w-4 text-violet-600 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-violet-700">A Traveloure expert will book this on your behalf. You'll be notified when it's confirmed.</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`bm-date-${result.id}`} className="text-xs font-medium">Travel date</Label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <Input id={`bm-date-${result.id}`} type="date" className="pl-8 text-sm" value={travelDate} onChange={e => setTravelDate(e.target.value)} data-testid={`input-date-${result.id}`} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`bm-travelers-${result.id}`} className="text-xs font-medium">Travelers</Label>
-              <Input id={`bm-travelers-${result.id}`} type="number" min={1} max={12} className="text-sm" value={travelers} onChange={e => setTravelers(parseInt(e.target.value) || 1)} data-testid={`input-travelers-${result.id}`} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`bm-notes-${result.id}`} className="text-xs font-medium">Notes <span className="text-muted-foreground">(optional)</span></Label>
-              <Textarea id={`bm-notes-${result.id}`} placeholder="Any special requests…" className="text-sm resize-none h-16" value={bookingNotes} onChange={e => setBookingNotes(e.target.value)} data-testid={`textarea-notes-${result.id}`} />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button variant="outline" className="flex-1" onClick={() => setBookingModalOpen(false)}>Cancel</Button>
-              <Button className="flex-1" onClick={() => bookingRequestMutation.mutate()} disabled={bookingRequestMutation.isPending} data-testid={`button-submit-${result.id}`}>
-                {bookingRequestMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-                Request booking
-              </Button>
+          <div className="flex items-center justify-between">
+            {renderPrice()}
+            
+            <div className="flex gap-2">
+              {showInquiryButton && !isPartner && onInquiry && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleInquiry();
+                  }}
+                  data-testid={`button-inquiry-${result.id}`}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 mr-1" />
+                  Contact
+                </Button>
+              )}
+              
+              {(result.bookingUrl || websiteUrl) && (
+                <Button
+                  size="sm"
+                  variant={hasPartnerBookingUrl ? "outline" : "default"}
+                  className={hasPartnerBookingUrl ? "border-violet-300 text-violet-700 hover:bg-violet-50" : ""}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleViewDetails();
+                  }}
+                  data-testid={`button-view-${result.id}`}
+                >
+                  {hasPartnerBookingUrl ? (
+                    <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
+                  ) : (
+                    <><ExternalLink className="h-3.5 w-3.5 mr-1" />{isPartner ? "Book" : "View"}</>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-    )}
+        </CardContent>
+      </Card>
+
+      {/* Inline affiliate booking modal for partner items */}
+      {hasPartnerBookingUrl && (
+        <Dialog open={bookingModalOpen} onOpenChange={setBookingModalOpen}>
+          <DialogContent className="max-w-md" data-testid={`booking-modal-${result.id}`}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5">{partnerName}</span>
+                Request Expert Booking
+              </DialogTitle>
+              <DialogDescription>{displayName}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-1">
+              <div className="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 flex items-start gap-2">
+                <UserCheck className="h-4 w-4 text-violet-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-violet-700">A Traveloure expert will book this on your behalf. You'll be notified when it's confirmed.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`bm-date-${result.id}`} className="text-xs font-medium">Travel date</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input id={`bm-date-${result.id}`} type="date" className="pl-8 text-sm" value={travelDate} onChange={e => setTravelDate(e.target.value)} data-testid={`input-date-${result.id}`} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`bm-travelers-${result.id}`} className="text-xs font-medium">Travelers</Label>
+                <Input id={`bm-travelers-${result.id}`} type="number" min={1} max={12} className="text-sm" value={travelers} onChange={e => setTravelers(parseInt(e.target.value) || 1)} data-testid={`input-travelers-${result.id}`} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`bm-notes-${result.id}`} className="text-xs font-medium">Notes <span className="text-muted-foreground">(optional)</span></Label>
+                <Textarea id={`bm-notes-${result.id}`} placeholder="Any special requests…" className="text-sm resize-none h-16" value={bookingNotes} onChange={e => setBookingNotes(e.target.value)} data-testid={`textarea-notes-${result.id}`} />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setBookingModalOpen(false)}>Cancel</Button>
+                <Button className="flex-1" onClick={() => bookingRequestMutation.mutate()} disabled={bookingRequestMutation.isPending} data-testid={`button-submit-${result.id}`}>
+                  {bookingRequestMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                  Request booking
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 

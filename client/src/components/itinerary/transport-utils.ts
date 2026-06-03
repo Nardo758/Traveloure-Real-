@@ -1,27 +1,46 @@
+import {
+  buildGoogleMapsDeepLink,
+  buildAppleMapsDeepLink,
+  hasValidCoords,
+} from "@/lib/maps";
+
+/**
+ * Build a Google Maps navigation URL between two points.
+ * If either coordinate pair is {0,0} or missing, a name-search fallback is
+ * used so the user lands on the right place instead of null island.
+ */
 export function buildGoogleNavUrl(
-  fromLat: number, fromLng: number,
-  toLat: number, toLng: number,
+  fromLat: number, fromLng: number, fromName: string,
+  toLat: number, toLng: number, toName: string,
   mode: string
 ): string {
-  const travelModes: Record<string, string> = {
-    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
-    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
-    bike: "bicycling", ferry: "transit", auto_rickshaw: "driving", tuk_tuk: "driving", cable_car: "walking",
-  };
-  const travelMode = travelModes[mode] || "transit";
-  return `https://www.google.com/maps/dir/?api=1&origin=${fromLat},${fromLng}&destination=${toLat},${toLng}&travelmode=${travelMode}`;
+  return buildGoogleMapsDeepLink(
+    [
+      { lat: fromLat, lng: fromLng, name: fromName },
+      { lat: toLat, lng: toLng, name: toName },
+    ],
+    mode,
+  );
 }
 
+/**
+ * Build an Apple Maps navigation URL between two points.
+ * Falls back to name-based search when coordinates are {0,0} or absent.
+ */
 export function buildAppleNavUrl(
-  fromLat: number, fromLng: number,
-  toLat: number, toLng: number,
+  fromLat: number, fromLng: number, fromName: string,
+  toLat: number, toLng: number, toName: string,
   mode: string
 ): string {
-  const flags: Record<string, string> = {
-    walk: "w", transit: "r", train: "r", tram: "r", bus: "r",
-    taxi: "d", rideshare: "d", private_driver: "d", rental_car: "d",
-    bike: "c", ferry: "r", auto_rickshaw: "d", tuk_tuk: "d", cable_car: "w",
-  };
-  const flag = flags[mode] || "r";
-  return `maps://?saddr=${fromLat},${fromLng}&daddr=${toLat},${toLng}&dirflg=${flag}`;
+  const url = buildAppleMapsDeepLink(
+    [
+      { lat: fromLat, lng: fromLng, name: fromName },
+      { lat: toLat, lng: toLng, name: toName },
+    ],
+    mode,
+  );
+  // Return a maps:// deep-link for native iOS/macOS, web URL otherwise
+  return url.replace("https://maps.apple.com", "maps://");
 }
+
+export { hasValidCoords };

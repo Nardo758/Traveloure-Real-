@@ -130,12 +130,12 @@ export function InfluencerContentCard({
   // Generate thumbnail based on content type if not provided
   const getDefaultThumbnail = (type: ContentType, platform: Platform) => {
     if (platform === "instagram" || platform === "tiktok") {
-      return "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80";
+      return "https://picsum.photos/seed/influencer-travel/600/400";
     }
     if (platform === "youtube") {
-      return "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=600&q=80";
+      return "https://picsum.photos/seed/influencer-youtube/600/400";
     }
-    return "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=80";
+    return "https://picsum.photos/seed/influencer-default/600/400";
   };
 
   const displayThumbnail = thumbnail || getDefaultThumbnail(contentType, platform);

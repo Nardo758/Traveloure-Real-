@@ -194,6 +194,25 @@ export const helpGuideTrips = pgTable("help_guide_trips", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// =============================================================
+// EVENTS MODEL — Canonical Source of Truth
+// See EVENTS_MODEL.md for the full ownership map.
+//
+// CANONICAL TABLE:  destination_events
+//   • Single source of truth for user-facing event display
+//   • All Events-view queries read exclusively from this table
+//   • sourceType + sourceId columns prevent duplicate inserts
+//
+// INTEGRATION CACHES (write into destination_events):
+//   • fever_event_cache      — Fever API (24 h TTL); write path via fever-cache.service.ts
+//   • travel_pulse_calendar_events — AI impact intelligence; write path via travelpulse.service.ts
+//
+// CONTEXT-SPECIFIC (separate namespaces, NOT part of the event calendar):
+//   • live_events                   — tourist search result cache
+//   • tourist_help_me_guide_events  — Help Me Guide user flow
+//   • ea_events                     — Executive Assistant module
+// =============================================================
+
 export const liveEvents = pgTable("live_events", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   searchId: varchar("search_id").notNull().references(() => touristPlacesSearches.id, { onDelete: "cascade" }),
@@ -521,6 +540,10 @@ export const providerServices = pgTable("provider_services", {
   // populated by provider in listing form + admin backfill for legacy rows.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
+  // Content-affinity tags — canonical slugs indicating which traveller contexts
+  // surface this service. e.g. ['hotel_arrival','photo_shoot'].
+  // Empty array → system falls back to serviceType inference in content-matching.service.
+  contentAffinityTags: text("content_affinity_tags").array().default([]),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -919,6 +942,28 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isDefault: boolean("is_default").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // Migration 006: ESO canonicalization
+  // expertId=null → platform template; expertId set → expert-owned offering
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "cascade" }),
+  // externalId links back to the originating service_templates / expert_custom_services row
+  // Used for deterministic deduplication instead of fragile name-matching
+  externalId: varchar("external_id"),
+  // Migration 007: workflow/lifecycle columns (null for platform templates where expertId IS NULL)
+  status: varchar("status", { length: 20 }).default("draft"),       // draft | submitted | approved | rejected
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
+  duration: varchar("duration", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }),
+  imageUrl: text("image_url"),
+  galleryImages: jsonb("gallery_images").default([]),
+  experienceTypes: jsonb("experience_types").default([]),
+  isActive: boolean("is_active").default(true),
+  categoryName: varchar("category_name", { length: 100 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Link experts to their selected service offerings
@@ -5603,3 +5648,23 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
 export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAffiliateBookingRequest = z.infer<typeof insertAffiliateBookingRequestSchema>;
 export type AffiliateBookingRequest = typeof affiliateBookingRequests.$inferSelect;
+
+// === Saved Items (Wishlist) ===
+// Single-user wishlist: saves gems, hotels, activities without requiring an active trip.
+
+export const savedItems = pgTable("saved_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contentType: varchar("content_type", { length: 50 }).notNull(), // gem | hotel | activity | service
+  contentId: varchar("content_id", { length: 255 }).notNull(),
+  contentName: varchar("content_name", { length: 255 }).notNull(),
+  contentImage: text("content_image"),
+  city: varchar("city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueUserItem: unique("saved_items_user_content_unique").on(table.userId, table.contentType, table.contentId),
+}));
+
+export const insertSavedItemSchema = createInsertSchema(savedItems).omit({ id: true, createdAt: true });
+export type SavedItem = typeof savedItems.$inferSelect;
+export type InsertSavedItem = z.infer<typeof insertSavedItemSchema>;

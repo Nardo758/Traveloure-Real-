@@ -107,7 +107,7 @@ const experienceCategories = [
     icon: Plane,
     label: "Travel",
     description: "Plan your next adventure",
-    image: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=80",
+    image: "https://picsum.photos/seed/land-travel/600/400",
     trending: 89,
     expertRates: "$75-120/hr",
     hiddenGems: 247,
@@ -128,7 +128,7 @@ const experienceCategories = [
     icon: Heart,
     label: "Weddings",
     description: "Plan the perfect day",
-    image: "https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80",
+    image: "https://picsum.photos/seed/land-wedding/600/400",
     trending: 74,
     expertRates: "$85-150/hr",
     hiddenGems: 67,
@@ -149,7 +149,7 @@ const experienceCategories = [
     icon: Gem,
     label: "Proposals",
     description: "Make it unforgettable",
-    image: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=600&q=80",
+    image: "https://picsum.photos/seed/land-proposal/600/400",
     trending: 68,
     expertRates: "$500-2,500",
     hiddenGems: 89,
@@ -170,7 +170,7 @@ const experienceCategories = [
     icon: PartyPopper,
     label: "Celebrations",
     description: "Mark special moments",
-    image: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80",
+    image: "https://picsum.photos/seed/land-celebrations/600/400",
     trending: 62,
     expertRates: "$200-1,500",
     hiddenGems: 134,
@@ -191,7 +191,7 @@ const experienceCategories = [
     icon: Sparkles,
     label: "Date Nights",
     description: "Plan something special",
-    image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80",
+    image: "https://picsum.photos/seed/land-date/600/400",
     trending: 81,
     expertRates: "$50-300",
     hiddenGems: 289,
@@ -212,7 +212,7 @@ const experienceCategories = [
     icon: Building2,
     label: "Corporate",
     description: "Team building & events",
-    image: "https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=600&q=80",
+    image: "https://picsum.photos/seed/land-corporate/600/400",
     trending: 52,
     expertRates: "Custom quote",
     hiddenGems: 45,
@@ -358,7 +358,7 @@ const testimonials = [
     expertHeatScore: 92,
     valueSaved: "$2,400",
     expertRate: "$65/hr",
-    tripImage: "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=400&q=80"
+    tripImage: "https://picsum.photos/seed/land-trip-1/400/300"
   },
   {
     text: "Hiroshi's insider knowledge of Kyoto transformed our cherry blossom trip. We visited secret gardens at sunrise before any tourists arrived. Truly magical!",
@@ -372,7 +372,7 @@ const testimonials = [
     expertHeatScore: 94,
     valueSaved: "$1,800",
     expertRate: "$120/hr",
-    tripImage: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=400&q=80"
+    tripImage: "https://picsum.photos/seed/land-trip-2/400/300"
   },
   {
     text: "Priya made our Mumbai wedding seamless. She coordinated 12 vendors, saved us 3 weeks of planning, and the ceremony was absolutely perfect. Worth every penny!",
@@ -386,7 +386,7 @@ const testimonials = [
     expertHeatScore: 96,
     valueSaved: "$3,200",
     expertRate: "$85/hr",
-    tripImage: "https://images.unsplash.com/photo-1529253355930-ddbe423a2ac7?w=400&q=80"
+    tripImage: "https://picsum.photos/seed/land-trip-3/400/300"
   },
 ];
 

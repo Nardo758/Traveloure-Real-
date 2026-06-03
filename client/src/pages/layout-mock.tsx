@@ -32,7 +32,7 @@ export default function LayoutMock() {
           {/* Hero Section - responsive height matching original */}
           <div className="relative h-56 md:h-72 lg:h-80 overflow-hidden">
             <img 
-              src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1600" 
+              src="https://picsum.photos/seed/landscape/1600/900" 
               alt="Trip cover" 
               className="w-full h-full object-cover"
             />
