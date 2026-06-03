@@ -83,21 +83,21 @@ async function apiPatch<T = unknown>(page: Page, path: string, body: Record<stri
 //          AND workspace UI sentinel is visible.
 // ══════════════════════════════════════════════════════════════════════════════
 test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspace', async ({ page }) => {
-  let tripId: number;
+  let tripId: string; // trips.id is UUID (varchar) in the canonical schema
   let expertRequestId: string;
 
   await test.step('Traveler: authenticate, create or reuse a Kyoto trip, POST /api/leads/route', async () => {
     await loginAs(page, kyotoTraveler.email, kyotoTraveler.password);
 
-    type TripList = Array<{ id: number; destination?: string }>;
-    const tripsRaw = await apiGet<TripList | { trips?: TripList }>(page, '/api/trips');
-    const trips: TripList = Array.isArray(tripsRaw) ? tripsRaw : (tripsRaw as any).trips ?? [];
+    type TripRow = { id: string | number; destination?: string };
+    const tripsRaw = await apiGet<TripRow[] | { trips?: TripRow[] }>(page, '/api/trips');
+    const trips: TripRow[] = Array.isArray(tripsRaw) ? tripsRaw : (tripsRaw as any).trips ?? [];
     const existing = trips.find((t) => t.destination?.toLowerCase().includes('kyoto'));
 
     if (existing) {
-      tripId = existing.id;
+      tripId = String(existing.id);
     } else {
-      const created = await apiPost<{ id: number }>(page, '/api/trips', {
+      const created = await apiPost<{ id: string | number }>(page, '/api/trips', {
         title: 'Kyoto Seam-1 Trip',
         destination: 'Kyoto',
         startDate: '2026-10-01',
@@ -105,10 +105,10 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
         guestCount: 2,
         budget: 3000,
       });
-      tripId = created.id;
+      tripId = String(created.id);
     }
 
-    expect(typeof tripId, 'tripId must be a number before lead routing').toBe('number');
+    expect(tripId, 'tripId must be a non-empty string before lead routing').toBeTruthy();
 
     // POST the routing request — this is the seam source.
     const routeResult = await apiPost<{
@@ -137,10 +137,11 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
     await logout(page).catch(() => null);
     await loginAs(page, adminAccount.email, adminAccount.password);
 
-    type QueueRow = { id: string; trip_id: number | string; status: string };
+    type QueueRow = { id: string; trip_id: string | number; status: string };
     const queueRows = await apiGet<QueueRow[]>(page, '/api/admin/routing-queue');
 
-    const matchingRow = queueRows.find((r) => Number(r.trip_id) === tripId);
+    // Compare as strings because trip_id is a UUID (varchar) in the canonical schema.
+    const matchingRow = queueRows.find((r) => String(r.trip_id) === tripId);
 
     expect(
       matchingRow,
@@ -154,7 +155,7 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
 
   await test.step('Admin: POST /api/admin/leads/:id/confirm must return an assignment for the same tripId', async () => {
     const confirmResult = await apiPost<{
-      assignment?: { tripId?: number; trip_id?: number; localExpertId?: string };
+      assignment?: { tripId?: string | number; trip_id?: string | number; localExpertId?: string };
     }>(page, `/api/admin/leads/${expertRequestId}/confirm`, {});
 
     expect(
@@ -162,8 +163,10 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
       `[Seam 1 BROKEN] POST /api/admin/leads/${expertRequestId}/confirm returned no assignment object.`
     ).toBeDefined();
 
-    const assignedTripId =
-      Number(confirmResult.assignment!.tripId ?? confirmResult.assignment!.trip_id ?? 0);
+    // Normalise to string for UUID-safe comparison.
+    const assignedTripId = String(
+      confirmResult.assignment!.tripId ?? confirmResult.assignment!.trip_id ?? ''
+    );
 
     expect(
       assignedTripId,
@@ -176,12 +179,16 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
     await logout(page).catch(() => null);
     await loginAs(page, kyotoExpert.email, kyotoExpert.password);
 
-    type Row = { id: number; tripId?: number; trip_id?: number };
+    type Row = { id: string | number; tripId?: string | number; trip_id?: string | number };
     const data = await apiGet<Row[] | { trips?: Row[] }>(page, '/api/expert/assigned-trips');
     const rows: Row[] = Array.isArray(data) ? data : (data as any).trips ?? [];
 
+    // Normalise all IDs to strings for UUID-safe comparison.
     const found = rows.find(
-      (r) => r.id === tripId || r.tripId === tripId || r.trip_id === tripId
+      (r) =>
+        String(r.id) === tripId ||
+        String(r.tripId ?? '') === tripId ||
+        String(r.trip_id ?? '') === tripId
     );
 
     expect(
@@ -539,24 +546,51 @@ test('[Seam 3] Money: completed booking → admin/revenue ↔ expert/earnings �
   });
 
   // ── Admin revenue reflects the completed booking ───────────────────────────
-  await test.step('Admin: GET /api/admin/revenue must show increased totalBookings after completion', async () => {
+  await test.step('Admin: GET /api/admin/revenue must show strictly increased totalBookings after completion', async () => {
     await logout(page).catch(() => null);
     await loginAs(page, adminAccount.email, adminAccount.password);
 
     adminRevenueAfter = await apiGet<AdminRevenue>(page, '/api/admin/revenue');
 
+    // Strict greater-than: equal counts mean the booking never reached admin/revenue.
     expect(
       adminRevenueAfter.totalBookings,
-      `[Seam 3 BROKEN] Admin totalBookings (${adminRevenueAfter.totalBookings}) did not increase ` +
-        `after booking completion (was ${adminRevenueBefore.totalBookings}). ` +
-        'The booking is not flowing from provider console to admin/revenue — money seam is broken.'
-    ).toBeGreaterThanOrEqual(adminRevenueBefore.totalBookings);
+      `[Seam 3 BROKEN] Admin totalBookings (${adminRevenueAfter.totalBookings}) did not strictly increase ` +
+        `from baseline (${adminRevenueBefore.totalBookings}) after booking completion. ` +
+        'The completed booking is not flowing to admin/revenue — money seam is broken.'
+    ).toBeGreaterThan(adminRevenueBefore.totalBookings);
 
-    // totalGross must be a valid number (not NaN or negative).
     expect(
       adminRevenueAfter.totalGross,
       '[Seam 3 BROKEN] admin totalGross is not a valid number after booking completion.'
     ).toBeGreaterThanOrEqual(0);
+  });
+
+  await test.step('Admin: GET /api/admin/bookings must include the specific completedBookingId (attribution link)', async () => {
+    const bookingId = (page as any).__seam3BookingId as string;
+
+    type AdminBooking = { id: string | number; status?: string };
+    const adminBookings = await apiGet<AdminBooking[] | { bookings?: AdminBooking[] }>(
+      page,
+      '/api/admin/bookings'
+    );
+    const bookingList: AdminBooking[] = Array.isArray(adminBookings)
+      ? adminBookings
+      : (adminBookings as any).bookings ?? [];
+
+    const found = bookingList.find((b) => String(b.id) === bookingId);
+
+    expect(
+      found,
+      `[Seam 3 BROKEN] GET /api/admin/bookings does not include bookingId=${bookingId}. ` +
+        'The completed booking is not visible in the admin booking list — attribution link is broken.'
+    ).toBeDefined();
+
+    expect(
+      found!.status,
+      `[Seam 3 BROKEN] Booking ${bookingId} in admin/bookings shows status="${found!.status}" instead of "completed". ` +
+        'The completed status did not propagate to the admin console.'
+    ).toBe('completed');
   });
 
   // ── Admin revenue UI renders all three summary cards ──────────────────────
