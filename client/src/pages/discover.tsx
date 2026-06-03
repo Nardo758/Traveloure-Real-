@@ -959,16 +959,8 @@ export default function DiscoverPage() {
                   Build a Trip from a Template
                 </Button>
               </Link>
-              <Link href="/spontaneous">
-                <Button
-                  variant="outline"
-                  className="bg-amber-500/20 backdrop-blur-sm border-amber-400/50 text-primary-foreground font-medium"
-                  data-testid="button-live-intel"
-                >
-                  <Zap className="w-4 h-4 mr-2" />
-                  Live Intel
-                </Button>
-              </Link>
+              {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}
+              {/* (absorb). Per-city happening-now section ships in Phase 3's location view. */}
             </motion.div>
           </div>
         </section>
