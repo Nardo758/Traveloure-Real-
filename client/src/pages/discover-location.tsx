@@ -476,21 +476,15 @@ function NeighborhoodContainer({
   showExpertCard: boolean;
   expert?: any;
 }) {
-  // Split gems into photo-spots (image card bento) vs everything else (text rows)
-  const photoGems = gems.filter(g => isPhotoSpotGem(g.placeType));
-  const rowGems = gems.filter(g => !isPhotoSpotGem(g.placeType));
-
+  // All DB hidden gems go into the GemCard bento grid (GemCard degrades gracefully without imageUrl)
   const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
 
-  const doCount = rowGems.filter(g => {
-    const t = (g.placeType ?? "").toLowerCase();
-    return !t.includes("eat") && !t.includes("restaurant") && !t.includes("cafe") && !t.includes("hotel");
-  }).length + activities.length;
-  const eatCount = rowGems.filter(g => {
+  const eatCount = gems.filter(g => {
     const t = (g.placeType ?? "").toLowerCase();
     return t.includes("eat") || t.includes("restaurant") || t.includes("cafe") || t.includes("food");
   }).length;
+  const doCount = gems.length - eatCount + activities.length;
   const stayCount = hotels.length;
   const svcCount = services.length;
 
@@ -498,11 +492,10 @@ function NeighborhoodContainer({
     doCount > 0 && `${doCount} to do`,
     eatCount > 0 && `${eatCount} to eat`,
     stayCount > 0 && `${stayCount} stay${stayCount !== 1 ? "s" : ""}`,
-    photoGems.length > 0 && `${photoGems.length} photo spot${photoGems.length !== 1 ? "s" : ""}`,
     svcCount > 0 && `${svcCount} bookable`,
   ].filter(Boolean);
 
-  const hasAboveContent = rowGems.length > 0 || hotels.length > 0 || activities.length > 0;
+  const hasAboveContent = gems.length > 0 || hotels.length > 0 || activities.length > 0;
 
   return (
     <div
@@ -557,43 +550,20 @@ function NeighborhoodContainer({
 
       {/* Content area */}
       <div className="px-4 pb-4">
-        {/* Photo spots — 2-col image card bento */}
-        {photoGems.length > 0 && (
+        {/* All hidden gems — 2-col GemCard bento (GemCard shows gradient when no image) */}
+        {gems.length > 0 && (
           <div className="mb-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-              PHOTO SPOTS
-            </p>
             <div className="grid grid-cols-2 gap-3">
-              {photoGems.map((gem, idx) => (
+              {gems.map((gem, idx) => (
                 <GemCard
                   key={gem.id ?? idx}
                   item={gem}
                   idx={idx}
                   onAdd={onAdd}
-                  testPrefix={`photo-gem-${neighborhood.slug}`}
+                  testPrefix={`gem-${neighborhood.slug}`}
                 />
               ))}
             </div>
-          </div>
-        )}
-
-        {/* All other gems as ActivityRow text rows */}
-        {rowGems.length > 0 && (
-          <div className={photoGems.length > 0 ? "border-t pt-2" : ""}>
-            {photoGems.length === 0 && (
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                IN {neighborhood.name.toUpperCase()}
-              </p>
-            )}
-            {rowGems.map((gem, idx) => (
-              <ActivityRow
-                key={gem.id ?? idx}
-                item={gem}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`gem-row-${neighborhood.slug}`}
-              />
-            ))}
           </div>
         )}
 
@@ -614,7 +584,7 @@ function NeighborhoodContainer({
 
         {/* AI activities as text rows */}
         {activities.length > 0 && (
-          <div className={(rowGems.length > 0 || hotels.length > 0 || photoGems.length > 0) ? "border-t pt-2 mt-1" : ""}>
+          <div className={(gems.length > 0 || hotels.length > 0) ? "border-t pt-2 mt-1" : ""}>
             {activities.map((act, idx) => (
               <ActivityRow
                 key={act.id ?? idx}
@@ -629,7 +599,7 @@ function NeighborhoodContainer({
 
         {/* Platform services — always "BOOK ON TRAVELOURE" */}
         {services.length > 0 && (
-          <div className={(rowGems.length > 0 || hotels.length > 0 || activities.length > 0 || photoGems.length > 0) ? "border-t pt-2 mt-1" : ""}>
+          <div className={(gems.length > 0 || hotels.length > 0 || activities.length > 0) ? "border-t pt-2 mt-1" : ""}>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
               BOOK ON TRAVELOURE
             </p>
@@ -759,10 +729,6 @@ function AllGemsFeed({
       ? flatServicesRaw.filter(s => !isAccomSvc(s))
       : flatServicesRaw;
 
-    // Photo-spot gems go into image card bento; all others become ActivityRows
-    const photoFlatGems = flatGems.filter(g => isPhotoSpotGem(g.placeType));
-    const rowFlatGems = flatGems.filter(g => !isPhotoSpotGem(g.placeType));
-
     const hasAny = flatGems.length > 0 || flatHotels.length > 0 || flatActivities.length > 0 ||
       flatAccomServices.length > 0 || flatRowServices.length > 0;
     if (!hasAny) {
@@ -775,18 +741,16 @@ function AllGemsFeed({
 
     return (
       <div data-testid="feed-flat" className="space-y-4">
-        {photoFlatGems.length > 0 && (
+        {/* All DB hidden gems → GemCard bento grid */}
+        {flatGems.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
-            {photoFlatGems.map((item, idx) => (
-              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-photo`} />
+            {flatGems.map((item, idx) => (
+              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
             ))}
           </div>
         )}
-        {(rowFlatGems.length > 0 || flatActivities.length > 0 || flatRowServices.length > 0) && (
+        {(flatActivities.length > 0 || flatRowServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
-            {rowFlatGems.map((item, idx) => (
-              <ActivityRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
-            ))}
             {flatActivities.map((item, idx) => (
               <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
             ))}
@@ -841,18 +805,32 @@ function AllGemsFeed({
   // ── Grouped mode — neighborhood containers ────────────────────────────────
   const neighborhoodSlugs = new Set(neighborhoods.map(n => n.slug));
 
-  // Gems → group by neighborhood slug
+  // Gems → group by neighborhood slug when set, else distribute proportionally (most DB gems have no slug)
   const gemsBySlug = new Map<string, HiddenGem[]>();
-  const elsewhereGems: HiddenGem[] = [];
+  const unassignedGems: HiddenGem[] = [];
   for (const gem of gems) {
     const slug = gem.neighborhood;
     if (slug && neighborhoodSlugs.has(slug)) {
       if (!gemsBySlug.has(slug)) gemsBySlug.set(slug, []);
       gemsBySlug.get(slug)!.push(gem);
     } else {
-      elsewhereGems.push(gem);
+      unassignedGems.push(gem);
     }
   }
+  // Spread unassigned gems proportionally across neighborhoods (cap at 6 per neighborhood for density)
+  const gemsPerNeighborhood = neighborhoods.length > 0
+    ? Math.min(6, Math.ceil(unassignedGems.length / neighborhoods.length))
+    : 0;
+  let gemOffset = 0;
+  for (const n of neighborhoods) {
+    const slice = unassignedGems.slice(gemOffset, gemOffset + gemsPerNeighborhood);
+    if (slice.length > 0) {
+      const existing = gemsBySlug.get(n.slug) ?? [];
+      gemsBySlug.set(n.slug, [...existing, ...slice]);
+    }
+    gemOffset += gemsPerNeighborhood;
+  }
+  const elsewhereGems = unassignedGems.slice(gemOffset);
 
   // Platform services → group by neighborhood slug
   const servicesBySlug = new Map<string, PlatformService[]>();
@@ -939,18 +917,11 @@ function AllGemsFeed({
             </div>
           </div>
           <div className="px-4 pb-4">
-            {/* Photo-spot elsewhere gems get image cards; others get rows */}
-            {elsewhereGems.filter(g => isPhotoSpotGem(g.placeType)).length > 0 && (
+            {/* All elsewhere gems → GemCard bento */}
+            {elsewhereGems.length > 0 && (
               <div className="grid grid-cols-2 gap-3 mb-3">
-                {elsewhereGems.filter(g => isPhotoSpotGem(g.placeType)).map((gem, idx) => (
-                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-photo-gem" />
-                ))}
-              </div>
-            )}
-            {elsewhereGems.filter(g => !isPhotoSpotGem(g.placeType)).length > 0 && (
-              <div className={elsewhereGems.some(g => isPhotoSpotGem(g.placeType)) ? "border-t pt-2" : ""}>
-                {elsewhereGems.filter(g => !isPhotoSpotGem(g.placeType)).map((gem, idx) => (
-                  <ActivityRow key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
+                {elsewhereGems.map((gem, idx) => (
+                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
                 ))}
               </div>
             )}
