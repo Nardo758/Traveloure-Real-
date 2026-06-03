@@ -11675,6 +11675,85 @@ Respond with this exact JSON structure:
     }
   });
 
+  // === Affiliate Booking Requests ===
+
+  app.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { itemName, itemDescription, partnerName, partnerCategory, affiliateUrl, travelDate, travelers, userNotes } = req.body;
+      if (!itemName || !partnerName || !affiliateUrl) {
+        return res.status(400).json({ message: "itemName, partnerName, and affiliateUrl are required" });
+      }
+      // Auto-assign to an expert based on category (city match optional, fallback any expert)
+      const allExperts: any[] = await db.select({ id: users.id }).from(users).where(eq((users as any).role, "expert")).limit(10);
+      const expertId = allExperts.length > 0 ? allExperts[0].id : null;
+      const status = expertId ? "assigned" : "pending";
+      const record = await storage.createAffiliateBookingRequest({
+        userId, expertId, itemName, itemDescription: itemDescription ?? null,
+        partnerName, partnerCategory: partnerCategory ?? null,
+        affiliateUrl, travelDate: travelDate ?? null,
+        travelers: travelers ?? 1, userNotes: userNotes ?? null,
+        expertNotes: null, confirmationRef: null, price: null,
+        status,
+      });
+      // Never return affiliateUrl to client
+      const { affiliateUrl: _url, ...safe } = record;
+      return res.json(safe);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] create error:", err);
+      return res.status(500).json({ message: "Failed to create booking request" });
+    }
+  });
+
+  app.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const records = await storage.getAffiliateBookingRequestsByUser(userId);
+      return res.json(records);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] user list error:", err);
+      return res.status(500).json({ message: "Failed to fetch booking requests" });
+    }
+  });
+
+  app.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== "expert" && user.role !== "admin") {
+        return res.status(403).json({ message: "Expert role required" });
+      }
+      const records = await storage.getAffiliateBookingRequestsByExpert(user.id);
+      return res.json(records);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] expert list error:", err);
+      return res.status(500).json({ message: "Failed to fetch booking requests" });
+    }
+  });
+
+  app.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== "expert" && user.role !== "admin") {
+        return res.status(403).json({ message: "Expert role required" });
+      }
+      const { id } = req.params;
+      const allowed = ["status", "expertNotes", "confirmationRef", "price", "expertId"] as const;
+      const data: any = {};
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) data[key] = req.body[key];
+      }
+      // Self-assign: if setting expertId, use current user
+      if (data.expertId === "self") data.expertId = user.id;
+      const updated = await storage.updateAffiliateBookingRequest(id, data);
+      if (!updated) return res.status(404).json({ message: "Request not found" });
+      // Include affiliateUrl for expert responses
+      return res.json(updated);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] patch error:", err);
+      return res.status(500).json({ message: "Failed to update booking request" });
+    }
+  });
+
   // Register AI Discovery routes
   await registerDiscoveryRoutes(app);
 

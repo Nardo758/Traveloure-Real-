@@ -5576,3 +5576,30 @@ export type InsertVisaRequirementsCache = z.infer<typeof insertVisaRequirementsC
 export const insertCityNeighborhoodSchema = createInsertSchema(cityNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
 export type CityNeighborhood = typeof cityNeighborhoods.$inferSelect;
 export type InsertCityNeighborhood = z.infer<typeof insertCityNeighborhoodSchema>;
+
+// === Affiliate Booking Requests ===
+// Partner/affiliate bookings routed through experts — users never leave the site.
+
+export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id),
+  expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  itemName: varchar("item_name", { length: 255 }).notNull(),
+  itemDescription: text("item_description"),
+  partnerName: varchar("partner_name", { length: 100 }).notNull(),
+  partnerCategory: varchar("partner_category", { length: 50 }),
+  affiliateUrl: text("affiliate_url").notNull(),
+  travelDate: date("travel_date"),
+  travelers: integer("travelers").default(1),
+  userNotes: text("user_notes"),
+  expertNotes: text("expert_notes"),
+  confirmationRef: varchar("confirmation_ref", { length: 255 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  status: varchar("status", { length: 30 }).default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAffiliateBookingRequest = z.infer<typeof insertAffiliateBookingRequestSchema>;
+export type AffiliateBookingRequest = typeof affiliateBookingRequests.$inferSelect;

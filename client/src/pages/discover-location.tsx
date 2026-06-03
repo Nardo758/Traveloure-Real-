@@ -17,6 +17,9 @@
 import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import DOMPurify from "dompurify";
 import { formatDistanceToNow } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -38,7 +41,7 @@ import {
   ExternalLink, Star, Clock, Wallet, Lightbulb, Shield, Sun, Heart,
   CalendarX, AlertCircle, Activity, Users, Gem, ChevronRight, ChevronDown,
   Plus, Loader2, Package, Compass, Zap, Utensils, Hotel, Ticket, UserCheck,
-  BookOpen,
+  BookOpen, Send, X as XIcon, Calendar,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -170,7 +173,7 @@ function resolveMatch(item: {
 // ─── GemCard — full-bleed image card for 2-col bento grid ────────────────────
 
 function GemCard({
-  item, idx, onAdd, testPrefix,
+  item, idx, onAdd, testPrefix, onRequestBooking,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -183,6 +186,7 @@ function GemCard({
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
@@ -232,11 +236,22 @@ function GemCard({
         </div>
 
         <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
-          {match.primaryLabel && item.bookingUrl && (
-            <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
-              <a href={item.bookingUrl} target="_blank" rel="noopener noreferrer">{match.primaryLabel}</a>
-            </Button>
-          )}
+          {match.primaryLabel && item.bookingUrl && (() => {
+            const bd = detectBadge(item.bookingUrl);
+            if (bd.isPartner) {
+              return (
+                <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 border-violet-300 text-violet-700 hover:bg-violet-50" data-testid={`${testPrefix}-book-${idx}`}
+                  onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Partner", affiliateUrl: item.bookingUrl!, partnerCategory: item.placeType ?? item.type ?? "activity", itemDescription: description ?? undefined })}>
+                  Request booking
+                </Button>
+              );
+            }
+            return (
+              <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
+                <a href={item.bookingUrl} rel="noopener noreferrer">{match.primaryLabel}</a>
+              </Button>
+            );
+          })()}
           {match.primaryLabel && !item.bookingUrl && (
             <Button size="sm" className="text-xs h-7 px-2.5" data-testid={`${testPrefix}-book-${idx}`}>
               {match.primaryLabel}
@@ -259,25 +274,124 @@ function GemCard({
 
 // ─── ActivityRow — text-based row for bookable activities (like the mockup) ───
 
+// ─── AffiliateBookingModal ────────────────────────────────────────────────────
+
+interface AffiliateBookingTarget {
+  itemName: string;
+  partnerName: string;
+  affiliateUrl: string;
+  partnerCategory?: string;
+  itemDescription?: string;
+}
+
+function AffiliateBookingModal({
+  item, open, onOpenChange,
+}: {
+  item: AffiliateBookingTarget | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [travelDate, setTravelDate] = useState("");
+  const [travelers, setTravelers] = useState(1);
+  const [notes, setNotes] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!item) return;
+      return apiRequest("POST", "/api/affiliate-booking-requests", {
+        itemName: item.itemName,
+        itemDescription: item.itemDescription ?? null,
+        partnerName: item.partnerName,
+        partnerCategory: item.partnerCategory ?? "activity",
+        affiliateUrl: item.affiliateUrl,
+        travelDate: travelDate || null,
+        travelers,
+        userNotes: notes || null,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Booking requested!", description: "An expert will handle this for you." });
+      onOpenChange(false);
+      setTravelDate(""); setTravelers(1); setNotes("");
+    },
+    onError: () => {
+      toast({ title: "Sign in required", description: "Please sign in to request a booking.", variant: "destructive" });
+    },
+  });
+
+  if (!item) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="affiliate-booking-modal">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5">{item.partnerName}</span>
+            Request Expert Booking
+          </DialogTitle>
+          <DialogDescription>{item.itemName}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <div className="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 flex items-start gap-2">
+            <UserCheck className="h-4 w-4 text-violet-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-violet-700">A Traveloure expert will book this on your behalf using the platform's tracked link. You'll be notified when it's confirmed.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="abm-date" className="text-xs font-medium">Travel date</Label>
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input id="abm-date" type="date" className="pl-8 text-sm" value={travelDate} onChange={e => setTravelDate(e.target.value)} data-testid="input-travel-date" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="abm-travelers" className="text-xs font-medium">Number of travelers</Label>
+            <Input id="abm-travelers" type="number" min={1} max={12} className="text-sm" value={travelers} onChange={e => setTravelers(parseInt(e.target.value) || 1)} data-testid="input-travelers" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="abm-notes" className="text-xs font-medium">Notes for the expert <span className="text-muted-foreground">(optional)</span></Label>
+            <Textarea id="abm-notes" placeholder="Any special requests, dietary needs, accessibility requirements…" className="text-sm resize-none h-20" value={notes} onChange={e => setNotes(e.target.value)} data-testid="textarea-booking-notes" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} data-testid="button-cancel-booking">
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={() => mutation.mutate()} disabled={mutation.isPending} data-testid="button-submit-booking">
+              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              Request booking
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function detectBadge(bookingUrl: string | null | undefined): {
-  badgeText: string; badgeClass: string; bookLabel: string; isPartner: boolean;
+  badgeText: string; badgeClass: string; bookLabel: string; isPartner: boolean; partnerName: string;
 } {
   if (!bookingUrl) {
-    return { badgeText: "NOT BOOKABLE", badgeClass: "bg-muted text-muted-foreground border-border", bookLabel: "", isPartner: false };
+    return { badgeText: "NOT BOOKABLE", badgeClass: "bg-muted text-muted-foreground border-border", bookLabel: "", isPartner: false, partnerName: "" };
   }
   let hostname = "";
   try { hostname = new URL(bookingUrl).hostname.toLowerCase(); } catch { hostname = ""; }
-  const partner = hostname.includes("viator") || hostname.includes("tiqets") ||
-    hostname.includes("klook") || hostname.includes("getyourguide") ||
-    hostname.includes("booking.com") || hostname.includes("airbnb");
+  let partnerName = "";
+  if (hostname.includes("viator")) partnerName = "Viator";
+  else if (hostname.includes("tiqets")) partnerName = "Tiqets";
+  else if (hostname.includes("klook")) partnerName = "Klook";
+  else if (hostname.includes("getyourguide")) partnerName = "GetYourGuide";
+  else if (hostname.includes("booking.com")) partnerName = "Booking.com";
+  else if (hostname.includes("airbnb")) partnerName = "Airbnb";
+  else if (hostname.includes("12go")) partnerName = "12Go";
+  const partner = !!partnerName;
   if (partner) {
-    return { badgeText: "VIA PARTNER", badgeClass: "bg-blue-50 text-blue-700 border-blue-200", bookLabel: "Book via partner", isPartner: true };
+    return { badgeText: "VIA EXPERT", badgeClass: "bg-violet-50 text-violet-700 border-violet-200", bookLabel: "Request booking", isPartner: true, partnerName };
   }
-  return { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false };
+  return { badgeText: "BOOK ON TRAVELOURE", badgeClass: "bg-green-50 text-green-700 border-green-200", bookLabel: "Book now", isPartner: false, partnerName: "" };
 }
 
 function ActivityRow({
-  item, idx, onAdd, testPrefix, forceTraveloure,
+  item, idx, onAdd, testPrefix, forceTraveloure, onRequestBooking,
 }: {
   item: {
     id?: string; placeName?: string; title?: string; name?: string;
@@ -291,6 +405,7 @@ function ActivityRow({
   testPrefix: string;
   /** Force "BOOK ON TRAVELOURE" badge regardless of URL (for platform services). */
   forceTraveloure?: boolean;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const displayName = item.placeName ?? item.title ?? item.name ?? "Unnamed";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
@@ -337,21 +452,37 @@ function ActivityRow({
 
         <div className="flex flex-wrap gap-1.5">
           {badge.bookLabel && (item.bookingUrl || forceTraveloure) && (
-            <Button
-              size="sm"
-              variant={badge.isPartner ? "outline" : "default"}
-              className="text-xs h-7 px-2.5"
-              asChild={!!(item.bookingUrl && !forceTraveloure) || !!(item.bookingUrl && forceTraveloure)}
-              data-testid={`${testPrefix}-book-${idx}`}
-            >
-              {item.bookingUrl ? (
-                <a href={item.bookingUrl} target={badge.isPartner ? "_blank" : undefined} rel="noopener noreferrer">
-                  {badge.bookLabel}
-                </a>
-              ) : (
-                <span>{badge.bookLabel}</span>
-              )}
-            </Button>
+            badge.isPartner ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-7 px-2.5 border-violet-300 text-violet-700 hover:bg-violet-50"
+                data-testid={`${testPrefix}-book-${idx}`}
+                onClick={() => onRequestBooking?.({
+                  itemName: displayName,
+                  partnerName: badge.partnerName || "Partner",
+                  affiliateUrl: item.bookingUrl!,
+                  partnerCategory: item.placeType ?? item.type ?? "activity",
+                  itemDescription: description ?? undefined,
+                })}
+              >
+                {badge.bookLabel}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="default"
+                className="text-xs h-7 px-2.5"
+                data-testid={`${testPrefix}-book-${idx}`}
+                asChild={!!item.bookingUrl}
+              >
+                {item.bookingUrl ? (
+                  <a href={item.bookingUrl} rel="noopener noreferrer">{badge.bookLabel}</a>
+                ) : (
+                  <span>{badge.bookLabel}</span>
+                )}
+              </Button>
+            )
           )}
           <Button
             size="sm"
@@ -379,7 +510,7 @@ function ActivityRow({
 // ─── HotelRow — full-width with small thumbnail + "Book both" ─────────────────
 
 function HotelRow({
-  item, idx, onAdd, testPrefix,
+  item, idx, onAdd, testPrefix, onRequestBooking,
 }: {
   item: {
     id?: string; name?: string; title?: string; placeName?: string;
@@ -391,6 +522,7 @@ function HotelRow({
   idx: number;
   onAdd: (t: AddDialogTarget) => void;
   testPrefix: string;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const displayName = item.name ?? item.title ?? item.placeName ?? "Hotel";
   const image = item.imageUrl ?? item.media?.[0]?.url ?? null;
@@ -425,13 +557,23 @@ function HotelRow({
       </div>
 
       <div className="flex-shrink-0 flex flex-col gap-1.5 items-end">
-        {hasBooking ? (
-          <Button size="sm" className="text-xs h-7 px-3 whitespace-nowrap" asChild>
-            <a href={item.bookingUrl!} target="_blank" rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>
-              Book both
-            </a>
-          </Button>
-        ) : (
+        {hasBooking ? (() => {
+          const bd = detectBadge(item.bookingUrl);
+          if (bd.isPartner) {
+            return (
+              <Button size="sm" variant="outline" className="text-xs h-7 px-3 whitespace-nowrap border-violet-300 text-violet-700 hover:bg-violet-50"
+                data-testid={`${testPrefix}-book-${idx}`}
+                onClick={() => onRequestBooking?.({ itemName: displayName, partnerName: bd.partnerName || "Booking.com", affiliateUrl: item.bookingUrl!, partnerCategory: "hotel" })}>
+                Request booking
+              </Button>
+            );
+          }
+          return (
+            <Button size="sm" className="text-xs h-7 px-3 whitespace-nowrap" asChild>
+              <a href={item.bookingUrl!} rel="noopener noreferrer" data-testid={`${testPrefix}-book-${idx}`}>Book both</a>
+            </Button>
+          );
+        })() : (
           <Button
             size="sm"
             variant="outline"
@@ -615,7 +757,7 @@ function isPhotoSpotGem(placeType: string | null | undefined): boolean {
 }
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, expert,
+  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, expert, onRequestBooking,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
@@ -626,6 +768,7 @@ function NeighborhoodContainer({
   onAdd: (t: AddDialogTarget) => void;
   hueIdx: number;
   expert?: any;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   const total = gems.length + hotels.length + activities.length + services.length;
   if (total === 0) return null;
@@ -723,6 +866,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`gem-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
             {cardActivities.map((act, idx) => (
@@ -732,6 +876,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`act-card-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
             {hotels.map((hotel, idx) => (
@@ -741,6 +886,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`hotel-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
             {services.map((svc, idx) => (
@@ -765,6 +911,7 @@ function NeighborhoodContainer({
                 idx={idx}
                 onAdd={onAdd}
                 testPrefix={`activity-${neighborhood.slug}`}
+                onRequestBooking={onRequestBooking}
               />
             ))}
           </div>
@@ -819,7 +966,7 @@ function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean
 // ─── All Gems Feed ────────────────────────────────────────────────────────────
 
 function AllGemsFeed({
-  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd,
+  neighborhoods, gems, hotels, activities, experts, platformServices, cityName, activeFilter, onAdd, onRequestBooking,
 }: {
   neighborhoods: Neighborhood[];
   gems: HiddenGem[];
@@ -830,6 +977,7 @@ function AllGemsFeed({
   cityName: string;
   activeFilter: FeedFilter;
   onAdd: (t: AddDialogTarget) => void;
+  onRequestBooking?: (target: AffiliateBookingTarget) => void;
 }) {
   // ── Flat filter mode ──────────────────────────────────────────────────────
   if (activeFilter !== "all") {
@@ -886,14 +1034,14 @@ function AllGemsFeed({
         {flatGems.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
             {flatGems.map((item, idx) => (
-              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} />
+              <GemCard key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-gem`} onRequestBooking={onRequestBooking} />
             ))}
           </div>
         )}
         {(flatActivities.length > 0 || flatRowServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
             {flatActivities.map((item, idx) => (
-              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} />
+              <ActivityRow key={(item as any).id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-act`} onRequestBooking={onRequestBooking} />
             ))}
             {flatRowServices.map((svc, idx) => (
               <ActivityRow
@@ -918,7 +1066,7 @@ function AllGemsFeed({
         {(flatHotels.length > 0 || flatAccomServices.length > 0) && (
           <div className="rounded-xl border bg-card px-4 py-2">
             {flatHotels.map((item, idx) => (
-              <HotelRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-hotel`} />
+              <HotelRow key={item.id ?? idx} item={item} idx={idx} onAdd={onAdd} testPrefix={`flat-${activeFilter}-hotel`} onRequestBooking={onRequestBooking} />
             ))}
             {flatAccomServices.map((svc, idx) => (
               <HotelRow
@@ -1046,6 +1194,7 @@ function AllGemsFeed({
           onAdd={onAdd}
           hueIdx={nIdx}
           expert={experts[nIdx % Math.max(experts.length, 1)]}
+          onRequestBooking={onRequestBooking}
         />
       ))}
 
@@ -1070,9 +1219,6 @@ function AllGemsFeed({
               )}
             </div>
           </div>
-        </div>
-      )}
-
       {/* Elsewhere section — lightweight divider + 2-col grid, no outer card wrapper */}
       {hasElsewhere && (
         <div data-testid="elsewhere-section">
@@ -1093,16 +1239,43 @@ function AllGemsFeed({
                 {hasElsewhereGrid && (
                   <div className="grid grid-cols-2 gap-3">
                     {elsewhereGems.map((gem, idx) => (
-                      <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="elsewhere-gem" />
+                      <GemCard
+                        key={gem.id ?? idx}
+                        item={gem}
+                        idx={idx}
+                        onAdd={onAdd}
+                        testPrefix="elsewhere-gem"
+                        onRequestBooking={onRequestBooking}
+                      />
                     ))}
                     {elsewhereCardActs.map((act, idx) => (
-                      <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act-card" />
+                      <GemCard
+                        key={act.id ?? `eca-${idx}`}
+                        item={act}
+                        idx={idx}
+                        onAdd={onAdd}
+                        testPrefix="elsewhere-act-card"
+                        onRequestBooking={onRequestBooking}
+                      />
                     ))}
                     {elsewhereHotels.map((hotel, idx) => (
-                      <HotelMiniCard key={hotel.id ?? idx} item={hotel} idx={idx} onAdd={onAdd} testPrefix="elsewhere-hotel" />
+                      <HotelMiniCard
+                        key={hotel.id ?? idx}
+                        item={hotel}
+                        idx={idx}
+                        onAdd={onAdd}
+                        testPrefix="elsewhere-hotel"
+                        onRequestBooking={onRequestBooking}
+                      />
                     ))}
                     {elsewhereServices.map((svc, idx) => (
-                      <ServiceMiniCard key={svc.id ?? idx} svc={svc} idx={idx} onAdd={onAdd} testPrefix="elsewhere-svc" />
+                      <ServiceMiniCard
+                        key={svc.id ?? idx}
+                        svc={svc}
+                        idx={idx}
+                        onAdd={onAdd}
+                        testPrefix="elsewhere-svc"
+                      />
                     ))}
                   </div>
                 )}
@@ -1110,13 +1283,27 @@ function AllGemsFeed({
                 {elsewhereTextActs.length > 0 && (
                   <div className={`rounded-xl border bg-card px-4 py-2${hasElsewhereGrid ? " mt-3" : ""}`}>
                     {elsewhereTextActs.map((act, idx) => (
-                      <ActivityRow key={act.id ?? idx} item={act} idx={idx} onAdd={onAdd} testPrefix="elsewhere-act" />
+                      <ActivityRow
+                        key={act.id ?? idx}
+                        item={act}
+                        idx={idx}
+                        onAdd={onAdd}
+                        testPrefix="elsewhere-act"
+                        onRequestBooking={onRequestBooking}
+                      />
                     ))}
+                  </div>
+                )}
+                {experts.length > 0 && (
+                  <div className="mt-3">
+                    <ExpertFeedCard expert={experts[0]} cityName={cityName} />
                   </div>
                 )}
               </>
             );
           })()}
+        </div>
+      )}
         </div>
       )}
     </div>
@@ -1709,6 +1896,7 @@ export default function DiscoverLocationPage() {
   const [addDialog, setAddDialog] = useState<AddDialogTarget | null>(null);
   const [activeFilter, setActiveFilter] = useState<FeedFilter>("all");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [requestingItem, setRequestingItem] = useState<AffiliateBookingTarget | null>(null);
   const trackedRef = useRef<Set<string>>(new Set());
 
   // Main orchestrator query — 20s client-side timeout so the skeleton never hangs forever
@@ -1786,6 +1974,7 @@ export default function DiscoverLocationPage() {
   const events: any[] = data?.events?.data?.events ?? [];
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
+  const openRequestBooking = (target: AffiliateBookingTarget) => setRequestingItem(target);
 
   if (!city) {
     return (
@@ -1930,6 +2119,7 @@ export default function DiscoverLocationPage() {
                 activeFilter={activeFilter}
                 experts={experts}
                 onAdd={openAdd}
+                onRequestBooking={openRequestBooking}
               />
             </section>
 
@@ -2002,6 +2192,13 @@ export default function DiscoverLocationPage() {
         target={addDialog}
         open={!!addDialog}
         onOpenChange={v => { if (!v) setAddDialog(null); }}
+      />
+
+      {/* Affiliate booking modal — routes partner bookings through experts */}
+      <AffiliateBookingModal
+        item={requestingItem}
+        open={!!requestingItem}
+        onOpenChange={v => { if (!v) setRequestingItem(null); }}
       />
     </Layout>
   );

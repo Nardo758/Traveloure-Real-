@@ -89,6 +89,8 @@ import {
   itineraryItems, tripExpertAdvisors, providerSettings,
   type ItineraryItem, type InsertItineraryItem,
   type ProviderSettings, type InsertProviderSettings,
+  affiliateBookingRequests,
+  type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -514,6 +516,12 @@ export interface IStorage {
   getActivityCommentCounts(tripId: string): Promise<Record<string, number>>;
   createActivityComment(comment: InsertActivityComment): Promise<ActivityComment>;
   deleteActivityComment(id: string): Promise<void>;
+
+  // Affiliate Booking Requests
+  createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest>;
+  getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
+  getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
+  updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId">>): Promise<AffiliateBookingRequest | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3568,6 +3576,46 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return upserted;
+  }
+
+  // Affiliate Booking Requests
+  async createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest> {
+    const [record] = await db.insert(affiliateBookingRequests).values(data).returning();
+    return record;
+  }
+
+  async getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
+    const rows = await db
+      .select()
+      .from(affiliateBookingRequests)
+      .where(eq(affiliateBookingRequests.userId, userId))
+      .orderBy(desc(affiliateBookingRequests.createdAt));
+    return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
+  }
+
+  async getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]> {
+    return db
+      .select()
+      .from(affiliateBookingRequests)
+      .where(
+        or(
+          eq(affiliateBookingRequests.expertId, expertId),
+          sql`${affiliateBookingRequests.expertId} IS NULL`,
+        )
+      )
+      .orderBy(asc(affiliateBookingRequests.status), asc(affiliateBookingRequests.createdAt));
+  }
+
+  async updateAffiliateBookingRequest(
+    id: string,
+    data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId">>,
+  ): Promise<AffiliateBookingRequest | undefined> {
+    const [updated] = await db
+      .update(affiliateBookingRequests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(affiliateBookingRequests.id, id))
+      .returning();
+    return updated;
   }
 }
 
