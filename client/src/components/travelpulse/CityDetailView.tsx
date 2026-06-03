@@ -1,3 +1,8 @@
+// TODO(Phase 3 — Decision #5): This component is scheduled for retirement.
+// The new location view (Phase 3) replaces it. Both embed sites
+// (CityGrid:569, GlobalCalendar:306) swap to the new component before
+// this file is deleted. See docs/CITY_DETAIL_VIEW_RETIREMENT_PLAN.md.
+// Until then: bug fixes welcome, feature additions discouraged.
 import { useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import DOMPurify from "dompurify";
