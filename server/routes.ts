@@ -4,8 +4,8 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { db } from "./db";
-import { eq, sql } from "drizzle-orm";
-import { expertServiceOfferings, expertServiceCategories } from "@shared/schema";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { expertServiceOfferings, expertServiceCategories, serviceTemplates, expertCustomServices } from "@shared/schema";
 
 import tripsRouter from "./routes/trips.routes";
 import bookingsDomainRouter from "./routes/bookings-domain.routes";
@@ -29,100 +29,10 @@ export async function registerRoutes(
     // Continue without auth - public routes will still work
   }
 
-  // ─── Seed canonical service templates (per-title idempotent) ───────────────
-  (async () => {
-    try {
-      const CANONICAL_TEMPLATES = [
-        {
-          title: "Quick Consultation",
-          description: "15-minute video call to answer quick travel questions and provide immediate guidance",
-          serviceType: "consultation",
-          deliveryMethod: "video",
-          deliveryTimeframe: "15 min",
-          suggestedPrice: "29",
-          requirements: JSON.stringify(["Travel question or topic to discuss"]),
-          whatIncluded: JSON.stringify(["15-min video call", "Personalized advice", "Follow-up summary email"]),
-          isActive: true,
-          sortOrder: 1,
-        },
-        {
-          title: "Cart Review & Optimization",
-          description: "Expert review of your travel cart to find savings and better alternatives",
-          serviceType: "review",
-          deliveryMethod: "document",
-          deliveryTimeframe: "24 hours",
-          suggestedPrice: "49",
-          requirements: JSON.stringify(["Cart link or selections", "Budget constraints"]),
-          whatIncluded: JSON.stringify(["Written recommendations", "Alternative suggestions", "Savings estimate"]),
-          isActive: true,
-          sortOrder: 2,
-        },
-        {
-          title: "Full Trip Planning",
-          description: "Comprehensive trip planning from start to finish with personalized itinerary",
-          serviceType: "planning",
-          deliveryMethod: "hybrid",
-          deliveryTimeframe: "3-5 days",
-          suggestedPrice: "249",
-          requirements: JSON.stringify(["Destination", "Dates", "Budget", "Interests", "Travel style"]),
-          whatIncluded: JSON.stringify(["Full itinerary", "Booking links", "Restaurant reservations", "Daily schedule", "Packing list"]),
-          isActive: true,
-          sortOrder: 3,
-        },
-        {
-          title: "Destination Deep Dive",
-          description: "In-depth guide to a specific destination with local insights and hidden gems",
-          serviceType: "custom",
-          deliveryMethod: "document",
-          deliveryTimeframe: "48 hours",
-          suggestedPrice: "79",
-          requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),
-          whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Insider tips", "Safety advice"]),
-          isActive: true,
-          sortOrder: 4,
-        },
-        {
-          title: "Honeymoon Planning Package",
-          description: "Romantic trip planning with special touches and memorable experiences",
-          serviceType: "planning",
-          deliveryMethod: "hybrid",
-          deliveryTimeframe: "5-7 days",
-          suggestedPrice: "399",
-          requirements: JSON.stringify(["Couple preferences", "Budget", "Dates", "Special requests"]),
-          whatIncluded: JSON.stringify(["Custom itinerary", "Romantic experiences", "Special arrangements", "Booking assistance"]),
-          isActive: true,
-          sortOrder: 5,
-        },
-        {
-          title: "Group Trip Coordinator",
-          description: "Organize and coordinate travel for groups with complex logistics",
-          serviceType: "planning",
-          deliveryMethod: "video",
-          deliveryTimeframe: "1 week",
-          suggestedPrice: "349",
-          requirements: JSON.stringify(["Group size", "Budget per person", "Destination preferences", "Special needs"]),
-          whatIncluded: JSON.stringify(["Group logistics", "Shared itinerary", "Booking coordination", "Communication support"]),
-          isActive: true,
-          sortOrder: 6,
-        },
-      ];
-
-      const existing = await storage.getServiceTemplates();
-      const existingTitles = new Set(existing.map((t: any) => t.title));
-      let inserted = 0;
-      for (const tpl of CANONICAL_TEMPLATES) {
-        if (!existingTitles.has(tpl.title)) {
-          await storage.createServiceTemplate(tpl as any);
-          inserted++;
-        }
-      }
-      if (inserted > 0) {
-        console.log(`[Seed] Inserted ${inserted} canonical service template(s) into DB.`);
-      }
-    } catch (err) {
-      console.warn("[Seed] Could not seed service templates:", err);
-    }
-  })();
+  // ─── service_templates seed removed ─────────────────────────────────────────
+  // expert_service_offerings is now the canonical template catalog.
+  // The ESO seed block below handles all 6 canonical templates and also
+  // backfills any legacy service_templates / expert_custom_services rows.
 
   // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
   (async () => {
@@ -188,6 +98,68 @@ export async function registerRoutes(
       if (esoInserted > 0) {
         console.log(`[Seed] Inserted ${esoInserted} canonical template(s) into expert_service_offerings.`);
       }
+
+      // ── Backfill legacy service_templates → ESO (one-time migration) ──────
+      // Any active service_templates rows not already present in ESO by name
+      // are upserted so old data is not lost.
+      try {
+        const stRows = await db.select().from(serviceTemplates).where(eq(serviceTemplates.isActive, true));
+        const currentEsoNames = new Set(
+          (await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings))
+            .map((r: any) => r.name)
+        );
+        let stBackfilled = 0;
+        for (const st of stRows) {
+          if (!currentEsoNames.has(st.title)) {
+            await db.insert(expertServiceOfferings).values({
+              categoryId,
+              name: st.title,
+              description: st.description ?? undefined,
+              price: st.suggestedPrice ?? "0",
+              isDefault: true,
+              sortOrder: (st.sortOrder ?? 0) + 200,
+            });
+            currentEsoNames.add(st.title);
+            stBackfilled++;
+          }
+        }
+        if (stBackfilled > 0) {
+          console.log(`[Backfill] Migrated ${stBackfilled} service_templates row(s) → expert_service_offerings.`);
+        }
+      } catch (bfErr) {
+        console.warn("[Backfill] service_templates → ESO failed (non-fatal):", bfErr);
+      }
+
+      // ── Backfill approved expert_custom_services → ESO ────────────────────
+      try {
+        const approvedCustom = await db.select().from(expertCustomServices)
+          .where(and(eq(expertCustomServices.status, "approved"), eq(expertCustomServices.isActive, true)));
+        const currentEsoNames2 = new Set(
+          (await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings))
+            .map((r: any) => r.name)
+        );
+        let customBackfilled = 0;
+        for (const cs of approvedCustom) {
+          if (!currentEsoNames2.has(cs.title)) {
+            const catId = cs.existingCategoryId ?? categoryId;
+            await db.insert(expertServiceOfferings).values({
+              categoryId: catId,
+              name: cs.title,
+              description: cs.description ?? undefined,
+              price: cs.price,
+              isDefault: true,
+              sortOrder: 300 + customBackfilled,
+            });
+            currentEsoNames2.add(cs.title);
+            customBackfilled++;
+          }
+        }
+        if (customBackfilled > 0) {
+          console.log(`[Backfill] Migrated ${customBackfilled} expert_custom_services row(s) → expert_service_offerings.`);
+        }
+      } catch (bfErr2) {
+        console.warn("[Backfill] expert_custom_services → ESO failed (non-fatal):", bfErr2);
+      }
     } catch (err) {
       console.warn("[Seed] Could not seed expert_service_offerings:", err);
     }
@@ -219,6 +191,9 @@ export async function registerRoutes(
 
   // AI Discovery routes (uses dynamic import internally)
   await registerDiscoveryRoutes();
+
+  // Bookings API routes - Stripe payments, availability, pricing
+  app.use("/api/bookings", bookingsRoutes);
 
   return httpServer;
 }
