@@ -32,7 +32,6 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Link } from "wouter";
-import { CityDetailView } from "./CityDetailView";
 import { YearOverviewCalendar } from "./YearOverviewCalendar";
 import { MonthCalendarGrid } from "./MonthCalendarGrid";
 import { CompactYearCalendar } from "./CompactYearCalendar";
