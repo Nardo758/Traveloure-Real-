@@ -82,6 +82,7 @@ const menuGroups = [
     items: [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
+      { title: "Neighborhoods", href: "/admin/neighborhood-backfill", icon: MapPin },
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
