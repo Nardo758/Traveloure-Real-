@@ -788,7 +788,8 @@ function matchesFilter(item: any, filter: FeedFilter): boolean {
            t.includes("shrine") || t.includes("park") || t.includes("garden") ||
            t.includes("castle") || t.includes("activity") || t.includes("tour") || t.includes("experience") ||
            t.includes("action") || t.includes("planning") || t.includes("consultation") ||
-           t.includes("concierge") || t.includes("specialty");
+           t.includes("concierge") || t.includes("specialty") || t.includes("neighborhood") ||
+           t.includes("district") || t.includes("area");
   if (filter === "stay")
     return t.includes("hotel") || t.includes("lodging") || t.includes("accommodation") ||
            t.includes("ryokan") || t.includes("hostel");
@@ -796,7 +797,7 @@ function matchesFilter(item: any, filter: FeedFilter): boolean {
     return t.includes("event") || t.includes("festival") || t.includes("concert");
   if (filter === "photo-spots")
     return isPhotoSpotGem(t) || t.includes("spot") || t.includes("photography");
-  return true;
+  return false;
 }
 
 function matchesServiceFilter(svc: PlatformService, filter: FeedFilter): boolean {
