@@ -6,6 +6,9 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (June 2026)
+- **Popular Cities Seed**: Added `server/seeds/popular-cities-content.seed.ts` — seeds 20 hidden gems (7 Tokyo, 6 Kyoto, 7 Paris) with correct neighborhood slugs and 1 active `providerServices` row per city. Also added 6 Tokyo neighborhoods to `server/seeds/city-neighborhoods.seed.ts` (Shimokitazawa, Yanaka, Nakameguro, Asakusa, Shinjuku, Daikanyama). Both seeds run automatically on startup via `runDatabaseSeeding()` in `server/index.ts`.
+
 ## Recent Changes (March 2026)
 - **Stripe Checkout Flow Fixes**: Standardized all Stripe API versions to `2024-12-18.acacia`. Cart checkout now creates a Stripe PaymentIntent and renders the StripeCheckout component for in-page payment. Credit purchase flow wired up with server-side package validation (prices enforced server-side, not client-trusted) via `/api/credits/purchase` endpoint creating Stripe Checkout Sessions. Pricing page auth check fixed: logged-in users navigate to `/credits`, unauthenticated users see sign-in modal. `getBaseUrl()` helper in stripe.service.ts reads REPLIT_DOMAINS for dynamic URL resolution.
 - **QA Endpoint Fixes**: Added missing API routes: `GET /api/bookings/user`, `GET /api/service-bookings`, `POST /api/cart/items`, `GET /api/expert/dashboard`, `GET /api/provider/dashboard`, `GET /api/admin/bookings`, `GET /api/admin/revenue`. These complement existing routes (`/api/my-bookings`, `POST /api/cart`, `/api/expert/analytics/dashboard`, `/api/provider/analytics/dashboard`, `/api/admin/revenue/dashboard`).
