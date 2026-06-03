@@ -194,6 +194,25 @@ export const helpGuideTrips = pgTable("help_guide_trips", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// =============================================================
+// EVENTS MODEL — Canonical Source of Truth
+// See EVENTS_MODEL.md for the full ownership map.
+//
+// CANONICAL TABLE:  destination_events
+//   • Single source of truth for user-facing event display
+//   • All Events-view queries read exclusively from this table
+//   • sourceType + sourceId columns prevent duplicate inserts
+//
+// INTEGRATION CACHES (write into destination_events):
+//   • fever_event_cache      — Fever API (24 h TTL); write path via fever-cache.service.ts
+//   • travel_pulse_calendar_events — AI impact intelligence; write path via travelpulse.service.ts
+//
+// CONTEXT-SPECIFIC (separate namespaces, NOT part of the event calendar):
+//   • live_events                   — tourist search result cache
+//   • tourist_help_me_guide_events  — Help Me Guide user flow
+//   • ea_events                     — Executive Assistant module
+// =============================================================
+
 export const liveEvents = pgTable("live_events", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   searchId: varchar("search_id").notNull().references(() => touristPlacesSearches.id, { onDelete: "cascade" }),
