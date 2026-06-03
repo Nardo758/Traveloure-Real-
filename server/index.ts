@@ -9,6 +9,8 @@ import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderSe
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { seedTravelPulseData } from "./seed-travelpulse";
+import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
+import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -168,7 +170,28 @@ async function runDatabaseSeeding() {
   } catch (err) {
     logger.error({ err }, "Failed to seed TravelPulse data");
   }
-  
+
+  try {
+    const neighborhoodResult = await seedCityNeighborhoods();
+    if (neighborhoodResult.inserted > 0) {
+      logger.info({ count: neighborhoodResult.inserted }, "Seeded city neighborhoods");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed city neighborhoods");
+  }
+
+  try {
+    const popularCitiesResult = await seedPopularCitiesContent();
+    if (popularCitiesResult.gems > 0 || popularCitiesResult.services > 0) {
+      logger.info(
+        { gems: popularCitiesResult.gems, services: popularCitiesResult.services },
+        "Seeded popular cities content (hidden gems + services)",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed popular cities content");
+  }
+
   seedingDurationMs = Date.now() - seedingStartTime;
   seedingComplete = true;
   logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
