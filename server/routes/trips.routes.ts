@@ -494,6 +494,19 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
             message: "An optimization payment is required. Please complete payment before generating a comparison.",
           });
         }
+        // Reject reuse: check if this PI is already tied to any existing comparison
+        const [alreadyUsed] = await db
+          .select({ id: itineraryComparisons.id })
+          .from(itineraryComparisons)
+          .where(eq(itineraryComparisons.optimizationPaymentId, optimizationPaymentId))
+          .limit(1);
+        if (alreadyUsed) {
+          return res.status(409).json({
+            error: "payment_already_used",
+            message: "This optimization payment has already been used. Please start a new optimization.",
+          });
+        }
+
         // Verify with Stripe
         try {
           const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
@@ -530,6 +543,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           travelers: travelers || 1,
           experienceTypeSlug: experienceTypeSlug || null,
           status: "generating",
+          ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
         })
         .returning();
 

@@ -16,7 +16,7 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { optimizationFees, itineraryComparisons } from "@shared/schema";
+import { optimizationFees, itineraryComparisons, users } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
@@ -157,10 +157,34 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       return res.json({ freeRerun: true, feeCents: 0, comparisonId: recent.id });
     }
 
-    // Create Stripe PaymentIntent
+    // Look up or create a Stripe customer so cards can be saved for one-tap reuse
+    const [userRow] = await db
+      .select({ email: users.email, firstName: users.firstName, lastName: users.lastName })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    let stripeCustomerId: string | undefined;
+    if (userRow?.email) {
+      const existing = await stripe.customers.list({ email: userRow.email, limit: 1 });
+      if (existing.data.length > 0) {
+        stripeCustomerId = existing.data[0].id;
+      } else {
+        const created = await stripe.customers.create({
+          email: userRow.email,
+          name: [userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || undefined,
+          metadata: { userId },
+        });
+        stripeCustomerId = created.id;
+      }
+    }
+
+    // Create Stripe PaymentIntent with saved-card support
     const paymentIntent = await stripe.paymentIntents.create({
       amount: priceCents,
       currency: currency.toLowerCase(),
+      ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
+      setup_future_usage: "off_session",
       metadata: {
         type: "optimization_fee",
         userId,
@@ -217,7 +241,7 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
     // Record platform revenue — use only Stripe-confirmed values
     try {
       await revenueTrackingService.recordRevenueEvent({
-        sourceType: "other",
+        sourceType: "optimization_fee",
         sourceId: paymentIntentId,
         grossAmount: confirmedAmount,
         description: `AI Optimization fee (${pi.metadata?.complexityTier ?? "standard"})`,

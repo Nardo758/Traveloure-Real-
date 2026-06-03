@@ -10,7 +10,7 @@ import { resolveCommissionRates, PROCESSING_FEE_RATE } from "./commission";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
-  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'other';
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'other';
   sourceId: string;
   trackingNumber?: string;
   grossAmount: number;
