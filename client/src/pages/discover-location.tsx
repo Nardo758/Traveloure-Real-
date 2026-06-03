@@ -66,7 +66,7 @@ interface HiddenGem {
   id: string; placeName: string; placeType?: string | null; neighborhood?: string | null;
   whyHidden?: string | null; description?: string | null; whyLocalsLoveIt?: string | null;
   imageUrl?: string | null; localRating?: string | number | null;
-  priceRange?: string | null;
+  priceRange?: string | null; reviewCount?: number | null;
 }
 interface PlatformService {
   id: string; serviceName: string; serviceType?: string | null;
@@ -75,6 +75,7 @@ interface PlatformService {
   serviceImage?: string | null; neighborhood?: string | null;
   location?: string | null; averageRating?: string | null;
   isFeatured?: boolean | null; bookingsCount?: number | null;
+  reviewCount?: number | null;
 }
 interface SectionResult<T> { data: T | null; error: string | null }
 interface LocationViewPayload {
@@ -220,8 +221,11 @@ function GemCard({
           </div>
         )}
         {rating && (
-          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm">
+          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-400 text-white rounded px-1.5 py-0.5 flex items-center gap-0.5 shadow-sm" data-testid={`${testPrefix}-rating-${idx}`}>
             <Star className="h-2.5 w-2.5 fill-white text-white" />{rating}
+            {(item.reviewCount ?? 0) > 0 && (
+              <span className="opacity-90"> · {item.reviewCount} reviews</span>
+            )}
           </span>
         )}
       </div>
@@ -816,6 +820,21 @@ function ServiceMiniCard({
           </p>
           {description && <p className="text-xs text-muted-foreground line-clamp-2">{description}</p>}
         </div>
+        {/* Trust signals: rating + bookings demand */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {svc.averageRating && (
+            <span className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-0.5" data-testid={`${testPrefix}-rating-${idx}`}>
+              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+              {typeof svc.averageRating === "number" ? Number(svc.averageRating).toFixed(1) : svc.averageRating}
+              {(svc.reviewCount ?? 0) > 0 && <span className="opacity-80"> · {svc.reviewCount} reviews</span>}
+            </span>
+          )}
+          {(svc.bookingsCount ?? 0) > 0 && (
+            <span className="text-[10px] font-semibold border rounded px-1.5 py-0.5 bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-0.5" data-testid={`${testPrefix}-bookings-${idx}`}>
+              <Users className="w-2.5 h-2.5" />Booked {svc.bookingsCount} times
+            </span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
           <Button size="sm" className="text-xs h-7 px-2.5" asChild data-testid={`${testPrefix}-book-${idx}`}>
             <a href={`/services/${svc.id}`}>Book now</a>
@@ -836,20 +855,31 @@ function ServiceMiniCard({
 // ─── ExpertFeedCard — "Plan it for me" CTA row ───────────────────────────────
 
 function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }) {
+  const [, navigate] = useLocation();
   const initials = expert?.name
     ? expert.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
     : "LC";
   const expertName = expert?.name ?? `Local ${cityName} Expert`;
   const rating = expert?.rating ?? expert?.averageRating ?? null;
-  const specialization = expert?.specialization ?? expert?.bio ?? "Itinerary planning";
-  const price = expert?.hourlyRate ? `from €${expert.hourlyRate}` : null;
+  const reviewCount = expert?.reviewCount ?? null;
+  const price = expert?.hourlyRate ? `from €${expert.hourlyRate}/hr` : null;
+
+  // Specialisation tags: prefer array, fall back to single string split by comma
+  const rawSpec = expert?.specializations ?? expert?.specialization ?? null;
+  const specializationTags: string[] = Array.isArray(rawSpec)
+    ? rawSpec.slice(0, 3)
+    : rawSpec
+      ? String(rawSpec).split(",").map((s: string) => s.trim()).filter(Boolean).slice(0, 3)
+      : ["Itinerary planning"];
+
+  const expertId = expert?.id ?? null;
 
   return (
     <div
-      className="flex items-center gap-3 py-3 px-4 rounded-xl border border-primary/20 bg-primary/[0.03] mt-1"
+      className="flex items-start gap-3 py-3 px-4 rounded-xl border border-primary/20 bg-primary/[0.03] mt-1"
       data-testid="expert-feed-card"
     >
-      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary">
+      <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary mt-0.5">
         {initials}
       </div>
       <div className="flex-1 min-w-0">
@@ -857,18 +887,38 @@ function ExpertFeedCard({ expert, cityName }: { expert?: any; cityName: string }
         <p className="text-sm font-semibold leading-snug line-clamp-1">
           {expertName} turns your picks into a day-by-day plan
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span>{specialization}</span>
+        {/* Specialisation tags */}
+        <div className="flex items-center gap-1 flex-wrap mt-1">
+          {specializationTags.map((tag, i) => (
+            <span
+              key={i}
+              className="text-[9px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-primary/5 text-primary border-primary/20"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
           {rating && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5" data-testid="expert-rating">
               <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
               {typeof rating === "number" ? rating.toFixed(1) : rating}
+              {(reviewCount ?? 0) > 0 && <span className="opacity-70">({reviewCount} reviews)</span>}
             </span>
           )}
-          {price && <span>{price}</span>}
+          {price && <span className="font-medium text-foreground/80">{price}</span>}
+          {expertId && (
+            <button
+              className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
+              onClick={() => navigate(`/experts/${expertId}`)}
+              data-testid="link-expert-profile"
+            >
+              View profile →
+            </button>
+          )}
         </p>
       </div>
-      <Button size="sm" className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap" data-testid="button-plan-with-expert">
+      <Button size="sm" className="text-xs h-8 px-3 flex-shrink-0 whitespace-nowrap mt-0.5" data-testid="button-plan-with-expert">
         Plan with {expert?.name?.split(" ")[0] ?? "expert"}
       </Button>
     </div>
