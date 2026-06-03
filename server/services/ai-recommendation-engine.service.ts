@@ -1,3 +1,23 @@
+/**
+ * DOMAIN: Destination Content Recommendations
+ *
+ * This service scores and ranks cached travel content (hotels, activities) for
+ * individual travelers based on seasonal data, destination events, city
+ * intelligence, budget, and personal preferences.
+ *
+ * It does NOT own the demand-signal → service opportunity matching flow.
+ * For service opportunity recommendations (what services experts/providers
+ * should offer), see service-recommendation-engine.service.ts.
+ *
+ * Tables owned by this domain:
+ *   hotelCache, activityCache, destinationSeasons, destinationEvents, travelPulseCities
+ *
+ * Callers:
+ *   - GET /api/travelpulse/ai-recommendations/:cityName/:country  (routes.ts ~9575)
+ *   - GET /api/travelpulse/event-recommendations/:cityName/:country/:eventId (routes.ts ~9597)
+ *   - GET /api/travelpulse/best-time/:cityName/:country  (routes.ts ~9621)
+ *   - location-view.service.ts (getAIEnhancedRecommendations for location pages)
+ */
 import { db } from "../db";
 import {
   hotelCache,

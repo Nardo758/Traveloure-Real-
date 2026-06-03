@@ -1,3 +1,36 @@
+/**
+ * DOMAIN: Service Opportunity Recommendations  ← authoritative owner
+ *
+ * This is the single authoritative service for the demand-signal → service
+ * opportunity matching flow. It ingests TravelPulse trend data, derives
+ * demand signals, identifies supply gaps, and surfaces actionable
+ * recommendations to three audiences:
+ *
+ *   • Experts  — what new service types to add for their destination markets
+ *   • Providers — where supply gaps exist in their location
+ *   • Travelers — which trending service categories to explore
+ *
+ * It does NOT score or rank cached travel content (hotels, activities).
+ * For destination content recommendations (traveler-facing hotel/activity
+ * scoring), see ai-recommendation-engine.service.ts.
+ *
+ * Tables owned by this domain:
+ *   serviceDemandSignals, serviceRecommendations, recommendationConversions,
+ *   serviceGapAnalysis, seasonalOpportunities, travelPulseTrending,
+ *   providerServices (read-only supply queries)
+ *
+ * Callers:
+ *   - GET  /api/recommendations/expert           (routes.ts ~5590)
+ *   - GET  /api/recommendations/provider         (routes.ts ~5625)
+ *   - GET  /api/recommendations/user             (routes.ts ~5643)
+ *   - GET  /api/recommendations/trending         (routes.ts ~5663)
+ *   - GET  /api/recommendations/market/:city     (routes.ts ~5690)
+ *   - POST /api/recommendations/refresh/:city    (routes.ts ~5706)
+ *   - POST /api/recommendations/:id/convert      (routes.ts ~5722)
+ *   - POST /api/recommendations/:id/dismiss      (routes.ts ~5752)
+ *   - GET  /api/recommendations/seasonal/:city   (routes.ts ~5767)
+ *   - travelpulse-scheduler.service.ts (refreshDemandSignalsForCity)
+ */
 import { db } from "../db";
 import {
   serviceDemandSignals,
