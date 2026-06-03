@@ -100,7 +100,7 @@ export default function SharedTripPage() {
       {/* Hero */}
       <div className="relative h-[40vh] min-h-[280px]">
         <img
-          src={`https://source.unsplash.com/1600x900/?${encodeURIComponent(trip.destination)},travel,landmark`}
+          src={`https://picsum.photos/seed/${encodeURIComponent(trip.destination)}/1600/900`}
           alt={trip.destination}
           className="w-full h-full object-cover"
         />

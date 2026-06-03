@@ -260,7 +260,7 @@ function CuratedCard({
     }
   };
 
-  const fallbackImage = "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80";
+  const fallbackImage = "https://picsum.photos/seed/curated/600/400";
 
   return (
     <motion.div

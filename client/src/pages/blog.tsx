@@ -24,7 +24,7 @@ const blogPosts = [
     date: "2024-01-15",
     category: "Destinations",
     readTime: "5 min read",
-    image: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&h=500&fit=crop",
+    image: "https://picsum.photos/seed/blog-paris/800/500",
     featured: true
   },
   {
@@ -36,7 +36,7 @@ const blogPosts = [
     date: "2024-01-12",
     category: "Romance",
     readTime: "8 min read",
-    image: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=800&h=500&fit=crop",
+    image: "https://picsum.photos/seed/blog-bali/800/500",
     featured: true
   },
   {
@@ -48,7 +48,7 @@ const blogPosts = [
     date: "2024-01-10",
     category: "Tips & Guides",
     readTime: "6 min read",
-    image: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&h=500&fit=crop",
+    image: "https://picsum.photos/seed/blog-europe/800/500",
     featured: false
   },
   {
@@ -60,7 +60,7 @@ const blogPosts = [
     date: "2024-01-08",
     category: "Food & Drink",
     readTime: "7 min read",
-    image: "https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=800&h=500&fit=crop",
+    image: "https://picsum.photos/seed/blog-tokyo/800/500",
     featured: false
   },
   {
@@ -72,7 +72,7 @@ const blogPosts = [
     date: "2024-01-05",
     category: "Sustainability",
     readTime: "6 min read",
-    image: "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800&h=500&fit=crop",
+    image: "https://picsum.photos/seed/blog-eco/800/500",
     featured: false
   },
   {
@@ -84,7 +84,7 @@ const blogPosts = [
     date: "2024-01-03",
     category: "Photography",
     readTime: "5 min read",
-    image: "https://images.unsplash.com/photo-1613395877344-13d4a8e0d49e?w=800&h=500&fit=crop",
+    image: "https://picsum.photos/seed/blog-santorini/800/500",
     featured: false
   },
 ];

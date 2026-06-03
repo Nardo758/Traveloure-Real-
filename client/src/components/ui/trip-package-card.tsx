@@ -95,13 +95,13 @@ export function TripPackageCard({
   // Generate image based on category if not provided
   const getDefaultImage = (category: string) => {
     const imageMap: Record<string, string> = {
-      cultural: "https://images.unsplash.com/photo-1549144511-f099e773c147?w=600&q=80",
-      romantic: "https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=600&q=80",
-      relaxation: "https://images.unsplash.com/photo-1540541338287-41700207dee6?w=600&q=80",
-      adventure: "https://images.unsplash.com/photo-1551632811-561732d1e306?w=600&q=80",
-      family: "https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&q=80",
+      cultural: "https://picsum.photos/seed/pkg-cultural/600/400",
+      romantic: "https://picsum.photos/seed/pkg-romantic/600/400",
+      relaxation: "https://picsum.photos/seed/pkg-relaxation/600/400",
+      adventure: "https://picsum.photos/seed/pkg-adventure/600/400",
+      family: "https://picsum.photos/seed/pkg-family/600/400",
     };
-    return imageMap[category] || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=600&q=80";
+    return imageMap[category] || "https://picsum.photos/seed/pkg-travel/600/400";
   };
 
   const displayImage = image || getDefaultImage(category);

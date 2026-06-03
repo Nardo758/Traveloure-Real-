@@ -30,7 +30,7 @@ export function TripCard({ trip }: TripCardProps) {
           {/* Image */}
           <div className="relative h-48 overflow-hidden">
             <img 
-              src={`https://source.unsplash.com/800x600/?${encodeURIComponent(trip.destination)},travel,landmark`}
+              src={`https://picsum.photos/seed/${encodeURIComponent(trip.destination)}/800/600`}
               alt={trip.destination}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />

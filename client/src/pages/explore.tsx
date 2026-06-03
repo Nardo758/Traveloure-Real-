@@ -13,7 +13,7 @@ const featuredDestinations = [
   {
     id: 1,
     name: "Tokyo, Japan",
-    image: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?q=80&w=800",
+    image: "https://picsum.photos/seed/dest-tokyo/800/600",
     description: "Experience the perfect blend of ancient traditions and cutting-edge technology",
     rating: 4.9,
     trips: 234
@@ -21,7 +21,7 @@ const featuredDestinations = [
   {
     id: 2,
     name: "Paris, France",
-    image: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=800",
+    image: "https://picsum.photos/seed/dest-paris/800/600",
     description: "The city of love, art, and unforgettable culinary experiences",
     rating: 4.8,
     trips: 456
@@ -29,7 +29,7 @@ const featuredDestinations = [
   {
     id: 3,
     name: "Bali, Indonesia",
-    image: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?q=80&w=800",
+    image: "https://picsum.photos/seed/dest-bali/800/600",
     description: "Tropical paradise with stunning temples, beaches, and rice terraces",
     rating: 4.7,
     trips: 189
@@ -37,7 +37,7 @@ const featuredDestinations = [
   {
     id: 4,
     name: "New York, USA",
-    image: "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?q=80&w=800",
+    image: "https://picsum.photos/seed/dest-newyork/800/600",
     description: "The city that never sleeps - iconic landmarks and endless entertainment",
     rating: 4.8,
     trips: 567
@@ -53,7 +53,7 @@ const popularPackages = [
     nights: 6,
     price: 2499,
     description: "Experience Japan during the magical cherry blossom season",
-    image: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800"
+    image: "https://picsum.photos/seed/pkg-japan/800/600"
   },
   {
     id: 2,
@@ -63,7 +63,7 @@ const popularPackages = [
     nights: 4,
     price: 1899,
     description: "A romantic escape through the city of lights",
-    image: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?q=80&w=800"
+    image: "https://picsum.photos/seed/pkg-paris/800/600"
   },
   {
     id: 3,
@@ -73,7 +73,7 @@ const popularPackages = [
     nights: 7,
     price: 1699,
     description: "Rejuvenate your mind and body in tropical paradise",
-    image: "https://images.unsplash.com/photo-1573843981267-be1999ff37cd?q=80&w=800"
+    image: "https://picsum.photos/seed/pkg-bali/800/600"
   },
 ];
 
@@ -86,7 +86,7 @@ export default function Explore() {
     <div className="min-h-screen bg-background">
       {/* Hero Search Section */}
       <div className="relative py-20 px-4 bg-gradient-to-br from-primary via-primary/90 to-accent">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1488646953014-85cb44e25828?q=80&w=2000')] bg-cover bg-center opacity-10" />
+        <div className="absolute inset-0 bg-[url('https://picsum.photos/seed/explore-hero/2000/1200')] bg-cover bg-center opacity-10" />
         <div className="container mx-auto relative z-10">
           <div className="text-center mb-8">
             <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">
@@ -129,7 +129,7 @@ export default function Explore() {
                   <Card className="overflow-hidden hover:shadow-xl transition-all group cursor-pointer">
                     <div className="h-48 relative overflow-hidden">
                       <img 
-                        src={(place.imageUrl as string[])?.[0] || `https://source.unsplash.com/800x600/?${encodeURIComponent(place.place)}`}
+                        src={(place.imageUrl as string[])?.[0] || `https://picsum.photos/seed/${encodeURIComponent(place.place)}/800/600`}
                         alt={place.place}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
@@ -221,7 +221,7 @@ export default function Explore() {
                     <Card className="overflow-hidden hover:shadow-xl transition-all cursor-pointer group h-full">
                       <div className="h-56 overflow-hidden relative">
                         <img 
-                          src={'image' in trip ? trip.image : `https://source.unsplash.com/800x600/?${encodeURIComponent(trip.city)},travel`}
+                          src={'image' in trip ? trip.image : `https://picsum.photos/seed/${encodeURIComponent(trip.city)}/800/600`}
                           alt={trip.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
