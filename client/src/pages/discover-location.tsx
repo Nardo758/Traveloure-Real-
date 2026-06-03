@@ -767,24 +767,42 @@ function BundleBookingModal({
   const transportPriceNum = parseFloat(String(transport.price ?? 0)) || 0;
   const totalPrice = hotelPriceNum + transportPriceNum;
 
+  const [, navigate] = useLocation();
+
   const mutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/bundle-bookings", {
       hotelServiceId: hotel.serviceId,
       hotelName: hotel.name,
-      hotelPrice: hotelPriceNum,
       transportServiceId: transport.serviceId,
       transportName: transport.name,
-      transportPrice: transportPriceNum,
       travelDate: travelDate || null,
       travelers,
     }),
-    onSuccess: () => {
-      toast({ title: "Bundle booked!", description: "Hotel + transfer bookings are pending. Check My Bookings." });
-      onOpenChange(false);
-      setTravelDate(""); setTravelers(1);
+    onSuccess: (data: any) => {
+      if (data?.clientSecret) {
+        // Server created a Stripe PaymentIntent — navigate to payment page for confirmation
+        toast({
+          title: "Bundle reserved!",
+          description: "Redirecting to payment confirmation…",
+        });
+        onOpenChange(false);
+        setTravelDate(""); setTravelers(1);
+        // Navigate to bookings page where user can see pending booking and complete payment
+        navigate("/my-bookings");
+      } else {
+        toast({ title: "Bundle booked!", description: "Hotel + transfer bookings are pending. Check My Bookings." });
+        onOpenChange(false);
+        setTravelDate(""); setTravelers(1);
+      }
     },
-    onError: () => {
-      toast({ title: "Sign in required", description: "Please sign in to book.", variant: "destructive" });
+    onError: (err: any) => {
+      const msg = err?.message ?? "";
+      const isForbidden = msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized");
+      toast({
+        title: isForbidden ? "Sign in required" : "Booking failed",
+        description: isForbidden ? "Please sign in to book." : "Something went wrong — please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1595,7 +1613,7 @@ function isPhotoSpotGem(placeType: string | null | undefined): boolean {
 }
 
 function NeighborhoodContainer({
-  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, onRequestBooking,
+  neighborhood, gems, hotels, activities, services, cityName, onAdd, hueIdx, onRequestBooking, experts,
 }: {
   neighborhood: Neighborhood;
   gems: HiddenGem[];
@@ -1606,6 +1624,7 @@ function NeighborhoodContainer({
   onAdd: (t: AddDialogTarget) => void;
   hueIdx: number;
   onRequestBooking?: (target: AffiliateBookingTarget) => void;
+  experts?: any[];
 }) {
   const [, navigate] = useLocation();
   const total = gems.length + hotels.length + activities.length + services.length;
@@ -1700,28 +1719,40 @@ function NeighborhoodContainer({
         {/* Unified 2-col grid: gems + card-worthy activities + hotel mini cards + service mini cards */}
         {hasGridContent && (
           <div className="grid grid-cols-2 gap-3">
-            {gems.map((gem, idx) => (
-              <GemCard
-                key={gem.id ?? idx}
-                item={gem}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`gem-${neighborhood.slug}`}
-                onRequestBooking={onRequestBooking}
-                cityName={cityName}
-              />
-            ))}
-            {cardActivities.map((act, idx) => (
-              <GemCard
-                key={act.id ?? `ca-${idx}`}
-                item={act}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`act-card-${neighborhood.slug}`}
-                onRequestBooking={onRequestBooking}
-                cityName={cityName}
-              />
-            ))}
+            {gems.map((gem, idx) => {
+              const expertM = experts ? matchExpertToContent(experts, gem.placeType) : null;
+              const curatedE = gem.curatedByExpertId && experts
+                ? (() => { const e = experts.find((ex: any) => ex.id === gem.curatedByExpertId); return e ? { name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "), id: e.id, specializations: e.specializations ?? null } : null; })()
+                : null;
+              return (
+                <GemCard
+                  key={gem.id ?? idx}
+                  item={gem}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`gem-${neighborhood.slug}`}
+                  onRequestBooking={onRequestBooking}
+                  cityName={cityName}
+                  expertMatch={expertM}
+                  curatedByExpert={curatedE}
+                />
+              );
+            })}
+            {cardActivities.map((act, idx) => {
+              const expertM = experts ? matchExpertToContent(experts, act.placeType ?? act.type) : null;
+              return (
+                <GemCard
+                  key={act.id ?? `ca-${idx}`}
+                  item={act}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`act-card-${neighborhood.slug}`}
+                  onRequestBooking={onRequestBooking}
+                  cityName={cityName}
+                  expertMatch={expertM}
+                />
+              );
+            })}
             {hotels.map((hotel, idx) => (
               <HotelMiniCard
                 key={hotel.id ?? idx}
@@ -1748,18 +1779,22 @@ function NeighborhoodContainer({
         {/* Pure text-only AI activities — below the grid (no image, no booking URL, no price) */}
         {textActivities.length > 0 && (
           <div className={`rounded-xl border bg-card px-4 py-2${hasGridContent ? " mt-3" : ""}`}>
-            {textActivities.map((act, idx) => (
-              <ActivityRow
-                key={act.id ?? idx}
-                item={act}
-                idx={idx}
-                onAdd={onAdd}
-                testPrefix={`activity-${neighborhood.slug}`}
-                onRequestBooking={onRequestBooking}
-                cityName={cityName}
-                neighborhood={neighborhood.slug}
-              />
-            ))}
+            {textActivities.map((act, idx) => {
+              const expertM = experts ? matchExpertToContent(experts, act.placeType ?? act.type) : null;
+              return (
+                <ActivityRow
+                  key={act.id ?? idx}
+                  item={act}
+                  idx={idx}
+                  onAdd={onAdd}
+                  testPrefix={`activity-${neighborhood.slug}`}
+                  onRequestBooking={onRequestBooking}
+                  cityName={cityName}
+                  neighborhood={neighborhood.slug}
+                  expertMatch={expertM}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -2141,6 +2176,9 @@ function AllGemsFeed({
           <div className="grid grid-cols-2 gap-3">
             {flatGems.map((item, idx) => {
               const expertM = matchExpertToContent(experts, item.placeType);
+              const curatedE = item.curatedByExpertId
+                ? (() => { const e = experts.find((ex: any) => ex.id === item.curatedByExpertId); return e ? { name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "), id: e.id, specializations: e.specializations ?? null } : null; })()
+                : null;
               return (
                 <GemCard
                   key={item.id ?? idx}
@@ -2150,6 +2188,7 @@ function AllGemsFeed({
                   testPrefix={`flat-${activeFilter}-gem`}
                   onRequestBooking={onRequestBooking}
                   expertMatch={expertM}
+                  curatedByExpert={curatedE}
                 />
               );
             })}
@@ -2334,6 +2373,7 @@ function AllGemsFeed({
             onAdd={onAdd}
             hueIdx={nIdx}
             onRequestBooking={onRequestBooking}
+            experts={experts}
           />
           {/* Expert card between every other neighborhood container */}
           {experts.length > 0 && nIdx % 2 === 0 && nIdx < ordered.length - 1 && (
@@ -2360,12 +2400,18 @@ function AllGemsFeed({
 
             {hasElsewhereGrid && (
               <div className="grid grid-cols-2 gap-3">
-                {elsewhereGems.map((gem, idx) => (
-                  <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="across-gem"
-                    onRequestBooking={onRequestBooking}
-                    expertMatch={matchExpertToContent(experts, gem.placeType)}
-                  />
-                ))}
+                {elsewhereGems.map((gem, idx) => {
+                  const curatedE = gem.curatedByExpertId
+                    ? (() => { const e = experts.find((ex: any) => ex.id === gem.curatedByExpertId); return e ? { name: e.name ?? [e.firstName, e.lastName].filter(Boolean).join(" "), id: e.id, specializations: e.specializations ?? null } : null; })()
+                    : null;
+                  return (
+                    <GemCard key={gem.id ?? idx} item={gem} idx={idx} onAdd={onAdd} testPrefix="across-gem"
+                      onRequestBooking={onRequestBooking}
+                      expertMatch={matchExpertToContent(experts, gem.placeType)}
+                      curatedByExpert={curatedE}
+                    />
+                  );
+                })}
                 {elsewhereCardActs.map((act, idx) => (
                   <GemCard key={act.id ?? `eca-${idx}`} item={act} idx={idx} onAdd={onAdd} testPrefix="across-act"
                     onRequestBooking={onRequestBooking}

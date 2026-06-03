@@ -8289,8 +8289,8 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
   app.post("/api/bundle-bookings", isAuthenticated, async (req, res) => {
     try {
       const {
-        hotelServiceId, hotelName, hotelPrice,
-        transportServiceId, transportName, transportPrice,
+        hotelServiceId, hotelName,
+        transportServiceId, transportName,
         travelDate, travelers,
       } = req.body;
 
@@ -8301,39 +8301,48 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-      const hotelPriceNum = parseFloat(String(hotelPrice ?? 0)) || 0;
-      const transportPriceNum = parseFloat(String(transportPrice ?? 0)) || 0;
+      // ── Server-side price resolution — never trust client-submitted prices ──
+      const { providerServices } = await import("@shared/schema");
+      const [hotelSvc] = await db.select({ price: providerServices.price, name: providerServices.serviceName })
+        .from(providerServices).where(eq(providerServices.id, hotelServiceId)).limit(1);
+      const [transportSvc] = await db.select({ price: providerServices.price, name: providerServices.serviceName })
+        .from(providerServices).where(eq(providerServices.id, transportServiceId)).limit(1);
+
+      const hotelPriceNum = parseFloat(String(hotelSvc?.price ?? 0)) || 0;
+      const transportPriceNum = parseFloat(String(transportSvc?.price ?? 0)) || 0;
       const totalCents = Math.round((hotelPriceNum + transportPriceNum) * 100);
 
-      // Create Stripe PaymentIntent for the combined amount
+      const resolvedHotelName = hotelSvc?.name ?? hotelName ?? "Hotel";
+      const resolvedTransportName = transportSvc?.name ?? transportName ?? "Transfer";
+
+      // Create Stripe PaymentIntent for the combined amount (fail-fast if Stripe errors)
       let paymentIntentId: string | null = null;
+      let clientSecret: string | null = null;
       if (totalCents > 0) {
-        try {
-          const { stripeService } = await import("./replit_integrations/stripe.service");
-          const stripe = (stripeService as any).stripe;
-          if (stripe) {
-            const pi = await stripe.paymentIntents.create({
-              amount: totalCents,
-              currency: "eur",
-              metadata: {
-                bundle: "hotel_transfer",
-                hotelServiceId,
-                transportServiceId,
-                userId,
-                travelDate: travelDate ?? "",
-                travelers: String(travelers ?? 1),
-              },
-              description: `Bundle: ${hotelName ?? "Hotel"} + ${transportName ?? "Transfer"}`,
-            });
-            paymentIntentId = pi.id;
-          }
-        } catch (stripeErr) {
-          console.warn("[bundle-bookings] Stripe PI creation failed:", stripeErr);
+        const { stripeService } = await import("./replit_integrations/stripe.service");
+        const stripe = (stripeService as any).stripe;
+        if (!stripe) {
+          return res.status(503).json({ message: "Payment service unavailable" });
         }
+        const pi = await stripe.paymentIntents.create({
+          amount: totalCents,
+          currency: "eur",
+          metadata: {
+            bundle: "hotel_transfer",
+            hotelServiceId,
+            transportServiceId,
+            userId,
+            travelDate: travelDate ?? "",
+            travelers: String(travelers ?? 1),
+          },
+          description: `Bundle: ${resolvedHotelName} + ${resolvedTransportName}`,
+        });
+        paymentIntentId = pi.id;
+        clientSecret = pi.client_secret ?? null;
       }
 
-      // Persist two service booking records
-      const [hotelBooking] = await db.execute(sql`
+      // Persist two service booking records; use .rows[] to read back RETURNING values
+      const hotelResult = await db.execute(sql`
         INSERT INTO service_bookings
           (id, user_id, service_id, booking_date, number_of_people, total_price, status, special_requests, created_at, updated_at)
         VALUES
@@ -8342,8 +8351,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
            ${paymentIntentId ? `Bundle PI: ${paymentIntentId}` : "Bundle booking"}, NOW(), NOW())
         RETURNING id
       `);
-
-      const [transferBooking] = await db.execute(sql`
+      const transferResult = await db.execute(sql`
         INSERT INTO service_bookings
           (id, user_id, service_id, booking_date, number_of_people, total_price, status, special_requests, created_at, updated_at)
         VALUES
@@ -8356,10 +8364,13 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
       return res.status(201).json({
         success: true,
         paymentIntentId,
-        hotelBookingId: (hotelBooking as any)?.rows?.[0]?.id ?? null,
-        transferBookingId: (transferBooking as any)?.rows?.[0]?.id ?? null,
+        clientSecret,
+        hotelBookingId: (hotelResult as any)?.rows?.[0]?.id ?? null,
+        transferBookingId: (transferResult as any)?.rows?.[0]?.id ?? null,
         totalAmount: (hotelPriceNum + transportPriceNum).toFixed(2),
-        message: "Bundle created — both bookings are pending payment confirmation.",
+        message: totalCents > 0
+          ? "Bundle created — use clientSecret to confirm payment."
+          : "Bundle created as pending bookings.",
       });
     } catch (err: any) {
       console.error("[bundle-bookings] error:", err);
