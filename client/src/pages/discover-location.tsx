@@ -1188,7 +1188,67 @@ export default function DiscoverLocationPage() {
   const neighborhoods: Neighborhood[] = data?.neighborhoods?.data ?? [];
   const hotels: any[] = data?.recommendations?.data?.hotels ?? [];
   const activities: any[] = data?.recommendations?.data?.activities ?? [];
+  const experts: any[] = data?.recommendations?.data?.experts ?? [];
   const events: any[] = data?.events?.data?.events ?? [];
+
+  const feedItems: FeedItem[] = [
+    ...hiddenGems.map((g, idx) => ({
+      id: g.id,
+      name: g.placeName,
+      type: "hidden-gem",
+      placeType: g.placeType,
+      neighborhood: g.neighborhood,
+      imageUrl: g.imageUrl,
+      description: g.whyHidden,
+      rating: g.localRating,
+      bookingUrl: null,
+      source: "gem" as const,
+      sourceIdx: idx,
+    })),
+    ...hotels.map((h: any, idx: number) => ({
+      id: h.id || `hotel-${idx}`,
+      name: h.name,
+      type: "hotel",
+      placeType: "hotel",
+      neighborhood: h.neighborhood || null,
+      imageUrl: h.media?.[0]?.url || null,
+      description: h.address,
+      rating: h.starRating,
+      starRating: h.starRating,
+      bookingUrl: h.bookingUrl || null,
+      price: h.price,
+      source: "hotel" as const,
+      sourceIdx: idx,
+    })),
+    ...activities.map((a: any, idx: number) => ({
+      id: a.id || `activity-${idx}`,
+      name: a.title,
+      type: "activity",
+      placeType: a.type || "activity",
+      neighborhood: a.neighborhood || null,
+      imageUrl: a.media?.[0]?.url || null,
+      description: a.description,
+      rating: a.rating,
+      bookingUrl: a.bookingUrl || null,
+      price: a.price,
+      source: "activity" as const,
+      sourceIdx: idx,
+    })),
+    ...events.map((e: any, idx: number) => ({
+      id: e.id || `event-${idx}`,
+      name: e.title || e.name,
+      type: "event",
+      placeType: "event",
+      neighborhood: e.neighborhood || null,
+      imageUrl: e.imageUrl || e.media?.[0]?.url || null,
+      description: e.description,
+      rating: null,
+      bookingUrl: e.bookingUrl || e.ticketUrl || null,
+      price: e.price,
+      source: "event" as const,
+      sourceIdx: idx,
+    })),
+  ];
 
   const openAdd = (t: AddDialogTarget) => setAddDialog(t);
 
@@ -1332,6 +1392,7 @@ export default function DiscoverLocationPage() {
                 activities={activities}
                 cityName={city}
                 activeFilter={activeFilter}
+                experts={experts}
                 onAdd={openAdd}
               />
             </section>
