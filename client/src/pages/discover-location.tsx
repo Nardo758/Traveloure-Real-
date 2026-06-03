@@ -1205,7 +1205,7 @@ export default function DiscoverLocationPage() {
       source: "gem" as const,
       sourceIdx: idx,
     })),
-    ...hotels.slice(0, 8).map((h: any, idx: number) => ({
+    ...hotels.map((h: any, idx: number) => ({
       id: h.id || `hotel-${idx}`,
       name: h.name,
       type: "hotel",
@@ -1220,7 +1220,7 @@ export default function DiscoverLocationPage() {
       source: "hotel" as const,
       sourceIdx: idx,
     })),
-    ...activities.slice(0, 8).map((a: any, idx: number) => ({
+    ...activities.map((a: any, idx: number) => ({
       id: a.id || `activity-${idx}`,
       name: a.title,
       type: "activity",
@@ -1234,7 +1234,7 @@ export default function DiscoverLocationPage() {
       source: "activity" as const,
       sourceIdx: idx,
     })),
-    ...events.slice(0, 8).map((e: any, idx: number) => ({
+    ...events.map((e: any, idx: number) => ({
       id: e.id || `event-${idx}`,
       name: e.title || e.name,
       type: "event",
