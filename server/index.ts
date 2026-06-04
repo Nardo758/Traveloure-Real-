@@ -4,7 +4,6 @@ import { createServer, request as httpRequest } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { runMigrations } from "./migrations/run-migrations";
-import { runEsoBackfill } from "./migrations/run-eso-backfill";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
@@ -115,14 +114,22 @@ async function runDatabaseSeeding() {
   // will produce runtime errors. Throw so the server does not start in a broken state.
   await runMigrations();
 
-  // Run ESO backfill: migrates legacy service_templates + approved expert_custom_services
-  // into expert_service_offerings as the canonical service catalog.
-  // Uses externalId for deterministic deduplication (safe to re-run).
-  try {
-    await runEsoBackfill();
-  } catch (err) {
-    logger.warn({ err }, "ESO backfill failed (non-fatal)");
-  }
+  // DISABLED: ESO backfill (see architectural decision below).
+  //
+  // Canonical service source: provider_services (not expert_service_offerings).
+  // Reason: service_bookings.serviceId and service_reviews.serviceId already FK
+  // to provider_services.id. Moving the approval workflow to ESO while leaving
+  // transactions in provider_services fragments the booking/review/payment path.
+  //
+  // Data migration: done by runMigrations() via 0007_consolidate_services.sql
+  // which copies expert_custom_services → provider_services with category mapping.
+  // This is idempotent and safe to re-run.
+  //
+  // TODO (Phase 5): Drop ESO workflow columns (status, submittedAt, deliverables, etc.)
+  // in migration 0008 after confirming provider_services is stable in prod.
+  // ESO will remain as a template/offering source for the signup flow.
+  //
+  // Previous: await runEsoBackfill();  // REMOVED — contradicted provider_services canonicality
 
   try {
     const result = await seedCategories();
