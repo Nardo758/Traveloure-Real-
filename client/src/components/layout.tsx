@@ -44,7 +44,8 @@ import {
   Flower2,
   HandHeart,
   Trophy,
-  Umbrella
+  Umbrella,
+  User
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -62,6 +63,20 @@ import { NotificationBell } from "@/components/notification-bell";
 
 const navItems = [
   {
+    name: "Discover",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "BROWSE",
+        items: [
+          { name: "By Location", href: "/discover", icon: MapPin, description: "Explore destinations & trending cities" },
+          { name: "By Date", href: "/discover?tab=events", icon: Calendar, description: "Upcoming events & activities" },
+        ],
+      },
+    ],
+  },
+  { name: "Local Experts", href: "/experts?role=local_expert" },
+  {
     name: "Experiences",
     icon: ChevronDown,
     sections: [
@@ -78,10 +93,6 @@ const navItems = [
         title: "CELEBRATIONS",
         items: [
           { name: "Birthday Party", href: "/experiences/birthday", icon: Cake, description: "Unforgettable celebrations" },
-          { name: "Holiday Party", href: "/experiences/holiday-party", icon: TreePine, description: "Festive gatherings" },
-          { name: "Housewarming", href: "/experiences/housewarming-party", icon: Home, description: "Welcome home events" },
-          { name: "Farewell Party", href: "/experiences/farewell-party", icon: HandHeart, description: "Send-off celebrations" },
-          { name: "Career Achievement", href: "/experiences/career-achievement-party", icon: Trophy, description: "Celebrate success" },
         ],
       },
       {
@@ -92,8 +103,6 @@ const navItems = [
           { name: "Engagement Party", href: "/experiences/engagement-party", icon: Flower2, description: "Celebrate your love" },
           { name: "Baby Shower", href: "/experiences/baby-shower", icon: Baby, description: "Welcome the new arrival" },
           { name: "Anniversary", href: "/experiences/wedding-anniversaries", icon: Gift, description: "Celebrate your journey" },
-          { name: "Graduation", href: "/experiences/graduation-party", icon: GraduationCap, description: "Honor achievements" },
-          { name: "Retirement", href: "/experiences/retirement-party", icon: Crown, description: "New chapter celebration" },
         ],
       },
       {
@@ -108,20 +117,6 @@ const navItems = [
       },
     ],
   },
-  { name: "Partner With Us", href: "/partner-with-us" },
-  {
-    name: "Discover",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "BROWSE",
-        items: [
-          { name: "By Location", href: "/discover", icon: MapPin, description: "Explore destinations & trending cities" },
-          { name: "By Date", href: "/discover?tab=events", icon: Calendar, description: "Upcoming events & activities" },
-        ],
-      },
-    ],
-  },
   {
     name: "Planning Tools",
     icon: ChevronDown,
@@ -130,6 +125,7 @@ const navItems = [
         title: "AI & EXPERTS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
+          { name: "Travel Advisor", href: "/experts?role=travel_expert", icon: User, description: "Browse human trip-planning experts" },
           { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
           { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
@@ -143,7 +139,7 @@ const navItems = [
       },
     ],
   },
-  { name: "Local Experts", href: "/experts?role=local_expert" },
+  { name: "Partner With Us", href: "/partner-with-us" },
   { name: "Contact", href: "/contact" },
 ];
 
