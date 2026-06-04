@@ -33,7 +33,13 @@ export default function EADashboard() {
     queryKey: ["/api/ea/clients"],
   });
 
+  const { data: managedTrips } = useQuery<{ id: string; status: string }[]>({
+    queryKey: ["/api/ea/trips"],
+  });
+
   const clientCount = clients?.length ?? 0;
+  const tripCount = managedTrips?.length ?? 0;
+  const activeTripCount = managedTrips?.filter((t) => t.status !== "completed" && t.status !== "cancelled").length ?? 0;
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "there" : "there";
 
   return (
@@ -61,15 +67,15 @@ export default function EADashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border border-[#E8E8E2]" data-testid="card-stat-events">
+          <Card className="border border-[#E8E8E2]" data-testid="card-stat-trips">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-[#7A7A72]">Active Events</p>
-                  <p className="text-2xl font-bold text-[#1A1A18]">0</p>
+                  <p className="text-sm text-[#7A7A72]">Active Trips</p>
+                  <p className="text-2xl font-bold text-[#1A1A18]">{activeTripCount}</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
-                  <CalendarIcon className="w-5 h-5" />
+                  <Plane className="w-5 h-5" />
                 </div>
               </div>
             </CardContent>
@@ -213,6 +219,11 @@ export default function EADashboard() {
                 <Link href="/ea/calendar">
                   <Button variant="outline" size="sm" className="w-full justify-start" data-testid="button-quick-book">
                     <CalendarIcon className="w-4 h-4 mr-2" /> Book Event
+                  </Button>
+                </Link>
+                <Link href="/ea/trips">
+                  <Button variant="outline" size="sm" className="w-full justify-start" data-testid="button-quick-trip">
+                    <Plane className="w-4 h-4 mr-2" /> Manage Trips
                   </Button>
                 </Link>
                 <Link href="/ea/travel">

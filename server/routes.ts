@@ -596,9 +596,12 @@ export async function registerRoutes(
     if (!trip) {
       return res.status(404).json({ message: "Trip not found" });
     }
-    // Check ownership
+    // Owner, assigned expert, or managing EA may view.
     const userId = (req.user as any).claims.sub;
-    if (trip.userId !== userId) {
+    const isOwner = trip.userId === userId;
+    const isExpert = (trip as any).expertId === userId;
+    const isManagingEa = (trip as any).managedByEaId === userId;
+    if (!isOwner && !isExpert && !isManagingEa) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     res.json(trip);
@@ -638,9 +641,11 @@ export async function registerRoutes(
       const sanitizedInput = sanitizeObject(input);
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      
+
       const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      const isOwner = trip.userId === userId;
+      const isManagingEa = (trip as any).managedByEaId === userId;
+      if (!isOwner && !isManagingEa) return res.status(401).json({ message: "Unauthorized" });
 
       const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
       res.json(updatedTrip);
@@ -18446,6 +18451,23 @@ export async function registerDiscoveryRoutes(app: Express) {
           tripName,
         },
       });
+
+      // If this is an EA-managed trip, loop the EA in too.
+      if ((tripRecord as any)?.managedByEaId) {
+        try {
+          await storage.createNotification({
+            userId: (tripRecord as any).managedByEaId,
+            type: "ea_trip_expert_assigned",
+            title: "Expert assigned to your client's trip",
+            message: `${expertUser?.firstName || "An expert"} is now planning "${tripName}".`,
+            relatedId: row.trip_id,
+            relatedType: "trip",
+            data: { tripId: row.trip_id, expertId: row.assigned_expert_id, tripName },
+          });
+        } catch (eaNotifErr) {
+          console.error("Failed to notify EA of expert assignment:", eaNotifErr);
+        }
+      }
     } catch (notifErr) {
       console.error("Failed to notify expert of assignment:", notifErr);
     }
@@ -18542,6 +18564,23 @@ export async function registerDiscoveryRoutes(app: Express) {
         });
       } catch (notifErr) {
         console.error("Failed to notify new expert of assignment:", notifErr);
+      }
+
+      // Loop in EA on reassignment for EA-managed trips
+      if ((tripRecord as any)?.managedByEaId) {
+        try {
+          await storage.createNotification({
+            userId: (tripRecord as any).managedByEaId,
+            type: "ea_trip_expert_reassigned",
+            title: "Expert reassigned on client trip",
+            message: `${expertName} is now planning "${tripName}".`,
+            relatedId: row.trip_id,
+            relatedType: "trip",
+            data: { tripId: row.trip_id, expertId, expertName, tripName },
+          });
+        } catch (eaNotifErr) {
+          console.error("Failed to notify EA of expert reassignment:", eaNotifErr);
+        }
       }
 
       res.json({ success: true, newExpertId: expertId, expertName });
@@ -19127,6 +19166,145 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("[EA] pushNotification error:", err);
       res.status(500).json({ message: "Failed to send notification" });
+    }
+  });
+
+  // ============================================================
+  // EA → MARKETPLACE TRIP DELEGATION
+  // EAs can create + manage trips on behalf of their clients,
+  // tapping the same expert-routing / messaging / notification rails
+  // travelers already use.
+  // ============================================================
+
+  // GET /api/ea/trips — list all trips this EA manages on behalf of clients
+  app.get("/api/ea/trips", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const rows = await db
+        .select({
+          id: trips.id,
+          trackingNumber: trips.trackingNumber,
+          title: trips.title,
+          destination: trips.destination,
+          startDate: trips.startDate,
+          endDate: trips.endDate,
+          status: trips.status,
+          numberOfTravelers: trips.numberOfTravelers,
+          expertId: trips.expertId,
+          createdAt: trips.createdAt,
+          clientUserId: trips.userId,
+          clientFirstName: users.firstName,
+          clientLastName: users.lastName,
+          clientEmail: users.email,
+          eaClientRelationshipId: trips.eaClientRelationshipId,
+        })
+        .from(trips)
+        .leftJoin(users, eq(trips.userId, users.id))
+        .where(eq(trips.managedByEaId, eaUserId))
+        .orderBy(desc(trips.createdAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getTrips error:", err);
+      res.status(500).json({ message: "Failed to fetch managed trips" });
+    }
+  });
+
+  // POST /api/ea/clients/:id/trips — create a trip on behalf of a client
+  // The traveler is the client (trips.userId); the EA stays in the loop
+  // as managedByEaId and receives all trip notifications too.
+  app.post("/api/ea/clients/:id/trips", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { id: relationshipId } = req.params;
+
+      const [relationship] = await db.select().from(eaClientRelationships)
+        .where(and(
+          eq(eaClientRelationships.id, relationshipId),
+          eq(eaClientRelationships.eaUserId, eaUserId),
+        )).limit(1);
+      if (!relationship) return res.status(404).json({ message: "Client not found" });
+      if (!relationship.clientUserId) {
+        return res.status(400).json({ message: "Client must have a platform account to be assigned a trip" });
+      }
+
+      const body = z.object({
+        title: z.string().optional(),
+        destination: z.string().min(1),
+        startDate: z.string(),
+        endDate: z.string(),
+        eventType: z.string().optional(),
+        numberOfTravelers: z.number().int().positive().optional(),
+        adults: z.number().int().nonnegative().optional(),
+        kids: z.number().int().nonnegative().optional(),
+        budget: z.string().optional(),
+        specialRequests: z.string().optional(),
+        preferences: z.record(z.any()).optional(),
+      }).parse(req.body);
+
+      const [created] = await db.insert(trips).values({
+        userId: relationship.clientUserId,
+        managedByEaId: eaUserId,
+        eaClientRelationshipId: relationship.id,
+        title: body.title || `${relationship.displayName || "Client"} — ${body.destination}`,
+        destination: body.destination,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        eventType: body.eventType ?? "vacation",
+        numberOfTravelers: body.numberOfTravelers ?? 1,
+        adults: body.adults ?? 2,
+        kids: body.kids ?? 0,
+        budget: body.budget ?? null,
+        specialRequests: body.specialRequests ?? null,
+        preferences: body.preferences ?? {},
+        status: "draft",
+      }).returning();
+
+      // Notify the client that their EA created a trip on their behalf (fire & forget)
+      try {
+        await storage.createNotification({
+          userId: relationship.clientUserId,
+          type: "ea_trip_created",
+          title: "Your assistant created a trip for you",
+          message: `${(req.user as any).firstName || "Your EA"} set up a trip to ${body.destination}. Review and approve.`,
+          relatedId: created.id,
+          relatedType: "trip",
+          data: { tripId: created.id, eaUserId },
+        });
+      } catch (notifErr) {
+        console.error("Failed to notify client of EA-created trip:", notifErr);
+      }
+
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[EA] createTripForClient error:", err);
+      res.status(500).json({ message: "Failed to create trip" });
+    }
+  });
+
+  // GET /api/ea/clients/:id/trips — list trips for a specific client managed by this EA
+  app.get("/api/ea/clients/:id/trips", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { id: relationshipId } = req.params;
+
+      const [relationship] = await db.select().from(eaClientRelationships)
+        .where(and(
+          eq(eaClientRelationships.id, relationshipId),
+          eq(eaClientRelationships.eaUserId, eaUserId),
+        )).limit(1);
+      if (!relationship) return res.status(404).json({ message: "Client not found" });
+
+      const rows = await db.select().from(trips)
+        .where(and(
+          eq(trips.managedByEaId, eaUserId),
+          eq(trips.eaClientRelationshipId, relationship.id),
+        ))
+        .orderBy(desc(trips.createdAt));
+
+      res.json(rows);
+    } catch (err) {
+      console.error("[EA] getClientTrips error:", err);
+      res.status(500).json({ message: "Failed to fetch client trips" });
     }
   });
 

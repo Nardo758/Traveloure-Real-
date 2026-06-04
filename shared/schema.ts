@@ -86,6 +86,10 @@ export const trips = pgTable("trips", {
   bookingReference: varchar("booking_reference", { length: 50 }),
   isPublic: boolean("is_public").default(false),
   shareToken: varchar("share_token", { length: 64 }),
+  // EA delegation: when an EA coordinates this trip on behalf of the client.
+  // userId remains the traveler; managedByEaId is the EA running the show.
+  managedByEaId: varchar("managed_by_ea_id").references(() => users.id, { onDelete: "set null" }),
+  eaClientRelationshipId: varchar("ea_client_relationship_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
