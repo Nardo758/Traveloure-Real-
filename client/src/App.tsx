@@ -10,6 +10,7 @@ import { ProviderLayout } from "@/components/provider/provider-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
+import { GuestTripProvider } from "@/contexts/GuestTripContext";
 
 import LandingPage from "@/pages/landing";
 import LandingMockups from "@/pages/landing-mockups";
@@ -146,6 +147,7 @@ import VisaHelpPage from "@/pages/visa-help";
 import { Loader2 } from "lucide-react";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
+import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
   const { user, isLoading } = useAuth();
@@ -196,6 +198,9 @@ function ChatWithRoleLayout() {
 }
 
 function Router() {
+  // Automatically claim guest trips when user signs up
+  useClaimGuestTrips();
+
   return (
     <Switch>
       {/* Public Routes with Layout */}
@@ -686,14 +691,16 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TripQueueProvider>
-        <SignInModalProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </SignInModalProvider>
-      </TripQueueProvider>
+      <GuestTripProvider>
+        <TripQueueProvider>
+          <SignInModalProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+            </TooltipProvider>
+          </SignInModalProvider>
+        </TripQueueProvider>
+      </GuestTripProvider>
     </QueryClientProvider>
   );
 }
