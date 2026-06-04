@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, ChevronRight, Tag, Globe } from "lucide-react";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
-import { matchedServiceSuggestion } from "@/lib/feed-stream";
+import { matchedServiceSuggestion, gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -25,8 +24,6 @@ export function computeBookability(data: any): Bookability {
 
 /**
  * Build srcSet + sizes for retina delivery.
- * Unsplash URLs accept a `w` query parameter — we emit 800w and 1600w variants.
- * All other URLs fall back to a single-source srcSet (browser picks 1x).
  */
 function buildSrcSet(url: string | null | undefined): { srcSet?: string; sizes: string } {
   const sizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw";
@@ -42,41 +39,93 @@ function buildSrcSet(url: string | null | undefined): { srcSet?: string; sizes: 
   return { sizes };
 }
 
-interface BookabilityDotProps {
-  level: Bookability;
+// ─── Type metadata ─────────────────────────────────────────────────────────────
+
+interface TypeMeta {
+  label: string;
+  emoji: string;
+  tagBg: string;
+  tagText: string;
+  phBg: string;
+  phText: string;
 }
 
-function BookabilityDot({ level }: BookabilityDotProps) {
-  const color =
-    level === "platform"
-      ? "bg-green-400"
-      : level === "affiliate"
-        ? "bg-blue-400"
-        : "bg-gray-400";
-  const label =
-    level === "platform" ? "Platform booking" : level === "affiliate" ? "Affiliate link" : "Browse only";
-  return <span className={cn("w-2 h-2 rounded-full", color)} title={label} />;
+function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
+  const cat = gemCategory(placeType);
+  switch (cat) {
+    case "photo_spots":
+      return { label: "Photo spot", emoji: "📷", tagBg: "bg-teal-50", tagText: "text-teal-700", phBg: "bg-teal-50", phText: "text-teal-600" };
+    case "stay":
+      return { label: "Stay", emoji: "🏨", tagBg: "bg-blue-50", tagText: "text-blue-700", phBg: "bg-blue-50", phText: "text-blue-600" };
+    case "eat":
+      return { label: "Eat", emoji: "🍵", tagBg: "bg-pink-50", tagText: "text-pink-700", phBg: "bg-pink-50", phText: "text-pink-600" };
+    default:
+      return { label: "Attraction", emoji: "⛩", tagBg: "bg-amber-50", tagText: "text-amber-800", phBg: "bg-amber-50", phText: "text-amber-700" };
+  }
 }
 
-/** Reusable matched-service suggestion row rendered at the bottom of any card body. */
+// ─── Booking badge ─────────────────────────────────────────────────────────────
+
+function BookingBadge({ level, trending }: { level: Bookability; trending?: boolean }) {
+  if (trending) {
+    return (
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-orange-100 text-orange-700 whitespace-nowrap">
+        🔥 Trending
+      </span>
+    );
+  }
+  if (level === "platform") {
+    return (
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-teal-50 text-teal-700 whitespace-nowrap">
+        Book on Traveloure
+      </span>
+    );
+  }
+  if (level === "affiliate") {
+    return (
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-blue-50 text-blue-700 whitespace-nowrap">
+        Affiliate link
+      </span>
+    );
+  }
+  return (
+    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-gray-100 text-gray-500 whitespace-nowrap">
+      Not bookable
+    </span>
+  );
+}
+
+// ─── Match strip ──────────────────────────────────────────────────────────────
+
 function MatchedServiceStrip({
   suggestion,
   id,
 }: {
-  suggestion: { label: string; icon: string; href: string };
+  suggestion: MatchSuggestion;
   id: string;
 }) {
   return (
-    <a
-      href={suggestion.href}
-      className="flex items-center justify-between gap-1 text-xs text-muted-foreground hover:text-primary transition-colors border-t pt-1.5 mt-1"
+    <div
+      className="border-t border-dashed border-border pt-2 mt-1 flex items-center gap-2 flex-wrap"
       data-testid={`suggestion-${id}`}
     >
-      <span>
-        {suggestion.icon} {suggestion.label}
+      <span className="text-[11px] text-muted-foreground flex-1 min-w-[100px]">
+        {suggestion.icon} matched:{" "}
+        <strong className="text-foreground font-semibold">{suggestion.matchText}</strong>
       </span>
-      <ChevronRight className="w-3 h-3 flex-shrink-0" />
-    </a>
+      <Button
+        size="sm"
+        className={cn(
+          "h-6 text-[11px] px-2.5 flex-shrink-0 font-semibold",
+          suggestion.actionVariant === "affiliate"
+            ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+            : "",
+        )}
+        asChild
+      >
+        <a href={suggestion.href}>{suggestion.actionLabel}</a>
+      </Button>
+    </div>
   );
 }
 
@@ -89,6 +138,7 @@ interface CityFeedCardGemProps {
   bookability?: Bookability;
   onAdd?: (item: any) => void;
   compact?: boolean;
+  layout?: "column" | "row";
   className?: string;
 }
 
@@ -99,103 +149,160 @@ export function CityFeedCardGem({
   bookability,
   onAdd,
   compact = false,
+  layout = "column",
   className,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
 
-  if (!loading && !photoUrl) return null;
-
-  // Derive bookability from data if caller didn't supply an explicit override
   const resolvedBookability: Bookability = bookability ?? computeBookability(gem);
   const suggestion = matchedServiceSuggestion(gem.placeType);
+  const typeMeta = gemTypeMeta(gem.placeType);
+  const isTrending = gem.gemScore !== undefined && Number(gem.gemScore) >= 8.5;
+
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
+  const isRow = layout === "row";
+
+  // Photo / placeholder area
+  const photoArea = (
+    <div
+      className={cn(
+        "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
+        typeMeta.phBg,
+        typeMeta.phText,
+        isRow ? "w-24 self-stretch" : "h-[104px] w-full",
+      )}
+    >
+      {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+      {!loading && photoUrl && (
+        <img
+          src={photoUrl}
+          srcSet={srcSet}
+          sizes={sizes}
+          alt={gem.placeName}
+          loading="lazy"
+          onLoad={() => setImgLoaded(true)}
+          className={cn(
+            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+            imgLoaded ? "opacity-100" : "opacity-0",
+          )}
+        />
+      )}
+      {!loading && !photoUrl && (
+        <span className="text-2xl">{typeMeta.emoji}</span>
+      )}
+      {gem.isSecret && (
+        <span className="absolute bottom-1.5 left-1.5 bg-purple-600/90 text-white text-[9px] font-medium rounded px-1.5 py-0.5">
+          Hidden Gem
+        </span>
+      )}
+    </div>
+  );
+
+  // Card body
+  const cardBody = (
+    <div className={cn("p-3 flex flex-col gap-1.5 flex-1 min-w-0")}>
+      {/* Type tag + booking badge */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span
+          className={cn(
+            "text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
+            typeMeta.tagBg,
+            typeMeta.tagText,
+          )}
+        >
+          {typeMeta.label}
+        </span>
+        <BookingBadge level={resolvedBookability} trending={isTrending} />
+      </div>
+
+      {/* Name */}
+      <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
+        {gem.placeName}
+      </h3>
+
+      {/* Description — only in column layout, non-compact */}
+      {!compact && !isRow && gem.description && (
+        <p className="text-[12px] text-muted-foreground line-clamp-2">{gem.description}</p>
+      )}
+
+      {/* Row layout description */}
+      {isRow && gem.description && (
+        <p className="text-[12px] text-muted-foreground line-clamp-2">{gem.description}</p>
+      )}
+
+      {/* Neighborhood tag */}
+      {gem.neighborhood && !isRow && (
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <MapPin className="w-3 h-3" />
+          <span>{gem.neighborhood}</span>
+        </div>
+      )}
+
+      {/* Matched-service suggestion strip */}
+      {!compact && suggestion && <MatchedServiceStrip suggestion={suggestion} id={gem.id} />}
+
+      {/* Actions */}
+      {!compact && (
+        <div className="flex gap-1.5 pt-0.5 flex-wrap">
+          {resolvedBookability !== "browse" && (
+            <Button
+              size="sm"
+              className="h-7 text-xs px-3"
+              asChild
+            >
+              <a href={suggestion?.href ?? "#"}>
+                {resolvedBookability === "affiliate" ? "Reserve" : "Book"}
+              </a>
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-3"
+            onClick={() =>
+              onAdd?.({
+                title: gem.placeName,
+                description: gem.description,
+                city,
+                type: "gem",
+                scheduledDate,
+              })
+            }
+            data-testid={`btn-add-gem-${gem.id}`}
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            {addLabel}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2.5"
+            asChild
+            data-testid={`btn-ask-gem-${gem.id}`}
+          >
+            <a href="/local-experts">💬 Ask</a>
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       className={cn(
-        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        isRow ? "flex flex-row" : "flex flex-col",
         className,
       )}
       data-testid={`feed-card-gem-${gem.id}`}
     >
-      {/* Photo — 4:3 aspect */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
-        {photoUrl && (
-          <img
-            src={photoUrl}
-            srcSet={srcSet}
-            sizes={sizes}
-            alt={gem.placeName}
-            loading="lazy"
-            onLoad={() => setImgLoaded(true)}
-            className={cn(
-              "w-full h-full object-cover transition-opacity duration-300",
-              imgLoaded ? "opacity-100" : "opacity-0",
-            )}
-          />
-        )}
-        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookabilityDot level={resolvedBookability} />
-        </span>
-        {gem.isSecret && (
-          <span className="absolute bottom-2 left-2 bg-purple-600/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
-            Hidden Gem
-          </span>
-        )}
-      </div>
-
-      <div className="p-3 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-sm leading-tight line-clamp-2">{gem.placeName}</h3>
-          {gem.gemScore !== undefined && (
-            <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              <span>{Number(gem.gemScore).toFixed(1)}</span>
-            </div>
-          )}
-        </div>
-
-        {gem.description && !compact && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{gem.description}</p>
-        )}
-
-        {gem.neighborhood && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="w-3 h-3" />
-            <span>{gem.neighborhood}</span>
-          </div>
-        )}
-
-        {/* Matched-service suggestion strip */}
-        {!compact && suggestion && <MatchedServiceStrip suggestion={suggestion} id={gem.id} />}
-
-        {!compact && (
-          <div className="flex gap-1.5 pt-1">
-            <Button
-              size="sm"
-              className="flex-1 h-7 text-xs"
-              onClick={() =>
-                onAdd?.({
-                  title: gem.placeName,
-                  description: gem.description,
-                  city,
-                  type: "gem",
-                  scheduledDate,
-                })
-              }
-              data-testid={`btn-add-gem-${gem.id}`}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              {addLabel}
-            </Button>
-          </div>
-        )}
-      </div>
+      {photoArea}
+      {cardBody}
     </div>
   );
 }
@@ -223,9 +330,14 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
 
   if (!loading && !photoUrl) return null;
 
-  // Events with external URLs are affiliate-bookable
   const bookability: Bookability = computeBookability({ ...event, externalUrl: event.url });
-  const eventSuggestion = { label: "Get a local guide", icon: "🏅", href: "/local-experts" };
+  const eventSuggestion: MatchSuggestion = {
+    icon: "🎫",
+    matchText: "tickets available",
+    actionLabel: "Tickets",
+    actionVariant: "affiliate",
+    href: event.url || "/experiences",
+  };
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
@@ -234,12 +346,12 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   return (
     <div
       className={cn(
-        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
         className,
       )}
       data-testid={`feed-card-event-${event.id ?? event.eventId}`}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      <div className="h-[104px] relative overflow-hidden bg-pink-50 flex items-center justify-center text-pink-600 flex-shrink-0">
         {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
         {photoUrl && (
           <img
@@ -249,60 +361,60 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             alt={eventName}
             loading="lazy"
             onLoad={() => setImgLoaded(true)}
-            className={cn("w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+            className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
           />
         )}
-        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookabilityDot level={bookability} />
-        </span>
-        <span className="absolute top-2 left-2 bg-primary/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
-          Event
-        </span>
+        {!loading && !photoUrl && <span className="text-2xl">🏮</span>}
       </div>
 
-      <div className="p-3 space-y-1.5">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2">{eventName}</h3>
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-pink-50 text-pink-700">
+            Event{event.date ? ` · ${new Date(event.date).toLocaleDateString("en-US", { month: "short" })}` : ""}
+          </span>
+          <BookingBadge level={bookability} />
+        </div>
+
+        <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{eventName}</h3>
+
         {event.date && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <Calendar className="w-3 h-3" />
             <span>{new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
           </div>
         )}
 
-        {/* Matched-service suggestion strip */}
         <MatchedServiceStrip suggestion={eventSuggestion} id={`event-${event.id ?? event.eventId}`} />
 
-        <div className="flex gap-1.5 pt-1">
+        <div className="flex gap-1.5 pt-0.5 flex-wrap">
+          {event.url && (
+            <Button size="sm" className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700" asChild>
+              <a href={event.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-3 h-3 mr-1" />
+                Tickets
+              </a>
+            </Button>
+          )}
           <Button
             size="sm"
-            className="flex-1 h-7 text-xs"
-            onClick={() =>
-              onAdd?.({
-                title: eventName,
-                city,
-                type: "event",
-                scheduledDate,
-              })
-            }
+            variant="outline"
+            className="h-7 text-xs px-3"
+            onClick={() => onAdd?.({ title: eventName, city, type: "event", scheduledDate })}
             data-testid={`btn-add-event-${event.id}`}
           >
             <Plus className="w-3 h-3 mr-1" />
             {addLabel}
           </Button>
-          {event.url && (
-            <Button size="sm" variant="outline" className="h-7 px-2" asChild>
-              <a href={event.url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </Button>
-          )}
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
+            <a href="/local-experts">💬 Ask</a>
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Vendor Service card (platform-bookable provider_services) ────────────────
+// ─── Vendor Service card ──────────────────────────────────────────────────────
 
 interface CityFeedCardVendorServiceProps {
   service: any;
@@ -310,29 +422,18 @@ interface CityFeedCardVendorServiceProps {
   className?: string;
 }
 
-/**
- * Card for a platform-seeded vendor service (wedding, corporate, experience).
- * Shows a "platform" bookability dot always; additionally renders an external
- * "Visit Website" button when the vendor's form has a booking_link or website.
- */
 export function CityFeedCardVendorService({ service, city, className }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
-  const { photoUrl, loading } = useGemPhoto(
-    `vsvc-${service.id}`,
-    service.serviceName,
-    city,
-    imageUrl,
-  );
+  const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
 
   const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
-  const bookability: Bookability = "platform";
 
-  const tag: string | null = (() => {
+  const tag: string = (() => {
     const tags: string[] = service.contentAffinityTags ?? [];
     if (tags.length > 0) return tags[0];
     if (service.categoryName) return service.categoryName;
-    return service.serviceType ?? null;
+    return service.serviceType ?? "Service";
   })();
 
   const priceDisplay: string | null = (() => {
@@ -348,12 +449,12 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
   return (
     <div
       className={cn(
-        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
         className,
       )}
       data-testid={`feed-card-vendor-svc-${service.id}`}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      <div className="h-[104px] relative overflow-hidden bg-teal-50 flex items-center justify-center text-teal-600 flex-shrink-0">
         {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
         {photoUrl && (
           <img
@@ -363,35 +464,22 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
             alt={service.serviceName}
             loading="lazy"
             onLoad={() => setImgLoaded(true)}
-            className={cn(
-              "w-full h-full object-cover transition-opacity duration-300",
-              imgLoaded ? "opacity-100" : "opacity-0",
-            )}
+            className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
           />
         )}
-        {!photoUrl && !loading && (
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-            <Tag className="w-8 h-8 text-primary/40" />
-          </div>
-        )}
-        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookabilityDot level={bookability} />
-        </span>
-        {service.isFeatured && (
-          <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
-            Featured
-          </span>
-        )}
-        {!service.isFeatured && tag && (
-          <span className="absolute top-2 left-2 bg-primary/80 text-white text-[10px] font-medium rounded-full px-2 py-0.5 capitalize">
-            {tag}
-          </span>
-        )}
+        {!loading && !photoUrl && <span className="text-2xl">🎯</span>}
       </div>
 
-      <div className="p-3 space-y-1.5">
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 capitalize">
+            {tag}
+          </span>
+          <BookingBadge level="platform" />
+        </div>
+
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-sm leading-tight line-clamp-2">{service.serviceName}</h3>
+          <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{service.serviceName}</h3>
           {service.averageRating && (
             <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
               <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -401,37 +489,32 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
         </div>
 
         {service.shortDescription && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{service.shortDescription}</p>
+          <p className="text-[12px] text-muted-foreground line-clamp-2">{service.shortDescription}</p>
         )}
 
-        <div className="flex items-center justify-between gap-2">
-          {service.neighborhood && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <MapPin className="w-3 h-3" />
-              <span className="capitalize">{service.neighborhood.replace(/-/g, " ")}</span>
-            </div>
-          )}
-          {priceDisplay && (
-            <span className="text-xs font-semibold text-primary flex-shrink-0">{priceDisplay}</span>
-          )}
-        </div>
+        {priceDisplay && (
+          <span className="text-sm font-bold text-foreground">{priceDisplay}</span>
+        )}
 
-        <div className="flex gap-1.5 pt-1">
+        <div className="flex gap-1.5 pt-0.5 flex-wrap">
           <Button
             size="sm"
-            className="flex-1 h-7 text-xs"
+            className="h-7 text-xs px-3"
             onClick={() => (window.location.href = `/services/${service.id}`)}
             data-testid={`btn-inquire-svc-${service.id}`}
           >
             Inquire
           </Button>
           {externalUrl && (
-            <Button size="sm" variant="outline" className="h-7 px-2 flex-shrink-0" asChild>
+            <Button size="sm" variant="outline" className="h-7 px-2" asChild>
               <a href={externalUrl} target="_blank" rel="noopener noreferrer" data-testid={`btn-website-svc-${service.id}`}>
                 <Globe className="w-3 h-3" />
               </a>
             </Button>
           )}
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
+            <a href="/local-experts">💬 Ask</a>
+          </Button>
         </div>
       </div>
     </div>
@@ -464,11 +547,22 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
 
   if (!loading && !photoUrl) return null;
 
-  // Supply items are always platform-booked (sourced from Viator/platform catalog)
-  const bookability: Bookability = "platform";
-  const supplySuggestion = isHotel
-    ? { label: "Book airport transfer", icon: "🚖", href: "/experiences/transport" }
-    : { label: "Get a local guide", icon: "🏅", href: "/local-experts" };
+  const supplySuggestion: MatchSuggestion = isHotel
+    ? {
+        icon: "🚗",
+        matchText: "private car from city centre · ¥9,000",
+        actionLabel: "Book both",
+        actionVariant: "platform",
+        href: "/experiences/transport",
+      }
+    : {
+        icon: "🧭",
+        matchText: "local guide · ¥6,000",
+        actionLabel: "Book guide",
+        actionVariant: "platform",
+        href: "/local-experts",
+      };
+
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
@@ -477,12 +571,17 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
   return (
     <div
       className={cn(
-        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
         className,
       )}
       data-testid={`feed-card-${kind}-${item.id}`}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      <div
+        className={cn(
+          "h-[104px] relative overflow-hidden flex items-center justify-center text-2xl flex-shrink-0",
+          isHotel ? "bg-blue-50 text-blue-600" : "bg-amber-50 text-amber-700",
+        )}
+      >
         {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
         {photoUrl && (
           <img
@@ -492,25 +591,32 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             alt={itemName}
             loading="lazy"
             onLoad={() => setImgLoaded(true)}
-            className={cn("w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+            className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
           />
         )}
-        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookabilityDot level={bookability} />
-        </span>
-        <span className="absolute top-2 left-2 bg-muted/90 text-foreground text-[10px] font-medium rounded-full px-2 py-0.5">
-          {isHotel ? "Hotel" : "Activity"}
-        </span>
+        {!loading && !photoUrl && <span>{isHotel ? "🏨" : "🎯"}</span>}
       </div>
 
-      <div className="p-3 space-y-1.5">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2">{itemName}</h3>
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className={cn(
+            "text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
+            isHotel ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-800",
+          )}>
+            {isHotel ? "Hotel" : "Activity"}
+          </span>
+          <BookingBadge level="platform" />
+        </div>
+
+        <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{itemName}</h3>
+
         {item.rating && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
             <span>{item.rating}</span>
           </div>
         )}
+
         {isHotel && item.amenities && (
           <div className="flex flex-wrap gap-1">
             {(item.amenities as string[]).slice(0, 2).map((a) => (
@@ -522,25 +628,22 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           </div>
         )}
 
-        {/* Matched-service suggestion strip */}
         <MatchedServiceStrip suggestion={supplySuggestion} id={`supply-${item.id}`} />
 
-        <div className="flex gap-1.5 pt-1">
+        <div className="flex gap-1.5 pt-0.5 flex-wrap">
+          <Button size="sm" className="h-7 text-xs px-3">Book</Button>
           <Button
             size="sm"
-            className="flex-1 h-7 text-xs"
-            onClick={() =>
-              onAdd?.({
-                title: itemName,
-                city,
-                type: isHotel ? "hotel" : "activity",
-                scheduledDate,
-              })
-            }
+            variant="outline"
+            className="h-7 text-xs px-3"
+            onClick={() => onAdd?.({ title: itemName, city, type: isHotel ? "hotel" : "activity", scheduledDate })}
             data-testid={`btn-add-supply-${item.id}`}
           >
             <Plus className="w-3 h-3 mr-1" />
             {addLabel}
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
+            <a href="/local-experts">💬 Ask</a>
           </Button>
         </div>
       </div>
