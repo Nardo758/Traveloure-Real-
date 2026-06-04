@@ -810,7 +810,7 @@ export default function HelpMeDecidePage() {
             Still Can't Decide?
           </h2>
           <p className="text-lg text-[#6B7280] mb-8 max-w-2xl mx-auto">
-            Talk to one of our travel experts. They'll help you find the perfect
+            Talk to one of our local experts. They'll help you find the perfect
             trip based on your preferences, budget, and travel style.
           </p>
           <div className="flex flex-wrap justify-center gap-4">

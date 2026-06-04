@@ -3449,9 +3449,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     const location = req.query.location as string | undefined;
     const experienceType = req.query.experienceType as string | undefined;
     const neighbourhood = req.query.neighbourhood as string | undefined;
+    const role = req.query.role as string | undefined;
     const experts = await storage.getExpertsWithProfiles(experienceTypeId);
 
     let filtered = experts;
+
+    // Filter by role (travel_expert, local_expert, event_planner)
+    if (role) {
+      filtered = filtered.filter((expert: any) => expert.role === role);
+    }
 
     // Filter by location (match against expert form destinations, city, or country)
     if (location) {

@@ -108,12 +108,19 @@ interface MatchedExpert {
   strengths: string[];
 }
 
+const roleLabels: Record<string, string> = {
+  travel_expert: "Trip Planners",
+  local_expert: "Local Experts",
+  event_planner: "Event Planners",
+};
+
 export default function ExpertsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDestination, setSelectedDestination] = useState("All Destinations");
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
   const [selectedLanguage, setSelectedLanguage] = useState("All Languages");
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
+  const [selectedRole, setSelectedRole] = useState<string>("");
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [sortBy, setSortBy] = useState("recommended");
   const neighbourhoodInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +144,7 @@ export default function ExpertsPage() {
     const params = new URLSearchParams(window.location.search);
     const destParam = params.get("destination");
     const topicParam = params.get("topic");
+    const roleParam = params.get("role");
     if (destParam) {
       setAiDestination(destParam);
       setSearchQuery(destParam);
@@ -159,6 +167,9 @@ export default function ExpertsPage() {
       };
       const specialty = topicToSpecialty[topicParam];
       if (specialty) setSelectedSpecialty(specialty);
+    }
+    if (roleParam && roleParam in roleLabels) {
+      setSelectedRole(roleParam);
     }
   }, []);
   const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
@@ -196,15 +207,16 @@ export default function ExpertsPage() {
     queryKey: ["/api/experience-types"],
   });
 
-  // Fetch experts from API with optional experience type, destination, and neighbourhood filter
+  // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const debouncedNeighbourhoodQuery = useDebounce(neighbourhoodQuery, 300);
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
-    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination],
+    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
       if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
       if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
+      if (selectedRole) params.set("role", selectedRole);
       const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
@@ -261,11 +273,18 @@ export default function ExpertsPage() {
             className="text-center mb-8"
           >
             <h1 className="text-4xl md:text-5xl font-bold mb-4 drop-shadow-lg [text-shadow:_0_2px_10px_rgb(0_0_0_/_60%)]">
-              Find Your Perfect Travel Expert
+              {selectedRole === "travel_expert"
+                ? "Work with a Trip Planner"
+                : selectedRole === "event_planner"
+                ? "Plan Your Event"
+                : "Find Your Perfect Local Expert"}
             </h1>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto drop-shadow-md [text-shadow:_0_1px_4px_rgb(0_0_0_/_50%)]">
-              Connect with verified local experts who know their destinations inside out.
-              Get personalized recommendations and insider access.
+              {selectedRole === "travel_expert"
+                ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
+                : selectedRole === "event_planner"
+                ? "Specialist event planners for weddings, proposals, and group celebrations. Let an expert make it unforgettable."
+                : "Connect with verified local experts who know their destinations inside out. Get personalized recommendations and insider access."}
             </p>
           </motion.div>
 
@@ -723,7 +742,7 @@ export default function ExpertsPage() {
           </h2>
           <p className="text-lg text-[#6B7280] mb-8 max-w-2xl mx-auto">
             Share your knowledge, earn money, and help travelers discover the best
-            of your destination. Join our growing community of travel experts.
+            of your destination. Join our growing community of local experts and trip planners.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/become-expert">

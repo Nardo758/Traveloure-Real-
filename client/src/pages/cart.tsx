@@ -1689,6 +1689,25 @@ export default function CartPage() {
                       )}
                     </CardContent>
                   </Card>
+
+                  <Card className="border border-border">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shrink-0">
+                          <Zap className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Work with a Trip Planner</p>
+                          <p className="text-xs text-muted-foreground">Let an expert handle every detail</p>
+                        </div>
+                      </div>
+                      <Link href="/experts?role=travel_expert">
+                        <Button variant="outline" size="sm" className="w-full border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" data-testid="button-find-trip-planner">
+                          Find a Trip Planner <ArrowLeft className="w-3.5 h-3.5 ml-1.5 rotate-180" />
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             )}

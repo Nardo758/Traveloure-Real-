@@ -199,7 +199,7 @@ export default function Experiences() {
               <Card className="p-8 bg-muted/50">
                 <h2 className="text-xl font-semibold mb-2">Need Help Deciding?</h2>
                 <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
-                  Connect with our travel experts who specialize in different experience types.
+                  Connect with our local experts and trip planners who specialise in different experience types.
                   They can help you choose and plan the perfect experience.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
