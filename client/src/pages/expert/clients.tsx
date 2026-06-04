@@ -97,9 +97,9 @@ export default function ExpertClients() {
       case "planning":
         return "bg-blue-100 text-blue-700 border-blue-200";
       case "completed":
-        return "bg-gray-100 text-gray-700 border-gray-200";
+        return "bg-console-light text-console-dark border-console-light";
       default:
-        return "bg-gray-100 text-gray-700 border-gray-200";
+        return "bg-console-light text-console-dark border-console-light";
     }
   };
 
@@ -112,7 +112,7 @@ export default function ExpertClients() {
       case "medium":
         return "text-blue-600";
       default:
-        return "text-gray-600";
+        return "text-console-mid";
     }
   };
 
@@ -121,12 +121,12 @@ export default function ExpertClients() {
       <div className="p-6 space-y-6">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">My Clients</h1>
-            <p className="text-gray-600">Manage your client relationships and projects</p>
+            <h1 className="text-2xl font-bold text-console-darkest">My Clients</h1>
+            <p className="text-console-mid">Manage your client relationships and projects</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-console-mid" />
               <Input
                 placeholder="Search clients..."
                 value={searchQuery}
@@ -158,22 +158,22 @@ export default function ExpertClients() {
             </>
           ) : (
             <>
-              <Card className="border border-gray-200 bg-gray-50" data-testid="card-active-clients-stat">
+              <Card className="border border-console-light bg-console-bg" data-testid="card-active-clients-stat">
                 <CardContent className="p-4 text-center">
-                  <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.status !== "completed").length}</p>
-                  <p className="text-sm text-gray-600">Active Clients</p>
+                  <p className="text-3xl font-bold text-console-darkest">{clients.filter(c => c.status !== "completed").length}</p>
+                  <p className="text-sm text-console-mid">Active Clients</p>
                 </CardContent>
               </Card>
-              <Card className="border border-gray-200 bg-gray-50" data-testid="card-traveling-stat">
+              <Card className="border border-console-light bg-console-bg" data-testid="card-traveling-stat">
                 <CardContent className="p-4 text-center">
-                  <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.status === "traveling").length}</p>
-                  <p className="text-sm text-gray-600">Currently Traveling</p>
+                  <p className="text-3xl font-bold text-console-darkest">{clients.filter(c => c.status === "traveling").length}</p>
+                  <p className="text-sm text-console-mid">Currently Traveling</p>
                 </CardContent>
               </Card>
-              <Card className="border border-gray-200 bg-gray-50" data-testid="card-attention-stat">
+              <Card className="border border-console-light bg-console-bg" data-testid="card-attention-stat">
                 <CardContent className="p-4 text-center">
-                  <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.action).length}</p>
-                  <p className="text-sm text-gray-600">Need Attention</p>
+                  <p className="text-3xl font-bold text-console-darkest">{clients.filter(c => c.action).length}</p>
+                  <p className="text-sm text-console-mid">Need Attention</p>
                 </CardContent>
               </Card>
             </>
@@ -188,16 +188,16 @@ export default function ExpertClients() {
               ))}
             </>
           ) : filteredClients.length === 0 ? (
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardContent className="p-8 text-center">
-                <p className="text-gray-500">No clients found matching your criteria</p>
+                <p className="text-console-mid">No clients found matching your criteria</p>
               </CardContent>
             </Card>
           ) : (
             filteredClients.map((client) => {
               const Icon = eventTypeIcons[client.eventType] || Plane;
               return (
-                <Card key={client.id} className="border border-gray-200" data-testid={`card-client-${client.id}`}>
+                <Card key={client.id} className="border border-console-light" data-testid={`card-client-${client.id}`}>
                   <CardContent className="p-5">
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-lg bg-[#FF385C]/10 flex items-center justify-center flex-shrink-0">
@@ -206,15 +206,15 @@ export default function ExpertClients() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <h3 className="font-semibold text-gray-900 text-lg">{client.name}</h3>
-                            <p className="text-gray-600">{client.event}</p>
+                            <h3 className="font-semibold text-console-darkest text-lg">{client.name}</h3>
+                            <p className="text-console-mid">{client.event}</p>
                           </div>
                           <Badge variant="outline" className={getStatusBadgeStyles(client.status)}>
                             {client.statusLabel}
                           </Badge>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-console-mid">
                           <span>{client.statusDetail}</span>
                           {client.lastContact && (
                             <span className="flex items-center gap-1">
@@ -235,7 +235,7 @@ export default function ExpertClients() {
                         )}
 
                         <div className="mt-3">
-                          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                          <div className="flex items-center justify-between text-xs text-console-mid mb-1">
                             <span>Progress</span>
                             <span>{client.progress}%</span>
                           </div>
@@ -258,7 +258,7 @@ export default function ExpertClients() {
                         {/* Per-trip workspace links */}
                         {client.trips.length > 0 && (
                           <div className="mt-3 flex flex-col gap-1.5">
-                            <p className="text-xs font-medium text-gray-500">
+                            <p className="text-xs font-medium text-console-mid">
                               {client.trips.length === 1 ? "Trip" : `Trips (${client.trips.length})`}
                             </p>
                             {client.trips.map((trip: any) => {
@@ -267,11 +267,11 @@ export default function ExpertClients() {
                               return tripId ? (
                                 <Link key={tripId} href={`/expert/workspace/${tripId}`}>
                                   <div
-                                    className="flex items-center justify-between px-3 py-2 rounded-md border border-gray-200 hover:border-primary/40 hover:bg-gray-50 transition-colors cursor-pointer"
+                                    className="flex items-center justify-between px-3 py-2 rounded-md border border-console-light hover:border-primary/40 hover:bg-console-bg transition-colors cursor-pointer"
                                     data-testid={`link-trip-workspace-${tripId}`}
                                   >
-                                    <span className="text-sm text-gray-700 truncate flex-1">{tripLabel}</span>
-                                    <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 ml-2" />
+                                    <span className="text-sm text-console-dark truncate flex-1">{tripLabel}</span>
+                                    <Calendar className="w-3.5 h-3.5 text-console-mid flex-shrink-0 ml-2" />
                                   </div>
                                 </Link>
                               ) : null;

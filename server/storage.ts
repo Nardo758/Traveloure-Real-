@@ -2141,21 +2141,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService> {
-    // Resolve category: prefer existingCategoryId (expert taxonomy) → map by name to service_categories.
-    let categoryId: string | null = null;
-    if ((service as any).existingCategoryId) {
-      const [esc] = await db.select().from(expertServiceCategories)
-        .where(eq(expertServiceCategories.id, (service as any).existingCategoryId));
-      if (esc) {
-        const [sc] = await db.select().from(serviceCategories)
-          .where(ilike(serviceCategories.name, esc.name));
-        if (sc) categoryId = sc.id;
-      }
-    } else if ((service as any).categoryName) {
-      const [sc] = await db.select().from(serviceCategories)
-        .where(ilike(serviceCategories.name, (service as any).categoryName));
-      if (sc) categoryId = sc.id;
-    }
+    // Single taxonomy: experts use service_categories directly (no mapping from expert_service_categories).
+    // categoryId comes from the form as a service_categories.id, passed through as-is.
+    const categoryId = (service as any).categoryId || null;
 
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newRow] = await db.insert(providerServices).values({
