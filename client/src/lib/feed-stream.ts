@@ -18,6 +18,7 @@ export type FeedItemKind =
   | "expert"
   | "supply-hotel"
   | "supply-activity"
+  | "vendor-service"
   | "date-highlights"
   | "city-separator";
 
@@ -77,6 +78,7 @@ export function buildFeedStream(
   events: any[],
   supplyHotels: any[],
   supplyActivities: any[],
+  platformServices: any[] = [],
   cityName?: string,
 ): FeedItem[] {
   // ── 1. Group gems by neighborhood slug ──────────────────────────────────
@@ -128,6 +130,11 @@ export function buildFeedStream(
       kind: "supply-activity" as FeedItemKind,
       id: `activity-${a.id}`,
       data: a,
+    })),
+    ...(platformServices ?? []).slice(0, 8).map((s) => ({
+      kind: "vendor-service" as FeedItemKind,
+      id: `vendor-svc-${s.id}`,
+      data: s,
     })),
   ];
 
@@ -224,6 +231,7 @@ function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
     case "do":
       return (
         kind === "supply-activity" ||
+        kind === "vendor-service" ||
         (kind === "loose-gem" && gemCategory(data.placeType) === "do")
       );
     case "stay":
@@ -234,6 +242,8 @@ function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
       return gemCategory(data.placeType) === "photo_spots";
     case "experts":
       return kind === "expert";
+    case "services":
+      return kind === "vendor-service";
     case "vibe":
       return kind === "event" || gemCategory(data.placeType) === "photo_spots";
     default:

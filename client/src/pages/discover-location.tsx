@@ -11,7 +11,7 @@ import {
   AlertCircle, MapPin, Sparkles, X, Zap, Users, Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply } from "@/components/city-feed-card";
+import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
@@ -50,6 +50,7 @@ const SPINE_CHIPS = [
   { id: "eat", label: "Eat" },
   { id: "do", label: "Do" },
   { id: "stay", label: "Stay" },
+  { id: "services", label: "Services" },
   { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
   { id: "photo_spots", label: "Photo Spots" },
@@ -308,6 +309,14 @@ function FillerCard({
           onAdd={onAdd}
         />
       );
+    case "vendor-service":
+      return (
+        <CityFeedCardVendorService
+          key={item.id}
+          service={item.data}
+          city={city}
+        />
+      );
     default:
       return null;
   }
@@ -501,6 +510,14 @@ function FlatFilteredFeed({
                 onAdd={onAdd}
               />
             );
+          case "vendor-service":
+            return (
+              <CityFeedCardVendorService
+                key={item.id}
+                service={item.data}
+                city={city}
+              />
+            );
           default:
             return null;
         }
@@ -617,9 +634,10 @@ export default function DiscoverLocationPage() {
   const events = data?.events?.data?.events ?? [];
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
+  const platformServices = data?.services?.data ?? [];
 
   const baseFeedItems = data
-    ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities)
+    ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
     : [];
 
   // Inject date-highlights as a FeedItem at position 1 so it appears as the
