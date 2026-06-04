@@ -473,6 +473,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
   const optimizationScore = score?.optimizationScore;
   const shareToken = score?.shareToken;
+  const optimizationDelta = plancardData?.optimizationDelta ?? null;
+  const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
 
   const totalActivities = stats.totalActivities || days.reduce((s: number, d) => s + (d.activities?.length || 0), 0);
   const confirmedActivities = stats.confirmedActivities ?? days.reduce((s: number, d) => s + (d.activities?.filter((a) => a.status === "confirmed").length || 0), 0);
@@ -544,6 +546,40 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           perPerson={perPersonDisplay}
           budget={budgetDisplay}
         />
+
+        {lastOptimizedAt && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 border-b border-border"
+            style={{ background: "linear-gradient(90deg,#FFF8F0,#FFFBF5)" }}
+            data-testid={`banner-ai-optimized-${trip.id}`}
+          >
+            <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#C05C00" }} />
+            <span className="text-[11px] font-semibold" style={{ color: "#8B3A00" }}>
+              AI Optimized
+            </span>
+            {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+              <span
+                className="text-[11px] font-semibold"
+                style={{ color: "#2C7A44" }}
+                data-testid={`text-ai-savings-${trip.id}`}
+              >
+                · ${Math.round(optimizationDelta.savings)} saved
+              </span>
+            )}
+            {optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+              <span
+                className="text-[11px] font-semibold"
+                style={{ color: "#B07C00" }}
+                data-testid={`text-ai-star-delta-${trip.id}`}
+              >
+                · +{optimizationDelta.starRatingDelta.toFixed(1)}★
+              </span>
+            )}
+            <span className="ml-auto text-[10px]" style={{ color: "#B07C00" }}>
+              {new Date(lastOptimizedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+            </span>
+          </div>
+        )}
 
         <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <button
