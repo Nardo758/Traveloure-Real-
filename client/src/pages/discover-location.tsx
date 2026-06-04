@@ -1178,7 +1178,7 @@ function SectionShell({
   icon: ElementType;
   title: string;
   subtitle: string;
-  section: { data?: any; error?: any };
+  section?: { data?: any; error?: any };
   phaseNote?: string;
   children: ReactNode;
 }) {
@@ -1191,7 +1191,7 @@ function SectionShell({
         </div>
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         {phaseNote && <p className="text-xs text-muted-foreground/70 italic">{phaseNote}</p>}
-        {section.error && (
+        {section?.error && (
           <p className="text-xs text-destructive">Error: {String(section.error)}</p>
         )}
       </CardHeader>
