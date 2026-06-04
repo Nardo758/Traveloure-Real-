@@ -47,6 +47,7 @@ import {
   Umbrella
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DropdownMenu,
@@ -267,12 +268,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const { data: cartData } = useQuery<{ itemCount: number }>({
+    queryKey: ["/api/cart"],
+    staleTime: 30_000,
+  });
+  const cartCount = cartData?.itemCount ?? 0;
+
   const isActive = (path: string) => location === path;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm overflow-hidden">
+      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16">
             <div className="flex items-center flex-1 min-w-0">
@@ -296,6 +303,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Cart icon — visible for all users */}
+              <Link
+                href="/cart"
+                className="relative inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none"
+                data-testid="link-nav-cart"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {cartCount > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white leading-none"
+                    data-testid="badge-cart-count"
+                  >
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                )}
+              </Link>
+
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
