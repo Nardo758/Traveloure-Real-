@@ -390,36 +390,126 @@ export async function registerRoutes(
     subject: z.string().min(1, "Subject is required").max(200),
     message: z.string().min(10, "Message must be at least 10 characters").max(2000),
     preferredContactMethod: z.enum(["email", "phone"]).optional(),
+    reason: z.string().max(50).optional(),
+    source: z.string().max(50).optional(),
   });
 
   app.post("/api/contact", async (req, res) => {
     try {
       const input = contactSchema.parse(req.body);
-      
-      // Log contact form submission (in production, send email or save to DB)
-      console.log("Contact form submission:", {
+      const { contactSubmissions } = await import("@shared/schema");
+
+      // Persist the submission
+      const [submission] = await db.insert(contactSubmissions).values({
         name: input.name,
         email: input.email,
+        phone: input.phone || null,
         subject: input.subject,
-        timestamp: new Date().toISOString(),
-      });
+        message: input.message,
+        reason: input.reason || null,
+        preferredContactMethod: input.preferredContactMethod || null,
+        source: input.source || "contact_page",
+        ipAddress: (req.ip || req.socket.remoteAddress || "").toString().slice(0, 45),
+        userAgent: (req.headers["user-agent"] || "").toString().slice(0, 500),
+      }).returning();
 
-      // TODO: Implement email sending (e.g., SendGrid, Resend, etc.)
-      // For now, just acknowledge receipt
-      
-      res.status(200).json({ 
-        success: true, 
-        message: "Thank you for your message. We'll get back to you soon!" 
+      // Notify all admins (fire & forget)
+      try {
+        const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+        for (const admin of admins) {
+          try {
+            await storage.createNotification({
+              userId: admin.id,
+              type: "contact_submission",
+              title: `New ${input.reason || "Contact"} Inquiry`,
+              message: `${input.name} (${input.email}): ${input.subject}`,
+              relatedId: submission.id,
+              relatedType: "contact_submission",
+              data: {
+                submissionId: submission.id,
+                name: input.name,
+                email: input.email,
+                subject: input.subject,
+                reason: input.reason,
+              },
+            });
+          } catch (notifErr) {
+            console.error(`Failed to notify admin ${admin.id}:`, notifErr);
+          }
+        }
+      } catch (notifyErr) {
+        console.error("Failed to notify admins of contact submission:", notifyErr);
+      }
+
+      res.status(200).json({
+        success: true,
+        submissionId: submission.id,
+        message: "Thank you for your message. We'll get back to you soon!"
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
+        return res.status(400).json({
+          message: "Validation failed",
           errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
         });
       }
       console.error("Contact form error:", err);
       res.status(500).json({ message: "Failed to submit contact form" });
+    }
+  });
+
+  // Admin: list contact submissions
+  app.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { contactSubmissions } = await import("@shared/schema");
+      const status = req.query.status as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
+      const baseQuery = db.select().from(contactSubmissions);
+      const submissions = status
+        ? await baseQuery.where(eq(contactSubmissions.status, status)).orderBy(desc(contactSubmissions.createdAt)).limit(limit)
+        : await baseQuery.orderBy(desc(contactSubmissions.createdAt)).limit(limit);
+
+      res.json(submissions);
+    } catch (err) {
+      console.error("List contact submissions error:", err);
+      res.status(500).json({ message: "Failed to load contact submissions" });
+    }
+  });
+
+  // Admin: update contact submission status
+  app.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { contactSubmissions } = await import("@shared/schema");
+      const { status, responseNotes, assignedAdminId } = req.body;
+      const updates: any = {};
+      if (status) updates.status = status;
+      if (status === "resolved") updates.resolvedAt = new Date();
+      if (responseNotes !== undefined) updates.responseNotes = responseNotes;
+      if (assignedAdminId !== undefined) updates.assignedAdminId = assignedAdminId;
+
+      const [updated] = await db.update(contactSubmissions)
+        .set(updates)
+        .where(eq(contactSubmissions.id, req.params.id))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "Submission not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Update contact submission error:", err);
+      res.status(500).json({ message: "Failed to update contact submission" });
     }
   });
   
