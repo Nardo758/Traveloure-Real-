@@ -71,7 +71,7 @@ router.post("/api/optimization-preview", async (req, res) => {
       dayNumber: it.dayNumber ?? Math.floor(i / 3) + 1,
     }));
 
-    const metrics = calculateItineraryMetrics(normalizedItems, Number(travelers) || 1);
+    const metrics = calculateItineraryMetrics(normalizedItems, Number(travelers) || 1, eventType);
     const tier = complexityTier(eventType);
     const { priceCents, currency } = await getFeeForTier(tier);
 
