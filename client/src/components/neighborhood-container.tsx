@@ -33,11 +33,11 @@ export function NeighborhoodContainer({
   className,
 }: NeighborhoodContainerProps) {
   const total = neighborhood.gemCount;
-  // Only show gems that already have a photo URL in the DB in the bento.
-  // Gems without imageUrl are hidden per spec ("card with no photo is hidden");
-  // when there are none with photos, we still surface the neighborhood header.
-  const gemsWithPhoto = neighborhood.gems.filter((g: any) => !!g.imageUrl);
-  const topGems = gemsWithPhoto.slice(0, 3);
+  // Pass all gems to CityFeedCardGem — the card's useGemPhoto hook resolves
+  // photos via the fallback pipeline (DB imageUrl → Google Places → Unsplash)
+  // and returns null only when all sources fail, at which point the card hides
+  // itself. We do not pre-filter here so the fallback chain runs for every gem.
+  const topGems = neighborhood.gems.slice(0, 3);
 
   if (total === 0 && topGems.length === 0) return null;
 

@@ -1989,11 +1989,26 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (!q) return res.json({ photoUrl: null });
 
       if (source === "unsplash") {
-        // Unsplash/Pexels fallback via media aggregator
+        // Unsplash → Pexels fallback chain via media aggregator services
         const { unsplashService } = await import("./services/unsplash.service");
-        const photos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
-        const photoUrl = photos[0]?.url ?? null;
-        return res.json({ photoUrl });
+        const { pexelsService } = await import("./services/pexels.service");
+        // Try Unsplash first
+        try {
+          const unsplashPhotos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
+          if (unsplashPhotos[0]?.url) {
+            return res.json({ photoUrl: unsplashPhotos[0].url });
+          }
+        } catch {
+          // fall through to Pexels
+        }
+        // Pexels fallback
+        try {
+          const pexelsPhotos = await pexelsService.searchPhotos(`${q} ${city}`, { perPage: 1, orientation: "landscape" });
+          const photoUrl = pexelsPhotos[0]?.url ?? null;
+          return res.json({ photoUrl });
+        } catch {
+          return res.json({ photoUrl: null });
+        }
       }
 
       // Google Places (default)

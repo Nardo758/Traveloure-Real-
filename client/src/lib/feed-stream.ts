@@ -190,6 +190,9 @@ function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
       return gemCategory(data.placeType) === "photo_spots";
     case "experts":
       return kind === "expert";
+    case "vibe":
+      // Vibe = events + photo spots (curated feel-of-the-city content)
+      return kind === "event" || gemCategory(data.placeType) === "photo_spots";
     default:
       return true;
   }

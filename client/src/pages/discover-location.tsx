@@ -53,6 +53,7 @@ const SPINE_CHIPS = [
   { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
   { id: "photo_spots", label: "Photo Spots" },
+  { id: "vibe", label: "Vibe" },
 ];
 
 function SpineFilterBar({
@@ -268,6 +269,63 @@ function HeroSection({
 
 // ─── Feed renderer ────────────────────────────────────────────────────────────
 
+/** Render a single filler card (non-neighborhood) within a shared grid row. */
+function FillerCard({
+  item,
+  city,
+  scheduledDate,
+  onAdd,
+}: {
+  item: FeedItem;
+  city: string;
+  scheduledDate: string | null;
+  onAdd: (item: any) => void;
+}) {
+  switch (item.kind) {
+    case "loose-gem":
+      return (
+        <CityFeedCardGem
+          key={item.id}
+          gem={item.data}
+          city={city}
+          scheduledDate={scheduledDate}
+          onAdd={onAdd}
+        />
+      );
+    case "expert":
+      return <CityFeedCardExpert key={item.id} expert={item.data} city={city} />;
+    case "event":
+      return (
+        <CityFeedCardEvent
+          key={item.id}
+          event={item.data}
+          city={city}
+          scheduledDate={scheduledDate}
+          onAdd={onAdd}
+        />
+      );
+    case "supply-hotel":
+    case "supply-activity":
+      return (
+        <CityFeedCardSupply
+          key={item.id}
+          item={item.data}
+          kind={item.kind}
+          city={city}
+          scheduledDate={scheduledDate}
+          onAdd={onAdd}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
+/**
+ * Blended feed — groups consecutive filler items into shared bento grids so
+ * the continuous rhythm is [bento] [neighborhood] [bento] [neighborhood] …
+ * rather than one card per row.
+ */
 function FeedRenderer({
   items,
   city,
@@ -287,72 +345,57 @@ function FeedRenderer({
     );
   }
 
+  // Bucket items into alternating [fillerGroup[], neighborhood, fillerGroup[], …]
+  type Section =
+    | { type: "neighborhood"; item: FeedItem }
+    | { type: "group"; items: FeedItem[] };
+
+  const sections: Section[] = [];
+  let currentGroup: FeedItem[] = [];
+
+  for (const item of items) {
+    if (item.kind === "neighborhood") {
+      if (currentGroup.length > 0) {
+        sections.push({ type: "group", items: [...currentGroup] });
+        currentGroup = [];
+      }
+      sections.push({ type: "neighborhood", item });
+    } else {
+      currentGroup.push(item);
+    }
+  }
+  if (currentGroup.length > 0) sections.push({ type: "group", items: currentGroup });
+
   return (
     <div className="space-y-6" data-testid="city-feed">
-      {items.map((item) => {
-        switch (item.kind) {
-          case "neighborhood":
-            return (
-              <NeighborhoodContainer
+      {sections.map((section, si) => {
+        if (section.type === "neighborhood") {
+          return (
+            <NeighborhoodContainer
+              key={section.item.id}
+              neighborhood={section.item.data}
+              city={city}
+              scheduledDate={scheduledDate}
+              onAdd={onAdd}
+            />
+          );
+        }
+        return (
+          <div
+            key={`group-${si}`}
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"
+          >
+            {section.items.map((item) => (
+              <FillerCard
                 key={item.id}
-                neighborhood={item.data}
+                item={item}
                 city={city}
                 scheduledDate={scheduledDate}
                 onAdd={onAdd}
               />
-            );
-
-          case "loose-gem":
-            return (
-              <div key={item.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <CityFeedCardGem
-                  gem={item.data}
-                  city={city}
-                  scheduledDate={scheduledDate}
-                  onAdd={onAdd}
-                />
-              </div>
-            );
-
-          case "expert":
-            return (
-              <div key={item.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <CityFeedCardExpert
-                  expert={item.data}
-                  city={city}
-                />
-              </div>
-            );
-
-          case "event":
-            return (
-              <div key={item.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <CityFeedCardEvent
-                  event={item.data}
-                  city={city}
-                  scheduledDate={scheduledDate}
-                  onAdd={onAdd}
-                />
-              </div>
-            );
-
-          case "supply-hotel":
-          case "supply-activity":
-            return (
-              <div key={item.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <CityFeedCardSupply
-                  item={item.data}
-                  kind={item.kind}
-                  city={city}
-                  scheduledDate={scheduledDate}
-                  onAdd={onAdd}
-                />
-              </div>
-            );
-
-          default:
-            return null;
-        }
+            ))}
+          </div>
+        );
       })}
     </div>
   );
