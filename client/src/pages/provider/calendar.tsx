@@ -174,11 +174,11 @@ export default function ProviderCalendar() {
       <div className="p-6 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Availability Calendar</h2>
-            <p className="text-gray-600">View and manage your upcoming bookings</p>
+            <h2 className="text-xl font-semibold text-console-darkest">Availability Calendar</h2>
+            <p className="text-console-dark">View and manage your upcoming bookings</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <div className="flex gap-1 bg-console-bg p-1 rounded-lg">
               <Button
                 size="sm"
                 variant={viewMode === "month" ? "default" : "ghost"}
@@ -218,12 +218,12 @@ export default function ProviderCalendar() {
                             onChange={(e) => updateScheduleRule(idx, "active", e.target.checked)}
                             className="w-4 h-4 rounded border-gray-300"
                           />
-                          <span className="text-sm text-gray-600">Active</span>
+                          <span className="text-sm text-console-dark">Active</span>
                         </label>
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <Label className="text-xs text-gray-600">Start</Label>
+                          <Label className="text-xs text-console-dark">Start</Label>
                           <Input
                             type="time"
                             value={rule.startTime}
@@ -233,7 +233,7 @@ export default function ProviderCalendar() {
                           />
                         </div>
                         <div className="flex-1">
-                          <Label className="text-xs text-gray-600">End</Label>
+                          <Label className="text-xs text-console-dark">End</Label>
                           <Input
                             type="time"
                             value={rule.endTime}
@@ -303,10 +303,10 @@ export default function ProviderCalendar() {
                   <div className="space-y-2 mt-6">
                     <Label className="font-semibold">Current Blackouts</Label>
                     {blackoutDates.map((blackout) => (
-                      <div key={blackout.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+                      <div key={blackout.id} className="p-3 bg-console-bg rounded-lg border border-console-light flex items-center justify-between">
                         <div className="text-sm">
-                          <p className="font-medium text-gray-900">{blackout.startDate} to {blackout.endDate}</p>
-                          <p className="text-xs text-gray-600">{blackout.reason}</p>
+                          <p className="font-medium text-console-darkest">{blackout.startDate} to {blackout.endDate}</p>
+                          <p className="text-xs text-console-dark">{blackout.reason}</p>
                         </div>
                         <Button
                           variant="ghost"
@@ -348,7 +348,7 @@ export default function ProviderCalendar() {
                 <div className="grid grid-cols-7 gap-1">
                   {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day, dayIdx) => (
                     <div key={day} className="min-w-max">
-                      <div className="text-center text-sm font-semibold text-gray-900 py-2 px-2 border-b border-gray-200">
+                      <div className="text-center text-sm font-semibold text-console-darkest py-2 px-2 border-b border-console-light">
                         {day.slice(0, 3)}
                       </div>
                       <div className="space-y-1">
@@ -368,7 +368,7 @@ export default function ProviderCalendar() {
                               className={`h-8 px-1 text-xs flex items-center justify-center rounded border ${
                                 isAvailable
                                   ? "bg-green-50 border-green-200 text-green-700 font-medium"
-                                  : "bg-gray-100 border-gray-200 text-gray-600"
+                                  : "bg-console-bg border-console-light text-console-dark"
                               }`}
                             >
                               {hourStr}
@@ -409,7 +409,7 @@ export default function ProviderCalendar() {
             <CardContent>
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                  <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+                  <div key={day} className="text-center text-sm font-medium text-console-mid py-2">
                     {day}
                   </div>
                 ))}
@@ -417,7 +417,7 @@ export default function ProviderCalendar() {
               
               <div className="grid grid-cols-7 gap-1">
                 {emptyDays.map((i) => (
-                  <div key={`empty-${i}`} className="h-20 bg-gray-50 dark:bg-gray-800/50 rounded-lg" />
+                  <div key={`empty-${i}`} className="h-20 bg-console-bg dark:bg-gray-800/50 rounded-lg" />
                 ))}
                 {days.map((day) => {
                   const dayBookings = getBookingsForDay(day);
@@ -437,11 +437,11 @@ export default function ProviderCalendar() {
                             ? hasConfirmed 
                               ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" 
                               : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
-                            : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                            : "bg-white dark:bg-gray-900 border-console-light dark:border-gray-700 hover:bg-console-hover dark:hover:bg-gray-800"
                       }`}
                       data-testid={`calendar-day-${day}`}
                     >
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <span className="text-sm font-medium text-console-darkest dark:text-gray-100">
                         {day}
                       </span>
                       {hasBookings && (
@@ -462,18 +462,18 @@ export default function ProviderCalendar() {
                 })}
               </div>
 
-              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-console-light dark:border-gray-800">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-green-50 border border-green-200 rounded" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Confirmed</span>
+                  <span className="text-sm text-console-dark dark:text-gray-400">Confirmed</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-amber-50 border border-amber-200 rounded" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Pending</span>
+                  <span className="text-sm text-console-dark dark:text-gray-400">Pending</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-white border border-gray-200 rounded" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Available</span>
+                  <div className="w-4 h-4 bg-white border border-console-light rounded" />
+                  <span className="text-sm text-console-dark dark:text-gray-400">Available</span>
                 </div>
               </div>
             </CardContent>
@@ -494,18 +494,18 @@ export default function ProviderCalendar() {
                     return (
                       <div 
                         key={booking.id}
-                        className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3" 
+                        className="p-4 bg-console-bg dark:bg-gray-800 rounded-lg space-y-3" 
                         data-testid={`card-booking-${booking.id}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                          <h3 className="font-semibold text-console-darkest dark:text-gray-100 text-sm">
                             {booking.service?.serviceName || "Service"}
                           </h3>
                           <Badge className={getStatusColor(booking.status || "pending")}>
                             {booking.status || "pending"}
                           </Badge>
                         </div>
-                        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                        <div className="space-y-2 text-sm text-console-dark dark:text-gray-400">
                           {booking.service?.location && (
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4" />
@@ -520,7 +520,7 @@ export default function ProviderCalendar() {
                             <p className="text-xs italic">{details.notes}</p>
                           )}
                         </div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        <div className="text-sm font-medium text-console-darkest dark:text-gray-100">
                           ${booking.totalAmount}
                         </div>
                       </div>
@@ -530,10 +530,10 @@ export default function ProviderCalendar() {
               ) : selectedDate ? (
                 <div className="text-center py-8" data-testid="text-no-bookings">
                   <CalendarIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-gray-500 dark:text-gray-400">No bookings on this date</p>
+                  <p className="text-console-mid dark:text-gray-400">No bookings on this date</p>
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <div className="text-center py-8 text-console-mid dark:text-gray-400">
                   <p>Click on a date to see bookings</p>
                 </div>
               )}
@@ -555,23 +555,23 @@ export default function ProviderCalendar() {
                   return (
                     <div 
                       key={booking.id}
-                      className="flex items-center justify-between py-3 border-b border-gray-100 dark:border-gray-800 last:border-0"
+                      className="flex items-center justify-between py-3 border-b border-console-light dark:border-gray-800 last:border-0"
                       data-testid={`row-booking-${booking.id}`}
                     >
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex flex-col items-center justify-center">
+                        <div className="w-12 h-12 bg-console-bg dark:bg-gray-800 rounded-lg flex flex-col items-center justify-center">
                           {date && (
                             <>
-                              <span className="text-xs text-gray-500">{date.toLocaleString('default', { month: 'short' })}</span>
-                              <span className="font-bold text-gray-900 dark:text-gray-100">{date.getDate()}</span>
+                              <span className="text-xs text-console-mid">{date.toLocaleString('default', { month: 'short' })}</span>
+                              <span className="font-bold text-console-darkest dark:text-gray-100">{date.getDate()}</span>
                             </>
                           )}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
+                          <p className="font-medium text-console-darkest dark:text-gray-100">
                             {booking.service?.serviceName || "Service Booking"}
                           </p>
-                          <div className="flex items-center gap-3 text-sm text-gray-500">
+                          <div className="flex items-center gap-3 text-sm text-console-mid">
                             <span>${booking.totalAmount}</span>
                             {booking.service?.location && (
                               <span>{booking.service.location}</span>
@@ -587,7 +587,7 @@ export default function ProviderCalendar() {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-center py-8 text-console-mid dark:text-gray-400">
                 <CalendarIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
                 <p>No upcoming bookings</p>
               </div>

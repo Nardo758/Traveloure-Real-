@@ -151,8 +151,8 @@ export default function ProviderEarnings() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stat.value}</p>
+                    <p className="text-sm text-console-mid dark:text-gray-400">{stat.label}</p>
+                    <p className="text-2xl font-bold text-console-darkest dark:text-gray-100">{stat.value}</p>
                   </div>
                   <stat.icon className={`w-8 h-8 ${stat.color}`} />
                 </div>
@@ -187,10 +187,10 @@ export default function ProviderEarnings() {
                   {monthlyEarnings.map((month) => (
                     <div key={month.month} className="space-y-1" data-testid={`chart-bar-${month.month.toLowerCase()}`}>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">{month.month}</span>
-                        <span className="font-medium text-gray-900 dark:text-gray-100">${month.amount.toFixed(2)}</span>
+                        <span className="text-console-dark dark:text-gray-400">{month.month}</span>
+                        <span className="font-medium text-console-darkest dark:text-gray-100">${month.amount.toFixed(2)}</span>
                       </div>
-                      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-3 bg-console-bg dark:bg-gray-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-[#FF385C] rounded-full transition-all"
                           style={{ width: `${(month.amount / maxEarning) * 100}%` }}
@@ -200,7 +200,7 @@ export default function ProviderEarnings() {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-8">No earnings data yet</p>
+                <p className="text-console-mid dark:text-gray-400 text-center py-8">No earnings data yet</p>
               )}
             </CardContent>
           </Card>
@@ -247,12 +247,12 @@ export default function ProviderEarnings() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-center" data-testid="stat-gross-total">
-                <p className="text-sm text-gray-500 mb-1">Gross Booking Value</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
+              <div className="p-4 bg-console-bg dark:bg-gray-800 rounded-lg border border-console-light dark:border-gray-700 text-center" data-testid="stat-gross-total">
+                <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
+                <p className="text-xl font-bold text-console-darkest dark:text-gray-100">
                   ${revenueBreakdown.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">Total from all bookings</p>
+                <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
               </div>
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
                 <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)</p>
@@ -269,14 +269,14 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
               </div>
             </div>
-            <div className="mt-4 h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+            <div className="mt-4 h-3 bg-console-bg dark:bg-gray-800 rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
                 className="h-full bg-[#FF385C] transition-all"
                 style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
               />
               <div className="h-full bg-green-500 flex-1" />
             </div>
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <div className="flex justify-between text-xs text-console-mid mt-1">
               <span>Platform {Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%</span>
               <span>You {Math.round(revenueBreakdown.effectiveRate * 100)}%</span>
             </div>
@@ -293,7 +293,7 @@ export default function ProviderEarnings() {
                 {transactions.map((tx) => (
                   <div 
                     key={tx.id}
-                    className="flex items-center justify-between py-3 border-b border-gray-100 dark:border-gray-800 last:border-0"
+                    className="flex items-center justify-between py-3 border-b border-console-light dark:border-gray-800 last:border-0"
                     data-testid={`row-transaction-${tx.id}`}
                   >
                     <div className="flex items-center gap-3">
@@ -301,8 +301,8 @@ export default function ProviderEarnings() {
                         <ArrowUpRight className="w-5 h-5 text-green-600" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{tx.description}</p>
-                        <p className="text-sm text-gray-500">{tx.date}</p>
+                        <p className="font-medium text-console-darkest dark:text-gray-100">{tx.description}</p>
+                        <p className="text-sm text-console-mid">{tx.date}</p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -321,7 +321,7 @@ export default function ProviderEarnings() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-center py-8 text-console-mid dark:text-gray-400">
                 <DollarSign className="w-12 h-12 mx-auto text-gray-300 mb-3" />
                 <p>No transactions yet</p>
               </div>

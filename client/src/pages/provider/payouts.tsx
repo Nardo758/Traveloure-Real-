@@ -62,10 +62,10 @@ export default function Payouts() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900" data-testid="text-title">
+            <h2 className="text-xl font-semibold text-console-darkest" data-testid="text-title">
               Payouts & Payments
             </h2>
-            <p className="text-gray-600 mt-1">Manage your earnings, bank accounts, and payment history</p>
+            <p className="text-console-dark mt-1">Manage your earnings, bank accounts, and payment history</p>
           </div>
           <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-request-payout">
             <DollarSign className="w-4 h-4 mr-2" /> Request Payout
@@ -78,8 +78,8 @@ export default function Payouts() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Pending Balance</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">${pendingBalance.toLocaleString()}</p>
+                  <p className="text-sm text-console-mid">Pending Balance</p>
+                  <p className="text-2xl font-bold text-console-darkest mt-1">${pendingBalance.toLocaleString()}</p>
                 </div>
                 <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
                   <Clock className="w-6 h-6 text-amber-600" />
@@ -92,8 +92,8 @@ export default function Payouts() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Total Earnings</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">${totalEarnings.toLocaleString()}</p>
+                  <p className="text-sm text-console-mid">Total Earnings</p>
+                  <p className="text-2xl font-bold text-console-darkest mt-1">${totalEarnings.toLocaleString()}</p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                   <DollarSign className="w-6 h-6 text-green-600" />
@@ -106,8 +106,8 @@ export default function Payouts() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Commission Rate</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{commissionRate}%</p>
+                  <p className="text-sm text-console-mid">Commission Rate</p>
+                  <p className="text-2xl font-bold text-console-darkest mt-1">{commissionRate}%</p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <CreditCard className="w-6 h-6 text-blue-600" />
@@ -134,16 +134,16 @@ export default function Payouts() {
                     className={`p-3 rounded-lg border ${
                       account.isDefault
                         ? "border-green-200 bg-green-50"
-                        : "border-gray-200 bg-white"
+                        : "border-console-light bg-white"
                     }`}
                     data-testid={`card-account-${account.id}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">
+                        <p className="font-semibold text-console-darkest truncate">
                           {account.accountName}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-console-mid mt-1">
                           ••••{account.accountNumber.slice(-4)}
                         </p>
                       </div>
@@ -158,7 +158,7 @@ export default function Payouts() {
               ) : (
                 <div className="text-center py-6">
                   <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No bank accounts added</p>
+                  <p className="text-sm text-console-mid">No bank accounts added</p>
                   <Button variant="outline" size="sm" className="mt-3 w-full" data-testid="button-add-first-account">
                     <Plus className="w-3 h-3 mr-1" /> Add Account
                   </Button>
@@ -196,7 +196,7 @@ export default function Payouts() {
                   (payouts || []).map((payout) => (
                     <div
                       key={payout.id}
-                      className="p-4 border border-gray-200 rounded-lg"
+                      className="p-4 border border-console-light rounded-lg"
                       data-testid={`card-payout-${payout.id}`}
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -209,10 +209,10 @@ export default function Payouts() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900">
+                            <p className="font-semibold text-console-darkest">
                               ${payout.amount.toLocaleString()}
                             </p>
-                            <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                            <p className="text-sm text-console-dark mt-1 flex items-center gap-1">
                               <Calendar className="w-4 h-4" />
                               {new Date(payout.date).toLocaleDateString()}
                             </p>
@@ -236,7 +236,7 @@ export default function Payouts() {
                 ) : (
                   <div className="text-center py-8">
                     <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">No payouts yet</p>
+                    <p className="text-console-mid">No payouts yet</p>
                   </div>
                 )}
               </div>
@@ -252,8 +252,8 @@ export default function Payouts() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">How Payouts Work</h3>
-                <ul className="space-y-2 text-sm text-gray-700">
+                <h3 className="font-semibold text-console-darkest mb-3">How Payouts Work</h3>
+                <ul className="space-y-2 text-sm text-console-dark">
                   <li className="flex items-start gap-2">
                     <ArrowRight className="w-4 h-4 mt-0.5 text-[#FF385C] flex-shrink-0" />
                     Earnings accrue daily
@@ -273,20 +273,20 @@ export default function Payouts() {
                 </ul>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Commission Breakdown</h3>
+                <h3 className="font-semibold text-console-darkest mb-3">Commission Breakdown</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Gross Earnings</span>
-                    <span className="font-semibold text-gray-900">${totalEarnings.toLocaleString()}</span>
+                    <span className="text-console-dark">Gross Earnings</span>
+                    <span className="font-semibold text-console-darkest">${totalEarnings.toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Platform Fee (15%)</span>
-                    <span className="font-semibold text-gray-900">
+                    <span className="text-console-dark">Platform Fee (15%)</span>
+                    <span className="font-semibold text-console-darkest">
                       -${(totalEarnings * 0.15).toLocaleString()}
                     </span>
                   </div>
-                  <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                    <span className="text-gray-600">Net Earnings</span>
+                  <div className="pt-2 border-t border-console-light flex items-center justify-between">
+                    <span className="text-console-dark">Net Earnings</span>
                     <span className="font-semibold text-green-600">
                       ${(totalEarnings * 0.85).toLocaleString()}
                     </span>
