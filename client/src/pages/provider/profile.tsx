@@ -67,7 +67,7 @@ export default function ProviderProfile() {
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-bold text-gray-900" data-testid="text-business-name">
+                  <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-business-name">
                     {businessInfo.name}
                   </h2>
                   {businessInfo.verified && (
@@ -76,19 +76,19 @@ export default function ProviderProfile() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-gray-600">{businessInfo.type}</p>
+                <p className="text-console-dark">{businessInfo.type}</p>
                 
                 <div className="flex flex-wrap items-center gap-4 mt-3">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
                     <span className="font-semibold">{businessInfo.rating}</span>
-                    <span className="text-gray-500">({businessInfo.totalReviews} reviews)</span>
+                    <span className="text-console-mid">({businessInfo.totalReviews} reviews)</span>
                   </div>
-                  <div className="flex items-center gap-1 text-gray-600">
+                  <div className="flex items-center gap-1 text-console-dark">
                     <Calendar className="w-4 h-4" />
                     <span>{businessInfo.totalEvents} events hosted</span>
                   </div>
-                  <div className="flex items-center gap-1 text-gray-600">
+                  <div className="flex items-center gap-1 text-console-dark">
                     <Users className="w-4 h-4" />
                     <span>Member since {businessInfo.memberSince}</span>
                   </div>
@@ -112,7 +112,7 @@ export default function ProviderProfile() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-700" data-testid="text-description">{businessInfo.description}</p>
+                <p className="text-console-dark" data-testid="text-description">{businessInfo.description}</p>
               </CardContent>
             </Card>
 
@@ -129,10 +129,10 @@ export default function ProviderProfile() {
                   {photos.map((photo) => (
                     <div 
                       key={photo.id}
-                      className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center relative group"
+                      className="aspect-video bg-console-bg rounded-lg flex items-center justify-center relative group"
                       data-testid={`photo-${photo.id}`}
                     >
-                      <Camera className="w-8 h-8 text-gray-400" />
+                      <Camera className="w-8 h-8 text-console-mid" />
                       <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent rounded-b-lg">
                         <p className="text-white text-sm">{photo.label}</p>
                       </div>
@@ -154,18 +154,18 @@ export default function ProviderProfile() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-2 text-sm font-medium text-gray-500">Space</th>
-                        <th className="text-center py-2 text-sm font-medium text-gray-500">Seated</th>
-                        <th className="text-center py-2 text-sm font-medium text-gray-500">Standing</th>
+                      <tr className="border-b border-console-light">
+                        <th className="text-left py-2 text-sm font-medium text-console-mid">Space</th>
+                        <th className="text-center py-2 text-sm font-medium text-console-mid">Seated</th>
+                        <th className="text-center py-2 text-sm font-medium text-console-mid">Standing</th>
                       </tr>
                     </thead>
                     <tbody>
                       {capacities.map((cap, index) => (
-                        <tr key={index} className="border-b border-gray-100 last:border-0" data-testid={`row-capacity-${index}`}>
-                          <td className="py-3 font-medium text-gray-900">{cap.space}</td>
-                          <td className="py-3 text-center text-gray-600">{cap.seated}</td>
-                          <td className="py-3 text-center text-gray-600">{cap.standing}</td>
+                        <tr key={index} className="border-b border-console-light last:border-0" data-testid={`row-capacity-${index}`}>
+                          <td className="py-3 font-medium text-console-darkest">{cap.space}</td>
+                          <td className="py-3 text-center text-console-dark">{cap.seated}</td>
+                          <td className="py-3 text-center text-console-dark">{cap.standing}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -187,20 +187,20 @@ export default function ProviderProfile() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-start gap-3">
-                  <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <p className="text-gray-700">{businessInfo.address}</p>
+                  <MapPin className="w-5 h-5 text-console-mid mt-0.5" />
+                  <p className="text-console-dark">{businessInfo.address}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Phone className="w-5 h-5 text-gray-400" />
-                  <p className="text-gray-700">{businessInfo.phone}</p>
+                  <Phone className="w-5 h-5 text-console-mid" />
+                  <p className="text-console-dark">{businessInfo.phone}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Mail className="w-5 h-5 text-gray-400" />
-                  <p className="text-gray-700">{businessInfo.email}</p>
+                  <Mail className="w-5 h-5 text-console-mid" />
+                  <p className="text-console-dark">{businessInfo.email}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Globe className="w-5 h-5 text-gray-400" />
-                  <p className="text-gray-700">{businessInfo.website}</p>
+                  <Globe className="w-5 h-5 text-console-mid" />
+                  <p className="text-console-dark">{businessInfo.website}</p>
                 </div>
               </CardContent>
             </Card>
@@ -219,7 +219,7 @@ export default function ProviderProfile() {
                     <Badge 
                       key={index} 
                       variant="outline" 
-                      className="text-gray-700"
+                      className="text-console-dark"
                       data-testid={`badge-amenity-${index}`}
                     >
                       {amenity}
