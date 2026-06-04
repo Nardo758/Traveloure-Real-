@@ -21,6 +21,12 @@ const MIGRATION_FILES = [
   "009_curated_by_expert.sql",
   "010_expert_request_optimization_context.sql",
   "011_provider_services_approval_status.sql",
+  "012_migrate_expert_custom_services.sql",
+  // 013_drop_deprecated_service_tables.sql — intentionally NOT registered.
+  // Register only after 012 data migration is verified clean in production.
+  // Migration 013 is destructive (drops expert_custom_services, expert_selected_services,
+  // expert_service_categories). Once registered it runs on next startup; do not enable
+  // until provider_services has been confirmed stable with the migrated data.
 ];
 
 export async function runMigrations(): Promise<void> {

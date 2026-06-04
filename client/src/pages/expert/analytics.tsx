@@ -173,7 +173,7 @@ export default function ExpertAnalytics() {
       case "opportunity": return "border-amber-200 bg-amber-50 dark:bg-amber-950/20";
       case "growth": return "border-green-200 bg-green-50 dark:bg-green-950/20";
       case "retention": return "border-blue-200 bg-blue-50 dark:bg-blue-950/20";
-      default: return "border-gray-200";
+      default: return "border-console-light";
     }
   };
 
@@ -183,7 +183,7 @@ export default function ExpertAnalytics() {
       case "opportunity": return <Zap className="w-5 h-5 text-amber-600" />;
       case "growth": return <TrendingUp className="w-5 h-5 text-green-600" />;
       case "retention": return <Users className="w-5 h-5 text-blue-600" />;
-      default: return <Lightbulb className="w-5 h-5 text-gray-600" />;
+      default: return <Lightbulb className="w-5 h-5 text-console-mid" />;
     }
   };
 
@@ -201,7 +201,7 @@ export default function ExpertAnalytics() {
       case "high": return "bg-red-100 text-red-700 border-red-200";
       case "medium": return "bg-yellow-100 text-yellow-700 border-yellow-200";
       case "low": return "bg-blue-100 text-blue-700 border-blue-200";
-      default: return "bg-gray-100 text-gray-700 border-gray-200";
+      default: return "bg-console-light text-console-dark border-console-light";
     }
   };
 
