@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, ChevronRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, ChevronRight, Tag, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { matchedServiceSuggestion } from "@/lib/feed-stream";
@@ -292,6 +293,142 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             <Button size="sm" variant="outline" className="h-7 px-2" asChild>
               <a href={event.url} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="w-3 h-3" />
+              </a>
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Vendor Service card (platform-bookable provider_services) ────────────────
+
+interface CityFeedCardVendorServiceProps {
+  service: any;
+  city: string;
+  className?: string;
+}
+
+/**
+ * Card for a platform-seeded vendor service (wedding, corporate, experience).
+ * Shows a "platform" bookability dot always; additionally renders an external
+ * "Visit Website" button when the vendor's form has a booking_link or website.
+ */
+export function CityFeedCardVendorService({ service, city, className }: CityFeedCardVendorServiceProps) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const imageUrl = service.serviceImage || service.vendorPhoto || null;
+  const { photoUrl, loading } = useGemPhoto(
+    `vsvc-${service.id}`,
+    service.serviceName,
+    city,
+    imageUrl,
+  );
+
+  const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
+  const bookability: Bookability = "platform";
+
+  const tag: string | null = (() => {
+    const tags: string[] = service.contentAffinityTags ?? [];
+    if (tags.length > 0) return tags[0];
+    if (service.categoryName) return service.categoryName;
+    return service.serviceType ?? null;
+  })();
+
+  const priceDisplay: string | null = (() => {
+    if (!service.price) return null;
+    const n = parseFloat(service.price);
+    if (isNaN(n)) return null;
+    if (n < 1) return "Custom quote";
+    return `$${n % 1 === 0 ? n : n.toFixed(0)}`;
+  })();
+
+  const { srcSet, sizes } = buildSrcSet(photoUrl);
+
+  return (
+    <div
+      className={cn(
+        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        className,
+      )}
+      data-testid={`feed-card-vendor-svc-${service.id}`}
+    >
+      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+        {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        {photoUrl && (
+          <img
+            src={photoUrl}
+            srcSet={srcSet}
+            sizes={sizes}
+            alt={service.serviceName}
+            loading="lazy"
+            onLoad={() => setImgLoaded(true)}
+            className={cn(
+              "w-full h-full object-cover transition-opacity duration-300",
+              imgLoaded ? "opacity-100" : "opacity-0",
+            )}
+          />
+        )}
+        {!photoUrl && !loading && (
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+            <Tag className="w-8 h-8 text-primary/40" />
+          </div>
+        )}
+        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
+          <BookabilityDot level={bookability} />
+        </span>
+        {service.isFeatured && (
+          <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
+            Featured
+          </span>
+        )}
+        {!service.isFeatured && tag && (
+          <span className="absolute top-2 left-2 bg-primary/80 text-white text-[10px] font-medium rounded-full px-2 py-0.5 capitalize">
+            {tag}
+          </span>
+        )}
+      </div>
+
+      <div className="p-3 space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold text-sm leading-tight line-clamp-2">{service.serviceName}</h3>
+          {service.averageRating && (
+            <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              <span>{Number(service.averageRating).toFixed(1)}</span>
+            </div>
+          )}
+        </div>
+
+        {service.shortDescription && (
+          <p className="text-xs text-muted-foreground line-clamp-2">{service.shortDescription}</p>
+        )}
+
+        <div className="flex items-center justify-between gap-2">
+          {service.neighborhood && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="w-3 h-3" />
+              <span className="capitalize">{service.neighborhood.replace(/-/g, " ")}</span>
+            </div>
+          )}
+          {priceDisplay && (
+            <span className="text-xs font-semibold text-primary flex-shrink-0">{priceDisplay}</span>
+          )}
+        </div>
+
+        <div className="flex gap-1.5 pt-1">
+          <Button
+            size="sm"
+            className="flex-1 h-7 text-xs"
+            onClick={() => (window.location.href = `/services/${service.id}`)}
+            data-testid={`btn-inquire-svc-${service.id}`}
+          >
+            Inquire
+          </Button>
+          {externalUrl && (
+            <Button size="sm" variant="outline" className="h-7 px-2 flex-shrink-0" asChild>
+              <a href={externalUrl} target="_blank" rel="noopener noreferrer" data-testid={`btn-website-svc-${service.id}`}>
+                <Globe className="w-3 h-3" />
               </a>
             </Button>
           )}
