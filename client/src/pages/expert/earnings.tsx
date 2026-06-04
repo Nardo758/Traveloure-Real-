@@ -232,7 +232,7 @@ export default function ExpertEarnings() {
                       </div>
                     </div>
                   )) : (
-                    <p className="text-gray-500 text-center py-4">No transactions yet</p>
+                    <p className="text-console-mid text-center py-4">No transactions yet</p>
                   )}
                 </div>
               </CardContent>
@@ -242,7 +242,7 @@ export default function ExpertEarnings() {
           {/* Right Column */}
           <div className="space-y-6">
             {/* Monthly Breakdown */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader>
                 <CardTitle className="text-lg">Monthly Breakdown</CardTitle>
               </CardHeader>
@@ -251,31 +251,31 @@ export default function ExpertEarnings() {
                   {monthlyData.length > 0 ? monthlyData.map((month, index) => (
                     <div key={index} className="flex items-center justify-between p-2 rounded-lg hover-elevate" data-testid={`monthly-breakdown-${index}`}>
                       <div>
-                        <p className="font-medium text-gray-900">{month.month}</p>
-                        <p className="text-sm text-gray-500">{month.clients} transactions</p>
+                        <p className="font-medium text-console-darkest">{month.month}</p>
+                        <p className="text-sm text-console-mid">{month.clients} transactions</p>
                       </div>
-                      <p className="font-semibold text-gray-900">${month.earnings.toLocaleString()}</p>
+                      <p className="font-semibold text-console-darkest">${month.earnings.toLocaleString()}</p>
                     </div>
                   )) : (
-                    <p className="text-gray-500 text-center py-2">No data yet</p>
+                    <p className="text-console-mid text-center py-2">No data yet</p>
                   )}
                 </div>
               </CardContent>
             </Card>
 
             {/* Payment Method */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader>
                 <CardTitle className="text-lg">Payment Method</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-console-light bg-console-bg">
                   <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
                     <CreditCard className="w-5 h-5 text-blue-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">Bank Account</p>
-                    <p className="text-sm text-gray-500">Set up your payment method</p>
+                    <p className="font-medium text-console-darkest">Bank Account</p>
+                    <p className="text-sm text-console-mid">Set up your payment method</p>
                   </div>
                 </div>
                 <Button variant="outline" className="w-full mt-3" data-testid="button-update-payment">
