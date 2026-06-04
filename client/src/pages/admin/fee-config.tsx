@@ -18,9 +18,11 @@ import {
   RefreshCw,
   Info,
   Settings2,
+  Zap,
+  Star,
+  Trophy,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 
 interface FeeConfigData {
   id: string;
@@ -31,6 +33,16 @@ interface FeeConfigData {
   minFee: number | null;
   maxFee: number | null;
   isActive: boolean;
+}
+
+interface OptimizationFeeData {
+  id: string;
+  complexity_tier: string;
+  price_cents: number;
+  currency: string;
+  is_active: boolean;
+  updated_by: string | null;
+  updated_at: string | null;
 }
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
@@ -56,6 +68,27 @@ const DEFAULT_CONFIGS: FeeConfigData[] = Object.keys(CATEGORY_LABELS).map(cat =>
   maxFee: null,
   isActive: true,
 }));
+
+const OPTIMIZATION_TIER_META: Record<string, { label: string; description: string; Icon: any; color: string }> = {
+  simple: {
+    label: "Simple",
+    description: "Standard vacation, birthday, adventure, or cultural trips",
+    Icon: Zap,
+    color: "text-emerald-600 dark:text-emerald-400",
+  },
+  standard: {
+    label: "Standard",
+    description: "Honeymoon, anniversary, proposal, or multi-city trips",
+    Icon: Star,
+    color: "text-amber-600 dark:text-amber-400",
+  },
+  complex: {
+    label: "Complex",
+    description: "Weddings or corporate events requiring deep logistics",
+    Icon: Trophy,
+    color: "text-violet-600 dark:text-violet-400",
+  },
+};
 
 function FeeConfigCard({
   config,
@@ -91,7 +124,6 @@ function FeeConfigCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Platform fee % */}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium flex items-center gap-1.5">
             <Percent className="w-3.5 h-3.5 text-primary" />
@@ -112,7 +144,6 @@ function FeeConfigCard({
           </div>
         </div>
 
-        {/* AI booking rule */}
         <div className="rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -132,7 +163,6 @@ function FeeConfigCard({
           )}
         </div>
 
-        {/* Expert split */}
         <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900 p-3 space-y-2">
           <div className="flex items-center gap-2 mb-2">
             <UserCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -168,7 +198,6 @@ function FeeConfigCard({
           </div>
         </div>
 
-        {/* Min / Max fee caps */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Min fee ($)</Label>
@@ -209,12 +238,99 @@ function FeeConfigCard({
   );
 }
 
+function OptimizationFeeCard({
+  fee,
+  onSave,
+  isSaving,
+}: {
+  fee: OptimizationFeeData;
+  onSave: (tier: string, priceCents: number, isActive: boolean) => void;
+  isSaving: boolean;
+}) {
+  const meta = OPTIMIZATION_TIER_META[fee.complexity_tier] || {
+    label: fee.complexity_tier,
+    description: "",
+    Icon: Sparkles,
+    color: "text-primary",
+  };
+  const Icon = meta.Icon;
+  const [localCents, setLocalCents] = useState(fee.price_cents);
+  const [localActive, setLocalActive] = useState(fee.is_active);
+  const displayPrice = (localCents / 100).toFixed(2);
+
+  return (
+    <Card className="border-border" data-testid={`card-optimization-fee-${fee.complexity_tier}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Icon className={`w-5 h-5 ${meta.color}`} />
+            {meta.label}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={localActive}
+              onCheckedChange={setLocalActive}
+              data-testid={`switch-opt-active-${fee.complexity_tier}`}
+            />
+            <span className="text-xs text-muted-foreground">{localActive ? "Active" : "Disabled"}</span>
+          </div>
+        </div>
+        <CardDescription className="text-xs mt-1">{meta.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium flex items-center gap-1.5">
+            <DollarSign className="w-3.5 h-3.5 text-primary" />
+            One-time Optimization Fee
+          </Label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">$</span>
+            <Input
+              type="number"
+              min={0}
+              step={0.01}
+              value={displayPrice}
+              onChange={e => {
+                const dollars = parseFloat(e.target.value) || 0;
+                setLocalCents(Math.round(dollars * 100));
+              }}
+              className="w-28"
+              data-testid={`input-opt-fee-${fee.complexity_tier}`}
+            />
+            <span className="text-xs text-muted-foreground">USD ({localCents}¢)</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground">
+          Users pay this once to unlock the full AI optimizer for their itinerary.
+          Free re-run within 24 hours of last optimization.
+        </div>
+
+        <Button
+          size="sm"
+          className="w-full gap-2"
+          onClick={() => onSave(fee.complexity_tier, localCents, localActive)}
+          disabled={isSaving}
+          data-testid={`button-save-opt-fee-${fee.complexity_tier}`}
+        >
+          {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save Changes
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminFeeConfigPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: serverConfigs, isLoading } = useQuery<FeeConfigData[]>({
     queryKey: ["/api/admin/fee-config"],
+  });
+
+  const { data: optimizationFees, isLoading: optLoading } = useQuery<OptimizationFeeData[]>({
+    queryKey: ["/api/admin/optimization-fees"],
   });
 
   const [localConfigs, setLocalConfigs] = useState<FeeConfigData[]>(DEFAULT_CONFIGS);
@@ -232,6 +348,18 @@ export default function AdminFeeConfigPage() {
     },
   });
 
+  const saveOptMutation = useMutation({
+    mutationFn: ({ complexityTier, priceCents, isActive }: { complexityTier: string; priceCents: number; isActive: boolean }) =>
+      apiRequest("POST", `/api/admin/optimization-fees`, { complexityTier, priceCents, isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/optimization-fees"] });
+      toast({ title: "Saved", description: "Optimization fee updated." });
+    },
+    onError: () => {
+      toast({ title: "Save failed", description: "Could not update optimization fee.", variant: "destructive" });
+    },
+  });
+
   function handleChange(category: string, field: keyof FeeConfigData, value: any) {
     setLocalConfigs(prev => prev.map(c => c.category === category ? { ...c, [field]: value } : c));
   }
@@ -242,6 +370,13 @@ export default function AdminFeeConfigPage() {
 
   const globalExpertShare = configs[0]?.expertSharePercent ?? 70;
 
+  const defaultOptFees: OptimizationFeeData[] = [
+    { id: "simple", complexity_tier: "simple", price_cents: 499, currency: "USD", is_active: true, updated_by: null, updated_at: null },
+    { id: "standard", complexity_tier: "standard", price_cents: 999, currency: "USD", is_active: true, updated_by: null, updated_at: null },
+    { id: "complex", complexity_tier: "complex", price_cents: 1999, currency: "USD", is_active: true, updated_by: null, updated_at: null },
+  ];
+  const displayOptFees = optimizationFees && optimizationFees.length > 0 ? optimizationFees : defaultOptFees;
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -249,10 +384,10 @@ export default function AdminFeeConfigPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="heading-fee-config">
             <Settings2 className="w-6 h-6 text-primary" />
-            Booking Fee Configuration
+            Fee Configuration
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Control platform fees and expert/AI splits per booking category. Changes take effect immediately.
+            Control platform fees, expert/AI splits, and AI optimization pricing. Changes take effect immediately.
           </p>
         </div>
         <Badge className="bg-primary/10 text-primary gap-1.5 text-sm px-3 py-1.5" data-testid="badge-global-split">
@@ -306,24 +441,62 @@ export default function AdminFeeConfigPage() {
 
       <Separator />
 
-      {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3" />
-          <p>Loading fee configuration...</p>
+      {/* Booking Fees */}
+      <div>
+        <h2 className="text-lg font-semibold mb-1">Booking Fees by Category</h2>
+        <p className="text-sm text-muted-foreground mb-4">Per-category platform fee and expert split for regular bookings.</p>
+        {isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3" />
+            <p>Loading fee configuration...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="grid-fee-configs">
+            {configs.map(config => (
+              <FeeConfigCard
+                key={config.category}
+                config={config}
+                onChange={(field, value) => handleChange(config.category, field, value)}
+                onSave={() => handleSave(config)}
+                isSaving={saveMutation.isPending}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* AI Optimization Fees */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">AI Optimization Fees</h2>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="grid-fee-configs">
-          {configs.map(config => (
-            <FeeConfigCard
-              key={config.category}
-              config={config}
-              onChange={(field, value) => handleChange(config.category, field, value)}
-              onSave={() => handleSave(config)}
-              isSaving={saveMutation.isPending}
-            />
-          ))}
-        </div>
-      )}
+        <p className="text-sm text-muted-foreground mb-4">
+          One-time fee users pay to unlock the full AI itinerary optimizer. Tier is determined by trip complexity.
+          Users get a free re-run within 24 hours of their last optimization.
+        </p>
+        {optLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+            <p>Loading optimization fees...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="grid-optimization-fees">
+            {displayOptFees.map(fee => (
+              <OptimizationFeeCard
+                key={fee.complexity_tier}
+                fee={fee}
+                onSave={(tier, cents, active) =>
+                  saveOptMutation.mutate({ complexityTier: tier, priceCents: cents, isActive: active })
+                }
+                isSaving={saveOptMutation.isPending}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

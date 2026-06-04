@@ -1,3 +1,11 @@
+import {
+  buildGoogleMapsDeepLink,
+  buildAppleMapsDeepLink,
+  hasValidCoords,
+  type Place,
+  type TransportMode,
+} from "@/lib/maps";
+
 export type TraveloureMode =
   | "walk"
   | "taxi"
@@ -97,66 +105,23 @@ export function normalizeMode(mode?: TraveloureMode): NormalizedMode {
   }
 }
 
-function locStr(lat?: number, lng?: number, name?: string): string {
-  if (lat != null && lng != null && isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0)) {
-    return `${lat},${lng}`;
+/** Convert NavigateParams into an ordered Place[] for the unified builder. */
+function paramsToPlaces(params: NavigateParams): Place[] {
+  if (params.waypoints && params.waypoints.length > 0) {
+    return params.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name }));
   }
-  return name ?? "";
+  const places: Place[] = [];
+  if (params.origin) places.push({ lat: params.origin.lat, lng: params.origin.lng, name: params.origin.name });
+  if (params.destination) places.push({ lat: params.destination.lat, lng: params.destination.lng, name: params.destination.name, placeId: params.destination.placeId });
+  return places;
 }
 
 function buildGoogleUrl(params: NavigateParams): string {
-  const base = "https://www.google.com/maps/dir/?api=1";
-  const sp = new URLSearchParams();
-  sp.set("travelmode", normalizeMode(params.mode));
-
-  if (params.waypoints && params.waypoints.length === 1) {
-    sp.set("destination", locStr(params.waypoints[0].lat, params.waypoints[0].lng, params.waypoints[0].name));
-  } else if (params.waypoints && params.waypoints.length > 1) {
-    // Google supports origin + destination + up to 9 intermediate waypoints = 11 total stops
-    const stops = params.waypoints.slice(0, 11);
-    sp.set("origin", locStr(stops[0].lat, stops[0].lng, stops[0].name));
-    sp.set("destination", locStr(stops[stops.length - 1].lat, stops[stops.length - 1].lng, stops[stops.length - 1].name));
-    if (stops.length > 2) {
-      sp.set("waypoints", stops.slice(1, -1).map(s => locStr(s.lat, s.lng, s.name)).join("|"));
-    }
-  } else if (params.origin && params.destination) {
-    sp.set("origin", locStr(params.origin.lat, params.origin.lng, params.origin.name));
-    sp.set("destination", locStr(params.destination.lat, params.destination.lng, params.destination.name));
-    if (params.destination.placeId) sp.set("destination_place_id", params.destination.placeId);
-  } else if (params.destination) {
-    sp.set("destination", locStr(params.destination.lat, params.destination.lng, params.destination.name));
-    if (params.destination.placeId) sp.set("destination_place_id", params.destination.placeId);
-  }
-
-  return `${base}&${sp.toString()}`;
+  return buildGoogleMapsDeepLink(paramsToPlaces(params), params.mode as TransportMode);
 }
 
 function buildAppleUrl(params: NavigateParams): string {
-  const sp = new URLSearchParams();
-  const dirflgMap: Record<NormalizedMode, string> = {
-    walking: "w",
-    driving: "d",
-    transit: "r",
-    bicycling: "w",
-  };
-  sp.set("dirflg", dirflgMap[normalizeMode(params.mode)] ?? "d");
-  sp.set("t", "m");
-
-  if (params.origin && params.destination) {
-    sp.set("saddr", locStr(params.origin.lat, params.origin.lng, params.origin.name));
-    sp.set("daddr", locStr(params.destination.lat, params.destination.lng, params.destination.name));
-  } else if (params.destination) {
-    sp.set("daddr", locStr(params.destination.lat, params.destination.lng, params.destination.name));
-  } else if (params.waypoints && params.waypoints.length >= 2) {
-    const first = params.waypoints[0];
-    const last = params.waypoints[params.waypoints.length - 1];
-    sp.set("saddr", locStr(first.lat, first.lng, first.name));
-    sp.set("daddr", locStr(last.lat, last.lng, last.name));
-  } else if (params.waypoints && params.waypoints.length === 1) {
-    sp.set("daddr", locStr(params.waypoints[0].lat, params.waypoints[0].lng, params.waypoints[0].name));
-  }
-
-  return `https://maps.apple.com/?${sp.toString()}`;
+  return buildAppleMapsDeepLink(paramsToPlaces(params), params.mode as TransportMode);
 }
 
 function buildWazeUrl(params: NavigateParams): string {
@@ -165,7 +130,7 @@ function buildWazeUrl(params: NavigateParams): string {
     (params.waypoints && params.waypoints.length > 0
       ? params.waypoints[params.waypoints.length - 1]
       : undefined);
-  if (!dest || dest.lat == null || dest.lng == null || !isFinite(dest.lat) || !isFinite(dest.lng)) return "";
+  if (!dest || !hasValidCoords(dest.lat, dest.lng)) return "";
   return `https://waze.com/ul?ll=${dest.lat},${dest.lng}&navigate=yes`;
 }
 

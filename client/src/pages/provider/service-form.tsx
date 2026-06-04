@@ -18,7 +18,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle,
-  MapPin, Navigation, Truck, Radius, Info, ArrowLeft,
+  MapPin, Navigation, Truck, Radius, Info, ArrowLeft, Sparkles,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -58,7 +58,21 @@ interface ServiceFormData {
   pickupAddress: string;
   serviceRadius: number;
   active: boolean;
+  // Content affinity tagging
+  contentAffinityTags: string[];
 }
+
+export const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
+  { value: "hotel_arrival",       label: "Hotel arrival/departure" },
+  { value: "photo_shoot",         label: "Photo shoot" },
+  { value: "restaurant_visit",    label: "Restaurant visit" },
+  { value: "cultural_attraction", label: "Cultural attraction" },
+  { value: "wellness_experience", label: "Wellness experience" },
+  { value: "nightlife",           label: "Nightlife" },
+  { value: "hiking_outdoor",      label: "Hiking/outdoor" },
+  { value: "wedding_proposal",    label: "Wedding/proposal" },
+  { value: "general_logistics",   label: "Any trip (general logistics)" },
+];
 
 function buildEmptyForm(): ServiceFormData {
   return {
@@ -81,6 +95,7 @@ function buildEmptyForm(): ServiceFormData {
     pickupAddress: "",
     serviceRadius: 0,
     active: true,
+    contentAffinityTags: [],
   };
 }
 
@@ -105,6 +120,7 @@ function mapServiceToForm(s: any): ServiceFormData {
     pickupAddress: s.pickupAddress || "",
     serviceRadius: Number(s.serviceRadius || 0),
     active: s.status === "active",
+    contentAffinityTags: Array.isArray(s.contentAffinityTags) ? s.contentAffinityTags : [],
   };
 }
 
@@ -212,6 +228,7 @@ export default function ProviderServiceForm() {
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
         serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
         status: draft ? "draft" : (formData.active ? "active" : "draft"),
+        contentAffinityTags: formData.contentAffinityTags,
       };
       if (isEditMode) {
         return apiRequest("PATCH", `/api/provider/services/${params!.id}`, payload);
@@ -656,6 +673,58 @@ export default function ProviderServiceForm() {
                   </p>
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Content Affinity ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-[#FF385C]" />
+              When do travellers book this?
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Select every situation where a traveller would naturally want your service. This helps surface your listing at the right moment — on hotel cards, restaurant pages, photo spots, and more.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="affinity-tags-group">
+              {AFFINITY_TAG_OPTIONS.map((opt) => {
+                const checked = formData.contentAffinityTags.includes(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                      checked
+                        ? "border-[#FF385C] bg-[#FF385C]/5"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                    data-testid={`affinity-tag-${opt.value}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-[#FF385C] focus:ring-[#FF385C]"
+                      checked={checked}
+                      onChange={(e) => {
+                        const tags = formData.contentAffinityTags;
+                        set(
+                          "contentAffinityTags",
+                          e.target.checked
+                            ? [...tags, opt.value]
+                            : tags.filter((t) => t !== opt.value),
+                        );
+                      }}
+                    />
+                    <span className="text-sm font-medium text-gray-800">{opt.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {formData.contentAffinityTags.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-3">
+                No tags selected — your service will still appear via category matching. Adding tags increases your reach.
+              </p>
             )}
           </CardContent>
         </Card>

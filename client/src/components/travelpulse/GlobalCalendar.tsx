@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -262,11 +262,10 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [, navigate] = useLocation();
 
   const handleCityClick = (cityName: string, country: string) => {
-    // Phase B: Navigate to LocationView instead of inline modal
-    const qs = new URLSearchParams();
-    qs.set("country", country);
-    navigate(`/discover/location/${encodeURIComponent(cityName)}?${qs.toString()}`);
     onCityClick?.(cityName, country);
+    navigate(
+      `/discover/location/${encodeURIComponent(cityName)}?country=${encodeURIComponent(country)}`
+    );
   };
 
   const handleMonthClick = (month: number) => {
@@ -300,6 +299,8 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     setSelectedWeek(undefined);
     setSelectedDay(undefined);
   };
+
+
 
   if (isLoading && view !== "year") {
     return (

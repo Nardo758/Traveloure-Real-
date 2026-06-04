@@ -18,6 +18,8 @@ export const PLATFORM_FEE_RATE = 0.25;
 export const AI_PLATFORM_FEE = 1.00;
 export const AFFILIATE_PLATFORM_FEE = 0.70;
 export const AFFILIATE_EXPERT_SHARE = 0.30;
+/** Stripe processing / gateway fee deducted from every platform-fee receipt. */
+export const PROCESSING_FEE_RATE = 0.03;
 
 export interface CommissionRates {
   expertShareRate: number;

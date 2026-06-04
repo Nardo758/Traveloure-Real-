@@ -14,6 +14,17 @@ export interface TestAccount {
   specialty?: string;
 }
 
+// ======================
+// ADMIN TEST ACCOUNT
+// ======================
+export const adminAccount: TestAccount = {
+  email: 'test-admin@traveloure.test',
+  password: PASSWORD,
+  role: 'admin',
+  market: 'global',
+  name: 'Platform Admin',
+};
+
 export const testAccounts = {
   // ======================
   // 5 ORIGINAL TEST ACCOUNTS

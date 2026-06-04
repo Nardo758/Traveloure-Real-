@@ -286,14 +286,14 @@ function getCancellationBadge(policy?: ViatorActivity['cancellationPolicy']): { 
 
 function getImageUrl(images?: ViatorActivity['images'], preferredWidth: number = 480): string {
   if (!images || images.length === 0) {
-    return "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=480&h=320&fit=crop";
+    return "https://picsum.photos/seed/activity/480/320";
   }
   
   const coverImage = images.find(img => img.isCover) || images[0];
   const variants = coverImage.variants || [];
   
   const sorted = [...variants].sort((a, b) => Math.abs(a.width - preferredWidth) - Math.abs(b.width - preferredWidth));
-  return sorted[0]?.url || coverImage.variants[0]?.url || "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=480&h=320&fit=crop";
+  return sorted[0]?.url || coverImage.variants[0]?.url || "https://picsum.photos/seed/activity/480/320";
 }
 
 // Helper function to check if activity matches any interest

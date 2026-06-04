@@ -28,7 +28,7 @@ const sampleExperts = [
     id: 1,
     name: "Yuki Tanaka",
     location: "Tokyo, Japan",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
+    avatar: "https://picsum.photos/seed/expert-1/200/200",
     rating: 4.9,
     reviews: 127,
     specialties: ["Culture", "Food", "Nightlife"],
@@ -39,7 +39,7 @@ const sampleExperts = [
     id: 2,
     name: "Marie Dubois",
     location: "Paris, France",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200",
+    avatar: "https://picsum.photos/seed/expert-2/200/200",
     rating: 4.8,
     reviews: 89,
     specialties: ["Art", "Wine", "Fashion"],
@@ -50,7 +50,7 @@ const sampleExperts = [
     id: 3,
     name: "Made Surya",
     location: "Bali, Indonesia",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200",
+    avatar: "https://picsum.photos/seed/expert-3/200/200",
     rating: 4.9,
     reviews: 156,
     specialties: ["Nature", "Wellness", "Adventure"],
@@ -67,6 +67,11 @@ export default function Chat() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const expertIdFromUrl = urlParams.get("expertId");
+  // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
+  // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
+  const clientIdFromUrl = urlParams.get("clientId");
+  // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
+  const aboutFromUrl = urlParams.get("about");
 
   const { data: linkedExpert } = useQuery<any>({
     queryKey: ["/api/experts", expertIdFromUrl],
@@ -89,6 +94,17 @@ export default function Chat() {
     enabled: !!expertIdFromUrl,
   });
 
+  // Fetch client info when arriving from /expert/messages/:clientId deep-link
+  const { data: linkedClient } = useQuery<any>({
+    queryKey: ["/api/users", clientIdFromUrl],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${clientIdFromUrl}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!clientIdFromUrl,
+  });
+
   const allExperts = useMemo(() => {
     if (linkedExpert) {
       const exists = sampleExperts.some(e => String(e.id) === String(linkedExpert.id));
@@ -101,11 +117,29 @@ export default function Chat() {
   const [selectedExpert, setSelectedExpert] = useState<typeof sampleExperts[0] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Pre-fill message when arriving from "Ask expert" on a gem/activity card
+  useEffect(() => {
+    if (aboutFromUrl) {
+      setMessage(`I'm interested in ${aboutFromUrl} — can you share any tips or help me plan this?`);
+    }
+  }, [aboutFromUrl]);
+
   useEffect(() => {
     if (linkedExpert && !selectedExpert) {
       setSelectedExpert(linkedExpert);
     }
   }, [linkedExpert]);
+
+  // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
+  // client's name so the relevant conversation thread is surfaced immediately.
+  useEffect(() => {
+    if (linkedClient && !searchQuery) {
+      const clientName = linkedClient.firstName
+        ? `${linkedClient.firstName} ${linkedClient.lastName || ""}`.trim()
+        : (linkedClient.username || linkedClient.email || "");
+      if (clientName) setSearchQuery(clientName);
+    }
+  }, [linkedClient]);
   const [realtimeMessages, setRealtimeMessages] = useState<RealtimeMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);

@@ -8,6 +8,7 @@ import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
+import { WishlistSection } from "@/components/dashboard/WishlistSection";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
@@ -177,6 +178,8 @@ export default function Dashboard() {
             </div>
 
             <SavedTripsSection />
+
+            <WishlistSection />
 
             {/* Active Plans */}
             <div

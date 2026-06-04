@@ -66,7 +66,20 @@ interface Service {
   pickupAvailable?: boolean;
   averageRating?: string;
   reviewCount?: number;
+  contentAffinityTags?: string[];
 }
+
+const AFFINITY_TAG_LABELS: Record<string, string> = {
+  hotel_arrival:       "Hotel arrival/departure",
+  photo_shoot:         "Photo shoot",
+  restaurant_visit:    "Restaurant visit",
+  cultural_attraction: "Cultural attraction",
+  wellness_experience: "Wellness experience",
+  nightlife:           "Nightlife",
+  hiking_outdoor:      "Hiking/outdoor",
+  wedding_proposal:    "Wedding/proposal",
+  general_logistics:   "General logistics",
+};
 
 interface ServiceCategory {
   id: string;
@@ -330,6 +343,27 @@ export default function ProviderServices() {
                             </span>
                           )}
                         </div>
+
+                        {/* Affinity tag chips */}
+                        {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
+                          <div className="mt-3" data-testid={`affinity-tags-${service.id}`}>
+                            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
+                              Surfaces when travellers view:
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {service.contentAffinityTags.map((tag) => (
+                                <Badge
+                                  key={tag}
+                                  variant="secondary"
+                                  className="text-[10px] py-0 px-1.5 bg-[#FF385C]/8 text-[#FF385C] border border-[#FF385C]/20"
+                                  data-testid={`chip-affinity-${service.id}-${tag}`}
+                                >
+                                  {AFFINITY_TAG_LABELS[tag] ?? tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">

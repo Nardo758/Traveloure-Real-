@@ -4,10 +4,11 @@ import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
+import { openMapsDeepLink } from "@/lib/maps";
 import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
 } from "./plancard-types";
@@ -124,6 +125,9 @@ function PlanCardSummary({
   const totalActivities = stats.totalActivities ?? days.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
   const totalLegs = stats.totalLegs ?? days.reduce((s, d) => s + (d.transports?.length ?? 0), 0);
   const totalMinutes = stats.totalTransitMinutes ?? days.reduce((s, d) => s + (d.transports ?? []).reduce((t, tr) => t + (tr.duration ?? 0), 0), 0);
+
+  const optimizationDelta = plancardData?.optimizationDelta ?? null;
+  const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
   const numDays = days.length || Math.max(1, Math.round(
     (new Date(trip.endDate ?? Date.now()).getTime() - new Date(trip.startDate ?? Date.now()).getTime()) / 86400000
   ));
@@ -295,6 +299,29 @@ function PlanCardSummary({
               👥 Expert
             </button>
           )}
+          {lastOptimizedAt && (
+            <button
+              type="button"
+              onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+              className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ background: "#FFF3E8", color: "#8B3A00" }}
+              data-testid={`pill-ai-optimized-${trip.id}`}
+              title="This itinerary was AI-optimized"
+            >
+              <Sparkles className="w-[9px] h-[9px]" />
+              AI Optimized
+              {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+                <span style={{ color: "#2C7A44", fontWeight: 600 }}>
+                  · ${Math.round(optimizationDelta.savings)} saved
+                </span>
+              )}
+              {optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+                <span style={{ color: "#B07C00", fontWeight: 600 }}>
+                  · +{optimizationDelta.starRatingDelta.toFixed(1)}★
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -367,10 +394,7 @@ function PlanCardSummary({
       <div className="flex gap-[7px]" style={{ padding: "0 14px 12px" }}>
         <button
           onClick={() => {
-            const query = encodeURIComponent(trip.destination);
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            if (isIOS) window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
-            else window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+            openMapsDeepLink({ places: [{ name: trip.destination }] });
           }}
           className="flex-none py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:bg-[#F3F3EE] transition-colors"
           style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF", color: "#1A1A18" }}

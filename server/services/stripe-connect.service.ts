@@ -1,3 +1,26 @@
+/**
+ * Stripe Connect Service — Expert & Provider Onboarding and Payouts
+ *
+ * OWNERSHIP: This service is the canonical owner of all Stripe Connect operations:
+ * creating Express connected accounts for experts and providers, generating onboarding
+ * and login links, retrieving account status, and executing transfers (payouts) from
+ * the platform balance to connected accounts. It also provides platform-level balance
+ * retrieval. All expert/provider payout logic routes exclusively through this service.
+ *
+ * DOES NOT OWN: Checkout Sessions or PaymentIntents for user-facing purchases (owned
+ * by stripe.service.ts and stripe-payment.service.ts), webhook event dispatch (owned
+ * by stripe-payment.service.ts).
+ *
+ * Stripe API calls made here:
+ *   - stripe.accounts.create         — Connect Express account creation
+ *   - stripe.accounts.retrieve       — account status check
+ *   - stripe.accounts.createLoginLink — Stripe dashboard access link
+ *   - stripe.accountLinks.create     — onboarding link generation
+ *   - stripe.transfers.create        — payout to a connected account
+ *   - stripe.transfers.retrieve      — transfer details lookup
+ *   - stripe.balance.retrieve        — platform-level balance
+ */
+
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {

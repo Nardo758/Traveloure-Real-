@@ -918,7 +918,7 @@ Respond with valid JSON in this exact format:
 
     await db
       .update(itineraryComparisons)
-      .set({ status: "generated", updatedAt: new Date() })
+      .set({ status: "generated", optimizedAt: new Date(), updatedAt: new Date() } as any)
       .where(eq(itineraryComparisons.id, comparisonId));
 
     return { success: true };
