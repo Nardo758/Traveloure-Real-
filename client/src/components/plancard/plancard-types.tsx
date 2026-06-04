@@ -165,11 +165,21 @@ export interface PlanCardStats {
   pendingExpertChanges?: number;
 }
 
+export interface OptimizationDelta {
+  savings?: number | null;
+  savingsPercent?: number | null;
+  starRatingDelta?: number | null;
+  travelDistanceMinutes?: number | null;
+  optimizationScore?: number | null;
+}
+
 export interface PlanCardData {
   days: PlanCardDay[];
   changeLog: PlanCardChange[];
   metrics: PlanCardMetrics;
   stats: PlanCardStats;
+  optimizationDelta?: OptimizationDelta | null;
+  lastOptimizedAt?: string | null;
 }
 
 export interface PlanCardTrip {
