@@ -10157,32 +10157,52 @@ Respond with this exact JSON structure:
           )
         );
       
-      // Create a map of city+country to seasonal data
+      // Build season map: city-level key (city-country) AND country-level key (-country).
+      // Seed data is stored with city=NULL (country-level), so we need a two-tier lookup.
       const seasonMap = new Map<string, typeof seasonsData[0]>();
+      const countrySeasonMap = new Map<string, typeof seasonsData[0]>();
       for (const season of seasonsData) {
-        const key = `${season.city || ""}-${season.country}`.toLowerCase();
-        seasonMap.set(key, season);
-      }
-      
-      // Create a map of city to events
-      const eventMap = new Map<string, typeof eventsData>();
-      for (const event of eventsData) {
-        const key = `${event.city || ""}-${event.country}`.toLowerCase();
-        if (!eventMap.has(key)) {
-          eventMap.set(key, []);
+        if (season.city) {
+          // City-specific season — highest priority
+          const key = `${season.city}-${season.country}`.toLowerCase();
+          seasonMap.set(key, season);
+        } else {
+          // Country-level season — fallback
+          const key = season.country.toLowerCase();
+          if (!countrySeasonMap.has(key)) countrySeasonMap.set(key, season);
         }
-        eventMap.get(key)!.push(event);
       }
-      
-      // Combine cities with seasonal data - ONLY include cities that have seasonal data for this month
+
+      // Build event map: by city+country AND by country alone (events with city=NULL)
+      const eventMap = new Map<string, typeof eventsData>();
+      const countryEventMap = new Map<string, typeof eventsData>();
+      for (const event of eventsData) {
+        if (event.city) {
+          const key = `${event.city}-${event.country}`.toLowerCase();
+          if (!eventMap.has(key)) eventMap.set(key, []);
+          eventMap.get(key)!.push(event);
+        } else {
+          const key = event.country.toLowerCase();
+          if (!countryEventMap.has(key)) countryEventMap.set(key, []);
+          countryEventMap.get(key)!.push(event);
+        }
+      }
+
+      // Combine cities with seasonal data.
+      // Include a city if it has a season (city-level OR country-level) OR has events.
       const citiesWithSeasons = cities
         .map(city => {
-          const key = `${city.cityName}-${city.country}`.toLowerCase();
-          const season = seasonMap.get(key);
-          const events = eventMap.get(key) || [];
-          
-          // Skip cities without seasonal data for this month
-          if (!season) return null;
+          const cityKey = `${city.cityName}-${city.country}`.toLowerCase();
+          const countryKey = city.country.toLowerCase();
+          // Two-tier season lookup: city-level preferred, country-level fallback
+          const season = seasonMap.get(cityKey) ?? countrySeasonMap.get(countryKey) ?? null;
+          // Two-tier event lookup
+          const cityEvents = eventMap.get(cityKey) || [];
+          const countryEvents = countryEventMap.get(countryKey) || [];
+          const events = [...cityEvents, ...countryEvents];
+
+          // Gate: include if has season OR has events (not AND)
+          if (!season && events.length === 0) return null;
           
           return {
             id: city.id,
