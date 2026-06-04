@@ -11,6 +11,12 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
@@ -682,29 +688,64 @@ function PlanCardSummary({
                 👥 Expert
               </button>
             )}
-            {lastOptimizedAt && (
-              <button
-                type="button"
-                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
-                className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ background: "#FFF3E8", color: "#8B3A00" }}
-                data-testid={`pill-ai-optimized-${trip.id}`}
-                title="This itinerary was AI-optimized"
-              >
-                <Sparkles className="w-[9px] h-[9px]" />
-                AI Optimized
-                {optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
-                  <span style={{ color: "#2C7A44", fontWeight: 600 }}>
-                    · ${Math.round(optimizationDeltaFromData.savings as number)} saved
-                  </span>
-                )}
-                {optimizationDeltaFromData?.starRatingDelta != null && (optimizationDeltaFromData.starRatingDelta as number) > 0 && (
-                  <span style={{ color: "#B07C00", fontWeight: 600 }}>
-                    · +{(optimizationDeltaFromData.starRatingDelta as number).toFixed(1)}★
-                  </span>
-                )}
-              </button>
-            )}
+            {lastOptimizedAt && (() => {
+              const isStale = Date.now() - new Date(lastOptimizedAt).getTime() > 30 * 24 * 60 * 60 * 1000;
+              const formattedDate = new Date(lastOptimizedAt).toLocaleString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+                        className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                        style={
+                          isStale
+                            ? { background: "#FFFBEB", color: "#92400E", border: "1px solid #F59E0B" }
+                            : { background: "#FFF3E8", color: "#8B3A00" }
+                        }
+                        data-testid={`pill-ai-optimized-${trip.id}`}
+                      >
+                        <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
+                        {isStale ? "Re-optimize?" : "AI Optimized"}
+                        {!isStale && optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+                          <span style={{ color: "#2C7A44", fontWeight: 600 }}>
+                            · ${Math.round(optimizationDelta.savings)} saved
+                          </span>
+                        )}
+                        {!isStale && optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+                          <span style={{ color: "#B07C00", fontWeight: 600 }}>
+                            · +{optimizationDelta.starRatingDelta.toFixed(1)}★
+                          </span>
+                        )}
+                        <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
+                          · {formatRelativeTime(lastOptimizedAt)}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">
+                        Last optimized: {formattedDate}
+                        {isStale && (
+                          <>
+                            <br />
+                            <span className="text-amber-500 font-medium">
+                              Optimization is over 30 days old
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
           </div>
         </div>
 
