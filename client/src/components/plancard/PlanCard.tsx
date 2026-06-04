@@ -336,11 +336,6 @@ function PlanCardSummary({
   ));
 
   const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
-  const optimizationDelta = {
-    savings: metrics.savings != null ? `$${Number(metrics.savings).toLocaleString()}` : null,
-    savingsPercent: metrics.savingsPercent != null ? `${metrics.savingsPercent}%` : null,
-    starDelta: metrics.starRatingDelta ?? null,
-  };
   const hasActivities = totalActivities > 0;
 
   // Summary-specific queries

@@ -21,6 +21,7 @@ import {
   travelPulseTrending,
   travelPulseCalendarEvents,
   destinationSeasons,
+  trips,
 } from "@shared/schema";
 import { eq, and, inArray, gte, lte, desc, or, ilike, isNull } from "drizzle-orm";
 import {
@@ -1141,6 +1142,151 @@ Respond with valid JSON in this exact format:
   }
 }
 
+export interface UpsellSuggestion {
+  serviceId: string;
+  title: string;
+  description: string | null;
+  price: string | null;
+  imageUrl: string | null;
+  category: string;
+  location: string | null;
+  rating: string | null;
+  matchReason: string;
+}
+
+function buildProfileCategories(
+  travelStyles: string[],
+  budget: number | null,
+  eventType: string
+): Array<{ category: string; keywords: string[]; matchReason: string }> {
+  const categories: Array<{ category: string; keywords: string[]; matchReason: string }> = [];
+
+  if (["honeymoon", "anniversary", "proposal", "wedding"].includes(eventType)) {
+    categories.push({
+      category: "romantic_dining",
+      keywords: ["romantic", "dinner", "candlelit", "intimate", "sunset", "cruise"],
+      matchReason: "Perfect for your romantic occasion",
+    });
+  }
+
+  if (travelStyles.includes("food")) {
+    categories.push({
+      category: "private_chef",
+      keywords: ["chef", "culinary", "cooking", "food", "dining", "tasting"],
+      matchReason: "Matches your culinary travel style",
+    });
+  }
+
+  if (travelStyles.includes("relaxation")) {
+    categories.push({
+      category: "spa",
+      keywords: ["spa", "massage", "wellness", "relaxation", "treatment"],
+      matchReason: "Perfect for your relaxation style",
+    });
+  }
+
+  if (budget && budget > 2000) {
+    categories.push({
+      category: "private_transfer",
+      keywords: ["transfer", "chauffeur", "private car", "driver", "limousine"],
+      matchReason: "Luxury transfer service for your trip",
+    });
+  }
+
+  if (travelStyles.includes("adventure")) {
+    categories.push({
+      category: "outdoor_addon",
+      keywords: ["adventure", "hiking", "outdoor", "excursion", "trekking", "kayak"],
+      matchReason: "Matches your adventure travel style",
+    });
+  }
+
+  return categories;
+}
+
+async function generateUpsellSuggestions(
+  comparison: any,
+  variants: any[]
+): Promise<UpsellSuggestion[]> {
+  try {
+    if (!comparison.tripId) return [];
+
+    const [trip] = await db
+      .select()
+      .from(trips)
+      .where(eq(trips.id, comparison.tripId))
+      .limit(1);
+    if (!trip) return [];
+
+    const eventType = trip.eventType || "vacation";
+    const budget = trip.budget ? parseFloat(trip.budget.toString()) : null;
+    const preferences = (trip.preferences as any) || {};
+    const travelStyles: string[] = preferences.travelStyles || [];
+
+    const scoredCategories = buildProfileCategories(travelStyles, budget, eventType);
+    if (scoredCategories.length === 0) return [];
+
+    const destination = comparison.destination || "";
+    const cityName = destination.split(",")[0].trim();
+    if (!cityName) return [];
+
+    const allKeywords = scoredCategories.flatMap(c => c.keywords);
+    if (allKeywords.length === 0) return [];
+
+    const keywordConditions = allKeywords.flatMap(kw => [
+      ilike(providerServices.serviceName, `%${kw}%`),
+      ilike(providerServices.shortDescription, `%${kw}%`),
+    ]);
+
+    const services = await db
+      .select()
+      .from(providerServices)
+      .where(
+        and(
+          eq(providerServices.status, "active"),
+          or(
+            ilike(providerServices.location, `%${cityName}%`),
+            ilike(providerServices.location, `%${destination}%`)
+          ),
+          or(...keywordConditions)
+        )
+      )
+      .orderBy(desc(providerServices.averageRating), desc(providerServices.reviewCount))
+      .limit(15);
+
+    const suggestions: UpsellSuggestion[] = [];
+    const usedIds = new Set<string>();
+
+    for (const category of scoredCategories) {
+      if (suggestions.length >= 3) break;
+      const matchingService = services.find(s => {
+        if (usedIds.has(s.id)) return false;
+        const haystack = `${s.serviceName} ${s.shortDescription || ""} ${s.serviceType || ""}`.toLowerCase();
+        return category.keywords.some(kw => haystack.includes(kw.toLowerCase()));
+      });
+      if (matchingService) {
+        usedIds.add(matchingService.id);
+        suggestions.push({
+          serviceId: matchingService.id,
+          title: matchingService.serviceName,
+          description: matchingService.shortDescription || null,
+          price: matchingService.price?.toString() || null,
+          imageUrl: matchingService.serviceImage || null,
+          category: category.category,
+          location: matchingService.location || null,
+          rating: matchingService.averageRating?.toString() || null,
+          matchReason: category.matchReason,
+        });
+      }
+    }
+
+    return suggestions;
+  } catch (err) {
+    console.warn("[upsell] Failed to generate suggestions (non-critical):", err);
+    return [];
+  }
+}
+
 export async function getComparisonWithVariants(comparisonId: string) {
   const comparison = await db.query.itineraryComparisons.findFirst({
     where: eq(itineraryComparisons.id, comparisonId),
@@ -1225,7 +1371,9 @@ export async function getComparisonWithVariants(comparisonId: string) {
     })
   );
 
-  return { comparison, variants: variantsWithDetails };
+  const upsellSuggestions = await generateUpsellSuggestions(comparison, variantsWithDetails);
+
+  return { comparison, variants: variantsWithDetails, upsellSuggestions };
 }
 
 export async function selectVariant(comparisonId: string, variantId: string) {
