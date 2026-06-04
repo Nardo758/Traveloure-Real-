@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, MapPin, Sparkles, Image as ImageIcon, Brain, Compass } from "lucide-react";
+import {
+  AlertCircle, MapPin, Sparkles, Image as ImageIcon, Brain, Compass,
+  Zap, Users, Plus, Star, Heart, Search, Hotel, UserCircle, Calendar,
+  Activity, ThumbsUp, Play, ExternalLink, Camera, Wallet, Lightbulb,
+  Shield, Sun, Clock, CalendarX,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 import { NeighborhoodCard } from "@/components/neighborhood-card";
 import { ProviderCard } from "@/components/provider-card";
 import { HeroCard } from "@/components/hero-card";
