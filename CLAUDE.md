@@ -66,11 +66,18 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Service schema (provider_services, expert_custom_services, expert_service_offerings)
 - Approval workflows (status enums, submission logic)
 - Service category taxonomy
+- **Database migrations** (schema or data)
 
 **Then:**
 1. Update this document FIRST with the decision and rationale
 2. Reference this document in your commit message
 3. If you find this document conflicts with your plan, escalate to the decision-maker (user) rather than overriding
+
+**CRITICAL: Migration Directory**
+- All SQL migrations must go in `server/migrations/` (NOT `migrations/`)
+- Register each migration in `server/migrations/run-migrations.ts` in the `MIGRATION_FILES` array
+- Migrations are applied at server startup via `runMigrations()` (server/index.ts)
+- `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
