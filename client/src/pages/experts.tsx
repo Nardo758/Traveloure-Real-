@@ -120,7 +120,7 @@ export default function ExpertsPage() {
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
   const [selectedLanguage, setSelectedLanguage] = useState("All Languages");
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<string>("local_expert");
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [sortBy, setSortBy] = useState("recommended");
   const neighbourhoodInputRef = useRef<HTMLInputElement>(null);
