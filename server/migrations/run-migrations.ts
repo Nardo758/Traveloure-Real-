@@ -20,6 +20,7 @@ const MIGRATION_FILES = [
   "009_cross_sell_events.sql",
   "009_curated_by_expert.sql",
   "010_expert_request_optimization_context.sql",
+  "011_provider_services_approval_status.sql",
 ];
 
 export async function runMigrations(): Promise<void> {

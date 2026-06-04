@@ -175,6 +175,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     const queuePosition = queueResult.rows?.[0]?.next_position || 1;
 
     const optimizationContextJson = optimizationContext ? JSON.stringify(optimizationContext) : null;
+    const requestId = crypto.randomUUID();
 
     // Create expert request, returning full row
     const result = await db.execute(sql`
@@ -183,7 +184,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
         request_type, expert_fee, status, queue_position, notes,
         optimization_context, created_at
       ) VALUES (
-        ${crypto.randomUUID()},
+        ${requestId},
         ${resolvedUserId},
         ${tripId || null},
         ${variantId || null},
@@ -202,6 +203,42 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     `);
 
     const created = result.rows?.[0] ?? {};
+
+    // Notify experts in destination queue (fire & forget)
+    try {
+      const { storage } = await import('../storage');
+      const experts = await db.execute(sql`
+        SELECT DISTINCT u.id, u.first_name, u.last_name
+        FROM users u
+        JOIN expert_service_categories esc ON u.id = esc.expert_id
+        WHERE u.role = 'expert' AND u.status = 'verified'
+          AND LOWER(esc.destination) LIKE LOWER(${'%' + resolvedDestination + '%'})
+        LIMIT 10
+      `);
+
+      for (const expert of experts.rows || []) {
+        try {
+          await storage.createNotification({
+            userId: (expert as any).id,
+            type: 'expert_request',
+            title: 'New Expert Request',
+            message: `New ${requestType || 'polish'} request for ${resolvedDestination} — you are #${queuePosition} in queue.`,
+            relatedId: requestId,
+            relatedType: 'expert_request',
+            data: {
+              requestId,
+              destination: resolvedDestination,
+              queuePosition,
+              requestType,
+            },
+          });
+        } catch (err) {
+          console.error(`Failed to notify expert ${(expert as any).id}:`, err);
+        }
+      }
+    } catch (notifErr) {
+      console.error('Failed to notify experts of request:', notifErr);
+    }
 
     res.json({
       success: true,
