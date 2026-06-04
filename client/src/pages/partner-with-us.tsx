@@ -34,9 +34,9 @@ function formatStat(n: number): string {
 
 const partnerTypes = [
   {
-    id: "travel-expert",
-    title: "Travel Expert",
-    description: "Share your destination knowledge and help travelers discover authentic experiences",
+    id: "trip-planner",
+    title: "Trip Planner",
+    description: "Design personalised itineraries and guide travellers through every step of their journey",
     icon: Plane,
     benefits: [
       "Set your own rates and availability",
@@ -49,7 +49,7 @@ const partnerTypes = [
       "Excellent communication skills",
       "Responsive within 24 hours",
     ],
-    cta: "Apply as Travel Expert",
+    cta: "Apply as Trip Planner",
     href: "/become-expert?type=travel_expert",
     popular: true,
   },
@@ -75,8 +75,8 @@ const partnerTypes = [
   },
   {
     id: "event-planner",
-    title: "Event Planner",
-    description: "Plan weddings, proposals, and celebrations in your destination",
+    title: "Plan Your Event",
+    description: "Specialise in weddings, proposals, and group celebrations — bringing unforgettable moments to life",
     icon: Calendar,
     benefits: [
       "Premium pricing for events",
@@ -139,7 +139,7 @@ const testimonials = [
   {
     quote: "Traveloure has transformed my passion for Paris into a thriving business. I now help 20+ travelers every month.",
     author: "Marie L.",
-    role: "Travel Expert, Paris",
+    role: "Trip Planner, Paris",
     earnings: "$4,500/month avg",
   },
   {
@@ -226,7 +226,7 @@ export default function PartnerWithUsPage() {
               Turn Your Expertise Into Income
             </h1>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-8">
-              Join our global network of travel experts, local guides, and service
+              Join our global network of local experts, trip planners, and service
               providers. Help travelers create unforgettable experiences while
               earning on your own terms.
             </p>

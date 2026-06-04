@@ -82,7 +82,7 @@ export default function Chat() {
       return {
         id: data.id,
         name: `${data.firstName} ${data.lastName}`,
-        location: data.destinations?.[0] || data.location || "Travel Expert",
+        location: data.destinations?.[0] || data.location || "Trip Planner",
         avatar: data.profileImage || "",
         rating: data.rating || 5.0,
         reviews: data.reviewCount || 0,

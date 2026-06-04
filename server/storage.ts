@@ -1968,8 +1968,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expert Service Categories & Offerings
+  // expert_service_categories was dropped by migration 013 — return empty array so callers don't break.
   async getExpertServiceCategories(): Promise<any[]> {
-    return await db.select().from(expertServiceCategories).orderBy(expertServiceCategories.sortOrder);
+    return [];
   }
 
   async getExpertServiceOfferings(categoryId?: string): Promise<any[]> {
@@ -1981,37 +1982,41 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(expertServiceOfferings).orderBy(expertServiceOfferings.sortOrder);
   }
 
+  // expert_selected_services was dropped by migration 013.
+  // Services are now stored in provider_services (canonical table).
   async getExpertSelectedServices(expertId: string): Promise<any[]> {
-    return await db.select({
-      id: expertSelectedServices.id,
-      expertId: expertSelectedServices.expertId,
-      serviceOfferingId: expertSelectedServices.serviceOfferingId,
-      customPrice: expertSelectedServices.customPrice,
-      isActive: expertSelectedServices.isActive,
-      offering: expertServiceOfferings,
-      category: expertServiceCategories
-    })
-    .from(expertSelectedServices)
-    .leftJoin(expertServiceOfferings, eq(expertSelectedServices.serviceOfferingId, expertServiceOfferings.id))
-    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
-    .where(eq(expertSelectedServices.expertId, expertId));
+    return await db.select().from(providerServices)
+      .where(eq(providerServices.userId, expertId));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
-    const [created] = await db.insert(expertSelectedServices).values({
-      expertId,
-      serviceOfferingId,
-      customPrice: customPrice || null,
-      isActive: true
+    const [offering] = await db.select().from(expertServiceOfferings)
+      .where(eq(expertServiceOfferings.id, serviceOfferingId));
+    if (!offering) return null;
+    const [created] = await db.insert(providerServices).values({
+      userId: expertId,
+      serviceName: offering.name,
+      description: offering.description ?? undefined,
+      serviceType: 'planning',
+      price: customPrice || offering.price || '0',
+      priceType: 'fixed',
+      deliveryMethod: 'async_messaging',
+      approvalStatus: 'approved',
+      status: 'active',
+      revenueShareRate: '0.75',
     }).returning();
     return created;
   }
 
   async removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void> {
-    await db.delete(expertSelectedServices)
+    const [offering] = await db.select({ name: expertServiceOfferings.name })
+      .from(expertServiceOfferings)
+      .where(eq(expertServiceOfferings.id, serviceOfferingId));
+    if (!offering) return;
+    await db.delete(providerServices)
       .where(and(
-        eq(expertSelectedServices.expertId, expertId),
-        eq(expertSelectedServices.serviceOfferingId, serviceOfferingId)
+        eq(providerServices.userId, expertId),
+        eq(providerServices.serviceName, offering.name)
       ));
   }
 

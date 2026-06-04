@@ -88,7 +88,7 @@ export function ExpertChatWidget({
         ...prev,
         {
           id: Date.now().toString(),
-          text: "Great news! Sarah, one of our local travel experts, will be with you shortly. Average wait time: 2-3 minutes.",
+          text: "Great news! Sarah, one of our local experts, will be with you shortly. Average wait time: 2-3 minutes.",
           sender: "system",
           timestamp: new Date(),
         },

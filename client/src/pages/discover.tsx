@@ -1061,7 +1061,7 @@ export default function DiscoverPage() {
                               {expert.firstName} {expert.lastName || ""}
                             </h3>
                             <p className="text-sm text-muted-foreground truncate">
-                              {expert.expertSpecialty || "Travel Expert"}
+                              {expert.expertSpecialty || "Local Expert"}
                             </p>
                             {expert.expertLocations && (
                               <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
@@ -2016,7 +2016,7 @@ export default function DiscoverPage() {
               Need Help Deciding?
             </h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Talk to one of our travel experts. They'll help you find the perfect
+              Talk to one of our local experts or trip planners. They'll help you find the perfect
               trip based on your preferences, budget, and travel style.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
