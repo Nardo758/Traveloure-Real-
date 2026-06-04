@@ -156,6 +156,143 @@ interface AIResponse {
   variants: OptimizedVariant[];
 }
 
+// ── Trip-style adaptive variant strategy ──────────────────────────────────────
+
+export interface TripPreferences {
+  travelStyles?: string[];
+  budget?: number | null;
+  eventType?: string | null;
+}
+
+interface VariantDescriptor {
+  name: string;
+  goal: string;
+  strategy: string;
+}
+
+/**
+ * Pure function that maps trip preferences to two named variant descriptors.
+ * Priority: eventType → budget tier → first matching style tag → default fallback.
+ */
+export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescriptor, VariantDescriptor] {
+  const eventType = (prefs?.eventType || "").toLowerCase();
+  const budget = prefs?.budget ?? null;
+  const styles: string[] = (prefs?.travelStyles || []).map(s => s.toLowerCase());
+
+  // 1. Event-type signals (highest priority)
+  const romanticEvents = new Set(["honeymoon", "anniversary", "proposal", "wedding"]);
+  if (romanticEvents.has(eventType)) {
+    return [
+      {
+        name: "Romance Optimized",
+        goal: "Craft a deeply romantic, memorable experience tailored for couples",
+        strategy: "Schedule sunset-timed activities, add private dining experiences, replace group tours with couples-only options, include surprise-friendly moments and couple spa treatments",
+      },
+      {
+        name: "Premium Upgrade",
+        goal: "Elevate the trip with exclusive, high-quality experiences",
+        strategy: "Upgrade to boutique hotels or suites, add private guided experiences, replace standard transport with private transfers, find exclusive access options unavailable to general visitors",
+      },
+    ];
+  }
+
+  if (eventType === "corporate") {
+    return [
+      {
+        name: "Business Efficient",
+        goal: "Maximise productivity by minimising transit time and clustering activities geographically",
+        strategy: "Group activities by neighbourhood to avoid backtracking, replace leisure-heavy days with focused half-day windows, keep mornings free for meetings and batch evening activities, prefer venues with reliable WiFi and quiet spaces",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Make the most of free windows with high-quality local experiences",
+        strategy: "Find higher-rated venues near the business district, add a standout cultural or culinary experience for team bonding, replace generic after-work options with unique local alternatives",
+      },
+    ];
+  }
+
+  // 2. Budget tier (if strongly luxury)
+  const isLuxuryBudget = budget != null && budget >= 8000;
+  if (isLuxuryBudget) {
+    return [
+      {
+        name: "Premium Upgrade",
+        goal: "Elevate every aspect of the trip to match a luxury travel standard",
+        strategy: "Upgrade accommodation to 5-star or boutique properties, add private guided experiences and exclusive venue access, replace shared transport with private transfers, prioritise chef's table dinners and unique VIP experiences",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  // 3. Style-tag signals (first matching tag wins)
+  const hasFoodStyle = styles.some(s => s.includes("food") || s.includes("culinary") || s.includes("dining"));
+  const hasAdventureStyle = styles.some(s => s.includes("adventure") || s.includes("outdoor") || s.includes("extreme"));
+  const hasRelaxationStyle = styles.some(s => s.includes("relaxat") || s.includes("wellness") || s.includes("spa") || s.includes("slow"));
+
+  if (hasFoodStyle) {
+    return [
+      {
+        name: "Culinary Deep Dive",
+        goal: "Transform the trip into an immersive food and drink journey",
+        strategy: "Replace generic restaurants with chef's table experiences, street food tours, and cooking classes; add local market visits; swap sightseeing slots for food-district walks; prioritise highly rated local eateries over tourist traps",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  if (hasAdventureStyle) {
+    return [
+      {
+        name: "Off the Beaten Path",
+        goal: "Replace mainstream attractions with authentic, adventurous, and unique access experiences",
+        strategy: "Swap tourist-heavy sites with hikes, local guide-led exploration, and off-grid experiences; add active challenges like kayaking or cycling; find neighbourhoods locals frequent; avoid peak-hour tourist hotspots",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  if (hasRelaxationStyle) {
+    return [
+      {
+        name: "Wellness Focus",
+        goal: "Design a restorative itinerary with a slower, more rejuvenating pace",
+        strategy: "Add spa mornings and meditation sessions; reduce the number of daily activities; replace high-energy sightseeing with leisurely neighbourhood strolls; prioritise late-morning starts and include afternoon rest windows; favour wellness retreats and nature escapes",
+      },
+      {
+        name: "Budget Optimizer",
+        goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+        strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+      },
+    ];
+  }
+
+  // 4. Default fallback
+  return [
+    {
+      name: "Budget Optimizer",
+      goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+      strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+    },
+    {
+      name: "Experience Enhancer",
+      goal: "Maximise the variety and quality of experiences across the itinerary",
+      strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+    },
+  ];
+}
+
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -420,7 +557,8 @@ export async function generateOptimizedItineraries(
   budget?: number,
   travelers?: number,
   tripId?: string,
-  userTransportPrefs?: Partial<UserTransportPrefs>
+  userTransportPrefs?: Partial<UserTransportPrefs>,
+  tripPreferences?: TripPreferences
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -472,6 +610,9 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // ── TravelPulse city intelligence (non-blocking fallback) ─────────────────
     const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
     const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
+
+    // ── Adaptive variant strategy (style-matched) ─────────────────────────────
+    const [variantA, variantB] = selectVariantStrategy(tripPreferences);
 
     await db
       .update(itineraryComparisons)
@@ -735,14 +876,14 @@ ${compactServicesList}
 
 Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
 
-VARIANT 1 — "Budget Optimizer":
-- Goal: Reduce total cost by 15–30% while keeping the spirit of the trip
-- Strategy: Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs
+VARIANT 1 — "${variantA.name}":
+- Goal: ${variantA.goal}
+- Strategy: ${variantA.strategy}
 - Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
 
-VARIANT 2 — "Experience Enhancer":
-- Goal: Upgrade the quality and variety of experiences, even at slightly higher cost
-- Strategy: Find higher-rated venues, add a unique local or cultural experience, improve accommodation quality, replace generic activities with standout alternatives
+VARIANT 2 — "${variantB.name}":
+- Goal: ${variantB.goal}
+- Strategy: ${variantB.strategy}
 - Keep: the same trip duration and any PROTECTED ITEMS
 
 Rules for both variants:
@@ -757,8 +898,8 @@ Respond with valid JSON in this exact format:
 {
   "variants": [
     {
-      "name": "Budget Optimizer",
-      "description": "A more cost-effective version while maintaining quality",
+      "name": "${variantA.name}",
+      "description": "A tailored alternative that matches your travel style",
       "reasoning": "This alternative saves 20% on costs by...",
       "items": [
         {
