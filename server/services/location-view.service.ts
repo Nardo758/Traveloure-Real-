@@ -66,6 +66,8 @@ export interface LocationViewOptions {
   year?: number;
   /** Cap on recommendations + events lists. */
   limit?: number;
+  /** ISO date string (YYYY-MM-DD) for date-aware planning mode. Passed through to payload; no behavior change yet. */
+  date?: string;
 }
 
 const SECTION_TIMEOUT_MS = 12_000;
