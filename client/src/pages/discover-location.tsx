@@ -108,6 +108,14 @@ function StatsRow({
   const cityIntel = heroData?.city;
   if (!cityIntel) return null;
 
+  const crowdEmoji = (level: string | undefined): string => {
+    if (!level) return "🟢";
+    const l = level.toLowerCase();
+    if (l.includes("very busy") || l.includes("packed")) return "🔴";
+    if (l.includes("busy") || l.includes("high")) return "🟡";
+    return "🟢";
+  };
+
   return (
     <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
       {cityIntel.activeTravelers !== undefined && (
@@ -117,6 +125,13 @@ function StatsRow({
             {Number(cityIntel.activeTravelers).toLocaleString()}
           </b>{" "}
           travelers here now
+        </div>
+      )}
+      {cityIntel.crowdLevel && (
+        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+          {crowdEmoji(cityIntel.crowdLevel)}{" "}
+          <b className="text-foreground font-semibold capitalize">{cityIntel.crowdLevel}</b>{" "}
+          crowds
         </div>
       )}
       {serviceCount > 0 && (
@@ -140,9 +155,11 @@ const SPINE_CHIPS = [
   { id: "eat", label: "Eat" },
   { id: "do", label: "Do" },
   { id: "stay", label: "Stay" },
+  { id: "services", label: "Services" },
   { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
   { id: "photo_spots", label: "Photo spots" },
+  { id: "vibe", label: "Vibe" },
 ];
 
 function SpineFilterBar({
