@@ -130,6 +130,7 @@ function HeroSection({
     ? `Planning ${monthName} ${dayOfMonth}`
     : null;
 
+
   if (dateMode) {
     if (coverPhotoUrl) {
       return (
@@ -339,6 +340,7 @@ function StatsRow({
     return "🟢";
   };
 
+
   return (
     <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
       {cityIntel.activeTravelers !== undefined && (
@@ -378,7 +380,6 @@ const SPINE_CHIPS = [
   { id: "eat", label: "Eat" },
   { id: "do", label: "Do" },
   { id: "stay", label: "Stay" },
-  { id: "services", label: "Services" },
   { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
   { id: "photo_spots", label: "Photo spots" },
@@ -424,7 +425,6 @@ function SpineFilterBar({
 }
 
 // ─── Filler card (non-neighborhood) ──────────────────────────────────────────
-
 
 function FillerCard({
   item,
@@ -475,7 +475,6 @@ function FillerCard({
     case "vendor-service":
       return (
         <CityFeedCardVendorService
-          key={item.id}
           service={item.data}
           city={city}
         />
@@ -749,6 +748,7 @@ function DateHighlightStrip({
     </div>
   );
 }
+
 
 // ─── Trip-level complements strip ─────────────────────────────────────────────
 
@@ -1128,6 +1128,7 @@ export default function DiscoverLocationPage() {
                 cityIntel={data.hero?.data?.city}
               />
             )}
+
 
             {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />

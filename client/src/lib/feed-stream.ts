@@ -173,9 +173,9 @@ export function buildFeedStream(
       id: `activity-${a.id ?? Math.random()}`,
       data: a,
     })),
-    ...(platformServices ?? []).slice(0, 8).map((s) => ({
+    ...(platformServices ?? []).slice(0, 4).map((s) => ({
       kind: "vendor-service" as FeedItemKind,
-      id: `vendor-svc-${s.id}`,
+      id: `vsvc-${s.id}`,
       data: s,
     })),
   ];
@@ -221,14 +221,13 @@ export function buildFeedStream(
 }
 
 /**
- * Filter a FeedItem[] by spine chip type.
- * When a type filter is active, NeighborhoodContainers are dissolved and their
- * gems rendered as flat matching items.
+ * Filter a feed stream by a spine chip category.
+ * When filtering, neighborhood containers are dissolved — their gems are extracted
+ * and filtered individually.
  */
 export function filterFeedStream(items: FeedItem[], category: string): FeedItem[] {
   const dissolved: FeedItem[] = [];
   for (const item of items) {
-    if (item.kind === "city-separator") continue; // hide separators in filtered view
     if (item.kind === "neighborhood") {
       const gems: any[] = item.data.gems ?? [];
       gems.forEach((g) =>

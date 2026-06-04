@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, ChevronRight, Tag, Globe } from "lucide-react";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { matchedServiceSuggestion, gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
@@ -195,7 +194,7 @@ export function CityFeedCardGem({
         "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
         typeMeta.phBg,
         typeMeta.phText,
-        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
+        isRow ? "w-24 self-stretch" : "h-[104px] w-full",
       )}
     >
       {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
@@ -349,6 +348,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     dbImageUrl,
   );
 
+  if (!loading && !photoUrl) return null;
+
   const bookability: Bookability = computeBookability({ ...event, externalUrl: event.url });
   const eventSuggestion: MatchSuggestion = {
     icon: "🎫",
@@ -433,7 +434,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   );
 }
 
-// ─── Vendor Service card (platform-bookable provider_services) ────────────────
+// ─── Vendor Service card ──────────────────────────────────────────────────────
 
 interface CityFeedCardVendorServiceProps {
   service: any;
@@ -441,29 +442,18 @@ interface CityFeedCardVendorServiceProps {
   className?: string;
 }
 
-/**
- * Card for a platform-seeded vendor service (wedding, corporate, experience).
- * Shows a "platform" bookability dot always; additionally renders an external
- * "Visit Website" button when the vendor's form has a booking_link or website.
- */
 export function CityFeedCardVendorService({ service, city, className }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
-  const { photoUrl, loading } = useGemPhoto(
-    `vsvc-${service.id}`,
-    service.serviceName,
-    city,
-    imageUrl,
-  );
+  const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
 
   const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
-  const bookability: Bookability = "platform";
 
-  const tag: string | null = (() => {
+  const tag: string = (() => {
     const tags: string[] = service.contentAffinityTags ?? [];
     if (tags.length > 0) return tags[0];
     if (service.categoryName) return service.categoryName;
-    return service.serviceType ?? null;
+    return service.serviceType ?? "Service";
   })();
 
   const priceDisplay: string | null = (() => {
@@ -479,12 +469,12 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
   return (
     <div
       className={cn(
-        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
         className,
       )}
       data-testid={`feed-card-vendor-svc-${service.id}`}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      <div className="h-[104px] relative overflow-hidden bg-teal-50 flex items-center justify-center text-teal-600 flex-shrink-0">
         {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
         {photoUrl && (
           <img
@@ -494,10 +484,7 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
             alt={service.serviceName}
             loading="lazy"
             onLoad={() => setImgLoaded(true)}
-            className={cn(
-              "w-full h-full object-cover transition-opacity duration-300",
-              imgLoaded ? "opacity-100" : "opacity-0",
-            )}
+            className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
           />
         )}
         {!photoUrl && !loading && (
@@ -520,9 +507,16 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
         )}
       </div>
 
-      <div className="p-3 space-y-1.5">
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 capitalize">
+            {tag}
+          </span>
+          <BookingBadge level="platform" />
+        </div>
+
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-sm leading-tight line-clamp-2">{service.serviceName}</h3>
+          <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{service.serviceName}</h3>
           {service.averageRating && (
             <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
               <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -532,37 +526,32 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
         </div>
 
         {service.shortDescription && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{service.shortDescription}</p>
+          <p className="text-[12px] text-muted-foreground line-clamp-2">{service.shortDescription}</p>
         )}
 
-        <div className="flex items-center justify-between gap-2">
-          {service.neighborhood && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <MapPin className="w-3 h-3" />
-              <span className="capitalize">{service.neighborhood.replace(/-/g, " ")}</span>
-            </div>
-          )}
-          {priceDisplay && (
-            <span className="text-xs font-semibold text-primary flex-shrink-0">{priceDisplay}</span>
-          )}
-        </div>
+        {priceDisplay && (
+          <span className="text-sm font-bold text-foreground">{priceDisplay}</span>
+        )}
 
-        <div className="flex gap-1.5 pt-1">
+        <div className="flex gap-1.5 pt-0.5 flex-wrap">
           <Button
             size="sm"
-            className="flex-1 h-7 text-xs"
+            className="h-7 text-xs px-3"
             onClick={() => (window.location.href = `/services/${service.id}`)}
             data-testid={`btn-inquire-svc-${service.id}`}
           >
             Inquire
           </Button>
           {externalUrl && (
-            <Button size="sm" variant="outline" className="h-7 px-2 flex-shrink-0" asChild>
+            <Button size="sm" variant="outline" className="h-7 px-2" asChild>
               <a href={externalUrl} target="_blank" rel="noopener noreferrer" data-testid={`btn-website-svc-${service.id}`}>
                 <Globe className="w-3 h-3" />
               </a>
             </Button>
           )}
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
+            <a href="/local-experts">💬 Ask</a>
+          </Button>
         </div>
       </div>
     </div>
@@ -592,6 +581,22 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
     dbImageUrl,
   );
+
+  const supplySuggestion: MatchSuggestion = isHotel
+    ? {
+        icon: "🚗",
+        matchText: "private car from city centre · ¥9,000",
+        actionLabel: "Book both",
+        actionVariant: "platform",
+        href: "/experiences/transport",
+      }
+    : {
+        icon: "🧭",
+        matchText: "local guide · ¥6,000",
+        actionLabel: "Book guide",
+        actionVariant: "platform",
+        href: "/local-experts",
+      };
 
   const supplySuggestion: MatchSuggestion = isHotel
     ? {
