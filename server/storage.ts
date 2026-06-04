@@ -2085,83 +2085,187 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expert Custom Services
+  // === Expert Custom Services ===
+  //
+  // Consolidated in migration 0007: these now read/write provider_services
+  // filtered by approval_status. The legacy expert_custom_services table is
+  // retained (parallel-run) until 0008 drops it. Shape is mapped back to
+  // ExpertCustomService so route consumers don't change.
+
+  private mapProviderToExpertCustom(ps: ProviderService): ExpertCustomService {
+    return {
+      id: ps.id,
+      expertId: ps.userId,
+      title: ps.serviceName,
+      description: ps.description ?? null,
+      categoryName: null,
+      existingCategoryId: null,
+      price: ps.price as any,
+      duration: ps.duration ?? null,
+      deliverables: ps.deliverables as any,
+      cancellationPolicy: ps.cancellationPolicy ?? null,
+      leadTime: ps.leadTime ?? null,
+      imageUrl: ps.serviceImage ?? null,
+      galleryImages: ps.galleryImages as any,
+      experienceTypes: ps.experienceTypes as any,
+      status: (ps.approvalStatus ?? "draft") as any,
+      submittedAt: ps.submittedAt ?? null,
+      reviewedAt: ps.reviewedAt ?? null,
+      reviewedBy: ps.reviewedBy ?? null,
+      rejectionReason: ps.rejectionReason ?? null,
+      isActive: ps.status === "active",
+      bookingsCount: ps.bookingsCount ?? 0,
+      averageRating: ps.averageRating ?? "0",
+      createdAt: ps.createdAt,
+      updatedAt: ps.updatedAt,
+    } as ExpertCustomService;
+  }
+
   async getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]> {
-    return await db.select().from(expertCustomServices).where(eq(expertCustomServices.expertId, expertId));
+    const rows = await db.select().from(providerServices)
+      .where(eq(providerServices.userId, expertId))
+      .orderBy(desc(providerServices.createdAt));
+    return rows.map(r => this.mapProviderToExpertCustom(r));
   }
 
   async getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined> {
-    const [service] = await db.select().from(expertCustomServices).where(eq(expertCustomServices.id, id));
-    return service;
+    const [row] = await db.select().from(providerServices).where(eq(providerServices.id, id));
+    return row ? this.mapProviderToExpertCustom(row) : undefined;
   }
 
   async getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]> {
-    return await db.select().from(expertCustomServices).where(eq(expertCustomServices.status, status)).orderBy(desc(expertCustomServices.submittedAt));
+    const rows = await db.select().from(providerServices)
+      .where(eq(providerServices.approvalStatus, status))
+      .orderBy(desc(providerServices.submittedAt));
+    return rows.map(r => this.mapProviderToExpertCustom(r));
   }
 
   async createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService> {
-    const [newService] = await db.insert(expertCustomServices).values({
-      ...service,
-      expertId,
+    // Resolve category: prefer existingCategoryId (expert taxonomy) → map by name to service_categories.
+    let categoryId: string | null = null;
+    if ((service as any).existingCategoryId) {
+      const [esc] = await db.select().from(expertServiceCategories)
+        .where(eq(expertServiceCategories.id, (service as any).existingCategoryId));
+      if (esc) {
+        const [sc] = await db.select().from(serviceCategories)
+          .where(ilike(serviceCategories.name, esc.name));
+        if (sc) categoryId = sc.id;
+      }
+    } else if ((service as any).categoryName) {
+      const [sc] = await db.select().from(serviceCategories)
+        .where(ilike(serviceCategories.name, (service as any).categoryName));
+      if (sc) categoryId = sc.id;
+    }
+
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newRow] = await db.insert(providerServices).values({
+      userId: expertId,
+      serviceName: service.title,
+      description: service.description ?? null,
+      serviceType: "planning",
+      categoryId,
+      price: service.price as any,
+      priceType: "fixed",
+      duration: service.duration ?? null,
+      deliveryMethod: "async_messaging",
+      cancellationPolicy: (service as any).cancellationPolicy ?? null,
+      leadTime: (service as any).leadTime ?? null,
+      deliverables: (service as any).deliverables ?? [],
+      experienceTypes: (service as any).experienceTypes ?? [],
+      galleryImages: (service as any).galleryImages ?? [],
+      serviceImage: (service as any).imageUrl ?? null,
+      whatIncluded: (service as any).deliverables ?? [],
+      approvalStatus: "draft",
       status: "draft",
+      trackingNumber,
     }).returning();
-    return newService;
+
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'service',
+      contentId: newRow.id,
+      ownerId: newRow.userId,
+      title: newRow.serviceName,
+      status: 'draft',
+      metadata: { serviceType: newRow.serviceType, categoryId: newRow.categoryId, approvalStatus: 'draft' },
+    });
+
+    return this.mapProviderToExpertCustom(newRow);
   }
 
   async updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined> {
-    const [updated] = await db.update(expertCustomServices)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(expertCustomServices.id, id))
+    const patch: any = { updatedAt: new Date() };
+    if (updates.title !== undefined) patch.serviceName = updates.title;
+    if (updates.description !== undefined) patch.description = updates.description;
+    if (updates.price !== undefined) patch.price = updates.price;
+    if (updates.duration !== undefined) patch.duration = updates.duration;
+    if ((updates as any).deliverables !== undefined) {
+      patch.deliverables = (updates as any).deliverables;
+      patch.whatIncluded = (updates as any).deliverables;
+    }
+    if ((updates as any).cancellationPolicy !== undefined) patch.cancellationPolicy = (updates as any).cancellationPolicy;
+    if ((updates as any).leadTime !== undefined) patch.leadTime = (updates as any).leadTime;
+    if ((updates as any).imageUrl !== undefined) patch.serviceImage = (updates as any).imageUrl;
+    if ((updates as any).galleryImages !== undefined) patch.galleryImages = (updates as any).galleryImages;
+    if ((updates as any).experienceTypes !== undefined) patch.experienceTypes = (updates as any).experienceTypes;
+
+    const [row] = await db.update(providerServices)
+      .set(patch)
+      .where(eq(providerServices.id, id))
       .returning();
-    return updated;
+    return row ? this.mapProviderToExpertCustom(row) : undefined;
   }
 
   async submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined> {
-    const [updated] = await db.update(expertCustomServices)
-      .set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
-      .where(eq(expertCustomServices.id, id))
+    const [row] = await db.update(providerServices)
+      .set({ approvalStatus: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+      .where(eq(providerServices.id, id))
       .returning();
-    return updated;
+    return row ? this.mapProviderToExpertCustom(row) : undefined;
   }
 
   async approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined> {
-    const [updated] = await db.update(expertCustomServices)
-      .set({ 
-        status: "approved", 
-        reviewedAt: new Date(), 
-        reviewedBy, 
+    const [row] = await db.update(providerServices)
+      .set({
+        approvalStatus: "approved",
+        status: "active",
+        reviewedAt: new Date(),
+        reviewedBy,
         rejectionReason: null,
-        updatedAt: new Date() 
+        updatedAt: new Date(),
       })
-      .where(eq(expertCustomServices.id, id))
+      .where(eq(providerServices.id, id))
       .returning();
-    return updated;
+    return row ? this.mapProviderToExpertCustom(row) : undefined;
   }
 
   async rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined> {
-    const [updated] = await db.update(expertCustomServices)
-      .set({ 
-        status: "rejected", 
-        reviewedAt: new Date(), 
-        reviewedBy, 
+    const [row] = await db.update(providerServices)
+      .set({
+        approvalStatus: "rejected",
+        reviewedAt: new Date(),
+        reviewedBy,
         rejectionReason: reason,
-        updatedAt: new Date() 
+        updatedAt: new Date(),
       })
-      .where(eq(expertCustomServices.id, id))
+      .where(eq(providerServices.id, id))
       .returning();
-    return updated;
+    return row ? this.mapProviderToExpertCustom(row) : undefined;
   }
 
   async deleteExpertCustomService(id: string): Promise<void> {
-    await db.delete(expertCustomServices).where(eq(expertCustomServices.id, id));
+    await db.delete(providerServices).where(eq(providerServices.id, id));
   }
 
   async getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]> {
     if (expertIds.length === 0) return [];
-    return await db.select().from(expertCustomServices)
+    const rows = await db.select().from(providerServices)
       .where(and(
-        eq(expertCustomServices.status, "approved"),
-        eq(expertCustomServices.isActive, true)
+        eq(providerServices.approvalStatus, "approved"),
+        eq(providerServices.status, "active"),
+        inArray(providerServices.userId, expertIds),
       ));
+    return rows.map(r => this.mapProviderToExpertCustom(r));
   }
 
   // Destination Calendar Events
