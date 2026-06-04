@@ -1560,7 +1560,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         const offerings = await db.select().from(expertServiceOfferings)
           .where(inArray(expertServiceOfferings.id, selectedOfferingIds));
         for (const offering of offerings) {
-          // Map expert taxonomy → canonical service_categories by name (best-effort).
+          // DEPRECATED: Map expert_service_categories → service_categories (best-effort).
+          // expert_service_categories is deprecated in favor of canonical service_categories.
+          // This mapping is temporary for signup-time offerings. New expert services use
+          // service_categories directly. (See CLAUDE.md for consolidation details.)
           const [esc] = await db.select().from(expertServiceCategories)
             .where(eq(expertServiceCategories.id, offering.categoryId));
           let canonicalCategoryId: string | null = null;
