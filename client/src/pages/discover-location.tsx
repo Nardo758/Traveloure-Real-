@@ -70,18 +70,38 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
+type CoverPhotoCredit = { name: string; url: string } | null;
+
+function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
+  if (!credit) return null;
+  return (
+    <a
+      href={credit.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="absolute bottom-2 right-2 z-20 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-white/80 hover:text-white transition-colors"
+      style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)" }}
+      data-testid="photo-credit-badge"
+    >
+      📷 {credit.name}
+    </a>
+  );
+}
+
 function HeroSection({
   city,
   heroData,
   scheduledDate,
   onDismissDate,
   coverPhotoUrl,
+  coverPhotoCredit,
 }: {
   city: string;
   heroData: any;
   scheduledDate: string | null;
   onDismissDate: () => void;
   coverPhotoUrl?: string | null;
+  coverPhotoCredit?: CoverPhotoCredit;
 }) {
   const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
@@ -159,6 +179,7 @@ function HeroSection({
               <span className="text-[11px] text-green-400">pulse</span>
             </div>
           )}
+          <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
         </div>
       );
     }
@@ -251,6 +272,7 @@ function HeroSection({
             </span>
           </div>
         )}
+        <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
       </div>
     );
   }
@@ -452,6 +474,7 @@ function FillerCard({
     case "vendor-service":
       return (
         <CityFeedCardVendorService
+          key={item.id}
           service={item.data}
           city={city}
         />
@@ -1007,6 +1030,19 @@ export default function DiscoverLocationPage() {
     return CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
   })();
 
+  const coverPhotoCredit: CoverPhotoCredit = (() => {
+    if (allGems.length > 0) {
+      const sorted = [...allGems]
+        .filter((g: any) => !!g.imageUrl)
+        .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
+      if (sorted.length > 0) {
+        const gem = sorted[0];
+        if (gem.imageAttribution) return { name: gem.imageAttribution as string, url: gem.imageUrl as string };
+      }
+    }
+    return null;
+  })();
+
   if (!city) {
     return (
       <Layout>
@@ -1074,6 +1110,7 @@ export default function DiscoverLocationPage() {
               scheduledDate={scheduledDate}
               onDismissDate={handleDismissDate}
               coverPhotoUrl={coverPhotoUrl}
+              coverPhotoCredit={coverPhotoCredit}
             />
 
             {/* ── Stats row ─────────────────────────────────────────── */}

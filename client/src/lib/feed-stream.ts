@@ -19,6 +19,7 @@ export type FeedItemKind =
   | "supply-hotel"
   | "supply-activity"
   | "vendor-service"
+  | "date-highlights"
   | "city-separator";
 
 export interface FeedItem {
@@ -173,9 +174,9 @@ export function buildFeedStream(
       id: `activity-${a.id ?? Math.random()}`,
       data: a,
     })),
-    ...(platformServices ?? []).slice(0, 4).map((s) => ({
+    ...(platformServices ?? []).slice(0, 8).map((s) => ({
       kind: "vendor-service" as FeedItemKind,
-      id: `vsvc-${s.id}`,
+      id: `vendor-svc-${s.id}`,
       data: s,
     })),
   ];
@@ -252,6 +253,7 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
       case "do":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "do";
         if (item.kind === "supply-activity") return true;
+        if (item.kind === "vendor-service") return true;
         return false;
       case "photo_spots":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "photo_spots";
