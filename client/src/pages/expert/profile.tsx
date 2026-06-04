@@ -153,8 +153,8 @@ export default function ExpertProfile() {
       <div className="p-6 space-y-6 max-w-4xl">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Business Profile</h1>
-            <p className="text-gray-600">Manage your public profile and preferences</p>
+            <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
+            <p className="text-console-mid">Manage your public profile and preferences</p>
           </div>
           <Button className="bg-[#FF385C] " data-testid="button-save-profile">
             <Save className="w-4 h-4 mr-2" />
@@ -163,7 +163,7 @@ export default function ExpertProfile() {
         </div>
 
         {/* Profile Photo */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg">Profile Photo</CardTitle>
           </CardHeader>
@@ -185,7 +185,7 @@ export default function ExpertProfile() {
                 </Button>
               </div>
               <div>
-                <p className="text-sm text-gray-600 mb-2">
+                <p className="text-sm text-console-mid mb-2">
                   Upload a professional photo that shows your face clearly
                 </p>
                 <Button variant="outline" size="sm" data-testid="button-upload-photo">
@@ -197,7 +197,7 @@ export default function ExpertProfile() {
         </Card>
 
         {/* Basic Information */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg">Basic Information</CardTitle>
           </CardHeader>
@@ -267,10 +267,10 @@ export default function ExpertProfile() {
         </Card>
 
         {/* Location */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-gray-500" />
+              <MapPin className="w-5 h-5 text-console-mid" />
               Location
             </CardTitle>
           </CardHeader>
@@ -312,15 +312,15 @@ export default function ExpertProfile() {
         </Card>
 
         {/* My Neighbourhoods */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Home className="w-5 h-5 text-gray-500" />
+              <Home className="w-5 h-5 text-console-mid" />
               My Neighbourhoods
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-console-mid">
               List the neighbourhoods you know well. These appear on your public profile and help travellers find the right local expert for their area.
             </p>
 
@@ -378,7 +378,7 @@ export default function ExpertProfile() {
                     </Badge>
                   ))
                 ) : (
-                  <p className="text-sm text-gray-500">No neighbourhoods added yet</p>
+                  <p className="text-sm text-console-mid">No neighbourhoods added yet</p>
                 )}
               </div>
             )}
@@ -417,10 +417,10 @@ export default function ExpertProfile() {
         </Card>
 
         {/* Specialties */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Star className="w-5 h-5 text-gray-500" />
+              <Star className="w-5 h-5 text-console-mid" />
               Specialties
             </CardTitle>
           </CardHeader>
@@ -453,7 +453,7 @@ export default function ExpertProfile() {
                     </Badge>
                   ))
                 ) : (
-                  <p className="text-sm text-gray-500">No specialties added yet</p>
+                  <p className="text-sm text-console-mid">No specialties added yet</p>
                 )}
               </div>
             )}
@@ -473,10 +473,10 @@ export default function ExpertProfile() {
         </Card>
 
         {/* Languages */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Globe className="w-5 h-5 text-gray-500" />
+              <Globe className="w-5 h-5 text-console-mid" />
               Languages
             </CardTitle>
           </CardHeader>
@@ -496,7 +496,7 @@ export default function ExpertProfile() {
                     </Badge>
                   ))
                 ) : (
-                  <p className="text-sm text-gray-500">No languages added</p>
+                  <p className="text-sm text-console-mid">No languages added</p>
                 )}
               </div>
             )}
@@ -547,29 +547,29 @@ export default function ExpertProfile() {
         </Card>
 
         {/* Availability */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg">Availability Settings</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-gray-900">Available for New Clients</p>
-                <p className="text-sm text-gray-500">Toggle off when you're fully booked</p>
+                <p className="font-medium text-console-darkest">Available for New Clients</p>
+                <p className="text-sm text-console-mid">Toggle off when you're fully booked</p>
               </div>
               <Switch defaultChecked data-testid="switch-availability" />
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-gray-900">Accept Last-Minute Requests</p>
-                <p className="text-sm text-gray-500">Events within 48 hours</p>
+                <p className="font-medium text-console-darkest">Accept Last-Minute Requests</p>
+                <p className="text-sm text-console-mid">Events within 48 hours</p>
               </div>
               <Switch defaultChecked data-testid="switch-last-minute" />
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-gray-900">Vacation Mode</p>
-                <p className="text-sm text-gray-500">Temporarily hide your profile</p>
+                <p className="font-medium text-console-darkest">Vacation Mode</p>
+                <p className="text-sm text-console-mid">Temporarily hide your profile</p>
               </div>
               <Switch data-testid="switch-vacation" />
             </div>

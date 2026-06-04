@@ -57,7 +57,7 @@ interface CustomService {
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-  draft: { label: "Draft", color: "bg-gray-100 text-gray-700", icon: Clock },
+  draft: { label: "Draft", color: "bg-console-light text-console-dark", icon: Clock },
   submitted: { label: "Pending Review", color: "bg-amber-100 text-amber-700", icon: AlertCircle },
   approved: { label: "Approved", color: "bg-green-100 text-green-700", icon: CheckCircle },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700", icon: XCircle },
@@ -206,8 +206,8 @@ export default function ExpertCustomServicesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900" data-testid="text-page-title">Custom Services</h1>
-            <p className="text-gray-500 mt-1">Create and manage your own unique service offerings</p>
+            <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-page-title">Custom Services</h1>
+            <p className="text-console-mid mt-1">Create and manage your own unique service offerings</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
@@ -375,9 +375,9 @@ export default function ExpertCustomServicesPage() {
         ) : customServices.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
-              <Package className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Custom Services Yet</h3>
-              <p className="text-gray-500 mb-6 max-w-md mx-auto">
+              <Package className="w-12 h-12 mx-auto text-console-light mb-4" />
+              <h3 className="text-lg font-semibold text-console-darkest mb-2">No Custom Services Yet</h3>
+              <p className="text-console-mid mb-6 max-w-md mx-auto">
                 Create your own unique service offerings to attract more clients. Once approved, they'll appear on your profile.
               </p>
               <Button 
@@ -394,7 +394,7 @@ export default function ExpertCustomServicesPage() {
           <div className="space-y-8">
             {draftServices.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Drafts & Rejected</h2>
+                <h2 className="text-lg font-semibold text-console-darkest mb-4">Drafts & Rejected</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {draftServices.map((service, idx) => (
                     <ServiceCard 
@@ -414,7 +414,7 @@ export default function ExpertCustomServicesPage() {
 
             {pendingServices.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Pending Review</h2>
+                <h2 className="text-lg font-semibold text-console-darkest mb-4">Pending Review</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {pendingServices.map((service, idx) => (
                     <ServiceCard key={service.id} service={service} idx={idx} />
@@ -425,7 +425,7 @@ export default function ExpertCustomServicesPage() {
 
             {approvedServices.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Approved & Active</h2>
+                <h2 className="text-lg font-semibold text-console-darkest mb-4">Approved & Active</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {approvedServices.map((service, idx) => (
                     <ServiceCard key={service.id} service={service} idx={idx} />
@@ -483,16 +483,16 @@ function ServiceCard({
         </CardHeader>
         <CardContent className="space-y-4">
           {service.description && (
-            <p className="text-sm text-gray-600 line-clamp-2">{service.description}</p>
+            <p className="text-sm text-console-mid line-clamp-2">{service.description}</p>
           )}
 
           <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1 text-gray-600">
+            <div className="flex items-center gap-1 text-console-mid">
               <DollarSign className="w-4 h-4" />
               <span className="font-semibold">${service.price}</span>
             </div>
             {service.duration && (
-              <div className="flex items-center gap-1 text-gray-600">
+              <div className="flex items-center gap-1 text-console-mid">
                 <Clock className="w-4 h-4" />
                 <span>{service.duration}</span>
               </div>
