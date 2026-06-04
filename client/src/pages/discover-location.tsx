@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, type ElementType, type ReactNode } from "react";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import DOMPurify from "dompurify";
@@ -1155,6 +1155,40 @@ function FooterHandoff({
           </a>
         </Button>
       </CardContent>
+    </Card>
+  );
+}
+
+// ─── SectionShell ───────────────────────────────────────────────────────────
+function SectionShell({
+  icon: Icon,
+  title,
+  subtitle,
+  section,
+  phaseNote,
+  children,
+}: {
+  icon: ElementType;
+  title: string;
+  subtitle: string;
+  section: { data?: any; error?: any };
+  phaseNote?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Icon className="w-4 h-4 text-primary" />
+          <CardTitle className="text-base">{title}</CardTitle>
+        </div>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+        {phaseNote && <p className="text-xs text-muted-foreground/70 italic">{phaseNote}</p>}
+        {section.error && (
+          <p className="text-xs text-destructive">Error: {String(section.error)}</p>
+        )}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
     </Card>
   );
 }
