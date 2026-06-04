@@ -611,6 +611,17 @@ export interface ItineraryMetrics {
   overallScore: number; // Weighted combination
 }
 
+// Template-specific score weights for overall score calculation
+const TEMPLATE_WEIGHTS: Record<string, { balance: number; diversity: number; pace: number; wellness: number }> = {
+  wedding: { balance: 0.3, diversity: 0.15, pace: 0.2, wellness: 0.35 },
+  corporate: { balance: 0.2, diversity: 0.15, pace: 0.35, wellness: 0.3 },
+  proposal: { balance: 0.25, diversity: 0.1, pace: 0.15, wellness: 0.5 },
+  'date-night': { balance: 0.3, diversity: 0.25, pace: 0.2, wellness: 0.25 },
+  birthday: { balance: 0.25, diversity: 0.3, pace: 0.25, wellness: 0.2 },
+  // Default for travel and others
+  travel: { balance: 0.25, diversity: 0.2, pace: 0.25, wellness: 0.3 },
+};
+
 export function calculateItineraryMetrics(
   items: Array<{
     serviceType: string;
@@ -618,7 +629,8 @@ export function calculateItineraryMetrics(
     duration?: number;
     dayNumber: number;
   }>,
-  travelers: number = 1
+  travelers: number = 1,
+  eventType?: string
 ): ItineraryMetrics {
   const costByCategory: Record<string, number> = {};
   let totalCost = 0;
@@ -711,8 +723,9 @@ export function calculateItineraryMetrics(
     wellnessRatio < 0.2 ? wellnessRatio * 500 :
     Math.max(0, 100 - ((wellnessRatio - 0.4) * 150));
   
-  // Overall score
-  const overallScore = (balanceScore * 0.25 + diversityScore * 0.2 + paceScore * 0.25 + wellnessScore * 0.3);
+  // Overall score with template-aware weights
+  const weights = TEMPLATE_WEIGHTS[eventType || 'travel'] || TEMPLATE_WEIGHTS.travel;
+  const overallScore = (balanceScore * weights.balance + diversityScore * weights.diversity + paceScore * weights.pace + wellnessScore * weights.wellness);
   
   return {
     costByCategory,

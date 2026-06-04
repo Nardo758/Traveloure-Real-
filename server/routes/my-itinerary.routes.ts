@@ -170,7 +170,8 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
         duration: i.duration || 60,
         dayNumber: i.dayNumber,
       })),
-      comparison.travelers || 1
+      comparison.travelers || 1,
+      comparison.experienceTypeSlug
     );
     
     // Mock transport and accommodation packages (would come from actual bookings)
