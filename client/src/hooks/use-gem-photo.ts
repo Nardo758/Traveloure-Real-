@@ -3,8 +3,9 @@ import { useState, useEffect } from "react";
 /**
  * Resolves a photo URL for a gem card using the following priority:
  *  (a) imageUrl already on the gem record
- *  (b) Google Places photo via /api/media/place-photo?q=&city=
- *  (c) null → caller should hide the card
+ *  (b) Google Places photo via /api/media/place-photo?q=&city=&source=google
+ *  (c) Unsplash/Pexels fallback via /api/media/place-photo?q=&city=&source=unsplash
+ *  (d) null → caller should hide the card
  */
 export function useGemPhoto(
   gemId: string,
@@ -26,12 +27,25 @@ export function useGemPhoto(
 
     (async () => {
       try {
-        const qs = new URLSearchParams({ q: placeName, city });
+        // (b) Try Google Places first
+        const qs = new URLSearchParams({ q: placeName, city, source: "google" });
         const res = await fetch(`/api/media/place-photo?${qs}`);
-        if (!res.ok) throw new Error("place-photo fetch failed");
-        const json = await res.json();
-        if (!cancelled) {
-          setPhotoUrl(json.photoUrl ?? null);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.photoUrl) {
+            if (!cancelled) setPhotoUrl(json.photoUrl);
+            return;
+          }
+        }
+
+        // (c) Unsplash/Pexels fallback
+        const qs2 = new URLSearchParams({ q: placeName, city, source: "unsplash" });
+        const res2 = await fetch(`/api/media/place-photo?${qs2}`);
+        if (res2.ok) {
+          const json2 = await res2.json();
+          if (!cancelled) setPhotoUrl(json2.photoUrl ?? null);
+        } else {
+          if (!cancelled) setPhotoUrl(null);
         }
       } catch {
         if (!cancelled) setPhotoUrl(null);

@@ -5,7 +5,7 @@
  * and events so that:
  * - Gems with a `neighborhood` field are grouped inside their NeighborhoodContainer
  * - Gems with no neighborhood appear as loose cards
- * - No two NeighborhoodContainers are ever adjacent
+ * - No two NeighborhoodContainers are ever adjacent (guaranteed)
  * - Loose gems / expert cards / events are woven between containers
  */
 
@@ -38,15 +38,22 @@ export function gemCategory(placeType: string | null | undefined): string {
 /**
  * Build the ordered FeedItem[] stream from raw data sections.
  *
- * @param neighborhoods - array from `data.neighborhoods.data` (with gemCount)
- * @param allGems       - array from `data.gems.data`
- * @param events        - array from `data.events.data.events`
- * @param supplyHotels  - array from `data.recommendations.data.hotels`
- * @param supplyActivities - array from `data.recommendations.data.activities`
+ * Strict non-adjacency guarantee: fillers are distributed into N+1 slots
+ * (before, between, after neighborhoods). If there are fewer fillers than
+ * neighborhoods - 1, the cap `maxNeighborhoods = fillers.length + 1` ensures
+ * every displayed neighborhood container has at least one filler on each side.
+ *
+ * @param neighborhoods     - array from `data.neighborhoods.data`
+ * @param allGems           - array from `data.gems.data`
+ * @param experts           - array of expert objects (from /api/experts?location=…)
+ * @param events            - array from `data.events.data.events`
+ * @param supplyHotels      - array from `data.recommendations.data.hotels`
+ * @param supplyActivities  - array from `data.recommendations.data.activities`
  */
 export function buildFeedStream(
   neighborhoods: any[],
   allGems: any[],
+  experts: any[],
   events: any[],
   supplyHotels: any[],
   supplyActivities: any[],
@@ -66,7 +73,7 @@ export function buildFeedStream(
     }
   }
 
-  // ── 2. Build neighborhood FeedItems (only if they have gems) ────────────
+  // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
   const neighborhoodItems: FeedItem[] = neighborhoods
     .filter((n) => (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
     .map((n) => ({
@@ -75,53 +82,66 @@ export function buildFeedStream(
       data: { ...n, gems: gemsByNeighborhood.get(n.slug) ?? [] },
     }));
 
-  // ── 3. Build loose-gem FeedItems ─────────────────────────────────────────
-  const looseGemItems: FeedItem[] = looseGems.map((g) => ({
-    kind: "loose-gem" as FeedItemKind,
-    id: `gem-${g.id}`,
-    data: g,
-  }));
+  // ── 3. Build filler pool (order: gems, experts, events, supply) ──────────
+  const fillerPool: FeedItem[] = [
+    ...looseGems.map((g) => ({ kind: "loose-gem" as FeedItemKind, id: `gem-${g.id}`, data: g })),
+    ...(experts ?? []).slice(0, 3).map((e) => ({
+      kind: "expert" as FeedItemKind,
+      id: `expert-${e.id}`,
+      data: e,
+    })),
+    ...(events ?? []).slice(0, 4).map((e) => ({
+      kind: "event" as FeedItemKind,
+      id: `event-${e.id ?? e.eventId ?? Math.random()}`,
+      data: e,
+    })),
+    ...(supplyHotels ?? []).slice(0, 3).map((h) => ({
+      kind: "supply-hotel" as FeedItemKind,
+      id: `hotel-${h.id}`,
+      data: h,
+    })),
+    ...(supplyActivities ?? []).slice(0, 3).map((a) => ({
+      kind: "supply-activity" as FeedItemKind,
+      id: `activity-${a.id}`,
+      data: a,
+    })),
+  ];
 
-  // ── 4. Build event FeedItems ─────────────────────────────────────────────
-  const eventItems: FeedItem[] = (events ?? []).slice(0, 4).map((e) => ({
-    kind: "event" as FeedItemKind,
-    id: `event-${e.id ?? e.eventId ?? Math.random()}`,
-    data: e,
-  }));
-
-  // ── 5. Build supply FeedItems ────────────────────────────────────────────
-  const hotelItems: FeedItem[] = (supplyHotels ?? []).slice(0, 3).map((h) => ({
-    kind: "supply-hotel" as FeedItemKind,
-    id: `hotel-${h.id}`,
-    data: h,
-  }));
-
-  const activityItems: FeedItem[] = (supplyActivities ?? []).slice(0, 3).map((a) => ({
-    kind: "supply-activity" as FeedItemKind,
-    id: `activity-${a.id}`,
-    data: a,
-  }));
-
-  // ── 6. Interleave so no two neighborhoods are adjacent ───────────────────
-  // Pattern: [neighborhood, loose×N, loose-event?, neighborhood, loose×N, ...]
-  const result: FeedItem[] = [];
-  const filler = [...looseGemItems, ...eventItems, ...hotelItems, ...activityItems];
-
-  let fillerIdx = 0;
-  const fillerBetween = Math.max(1, Math.floor(filler.length / Math.max(neighborhoodItems.length, 1)));
-
-  for (let ni = 0; ni < neighborhoodItems.length; ni++) {
-    result.push(neighborhoodItems[ni]);
-    // Insert some loose items after each neighborhood container
-    const count = ni < neighborhoodItems.length - 1 ? fillerBetween : filler.length - fillerIdx;
-    for (let fi = 0; fi < count && fillerIdx < filler.length; fi++, fillerIdx++) {
-      result.push(filler[fillerIdx]);
-    }
+  // ── 4. Edge cases ────────────────────────────────────────────────────────
+  if (neighborhoodItems.length === 0) return fillerPool;
+  if (fillerPool.length === 0) {
+    // No filler — return just the first neighborhood (cannot guarantee non-adjacency for more)
+    return neighborhoodItems.slice(0, 1);
   }
 
-  // Flush any remaining filler if no neighborhoods
-  while (fillerIdx < filler.length) {
-    result.push(filler[fillerIdx++]);
+  // ── 5. Cap neighborhoods so non-adjacency is always guaranteed ───────────
+  // Need: fillerPool.length >= cappedNeighborhoods - 1
+  // → cappedNeighborhoods <= fillerPool.length + 1
+  const cappedNeighborhoods = neighborhoodItems.slice(
+    0,
+    Math.min(neighborhoodItems.length, fillerPool.length + 1),
+  );
+
+  // ── 6. Distribute fillers evenly into N+1 slots ──────────────────────────
+  // Slots: [before_n0, between_n0_n1, ..., after_nLast]
+  // Each slot gets baseCount fillers; the first `remainder` slots get one extra.
+  const numSlots = cappedNeighborhoods.length + 1;
+  const baseCount = Math.floor(fillerPool.length / numSlots);
+  let remainder = fillerPool.length % numSlots;
+  let fi = 0;
+
+  const result: FeedItem[] = [];
+
+  for (let slot = 0; slot < numSlots; slot++) {
+    // Filler count for this slot
+    const count = baseCount + (remainder > 0 ? (remainder--, 1) : 0);
+    for (let k = 0; k < count; k++) {
+      result.push(fillerPool[fi++]);
+    }
+    // Insert neighborhood after filler (except after the last slot)
+    if (slot < cappedNeighborhoods.length) {
+      result.push(cappedNeighborhoods[slot]);
+    }
   }
 
   return result;
@@ -129,23 +149,19 @@ export function buildFeedStream(
 
 /**
  * Filter a FeedItem[] by spine chip type.
- * When a type is active, NeighborhoodContainers are dissolved and their gems
- * rendered as flat items matching the filter.
+ * When a type filter is active, NeighborhoodContainers are dissolved and their
+ * gems rendered as flat matching items.
  */
-export function filterFeedStream(
-  items: FeedItem[],
-  activeFilter: string,
-): FeedItem[] {
+export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedItem[] {
   if (activeFilter === "all") return items;
 
   const result: FeedItem[] = [];
 
   for (const item of items) {
     if (item.kind === "neighborhood") {
-      // Dissolve neighborhood containers — emit matching gems as loose items
-      const gems: any[] = item.data.gems ?? [];
-      for (const gem of gems) {
-        if (matchesFilter(gem, null, activeFilter)) {
+      // Dissolve — emit only matching gems as loose items
+      for (const gem of item.data.gems ?? []) {
+        if (matchesFilter(gem, "loose-gem", activeFilter)) {
           result.push({ kind: "loose-gem", id: `gem-${gem.id}`, data: gem });
         }
       }
@@ -157,14 +173,14 @@ export function filterFeedStream(
   return result;
 }
 
-function matchesFilter(data: any, kind: FeedItemKind | null, filter: string): boolean {
+function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
   switch (filter) {
     case "eat":
       return gemCategory(data.placeType) === "eat";
     case "do":
       return (
         kind === "supply-activity" ||
-        (kind === "loose-gem" || kind === null) && gemCategory(data.placeType) === "do"
+        ((kind === "loose-gem") && gemCategory(data.placeType) === "do")
       );
     case "stay":
       return kind === "supply-hotel" || gemCategory(data.placeType) === "stay";

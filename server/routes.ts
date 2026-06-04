@@ -1979,14 +1979,24 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
-  // Lightweight place-photo proxy — resolution order: Google Places → null
-  // Used by the useGemPhoto hook to enrich cards that have no imageUrl in the DB.
+  // Lightweight place-photo proxy — resolution order: Google Places → Unsplash
+  // Used by the useGemPhoto hook (source=google first, then source=unsplash fallback).
   app.get("/api/media/place-photo", async (req, res) => {
     try {
       const q = typeof req.query.q === "string" ? req.query.q : "";
       const city = typeof req.query.city === "string" ? req.query.city : "";
+      const source = typeof req.query.source === "string" ? req.query.source : "google";
       if (!q) return res.json({ photoUrl: null });
 
+      if (source === "unsplash") {
+        // Unsplash/Pexels fallback via media aggregator
+        const { unsplashService } = await import("./services/unsplash.service");
+        const photos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
+        const photoUrl = photos[0]?.url ?? null;
+        return res.json({ photoUrl });
+      }
+
+      // Google Places (default)
       const { googlePlacesPhotosService } = await import("./services/google-places-photos.service");
       const photos = await googlePlacesPhotosService.getAttractionPhotos(q, city, 1);
       const photoUrl = photos[0]?.url ?? null;

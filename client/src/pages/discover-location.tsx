@@ -1,11 +1,10 @@
 import { useRef, useEffect, useState } from "react";
-import { useParams, useSearch } from "wouter";
+import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import DOMPurify from "dompurify";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply } from "@/components/city-feed-card";
+import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 
@@ -50,6 +50,7 @@ const SPINE_CHIPS = [
   { id: "eat", label: "Eat" },
   { id: "do", label: "Do" },
   { id: "stay", label: "Stay" },
+  { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
   { id: "photo_spots", label: "Photo Spots" },
 ];
@@ -201,7 +202,7 @@ function HeroSection({
 
   return (
     <section data-testid="section-hero" className="space-y-4">
-      {/* Hero photo — 16:9 / wide */}
+      {/* Hero photo — 21:9 wide cinematic crop */}
       {heroPhoto && (
         <div className="relative rounded-xl overflow-hidden aspect-[16/6] md:aspect-[21/7]">
           <img
@@ -281,7 +282,7 @@ function FeedRenderer({
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty">
-        No items match the current filter. Try selecting "All" to see everything.
+        No items to show yet for {city}. Check back soon!
       </p>
     );
   }
@@ -309,6 +310,16 @@ function FeedRenderer({
                   city={city}
                   scheduledDate={scheduledDate}
                   onAdd={onAdd}
+                />
+              </div>
+            );
+
+          case "expert":
+            return (
+              <div key={item.id} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <CityFeedCardExpert
+                  expert={item.data}
+                  city={city}
                 />
               </div>
             );
@@ -347,7 +358,7 @@ function FeedRenderer({
   );
 }
 
-// ─── Flat filtered feed (when a type filter dissolves neighborhoods) ──────────
+// ─── Flat filtered feed (dissolves neighborhoods) ────────────────────────────
 
 function FlatFilteredFeed({
   items,
@@ -382,6 +393,14 @@ function FlatFilteredFeed({
                 city={city}
                 scheduledDate={scheduledDate}
                 onAdd={onAdd}
+              />
+            );
+          case "expert":
+            return (
+              <CityFeedCardExpert
+                key={item.id}
+                expert={item.data}
+                city={city}
               />
             );
           case "event":
@@ -419,6 +438,7 @@ function FlatFilteredFeed({
 export default function DiscoverLocationPage() {
   const params = useParams<{ city: string }>();
   const searchString = useSearch();
+  const [, navigate] = useLocation();
   const searchParams = new URLSearchParams(searchString);
   const country = searchParams.get("country");
   const cityRaw = params?.city ?? "";
@@ -440,6 +460,15 @@ export default function DiscoverLocationPage() {
     setAddToExperienceOpen(true);
   };
 
+  // Dismiss date pill — clears both state and URL query param
+  const handleDismissDate = () => {
+    setPlanningDate(null);
+    const newParams = new URLSearchParams(searchString);
+    newParams.delete("date");
+    const qs = newParams.toString();
+    navigate(`/discover/location/${encodeURIComponent(city)}${qs ? `?${qs}` : ""}`, { replace: true });
+  };
+
   // ── Data fetching ───────────────────────────────────────────────────────
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country, planningDate],
@@ -457,6 +486,8 @@ export default function DiscoverLocationPage() {
   });
 
   const heroCountry = country ?? data?.country ?? null;
+
+  // Media — separate query for hero photo
   const { data: mediaData } = useQuery<CityMediaResponse>({
     queryKey: ["/api/travelpulse/media", city, heroCountry],
     queryFn: async () => {
@@ -467,6 +498,18 @@ export default function DiscoverLocationPage() {
       return res.json();
     },
     enabled: !!city && !!heroCountry,
+  });
+
+  // Experts for this city
+  const { data: expertsData } = useQuery<any[]>({
+    queryKey: ["/api/experts", { location: city }],
+    queryFn: async () => {
+      const res = await fetch(`/api/experts?location=${encodeURIComponent(city)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!city,
+    staleTime: 10 * 60 * 1000,
   });
 
   // Unsplash download tracking (API compliance)
@@ -494,12 +537,13 @@ export default function DiscoverLocationPage() {
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
+  const experts = expertsData ?? [];
   const events = data?.events?.data?.events ?? [];
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
 
   const feedItems = data
-    ? buildFeedStream(neighborhoods, allGems, events, supplyHotels, supplyActivities)
+    ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities)
     : [];
 
   const filteredItems =
@@ -558,7 +602,7 @@ export default function DiscoverLocationPage() {
               heroData={data.hero?.data}
               heroPhoto={heroPhoto}
               planningDate={planningDate}
-              onDismissDate={() => setPlanningDate(null)}
+              onDismissDate={handleDismissDate}
             />
 
             {/* ── On-date highlights (only when ?date= is active) ───────── */}
