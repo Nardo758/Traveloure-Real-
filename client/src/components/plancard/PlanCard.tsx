@@ -5,17 +5,11 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles, Clock } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
 } from "./plancard-types";

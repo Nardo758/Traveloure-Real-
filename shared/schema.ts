@@ -86,6 +86,10 @@ export const trips = pgTable("trips", {
   bookingReference: varchar("booking_reference", { length: 50 }),
   isPublic: boolean("is_public").default(false),
   shareToken: varchar("share_token", { length: 64 }),
+  // EA delegation: when an EA coordinates this trip on behalf of the client.
+  // userId remains the traveler; managedByEaId is the EA running the show.
+  managedByEaId: varchar("managed_by_ea_id").references(() => users.id, { onDelete: "set null" }),
+  eaClientRelationshipId: varchar("ea_client_relationship_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -527,6 +531,19 @@ export const providerServices = pgTable("provider_services", {
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
   formStatus: varchar("form_status", { length: 50 }).default("pending"), // For approval workflow
+
+  // Approval workflow (consolidated from expert_custom_services in 0007)
+  approvalStatus: varchar("approval_status", { length: 20 }).default("approved"), // draft, submitted, approved, rejected
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
+  experienceTypes: jsonb("experience_types").default([]),
+  galleryImages: jsonb("gallery_images").default([]),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
+
   isFeatured: boolean("is_featured").default(false),
   bookingsCount: integer("bookings_count").default(0),
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
@@ -726,6 +743,38 @@ export const notifications = pgTable("notifications", {
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// === Contact Submissions (landing page / contact page) ===
+
+export const contactSubmissions = pgTable("contact_submissions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 100 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  subject: varchar("subject", { length: 200 }).notNull(),
+  message: text("message").notNull(),
+  reason: varchar("reason", { length: 50 }), // general, support, partnership, press, feedback
+  preferredContactMethod: varchar("preferred_contact_method", { length: 20 }), // email, phone
+  source: varchar("source", { length: 50 }).default("contact_page"), // contact_page, landing, footer, etc.
+  status: varchar("status", { length: 20 }).default("new"), // new, in_progress, resolved, archived
+  assignedAdminId: varchar("assigned_admin_id").references(() => users.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at"),
+  responseNotes: text("response_notes"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertContactSubmissionSchema = createInsertSchema(contactSubmissions).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+  status: true,
+  assignedAdminId: true,
+  responseNotes: true,
+});
+export type ContactSubmission = typeof contactSubmissions.$inferSelect;
+export type InsertContactSubmission = z.infer<typeof insertContactSubmissionSchema>;
 
 // === Shopping Cart ===
 
