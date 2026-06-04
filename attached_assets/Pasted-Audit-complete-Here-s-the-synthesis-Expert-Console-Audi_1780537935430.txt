@@ -1,0 +1,51 @@
+Audit complete. Here's the synthesis:
+
+## Expert Console Audit Summary
+
+### Service Pages (5 → 3)
+
+| Page | Lines | Endpoints | Verdict |
+|------|-------|-----------|---------|
+| `services.tsx` | 446 | Real (analytics + services + status toggle + duplicate) | **Keep** — master hub |
+| `service-wizard.tsx` | 622 | Real (`POST /api/provider/services`) | **Keep** — guided 5-step creation |
+| `service-templates.tsx` | 203 | Real (templates + from-template) | **Keep** — admin-curated quick start |
+| `custom-services.tsx` | 555 | Real (full CRUD + submit workflow) | **Keep** — approval workflow (parallel system) |
+| `service-form.tsx` | 244 | **NONE — uses hardcoded mock** | **🗑 Remove** — dead scaffolding, no API integration |
+
+### Analytics Pages (4 → 2)
+
+| Page | Lines | Endpoints | Verdict |
+|------|-------|-----------|---------|
+| `earnings.tsx` | 291 | Real (earnings + Stripe Connect) | **Keep** — only place with payouts/transactions |
+| `analytics.tsx` | 492 | Real (dashboard + market intel) | **Keep** — comprehensive BI hub |
+| `performance.tsx` | 251 | Real BUT duplicates `analytics.tsx` API call | **Merge into Analytics** — same endpoint, no unique data |
+| `leaderboard.tsx` | 32 | **NONE — "Coming Soon" placeholder** | **🗑 Remove from nav** (defer) |
+| `revenue-optimization.tsx` | 800 | Real (optimization + referrals + tips) | **Keep** — growth/upsell unique angle |
+
+### Key Theme Divergence (Expert → User)
+
+Expert pages use generic Tailwind grays (`text-gray-900`, `border-gray-200`, `text-gray-600`) while User uses precise warm tokens:
+- `#1A1A18` vs `#111827` (primary text)
+- `#7A7A72` vs `#6B7280` (muted text)
+- `#E8E8E2` vs `#E5E7EB` (borders)
+- `text-[22px]`/`text-[14px]` vs `text-2xl`/`text-sm` (precise px sizing)
+- Sidebar accent + branding already match (`#E85D55`) ✓
+
+## Proposed Consolidation Plan
+
+**Phase 1 — Delete dead code (zero-risk)**
+1. Remove `service-form.tsx` (no API, no usable flow); route any edit links through `service-wizard.tsx` in edit mode
+2. Remove `leaderboard.tsx` route from nav (keep file as placeholder for future)
+
+**Phase 2 — Merge Performance into Analytics**
+3. Move Performance's achievement badges + reviews feed into a new "Quality" tab in `analytics.tsx` (it already uses the same API)
+4. Delete `performance.tsx`, remove route
+
+**Phase 3 — Apply User Console theme to all Expert pages**
+5. Sweep Expert pages: replace `text-gray-900` → `text-[#1A1A18]`, `text-gray-600` → `text-[#7A7A72]`, `border-gray-200` → `border-[#E8E8E2]`
+6. Standardize headings to `text-[22px]` (h1) / `text-sm font-medium` (h2 sections) per User pattern
+7. Match stat card pattern (minimal icon + label + value, no bold colored backgrounds)
+
+**Scope:** ~10 file deletions/edits, ~15 theme-sweep edits. Estimated 3-4 commits.
+
+Want me to proceed with Phase 1 (deletions) first, then check in before tackling Phases 2 and 3?

@@ -51,6 +51,10 @@ import {
   Copy,
   Car,
   Bus,
+  Plus,
+  Gift,
+  ChefHat,
+  Waves,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
@@ -150,9 +154,22 @@ interface Comparison {
   selectedVariantId: string | null;
 }
 
+interface UpsellSuggestion {
+  serviceId: string;
+  title: string;
+  description: string | null;
+  price: string | null;
+  imageUrl: string | null;
+  category: string;
+  location: string | null;
+  rating: string | null;
+  matchReason: string;
+}
+
 interface ComparisonData {
   comparison: Comparison;
   variants: Variant[];
+  upsellSuggestions?: UpsellSuggestion[];
 }
 
 interface ExpertOption {
@@ -386,6 +403,7 @@ export default function ItineraryComparisonPage() {
   // G7: auto-apply state
   const [autoApplying, setAutoApplying] = useState(false);
   const [autoApplied, setAutoApplied] = useState(false);
+  const [autoApplyError, setAutoApplyError] = useState<"no_variants" | null>(null);
 
   const getBookingType = (serviceType: string): "inApp" | "partner" => {
     const partnerTypes = ["transport", "ground_transport", "train", "bus", "ferry", "event", "entertainment", "concert", "show"];
@@ -529,20 +547,85 @@ export default function ItineraryComparisonPage() {
     },
   });
 
+  const addUpsellToCartMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      const res = await apiRequest("POST", "/api/cart/items", { serviceId, quantity: 1 });
+      return res.json();
+    },
+    onSuccess: (_data, serviceId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({ title: "Added to cart!", description: "The experience has been added to your cart." });
+      fetch("/api/cross-sell-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          eventType: "click",
+          sourceContentType: "itinerary_comparison",
+          sourceContentId: id || "unknown",
+          targetServiceId: serviceId,
+          city: data?.comparison?.destination?.split(",")[0]?.trim() || undefined,
+        }),
+      }).catch(() => {});
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to add to cart", description: "Please try again." });
+    },
+  });
+
   useEffect(() => {
     if (data?.comparison?.selectedVariantId) {
       setSelectedVariantId(data.comparison.selectedVariantId);
     }
   }, [data]);
 
+  useEffect(() => {
+    const suggestions = data?.upsellSuggestions;
+    if (!suggestions || suggestions.length === 0) return;
+    const city = data?.comparison?.destination?.split(",")[0]?.trim();
+    const compId = data?.comparison?.id;
+    if (!compId) return;
+    fetch("/api/cross-sell-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(
+        suggestions.map(s => ({
+          eventType: "impression",
+          sourceContentType: "itinerary_comparison",
+          sourceContentId: compId,
+          targetServiceId: s.serviceId,
+          city: city || undefined,
+        }))
+      ),
+    }).catch(() => {});
+  }, [data?.comparison?.id, data?.upsellSuggestions?.length]);
+
   // G7: Auto-apply top variant + redirect to PlanCard when autoApply=1 and optimization is done
   useEffect(() => {
-    if (!autoApply || autoApplying || autoApplied) return;
+    if (!autoApply || autoApplying || autoApplied || autoApplyError) return;
     if (!data?.comparison) return;
     const status = data.comparison.status;
+
+    // If still waiting on payment, redirect back to cart with an explanation
+    if (status === "pending_payment") {
+      toast({
+        variant: "destructive",
+        title: "Payment required",
+        description: "Please complete payment before your optimized plan can be applied.",
+      });
+      setLocation("/cart");
+      return;
+    }
+
     if (status !== "generated") return;
+
     const aiVariants = data.variants?.filter((v: Variant) => v.source === "ai_optimized") ?? [];
-    if (aiVariants.length === 0) return;
+    if (aiVariants.length === 0) {
+      // Generation completed but produced no AI variants — show inline error
+      setAutoApplyError("no_variants");
+      return;
+    }
 
     setAutoApplying(true);
     (async () => {
@@ -566,7 +649,7 @@ export default function ItineraryComparisonPage() {
         setAutoApplying(false);
       }
     })();
-  }, [autoApply, autoApplying, autoApplied, data, id, setLocation, toast]);
+  }, [autoApply, autoApplying, autoApplied, autoApplyError, data, id, setLocation, toast]);
 
   if (authLoading) {
     return (
@@ -775,7 +858,44 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
-        {!hasVariants && !isGenerating && !hasFailed && (
+        {autoApplyError === "no_variants" && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-auto-apply-error">
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+              <h3 className="text-lg font-semibold mb-2">No optimized variants were generated</h3>
+              <p className="text-muted-foreground mb-6">
+                The AI optimization completed but didn't produce any alternative itineraries — this can happen if the trip is already well-optimized or if the AI timed out. You can retry generation or browse your original plan below.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation("/cart")}
+                  data-testid="button-back-to-cart-error"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Cart
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAutoApplyError(null);
+                    retryMutation.mutate();
+                  }}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry-no-variants"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Retry Optimization
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -1283,6 +1403,115 @@ export default function ItineraryComparisonPage() {
                 </Card>
               ))}
             </div>
+
+            {data?.upsellSuggestions && data.upsellSuggestions.length > 0 && (
+              <div className="mb-6" data-testid="section-upsell-suggestions">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="h-px flex-1 bg-border" />
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                    <Gift className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">
+                      Add to your trip
+                    </span>
+                  </div>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                <p className="text-sm text-muted-foreground text-center mb-4">
+                  Curated extras matched to your travel style
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {data.upsellSuggestions.map((suggestion) => {
+                    const categoryIconMap: Record<string, JSX.Element> = {
+                      romantic_dining: <Heart className="h-4 w-4 text-rose-500" />,
+                      private_chef: <ChefHat className="h-4 w-4 text-amber-500" />,
+                      spa: <Waves className="h-4 w-4 text-blue-500" />,
+                      private_transfer: <Car className="h-4 w-4 text-gray-500" />,
+                      outdoor_addon: <MapPin className="h-4 w-4 text-green-500" />,
+                    };
+                    const categoryIcon = categoryIconMap[suggestion.category] || <Sparkles className="h-4 w-4 text-primary" />;
+
+                    return (
+                      <Card
+                        key={suggestion.serviceId}
+                        className="border-amber-100 dark:border-amber-900/50 bg-gradient-to-br from-amber-50/60 to-orange-50/40 dark:from-amber-950/20 dark:to-orange-950/10 overflow-hidden"
+                        data-testid={`card-upsell-${suggestion.serviceId}`}
+                      >
+                        {suggestion.imageUrl && (
+                          <div className="h-32 overflow-hidden">
+                            <img
+                              src={suggestion.imageUrl}
+                              alt={suggestion.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <CardContent className={suggestion.imageUrl ? "pt-3 pb-4 px-4" : "pt-4 pb-4 px-4"}>
+                          <div className="flex items-start gap-2 mb-2">
+                            {categoryIcon}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-sm leading-tight line-clamp-2">
+                                {suggestion.title}
+                              </h4>
+                            </div>
+                          </div>
+
+                          {suggestion.description && (
+                            <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                              {suggestion.description}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3 flex-wrap">
+                            {suggestion.price && (
+                              <span className="flex items-center gap-0.5 font-medium text-foreground">
+                                <DollarSign className="h-3 w-3" />
+                                {parseFloat(suggestion.price).toLocaleString()}
+                              </span>
+                            )}
+                            {suggestion.rating && parseFloat(suggestion.rating) > 0 && (
+                              <span className="flex items-center gap-0.5">
+                                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                                {parseFloat(suggestion.rating).toFixed(1)}
+                              </span>
+                            )}
+                            {suggestion.location && (
+                              <span className="flex items-center gap-0.5 truncate max-w-24">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                {suggestion.location}
+                              </span>
+                            )}
+                          </div>
+
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 mb-3 block w-fit"
+                          >
+                            {suggestion.matchReason}
+                          </Badge>
+
+                          <Button
+                            size="sm"
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => addUpsellToCartMutation.mutate(suggestion.serviceId)}
+                            disabled={addUpsellToCartMutation.isPending}
+                            data-testid={`button-add-upsell-${suggestion.serviceId}`}
+                          >
+                            {addUpsellToCartMutation.isPending ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Add to trip
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {data?.comparison?.selectedVariantId && (
               <Card className="border-primary bg-primary/5">

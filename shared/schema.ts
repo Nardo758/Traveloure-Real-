@@ -5222,6 +5222,7 @@ export const expertRequests = pgTable("expert_requests", {
   assignedExpertId: text("assigned_expert_id"),
   queuePosition: integer("queue_position"),
   notes: text("notes"),
+  optimizationContext: jsonb("optimization_context"),
   createdAt: timestamp("created_at").defaultNow(),
   assignedAt: timestamp("assigned_at"),
   completedAt: timestamp("completed_at"),
