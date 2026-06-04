@@ -244,26 +244,26 @@ export default function ProviderBookings() {
             <>
               <Card data-testid="card-stat-total">
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-                  <p className="text-sm text-gray-500">Total Bookings</p>
+                  <p className="text-2xl font-bold text-console-darkest">{stats.total}</p>
+                  <p className="text-sm text-console-mid">Total Bookings</p>
                 </CardContent>
               </Card>
               <Card data-testid="card-stat-confirmed">
                 <CardContent className="p-4 text-center">
                   <p className="text-2xl font-bold text-green-600">{stats.confirmed}</p>
-                  <p className="text-sm text-gray-500">Confirmed</p>
+                  <p className="text-sm text-console-mid">Confirmed</p>
                 </CardContent>
               </Card>
               <Card data-testid="card-stat-pending">
                 <CardContent className="p-4 text-center">
                   <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
-                  <p className="text-sm text-gray-500">Pending</p>
+                  <p className="text-sm text-console-mid">Pending</p>
                 </CardContent>
               </Card>
               <Card data-testid="card-stat-completed">
                 <CardContent className="p-4 text-center">
                   <p className="text-2xl font-bold text-blue-600">{stats.completed}</p>
-                  <p className="text-sm text-gray-500">Completed</p>
+                  <p className="text-sm text-console-mid">Completed</p>
                 </CardContent>
               </Card>
             </>
@@ -275,7 +275,7 @@ export default function ProviderBookings() {
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-console-mid" />
                 <Input
                   placeholder="Search bookings..."
                   value={searchQuery}
@@ -338,7 +338,7 @@ export default function ProviderBookings() {
               filteredBookings.map((booking) => (
                 <div
                   key={booking.id}
-                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="p-4 border border-console-light rounded-lg hover:bg-console-hover transition-colors"
                   data-testid={`card-booking-${booking.id}`}
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -347,14 +347,14 @@ export default function ProviderBookings() {
                         <Badge className={statusColors[booking.status]} data-testid={`badge-status-${booking.id}`}>
                           {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
                         </Badge>
-                        <span className="font-semibold text-gray-900">{booking.eventType || "Event"}</span>
-                        <span className="text-gray-500">-</span>
-                        <span className="text-gray-700">{booking.clientName || "Client"}</span>
+                        <span className="font-semibold text-console-darkest">{booking.eventType || "Event"}</span>
+                        <span className="text-console-mid">-</span>
+                        <span className="text-console-dark">{booking.clientName || "Client"}</span>
                         {isVisaBooking(booking) && booking.bookingMetadata?.visaApplicationStatus && (
                           <VisaStatusBadge status={booking.bookingMetadata.visaApplicationStatus} />
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-600">
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-console-dark">
                         {booking.date && (
                           <span className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" /> {booking.date}
@@ -377,7 +377,7 @@ export default function ProviderBookings() {
                         )}
                       </div>
                       {booking.expert && (
-                        <p className="text-sm text-gray-500 mt-1">Expert: {booking.expert}</p>
+                        <p className="text-sm text-console-mid mt-1">Expert: {booking.expert}</p>
                       )}
                     </div>
                     <div className="flex gap-2">
@@ -407,7 +407,7 @@ export default function ProviderBookings() {
               ))
             ) : (
               <div className="text-center py-8">
-                <p className="text-gray-500">No bookings found</p>
+                <p className="text-console-mid">No bookings found</p>
               </div>
             )}
           </CardContent>
