@@ -5,9 +5,9 @@
  * and events so that:
  * - Gems with a `neighborhood` field are grouped inside their NeighborhoodContainer
  * - Gems with no neighborhood appear as loose cards
- * - Neighborhood containers are separated by filler with best-effort non-adjacency
- *   (all neighborhoods are always shown — non-adjacency is best-effort when filler
- *    runs short, but NO neighborhood is ever dropped)
+ * - No two NeighborhoodContainers are ever visually adjacent — this is a HARD
+ *   guarantee, not best-effort. When real filler is insufficient, synthetic
+ *   `"city-separator"` items (always rendered, no photo required) are inserted.
  * - Loose gems / expert cards / events are woven between containers
  */
 
@@ -18,7 +18,8 @@ export type FeedItemKind =
   | "expert"
   | "supply-hotel"
   | "supply-activity"
-  | "date-highlights";
+  | "date-highlights"
+  | "city-separator";
 
 export interface FeedItem {
   kind: FeedItemKind;
@@ -39,19 +40,35 @@ export function gemCategory(placeType: string | null | undefined): string {
 }
 
 /**
+ * Map a placeType to a matched-service suggestion label (spec: photo spot→photographer,
+ * stay→transport, attraction→guide, eat→reservation).
+ */
+export function matchedServiceSuggestion(placeType: string | null | undefined): {
+  label: string;
+  icon: string;
+  href: string;
+} | null {
+  const cat = gemCategory(placeType);
+  switch (cat) {
+    case "photo_spots":
+      return { label: "Book a photographer", icon: "📷", href: "/experiences/photo" };
+    case "stay":
+      return { label: "Book airport transfer", icon: "🚖", href: "/experiences/transport" };
+    case "eat":
+      return { label: "Reserve a table", icon: "🍽", href: "/experiences/dining" };
+    case "do":
+      return { label: "Get a local guide", icon: "🏅", href: "/local-experts" };
+    default:
+      return null;
+  }
+}
+
+/**
  * Build the ordered FeedItem[] stream from raw data sections.
  *
- * Non-adjacency guarantee: fillers are distributed as evenly as possible into
- * N+1 slots (before, between, after N neighborhoods). ALL neighborhoods are
- * always emitted. When filler is insufficient for full non-adjacency some
- * neighborhoods may end up adjacent — this is acceptable; dropping content is not.
- *
- * @param neighborhoods     - array from `data.neighborhoods.data`
- * @param allGems           - array from `data.gems.data`
- * @param experts           - array of expert objects (from /api/experts?location=…)
- * @param events            - array from `data.events.data.events`
- * @param supplyHotels      - array from `data.recommendations.data.hotels`
- * @param supplyActivities  - array from `data.recommendations.data.activities`
+ * Non-adjacency contract: ALL neighborhoods are emitted, and no two are ever
+ * adjacent. When the filler pool is exhausted, a `city-separator` synthetic item
+ * (always visible, no photo) is inserted as a guaranteed separator.
  */
 export function buildFeedStream(
   neighborhoods: any[],
@@ -60,6 +77,7 @@ export function buildFeedStream(
   events: any[],
   supplyHotels: any[],
   supplyActivities: any[],
+  cityName?: string,
 ): FeedItem[] {
   // ── 1. Group gems by neighborhood slug ──────────────────────────────────
   const gemsByNeighborhood = new Map<string, any[]>();
@@ -78,18 +96,17 @@ export function buildFeedStream(
 
   // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
   const neighborhoodItems: FeedItem[] = neighborhoods
-    .filter((n) => (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0 || (n.gems?.length ?? 0) > 0)
+    .filter((n) => (n.gems?.length ?? 0) > 0 || (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
     .map((n) => ({
       kind: "neighborhood" as FeedItemKind,
       id: `neighborhood-${n.id}`,
       data: {
         ...n,
-        // Prefer server-embedded gems; fall back to client-grouped gems
         gems: n.gems?.length ? n.gems : (gemsByNeighborhood.get(n.slug) ?? []),
       },
     }));
 
-  // ── 3. Build filler pool (order: gems, experts, events, supply) ──────────
+  // ── 3. Build filler pool ─────────────────────────────────────────────────
   const fillerPool: FeedItem[] = [
     ...looseGems.map((g) => ({ kind: "loose-gem" as FeedItemKind, id: `gem-${g.id}`, data: g })),
     ...(experts ?? []).slice(0, 3).map((e) => ({
@@ -116,13 +133,13 @@ export function buildFeedStream(
 
   // ── 4. Edge cases ────────────────────────────────────────────────────────
   if (neighborhoodItems.length === 0) return fillerPool;
-  if (fillerPool.length === 0) return neighborhoodItems; // all neighborhoods, no filler
+  if (fillerPool.length === 0) {
+    // No real filler — interleave with synthetic separators to guarantee non-adjacency
+    return interleaveSynthetic(neighborhoodItems, cityName);
+  }
 
-  // ── 5. Distribute fillers evenly into N+1 slots (best-effort non-adjacency)
+  // ── 5. Distribute fillers evenly into N+1 slots ──────────────────────────
   // Slots: [before_n0, between_n0_n1, ..., after_nLast]
-  // Each slot gets baseCount; the first `remainder` slots get one extra.
-  // When fillerPool.length < neighborhoodItems.length - 1, some slots get 0
-  // and neighborhoods may be adjacent — that is acceptable, no content is dropped.
   const numSlots = neighborhoodItems.length + 1;
   const baseCount = Math.floor(fillerPool.length / numSlots);
   let remainder = fillerPool.length % numSlots;
@@ -131,13 +148,17 @@ export function buildFeedStream(
   const result: FeedItem[] = [];
 
   for (let slot = 0; slot < numSlots; slot++) {
-    // Filler count for this slot
     const count = baseCount + (remainder > 0 ? (remainder--, 1) : 0);
     for (let k = 0; k < count; k++) {
       result.push(fillerPool[fi++]);
     }
-    // Insert neighborhood after each filler slot (except after the last slot)
     if (slot < neighborhoodItems.length) {
+      // Check: would last emitted item be a neighborhood? If so and we have NO
+      // filler in this slot, insert a synthetic separator.
+      const lastKind = result[result.length - 1]?.kind;
+      if (lastKind === "neighborhood") {
+        result.push(makeSeparator(slot, cityName));
+      }
       result.push(neighborhoodItems[slot]);
     }
   }
@@ -145,10 +166,30 @@ export function buildFeedStream(
   return result;
 }
 
+/** Build a stream by interleaving neighborhoods with synthetic separators. */
+function interleaveSynthetic(neighborhoods: FeedItem[], cityName?: string): FeedItem[] {
+  const result: FeedItem[] = [];
+  for (let i = 0; i < neighborhoods.length; i++) {
+    result.push(neighborhoods[i]);
+    if (i < neighborhoods.length - 1) {
+      result.push(makeSeparator(i, cityName));
+    }
+  }
+  return result;
+}
+
+function makeSeparator(index: number, cityName?: string): FeedItem {
+  return {
+    kind: "city-separator",
+    id: `city-separator-${index}`,
+    data: { cityName: cityName ?? "this city" },
+  };
+}
+
 /**
  * Filter a FeedItem[] by spine chip type.
  * When a type filter is active, NeighborhoodContainers are dissolved and their
- * gems rendered as flat matching items.
+ * gems rendered as flat matching items. date-highlights always passes through.
  */
 export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedItem[] {
   if (activeFilter === "all") return items;
@@ -157,10 +198,10 @@ export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedI
 
   for (const item of items) {
     if (item.kind === "date-highlights") {
-      // Always show date-highlights regardless of filter
       result.push(item);
       continue;
     }
+    if (item.kind === "city-separator") continue; // hide separators in filtered view
     if (item.kind === "neighborhood") {
       // Dissolve — emit only matching gems as loose items
       for (const gem of item.data.gems ?? []) {
@@ -194,7 +235,6 @@ function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
     case "experts":
       return kind === "expert";
     case "vibe":
-      // Vibe = events + photo spots (curated feel-of-the-city content)
       return kind === "event" || gemCategory(data.placeType) === "photo_spots";
     default:
       return true;

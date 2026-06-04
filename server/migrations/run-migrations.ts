@@ -23,6 +23,7 @@ const MIGRATION_FILES = [
   "011_provider_services_approval_status.sql",
   "012_migrate_expert_custom_services.sql",
   "013_drop_deprecated_service_tables.sql",
+  "014_itinerary_item_scheduled_date.sql",
 ];
 
 export async function runMigrations(): Promise<void> {

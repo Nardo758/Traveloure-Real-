@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves } from "lucide-react";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
+import { matchedServiceSuggestion } from "@/lib/feed-stream";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -108,6 +109,22 @@ export function CityFeedCardGem({
             <span>{gem.neighborhood}</span>
           </div>
         )}
+
+        {/* Matched-service suggestion strip */}
+        {!compact && (() => {
+          const suggestion = matchedServiceSuggestion(gem.placeType);
+          if (!suggestion) return null;
+          return (
+            <a
+              href={suggestion.href}
+              className="flex items-center justify-between gap-1 text-xs text-muted-foreground hover:text-primary transition-colors border-t pt-1.5 mt-1"
+              data-testid={`suggestion-${gem.id}`}
+            >
+              <span>{suggestion.icon} {suggestion.label}</span>
+              <ChevronRight className="w-3 h-3" />
+            </a>
+          );
+        })()}
 
         {!compact && (
           <div className="flex gap-1.5 pt-1">

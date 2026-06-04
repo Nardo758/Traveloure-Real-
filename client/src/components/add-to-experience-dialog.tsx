@@ -115,9 +115,8 @@ export function AddToExperienceDialog({
           itemType: item.type || "experience",
           dayNumber,
           status: "planned",
-          notes: item.scheduledDate
-            ? `Added from ${item.city || "destination"} for ${item.scheduledDate}`
-            : `Added from ${item.city || "destination"}`,
+          notes: `Added from ${item.city || "destination"}`,
+          ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
         }),
       });
       if (!res.ok) throw new Error("Failed to add item");

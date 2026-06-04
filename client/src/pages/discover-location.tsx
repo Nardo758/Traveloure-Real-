@@ -416,6 +416,9 @@ function FeedRenderer({
     } else if (item.kind === "date-highlights") {
       flushGroup();
       sections.push({ type: "date-highlights", item });
+    } else if (item.kind === "city-separator") {
+      flushGroup();
+      sections.push({ type: "city-separator" as any, item });
     } else {
       currentGroup.push(item);
     }
@@ -439,6 +442,22 @@ function FeedRenderer({
         if (section.type === "date-highlights") {
           return (
             <DateHighlightsCard key={section.item.id} data={section.item.data} />
+          );
+        }
+        if ((section as any).type === "city-separator") {
+          const sep = (section as any).item as FeedItem;
+          return (
+            <div
+              key={sep.id}
+              className="flex items-center gap-3 py-2"
+              data-testid={`separator-${sep.id}`}
+            >
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap px-2">
+                More in {sep.data.cityName}
+              </span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
           );
         }
         return (
@@ -488,6 +507,13 @@ function FlatFilteredFeed({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" data-testid="city-feed-flat">
       {items.map((item) => {
+        if (item.kind === "date-highlights") {
+          return (
+            <div key={item.id} className="col-span-full">
+              <DateHighlightsCard data={item.data} />
+            </div>
+          );
+        }
         switch (item.kind) {
           case "loose-gem":
             return (
