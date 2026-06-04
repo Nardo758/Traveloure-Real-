@@ -272,6 +272,164 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
   }
 });
 
+// Generate PDF export of itinerary
+router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get comparison data
+    const comparison = await db.query.itineraryComparisons.findFirst({
+      where: eq(itineraryComparisons.id, id),
+    });
+
+    if (!comparison) {
+      return res.status(404).json({ error: "Itinerary not found" });
+    }
+
+    // Get the selected variant
+    const variantId = comparison.selectedVariantId;
+    let variant;
+
+    if (variantId) {
+      variant = await db.query.itineraryVariants.findFirst({
+        where: eq(itineraryVariants.id, variantId),
+      });
+    }
+
+    if (!variant) {
+      const variants = await db.query.itineraryVariants.findMany({
+        where: eq(itineraryVariants.comparisonId, comparison.id),
+        orderBy: (v, { asc }) => [asc(v.sortOrder)],
+        limit: 1,
+      });
+      variant = variants[0];
+    }
+
+    if (!variant) {
+      return res.status(404).json({ error: "No itinerary variant found" });
+    }
+
+    // Get all items and metrics
+    const items = await db.query.itineraryVariantItems.findMany({
+      where: eq(itineraryVariantItems.variantId, variant.id),
+      orderBy: (item, { asc }) => [asc(item.dayNumber), asc(item.sortOrder)],
+    });
+
+    const metrics = await db.query.itineraryVariantMetrics.findFirst({
+      where: eq(itineraryVariantMetrics.variantId, variant.id),
+    });
+
+    // Dynamic require to avoid module loading issues
+    const PDFDocument = require("pdfkit");
+    const doc = new PDFDocument({ margin: 40 });
+    const buffers: Buffer[] = [];
+
+    doc.on("data", (chunk: Buffer) => buffers.push(chunk));
+
+    // Header
+    doc.fontSize(24).font("Helvetica-Bold").text("Travel Itinerary", { align: "center" });
+    doc.fontSize(12).font("Helvetica").text(
+      `Generated on ${new Date().toLocaleDateString()}`,
+      { align: "center" }
+    );
+    doc.moveDown();
+
+    // Trip overview
+    if (comparison.destination) {
+      doc.fontSize(14).font("Helvetica-Bold").text(`Destination: ${comparison.destination}`);
+    }
+    if (comparison.startDate && comparison.endDate) {
+      const start = new Date(comparison.startDate).toLocaleDateString();
+      const end = new Date(comparison.endDate).toLocaleDateString();
+      doc.fontSize(12).text(`Duration: ${start} - ${end}`);
+    }
+    doc.moveDown();
+
+    // Metrics section
+    if (metrics) {
+      doc.fontSize(12).font("Helvetica-Bold").text("Trip Metrics:");
+      doc.fontSize(10).font("Helvetica");
+      if (metrics.balanceScore !== null) {
+        doc.text(`• Balance Score: ${Math.round(metrics.balanceScore)}/10`);
+      }
+      if (metrics.wellnessScore !== null) {
+        doc.text(`• Wellness Score: ${Math.round(metrics.wellnessScore)}/10`);
+      }
+      if (metrics.paceScore !== null) {
+        doc.text(`• Pace Score: ${Math.round(metrics.paceScore)}/10`);
+      }
+      doc.moveDown();
+    }
+
+    // Group items by day
+    const itemsByDay: { [key: number]: any[] } = {};
+    for (const item of items) {
+      const day = item.dayNumber || 0;
+      if (!itemsByDay[day]) itemsByDay[day] = [];
+      itemsByDay[day].push(item);
+    }
+
+    // Render each day
+    const sortedDays = Object.keys(itemsByDay)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    for (const dayNum of sortedDays) {
+      // Day header
+      const dayItems = itemsByDay[dayNum];
+      const dayLabel = dayNum === 0 ? "Arrival/Departure" : `Day ${dayNum}`;
+
+      doc.pageBreak();
+      doc.fontSize(16).font("Helvetica-Bold").text(dayLabel);
+      doc.fontSize(10).font("Helvetica");
+
+      // Render activities for this day
+      for (const item of dayItems) {
+        doc.fontSize(11).font("Helvetica-Bold").text(item.name || "Activity");
+        doc.fontSize(10).font("Helvetica");
+
+        if (item.startTime || item.endTime) {
+          const timeStr = [item.startTime, item.endTime].filter(Boolean).join(" - ");
+          doc.text(`Time: ${timeStr}`);
+        }
+
+        if (item.location) {
+          doc.text(`Location: ${item.location}`);
+        }
+
+        if (item.description) {
+          doc.text(`Details: ${item.description}`);
+        }
+
+        if (item.price) {
+          doc.text(`Price: $${item.price}`);
+        }
+
+        doc.moveDown(0.5);
+      }
+    }
+
+    doc.end();
+
+    return new Promise((resolve, reject) => {
+      doc.on("finish", () => {
+        const pdfBuffer = Buffer.concat(buffers);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="itinerary-${id}-${Date.now()}.pdf"`
+        );
+        res.send(pdfBuffer);
+        resolve(undefined);
+      });
+      doc.on("error", reject);
+    });
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
 // Helper: Extract transport items from itinerary
 function extractTransportPackage(items: any[]) {
   const transportItems = items.filter(item => {
