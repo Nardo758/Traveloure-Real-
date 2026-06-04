@@ -772,6 +772,126 @@ function getCostCategory(activityCategory: ActivityCategory): string {
   return 'Activities';
 }
 
+// ── Day-type rhythm classification ───────────────────────────────────────────
+export type DayType = 'arrival' | 'departure' | 'active' | 'rest' | 'recovery';
+
+export function classifyDayType(dayItems: any[]): DayType {
+  // Arrival/departure days have travel + limited activities
+  const transportItems = dayItems.filter(i => ['transport', 'flight', 'train', 'transfer'].includes(mapServiceTypeToCategory(i.serviceType)));
+  const nonTransportItems = dayItems.filter(i => !['transport', 'flight', 'train', 'transfer'].includes(mapServiceTypeToCategory(i.serviceType)));
+
+  // Departure day: transport at end, few other activities
+  if (transportItems.length > 0 && nonTransportItems.length <= 2) {
+    return 'departure';
+  }
+
+  // Arrival day: transport at start, few other activities
+  if (transportItems.length > 0 && nonTransportItems.length <= 2 && dayItems[0]?.serviceType?.includes('transport')) {
+    return 'arrival';
+  }
+
+  // Rest day: mostly relaxation/wellness activities
+  const relaxationCount = dayItems.filter(i => {
+    const cat = mapServiceTypeToCategory(i.serviceType);
+    return ['spa', 'wellness', 'meditation', 'yoga', 'beach', 'pool', 'relaxation'].includes(cat);
+  }).length;
+
+  if (relaxationCount >= dayItems.length * 0.6) {
+    return 'rest';
+  }
+
+  // Recovery day: light activities after a high-intensity day
+  const avgIntensity = dayItems.reduce((sum, i) => sum + (i.intensity || 5), 0) / dayItems.length;
+  if (avgIntensity <= 3 && dayItems.length >= 2) {
+    return 'recovery';
+  }
+
+  // Active day: high intensity, diverse activities
+  return 'active';
+}
+
+export function getPaceExpectationForDayType(dayType: DayType): { min: number; max: number; ideal: number } {
+  switch (dayType) {
+    case 'arrival':
+    case 'departure':
+      return { min: 1, max: 3, ideal: 2 }; // Light schedule for travel days
+    case 'rest':
+      return { min: 2, max: 4, ideal: 3 }; // Fewer, more relaxed activities
+    case 'recovery':
+      return { min: 2, max: 4, ideal: 3 }; // Light recovery activities
+    case 'active':
+    default:
+      return { min: 4, max: 7, ideal: 5 }; // Full-day exploration schedule
+  }
+}
+
+// ── Geographic clustering (nearest-neighbor TSP) ─────────────────────────────
+
+function haversineDistance(
+  lat1: number | undefined,
+  lon1: number | undefined,
+  lat2: number | undefined,
+  lon2: number | undefined
+): number {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+export function clusterActivitiesByGeography(
+  items: SequencedActivity[]
+): SequencedActivity[] {
+  // Filter to items with location data
+  const itemsWithLocation = items.filter(i => i.latitude && i.longitude);
+  const itemsWithoutLocation = items.filter(i => !i.latitude || !i.longitude);
+
+  if (itemsWithLocation.length <= 1) {
+    return items;
+  }
+
+  // Nearest-neighbor clustering starting from first item
+  const clustered: SequencedActivity[] = [];
+  const remaining = [...itemsWithLocation];
+  let current = remaining.shift()!;
+  clustered.push(current);
+
+  while (remaining.length > 0) {
+    // Find nearest unvisited location
+    let nearestIdx = 0;
+    let nearestDistance = Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const dist = haversineDistance(
+        current.latitude,
+        current.longitude,
+        remaining[i].latitude,
+        remaining[i].longitude
+      );
+      if (dist < nearestDistance) {
+        nearestDistance = dist;
+        nearestIdx = i;
+      }
+    }
+
+    current = remaining[nearestIdx];
+    clustered.push(current);
+    remaining.splice(nearestIdx, 1);
+  }
+
+  // Interleave items without location at reasonable positions
+  return [...clustered, ...itemsWithoutLocation];
+}
+
 // ── Complexity tier mapping ──────────────────────────────────────────────────
 export type ComplexityTier = 'simple' | 'standard' | 'complex';
 
@@ -960,10 +1080,17 @@ export function reorderDayActivities(
       sequencingScore: 100
     };
   }
-  
+
   const appliedRules: string[] = [];
   let sequencedActivities = [...activities];
-  
+
+  // Step 0: Apply geographic clustering (nearest-neighbor TSP)
+  const hasLocationData = activities.some(a => a.latitude && a.longitude);
+  if (hasLocationData && activities.length > 2) {
+    sequencedActivities = clusterActivitiesByGeography(sequencedActivities);
+    appliedRules.push('geographic-clustering');
+  }
+
   // Step 1: Assign optimal time slots first
   sequencedActivities = sequencedActivities.map(activity => {
     const { slot, startHour } = getOptimalTimeSlot(activity);
@@ -1092,9 +1219,9 @@ function calculateIntensityVariance(activities: SequencedActivity[]): number {
 // Reorder entire itinerary (all days)
 export function reorderItinerary(
   items: SequencedActivity[]
-): { 
-  reorderedItems: SequencedActivity[]; 
-  allMethodologyNotes: MethodologyNote[]; 
+): {
+  reorderedItems: SequencedActivity[];
+  allMethodologyNotes: MethodologyNote[];
   overallScore: number;
   appliedRulesCount: number;
 } {
@@ -1105,19 +1232,32 @@ export function reorderItinerary(
     if (!dayGroups[day]) dayGroups[day] = [];
     dayGroups[day].push(item);
   }
-  
+
   // Reorder each day
   const reorderedItems: SequencedActivity[] = [];
   const allMethodologyNotes: MethodologyNote[] = [];
   let totalScore = 0;
   let totalAppliedRules = 0;
-  
+
   const sortedDays = Object.keys(dayGroups).map(Number).sort((a, b) => a - b);
-  
+
   for (const dayNum of sortedDays) {
-    const result = reorderDayActivities(dayGroups[dayNum]);
+    const dayItems = dayGroups[dayNum];
+    const dayType = classifyDayType(dayItems);
+    const paceExpectation = getPaceExpectationForDayType(dayType);
+
+    const result = reorderDayActivities(dayItems);
     reorderedItems.push(...result.activities);
     allMethodologyNotes.push(...result.methodologyNotes);
+
+    // Add day-type note
+    allMethodologyNotes.push({
+      activityId: undefined,
+      ruleApplied: `day-type-classification`,
+      description: `Day ${dayNum} classified as "${dayType}" day. Expected pace: ${paceExpectation.ideal} activities (range: ${paceExpectation.min}-${paceExpectation.max}). Current: ${dayItems.length} activities.`,
+      priority: 'low'
+    });
+
     totalScore += result.sequencingScore;
     totalAppliedRules += result.appliedRules.length;
   }
