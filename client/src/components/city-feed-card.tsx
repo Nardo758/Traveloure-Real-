@@ -348,8 +348,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     dbImageUrl,
   );
 
-  if (!loading && !photoUrl) return null;
-
   const bookability: Bookability = computeBookability({ ...event, externalUrl: event.url });
   const eventSuggestion: MatchSuggestion = {
     icon: "🎫",
@@ -581,22 +579,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
     dbImageUrl,
   );
-
-  const supplySuggestion: MatchSuggestion = isHotel
-    ? {
-        icon: "🚗",
-        matchText: "private car from city centre · ¥9,000",
-        actionLabel: "Book both",
-        actionVariant: "platform",
-        href: "/experiences/transport",
-      }
-    : {
-        icon: "🧭",
-        matchText: "local guide · ¥6,000",
-        actionLabel: "Book guide",
-        actionVariant: "platform",
-        href: "/local-experts",
-      };
 
   const supplySuggestion: MatchSuggestion = isHotel
     ? {

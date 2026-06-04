@@ -340,7 +340,6 @@ function StatsRow({
     return "🟢";
   };
 
-
   return (
     <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
       {cityIntel.activeTravelers !== undefined && (
@@ -380,6 +379,7 @@ const SPINE_CHIPS = [
   { id: "eat", label: "Eat" },
   { id: "do", label: "Do" },
   { id: "stay", label: "Stay" },
+  { id: "services", label: "Services" },
   { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
   { id: "photo_spots", label: "Photo spots" },
