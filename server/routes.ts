@@ -584,6 +584,7 @@ export async function registerRoutes(
   app.use("/api/webhooks", webhooksRoutes);
 
   // Trips Routes
+  // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const status = req.query.status as string | undefined;
@@ -591,28 +592,36 @@ export async function registerRoutes(
     res.json(trips);
   });
 
-  app.get(api.trips.get.path, isAuthenticated, async (req, res) => {
+  // GET /api/trips/:id — get trip (auth: owner/expert/EA, or guest via shareToken)
+  app.get(api.trips.get.path, async (req, res) => {
     const trip = await storage.getTrip(req.params.id);
     if (!trip) {
       return res.status(404).json({ message: "Trip not found" });
     }
-    // Owner, assigned expert, or managing EA may view.
-    const userId = (req.user as any).claims.sub;
-    const isOwner = trip.userId === userId;
+
+    // Check access: owner, assigned expert, managing EA, or guest with shareToken
+    const userId = (req.user as any)?.claims?.sub ?? null;
+    const shareToken = req.query.token as string | undefined;
+    const isOwner = trip.userId && trip.userId === userId;
     const isExpert = (trip as any).expertId === userId;
     const isManagingEa = (trip as any).managedByEaId === userId;
-    if (!isOwner && !isExpert && !isManagingEa) {
+    const isGuestWithToken = shareToken && trip.shareToken === shareToken;
+
+    if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     res.json(trip);
   });
 
-  app.post(api.trips.create.path, isAuthenticated, async (req, res) => {
+  // POST /api/trips — create a trip (guest or authenticated)
+  // Guests get null userId; authenticated users get their userId.
+  // Guests receive a shareToken to access the trip until sign-up.
+  app.post(api.trips.create.path, async (req, res) => {
     try {
       const input = api.trips.create.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
-      
+
       // Additional validations
       if (sanitizedInput.startDate && sanitizedInput.endDate) {
         if (new Date(sanitizedInput.endDate) < new Date(sanitizedInput.startDate)) {
@@ -622,9 +631,20 @@ export async function registerRoutes(
       if (sanitizedInput.budget && parseFloat(sanitizedInput.budget) < 0) {
         return res.status(400).json({ message: "Budget must be a positive number" });
       }
-      
-      const userId = (req.user as any).claims.sub;
+
+      const userId = (req.user as any)?.claims?.sub ?? null;
       const trip = await storage.createTrip({ ...sanitizedInput, userId });
+
+      // If guest, ensure they have a shareToken for access
+      if (!userId && !trip.shareToken) {
+        const token = crypto.randomBytes(32).toString("hex");
+        const [updated] = await db.update(trips)
+          .set({ shareToken: token })
+          .where(eq(trips.id, trip.id))
+          .returning();
+        return res.status(201).json(updated);
+      }
+
       res.status(201).json(trip);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -634,7 +654,8 @@ export async function registerRoutes(
     }
   });
 
-  app.patch(api.trips.update.path, isAuthenticated, async (req, res) => {
+  // PATCH /api/trips/:id — update trip (auth: owner/EA, or guest via shareToken)
+  app.patch(api.trips.update.path, async (req, res) => {
     try {
       const input = api.trips.update.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
@@ -642,10 +663,15 @@ export async function registerRoutes(
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
-      const userId = (req.user as any).claims.sub;
-      const isOwner = trip.userId === userId;
+      const userId = (req.user as any)?.claims?.sub ?? null;
+      const shareToken = req.query.token as string | undefined;
+      const isOwner = trip.userId && trip.userId === userId;
       const isManagingEa = (trip as any).managedByEaId === userId;
-      if (!isOwner && !isManagingEa) return res.status(401).json({ message: "Unauthorized" });
+      const isGuestWithToken = shareToken && trip.shareToken === shareToken;
+
+      if (!isOwner && !isManagingEa && !isGuestWithToken) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
 
       const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
       res.json(updatedTrip);
@@ -666,6 +692,36 @@ export async function registerRoutes(
 
     await storage.deleteTrip(req.params.id);
     res.status(204).send();
+  });
+
+  // POST /api/trips/:id/claim — link a guest trip to an authenticated user
+  // Called after a guest signs up, to claim their draft trips.
+  app.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const { shareToken } = req.body;
+      if (!shareToken || trip.shareToken !== shareToken) {
+        return res.status(401).json({ message: "Invalid share token" });
+      }
+
+      // Only unclaimed (null userId) trips can be claimed
+      if (trip.userId) {
+        return res.status(409).json({ message: "Trip already claimed" });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const [updated] = await db.update(trips)
+        .set({ userId })
+        .where(eq(trips.id, req.params.id))
+        .returning();
+
+      res.json(updated);
+    } catch (err) {
+      console.error("[trips] claim error:", err);
+      res.status(500).json({ message: "Failed to claim trip" });
+    }
   });
 
   app.post("/api/trips/generate-itinerary", isAuthenticated, async (req, res) => {

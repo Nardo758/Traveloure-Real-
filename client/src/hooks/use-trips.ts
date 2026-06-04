@@ -3,6 +3,8 @@ import { api, buildUrl } from "@shared/routes";
 import { z } from "zod";
 import type { InsertTrip, Trip, GeneratedItinerary } from "@shared/schema";
 import { useToast } from "./use-toast";
+import { useGuestTrips } from "@/contexts/GuestTripContext";
+import { useAuth } from "./use-auth";
 
 // === TRIPS ===
 
@@ -19,10 +21,16 @@ export function useTrips() {
 }
 
 export function useTrip(id: string) {
+  const { getShareToken } = useGuestTrips();
+
   return useQuery({
     queryKey: [api.trips.get.path, id],
     queryFn: async () => {
-      const url = buildUrl(api.trips.get.path, { id });
+      let url = buildUrl(api.trips.get.path, { id });
+      const shareToken = getShareToken(id);
+      if (shareToken) {
+        url += `?token=${encodeURIComponent(shareToken)}`;
+      }
       const res = await fetch(url, { credentials: "include" });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch trip");
@@ -35,6 +43,8 @@ export function useTrip(id: string) {
 export function useCreateTrip() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { addGuestTrip } = useGuestTrips();
 
   return useMutation({
     mutationFn: async (data: InsertTrip) => {
@@ -54,11 +64,15 @@ export function useCreateTrip() {
       }
       return api.trips.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => {
+    onSuccess: (trip) => {
+      // If guest created the trip, store the shareToken for later claim
+      if (!user && (trip as any).shareToken) {
+        addGuestTrip(trip.id, (trip as any).shareToken);
+      }
       queryClient.invalidateQueries({ queryKey: [api.trips.list.path] });
       toast({
         title: "Trip Created",
-        description: "Your new adventure awaits!",
+        description: user ? "Your new adventure awaits!" : "Your trip is ready. Sign up to book services!",
       });
     },
     onError: (error) => {
@@ -74,10 +88,15 @@ export function useCreateTrip() {
 export function useUpdateTrip() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { getShareToken } = useGuestTrips();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string } & Partial<InsertTrip>) => {
-      const url = buildUrl(api.trips.update.path, { id });
+      let url = buildUrl(api.trips.update.path, { id });
+      const shareToken = getShareToken(id);
+      if (shareToken) {
+        url += `?token=${encodeURIComponent(shareToken)}`;
+      }
       const res = await fetch(url, {
         method: api.trips.update.method,
         headers: { "Content-Type": "application/json" },
