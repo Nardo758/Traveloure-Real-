@@ -10031,6 +10031,23 @@ Respond with this exact JSON structure:
         avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
       };
       
+      // Layer 3 (Book Around It): Fetch time-relevant matches for top destinations
+      // Only fetch for top 5 cities to avoid performance hit; include top-rated cities
+      const topCitiesForMatching = filteredCities.slice(0, 5);
+      const { resolveTimeRelevantMatches } = await import("../services/content-matching.service");
+
+      const timeRelevantMatchesPerCity = await Promise.all(
+        topCitiesForMatching.map(city =>
+          resolveTimeRelevantMatches(city.cityName, city.country, month, 3).catch(() => ({
+            city: city.cityName,
+            country: city.country,
+            month,
+            providers: [],
+            experts: [],
+          }))
+        )
+      );
+
       res.json({
         month,
         monthName: new Date(2024, month - 1).toLocaleString("default", { month: "long" }),
@@ -10049,6 +10066,8 @@ Respond with this exact JSON structure:
           startMonth: e.startMonth,
           endMonth: e.endMonth,
         })),
+        // Layer 3: Time-relevant services/experiences for top destinations
+        timeRelevantMatches: timeRelevantMatchesPerCity,
       });
     } catch (error: any) {
       console.error("Error getting global calendar:", error);

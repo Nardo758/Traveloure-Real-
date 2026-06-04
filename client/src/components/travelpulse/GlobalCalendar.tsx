@@ -76,6 +76,27 @@ interface GlobalEvent {
   specificDate?: string | null;
 }
 
+interface TimeRelevantMatch {
+  city: string;
+  country: string;
+  month: number;
+  providers: Array<{
+    serviceId: string;
+    serviceName: string;
+    serviceType: string | null;
+    price: string | null;
+    priceType: string | null;
+    location: string | null;
+    averageRating: string | null;
+    providerName: string;
+  }>;
+  experts: Array<{
+    expertId: string;
+    expertName: string;
+    totalScore: number;
+  }>;
+}
+
 interface GlobalCalendarResponse {
   month: number;
   monthName: string;
@@ -90,6 +111,7 @@ interface GlobalCalendarResponse {
     avoid: GlobalCity[];
   };
   allEvents: GlobalEvent[];
+  timeRelevantMatches?: TimeRelevantMatch[];
 }
 
 interface EventHighlight {
