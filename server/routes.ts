@@ -2690,6 +2690,169 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Deals Aggregation Endpoint ===
+  app.get("/api/deals", async (req, res) => {
+    try {
+      const { searchAviasalesFlights } = await import("./services/travelpayouts/aviasales.service");
+      const { searchHotellook } = await import("./services/travelpayouts/hotellook.service");
+      const { searchAgoda } = await import("./services/travelpayouts/agoda.service");
+      const { searchGetYourGuide } = await import("./services/travelpayouts/getyourguide.service");
+      const { searchKlook } = await import("./services/travelpayouts/klook.service");
+      const { searchTiqetsProducts } = await import("./services/travelpayouts/tiqets.service");
+      const { searchDiscoverCars } = await import("./services/travelpayouts/discovercars.service");
+
+      const type = (req.query.type as string) || "all";
+      const destination = (req.query.destination as string) || "";
+      const origin = (req.query.origin as string) || "NYC";
+
+      // Popular destinations for pre-fetching
+      const popularHotelDests = destination
+        ? [destination]
+        : ["Tokyo", "Paris", "Bali"];
+      const popularCarDests = destination
+        ? [destination]
+        : ["Bali", "Barcelona", "Lisbon"];
+
+      // Default dates for car rentals
+      const pickupDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const dropoffDate = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+
+      const providerLabel: Record<string, string> = {
+        aviasales: "via Aviasales",
+        hotellook: "via Hotellook",
+        agoda: "via Agoda",
+        getyourguide: "via GetYourGuide",
+        klook: "via Klook",
+        tiqets: "via Tiqets",
+        discovercars: "via DiscoverCars",
+      };
+
+      type DealItem = {
+        id: string;
+        type: string;
+        title: string;
+        destination: string;
+        price: number | null;
+        currency: string;
+        rating: number | null;
+        reviewCount: number | null;
+        imageUrl: string | null;
+        affiliateUrl: string | null;
+        provider: string;
+        providerLabel: string;
+        featured: boolean;
+      };
+
+      const normalize = (items: any[], featured = false): DealItem[] =>
+        items.map((item) => ({
+          id: item.id,
+          type: item.type,
+          title: item.title,
+          destination: item.destination || "",
+          price: item.price,
+          currency: item.currency || "USD",
+          rating: item.rating,
+          reviewCount: item.reviewCount,
+          imageUrl: item.imageUrl,
+          affiliateUrl: item.affiliateUrl || item.bookingUrl,
+          provider: item.provider,
+          providerLabel: providerLabel[item.provider] || `via ${item.provider}`,
+          featured: featured || (item.rating !== null && item.rating >= 4.7),
+        }));
+
+      const tasks: Promise<DealItem[]>[] = [];
+
+      // Flights
+      if (type === "all" || type === "flights") {
+        tasks.push(
+          searchAviasalesFlights({ origin, destination: destination || undefined, limit: 8 })
+            .then((r) => normalize(r, false))
+            .catch(() => [])
+        );
+      }
+
+      // Hotels
+      if (type === "all" || type === "hotels") {
+        for (const dest of popularHotelDests.slice(0, 2)) {
+          tasks.push(
+            searchHotellook({ destination: dest, limit: 4 })
+              .then((r) => normalize(r, false))
+              .catch(() => [])
+          );
+          tasks.push(
+            searchAgoda({ destination: dest, checkIn: pickupDate, checkOut: dropoffDate, limit: 2 })
+              .then((r) => normalize(r, false))
+              .catch(() => [])
+          );
+        }
+      }
+
+      // Experiences
+      if (type === "all" || type === "experiences") {
+        const expDests = destination ? [destination] : ["Tokyo", "Paris", "Bali"];
+        for (const dest of expDests.slice(0, 2)) {
+          tasks.push(
+            searchGetYourGuide({ destination: dest, limit: 3 })
+              .then((r) => normalize(r, false))
+              .catch(() => [])
+          );
+          tasks.push(
+            searchKlook({ destination: dest, limit: 2 })
+              .then((r) => normalize(r, false))
+              .catch(() => [])
+          );
+          tasks.push(
+            searchTiqetsProducts({ city: dest, limit: 2 })
+              .then((r) => normalize(r, true))
+              .catch(() => [])
+          );
+        }
+      }
+
+      // Cars
+      if (type === "all" || type === "cars") {
+        for (const dest of popularCarDests.slice(0, 2)) {
+          tasks.push(
+            searchDiscoverCars({
+              pickupLocation: dest,
+              pickupDate,
+              dropoffDate,
+              limit: 3,
+            })
+              .then((r) => normalize(r, false))
+              .catch(() => [])
+          );
+        }
+      }
+
+      const results = await Promise.all(tasks);
+      let deals: DealItem[] = results.flat();
+
+      // Filter by destination search if provided
+      if (destination) {
+        const q = destination.toLowerCase();
+        deals = deals.filter(
+          (d) =>
+            d.destination.toLowerCase().includes(q) ||
+            d.title.toLowerCase().includes(q)
+        );
+      }
+
+      // Deduplicate by id
+      const seen = new Set<string>();
+      deals = deals.filter((d) => {
+        if (seen.has(d.id)) return false;
+        seen.add(d.id);
+        return true;
+      });
+
+      res.json({ deals, total: deals.length });
+    } catch (error) {
+      console.error("Deals aggregation error:", error);
+      res.status(500).json({ message: "Failed to fetch deals" });
+    }
+  });
+
   // Alias: /api/destinations -> /api/catalog/destinations
   app.get("/api/destinations", async (req, res) => {
     try {
