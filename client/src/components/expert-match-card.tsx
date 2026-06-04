@@ -114,7 +114,7 @@ export function ExpertMatchCard({
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [, setLocation] = useLocation();
 
-  const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Travel Expert";
+  const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Expert";
   const initials = `${expert.firstName?.[0] || "T"}${expert.lastName?.[0] || "E"}`;
 
   const lowestPrice = expert.selectedServices?.length

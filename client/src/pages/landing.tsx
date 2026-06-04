@@ -281,14 +281,14 @@ const faqItems = [
   },
   {
     id: "experts",
-    title: "Travel Experts To Help",
+    title: "Local Experts & Trip Planners",
     content: (
       <div className="space-y-3">
-        <p>Connect with verified local experts who know their destinations inside out. They provide authentic recommendations, handle logistics, and offer real-time support.</p>
+        <p>Connect with verified local experts who know their destinations inside out, or work with a dedicated trip planner to craft your perfect itinerary.</p>
         <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Verified Locals:</strong> Every expert is vetted for deep destination knowledge and excellent communication</li>
-          <li><strong>Direct Chat:</strong> Message your expert anytime for tips, restaurant bookings, or last-minute changes</li>
-          <li><strong>Personalized Guidance:</strong> Get custom recommendations based on your travel style—foodie, adventure, culture, or relaxation</li>
+          <li><strong>Local Experts:</strong> Destination insiders vetted for deep local knowledge — restaurants, hidden spots, culture</li>
+          <li><strong>Trip Planners:</strong> Itinerary specialists who handle logistics end-to-end and refine AI-generated plans</li>
+          <li><strong>Direct Chat:</strong> Message your expert anytime for tips, bookings, or last-minute changes</li>
           <li><strong>On-Trip Support:</strong> Your expert is available throughout your journey for real-time assistance</li>
         </ul>
       </div>
@@ -332,9 +332,9 @@ const faqItems = [
     title: "Partner With Us",
     content: (
       <div className="space-y-3">
-        <p>Join our network of travel experts, service providers, and local guides. Grow your business while helping travelers create unforgettable experiences.</p>
+        <p>Join our network of local experts, trip planners, and service providers. Grow your business while helping travelers create unforgettable experiences.</p>
         <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Travel Experts:</strong> Share your destination expertise and earn by helping travelers plan their trips</li>
+          <li><strong>Trip Planners & Local Experts:</strong> Share your destination expertise and earn by helping travelers plan their trips</li>
           <li><strong>Service Providers:</strong> List your hotels, tours, restaurants, and activities to reach global travelers</li>
           <li><strong>AI-Powered Tools:</strong> Access our suite of expert tools including AI assistants and revenue optimization</li>
           <li><strong>Flexible Earnings:</strong> Set your own rates and work on your schedule with full earnings transparency</li>

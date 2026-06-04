@@ -261,7 +261,7 @@ export default function ExpertsPage() {
             className="text-center mb-8"
           >
             <h1 className="text-4xl md:text-5xl font-bold mb-4 drop-shadow-lg [text-shadow:_0_2px_10px_rgb(0_0_0_/_60%)]">
-              Find Your Perfect Travel Expert
+              Find Your Perfect Local Expert
             </h1>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto drop-shadow-md [text-shadow:_0_1px_4px_rgb(0_0_0_/_50%)]">
               Connect with verified local experts who know their destinations inside out.
@@ -723,7 +723,7 @@ export default function ExpertsPage() {
           </h2>
           <p className="text-lg text-[#6B7280] mb-8 max-w-2xl mx-auto">
             Share your knowledge, earn money, and help travelers discover the best
-            of your destination. Join our growing community of travel experts.
+            of your destination. Join our growing community of local experts and trip planners.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/become-expert">
