@@ -11,6 +11,12 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
@@ -329,7 +335,7 @@ function PlanCardSummary({
   const totalLegs = stats.totalLegs ?? days.reduce((s, d) => s + (d.transports?.length ?? 0), 0);
   const totalMinutes = stats.totalTransitMinutes ?? days.reduce((s, d) => s + (d.transports ?? []).reduce((t, tr) => t + (tr.duration ?? 0), 0), 0);
 
-  const optimizationDelta = plancardData?.optimizationDelta ?? null;
+  const optimizationDeltaFromData = plancardData?.optimizationDelta ?? null;
   const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
   const numDays = days.length || Math.max(1, Math.round(
     (new Date(trip.endDate ?? Date.now()).getTime() - new Date(trip.startDate ?? Date.now()).getTime()) / 86400000
@@ -457,6 +463,144 @@ function PlanCardSummary({
               </span>
             )}
           </div>
+          <div className="absolute top-3 right-3.5 flex flex-col items-end gap-1">
+            <button
+              onClick={handleDelete}
+              disabled={deleteTrip.isPending}
+              data-testid={`button-delete-plan-${trip.id}`}
+              title={confirming ? "Click again to confirm delete" : "Remove this plan"}
+              className={`w-6 h-6 flex items-center justify-center rounded-full transition-all ${
+                confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
+              }`}
+            >
+              {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+            </button>
+            {showCountdown && (
+              <div className="text-right leading-none">
+                <div className="text-[22px] font-medium leading-none" data-testid={`text-countdown-${trip.id}`}>{daysTil}</div>
+                <div className="text-[9px] opacity-70">days</div>
+              </div>
+            )}
+          </div>
+
+          <div className="text-[15px] font-medium mb-0.5 pr-[50px]" data-testid={`text-plan-title-${trip.id}`}>{tripTitle}</div>
+          <div className="text-[11px] opacity-85">
+            📍 {trip.destination} · {formatShortDate(trip.startDate ?? "")}–{formatShortDate(trip.endDate ?? "")}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div style={{ padding: "10px 14px" }}>
+          <div className="flex text-center mb-2">
+            {([
+              { label: "Days", value: numDays },
+              { label: "Activities", value: totalActivities },
+              { label: "Transit legs", value: totalLegs },
+              { label: "Transit time", value: formatMinutes(totalMinutes) },
+            ] as const).map((s, i) => (
+              <div
+                key={i}
+                className="flex-1 py-1"
+                style={{ borderLeft: i > 0 ? "0.5px solid #E8E8E2" : "none" }}
+              >
+                <div className="text-[9px]" style={{ color: "#7A7A72", marginBottom: 1 }}>{s.label}</div>
+                <div className="text-[14px] font-medium" style={{ color: "#1A1A18" }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Chips */}
+          <div className="flex gap-[5px] flex-wrap">
+            {serviceBookingsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=bookings`)}
+                className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#E6F1FB", color: "#0C447C" }}
+                data-testid={`pill-services-${trip.id}`}
+              >
+                💼 {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
+              </button>
+            )}
+            {totalLegs > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary&section=transport`)}
+                className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#E1F5EE", color: "#085041" }}
+                data-testid={`pill-transport-${trip.id}`}
+              >
+                🚗 {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
+              </button>
+            )}
+            {advisor && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=expert`)}
+                className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#EEEDFE", color: "#3C3489" }}
+                data-testid={`pill-expert-${trip.id}`}
+              >
+                👥 Expert
+              </button>
+            )}
+            {lastOptimizedAt && (() => {
+              const isStale = Date.now() - new Date(lastOptimizedAt).getTime() > 30 * 24 * 60 * 60 * 1000;
+              const formattedDate = new Date(lastOptimizedAt).toLocaleDateString(undefined, {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              });
+              const formattedTime = new Date(lastOptimizedAt).toLocaleTimeString(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+              });
+
+              return (
+                <Tooltip key="pill-ai-optimized">
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+                      className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                      style={
+                        isStale
+                          ? { background: "#FFFBEB", color: "#92400E", border: "1px solid #F59E0B" }
+                          : { background: "#FFF3E8", color: "#8B3A00" }
+                      }
+                      data-testid={`pill-ai-optimized-${trip.id}`}
+                    >
+                      <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
+                      {isStale ? "Re-optimize?" : "AI Optimized"}
+                      {!isStale && optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
+                        <span style={{ color: "#2C7A44", fontWeight: 600 }}>
+                          · ${Math.round(optimizationDeltaFromData.savings as number)} saved
+                        </span>
+                      )}
+                      {!isStale && optimizationDeltaFromData?.starRatingDelta != null && (optimizationDeltaFromData.starRatingDelta as number) > 0 && (
+                        <span style={{ color: "#B07C00", fontWeight: 600 }}>
+                          · +{(optimizationDeltaFromData.starRatingDelta as number).toFixed(1)}★
+                        </span>
+                      )}
+                      <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
+                        · {formatRelativeTime(lastOptimizedAt)}
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-[11px]">
+                      Optimized on {formattedDate} at {formattedTime}
+                      {isStale && (
+                        <div className="text-amber-600 font-medium mt-0.5">
+                          ⚠️ This optimization is over 30 days old
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })()}
+          </div>
 
           <div className="absolute top-3 right-3.5 flex flex-col items-end gap-1">
             <button
@@ -539,29 +683,64 @@ function PlanCardSummary({
                 👥 Expert
               </button>
             )}
-            {lastOptimizedAt && (
-              <button
-                type="button"
-                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
-                className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ background: "#FFF3E8", color: "#8B3A00" }}
-                data-testid={`pill-ai-optimized-${trip.id}`}
-                title="This itinerary was AI-optimized"
-              >
-                <Sparkles className="w-[9px] h-[9px]" />
-                AI Optimized
-                {optimizationDelta?.savings != null && (optimizationDelta.savings as number) > 0 && (
-                  <span style={{ color: "#2C7A44", fontWeight: 600 }}>
-                    · ${Math.round(optimizationDelta.savings as number)} saved
-                  </span>
-                )}
-                {optimizationDelta?.starRatingDelta != null && (optimizationDelta.starRatingDelta as number) > 0 && (
-                  <span style={{ color: "#B07C00", fontWeight: 600 }}>
-                    · +{(optimizationDelta.starRatingDelta as number).toFixed(1)}★
-                  </span>
-                )}
-              </button>
-            )}
+            {lastOptimizedAt && (() => {
+              const isStale = Date.now() - new Date(lastOptimizedAt).getTime() > 30 * 24 * 60 * 60 * 1000;
+              const formattedDate = new Date(lastOptimizedAt).toLocaleString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+                        className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                        style={
+                          isStale
+                            ? { background: "#FFFBEB", color: "#92400E", border: "1px solid #F59E0B" }
+                            : { background: "#FFF3E8", color: "#8B3A00" }
+                        }
+                        data-testid={`pill-ai-optimized-${trip.id}`}
+                      >
+                        <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
+                        {isStale ? "Re-optimize?" : "AI Optimized"}
+                        {!isStale && optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+                          <span style={{ color: "#2C7A44", fontWeight: 600 }}>
+                            · ${Math.round(optimizationDelta.savings)} saved
+                          </span>
+                        )}
+                        {!isStale && optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+                          <span style={{ color: "#B07C00", fontWeight: 600 }}>
+                            · +{optimizationDelta.starRatingDelta.toFixed(1)}★
+                          </span>
+                        )}
+                        <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
+                          · {formatRelativeTime(lastOptimizedAt)}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">
+                        Last optimized: {formattedDate}
+                        {isStale && (
+                          <>
+                            <br />
+                            <span className="text-amber-500 font-medium">
+                              Optimization is over 30 days old
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
           </div>
         </div>
 
