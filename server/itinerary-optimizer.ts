@@ -18,8 +18,12 @@ import {
   transportLegs,
   experienceTypes,
   ExperienceType,
+  travelPulseTrending,
+  travelPulseCalendarEvents,
+  destinationSeasons,
+  trips,
 } from "@shared/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, desc, or, ilike, isNull } from "drizzle-orm";
 import {
   reorderItinerary,
   calculateItineraryMetrics,
@@ -152,6 +156,143 @@ interface AIResponse {
   variants: OptimizedVariant[];
 }
 
+// ── Trip-style adaptive variant strategy ──────────────────────────────────────
+
+export interface TripPreferences {
+  travelStyles?: string[];
+  budget?: number | null;
+  eventType?: string | null;
+}
+
+interface VariantDescriptor {
+  name: string;
+  goal: string;
+  strategy: string;
+}
+
+/**
+ * Pure function that maps trip preferences to two named variant descriptors.
+ * Priority: eventType → budget tier → first matching style tag → default fallback.
+ */
+export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescriptor, VariantDescriptor] {
+  const eventType = (prefs?.eventType || "").toLowerCase();
+  const budget = prefs?.budget ?? null;
+  const styles: string[] = (prefs?.travelStyles || []).map(s => s.toLowerCase());
+
+  // 1. Event-type signals (highest priority)
+  const romanticEvents = new Set(["honeymoon", "anniversary", "proposal", "wedding"]);
+  if (romanticEvents.has(eventType)) {
+    return [
+      {
+        name: "Romance Optimized",
+        goal: "Craft a deeply romantic, memorable experience tailored for couples",
+        strategy: "Schedule sunset-timed activities, add private dining experiences, replace group tours with couples-only options, include surprise-friendly moments and couple spa treatments",
+      },
+      {
+        name: "Premium Upgrade",
+        goal: "Elevate the trip with exclusive, high-quality experiences",
+        strategy: "Upgrade to boutique hotels or suites, add private guided experiences, replace standard transport with private transfers, find exclusive access options unavailable to general visitors",
+      },
+    ];
+  }
+
+  if (eventType === "corporate") {
+    return [
+      {
+        name: "Business Efficient",
+        goal: "Maximise productivity by minimising transit time and clustering activities geographically",
+        strategy: "Group activities by neighbourhood to avoid backtracking, replace leisure-heavy days with focused half-day windows, keep mornings free for meetings and batch evening activities, prefer venues with reliable WiFi and quiet spaces",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Make the most of free windows with high-quality local experiences",
+        strategy: "Find higher-rated venues near the business district, add a standout cultural or culinary experience for team bonding, replace generic after-work options with unique local alternatives",
+      },
+    ];
+  }
+
+  // 2. Budget tier (if strongly luxury)
+  const isLuxuryBudget = budget != null && budget >= 8000;
+  if (isLuxuryBudget) {
+    return [
+      {
+        name: "Premium Upgrade",
+        goal: "Elevate every aspect of the trip to match a luxury travel standard",
+        strategy: "Upgrade accommodation to 5-star or boutique properties, add private guided experiences and exclusive venue access, replace shared transport with private transfers, prioritise chef's table dinners and unique VIP experiences",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  // 3. Style-tag signals (first matching tag wins)
+  const hasFoodStyle = styles.some(s => s.includes("food") || s.includes("culinary") || s.includes("dining"));
+  const hasAdventureStyle = styles.some(s => s.includes("adventure") || s.includes("outdoor") || s.includes("extreme"));
+  const hasRelaxationStyle = styles.some(s => s.includes("relaxat") || s.includes("wellness") || s.includes("spa") || s.includes("slow"));
+
+  if (hasFoodStyle) {
+    return [
+      {
+        name: "Culinary Deep Dive",
+        goal: "Transform the trip into an immersive food and drink journey",
+        strategy: "Replace generic restaurants with chef's table experiences, street food tours, and cooking classes; add local market visits; swap sightseeing slots for food-district walks; prioritise highly rated local eateries over tourist traps",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  if (hasAdventureStyle) {
+    return [
+      {
+        name: "Off the Beaten Path",
+        goal: "Replace mainstream attractions with authentic, adventurous, and unique access experiences",
+        strategy: "Swap tourist-heavy sites with hikes, local guide-led exploration, and off-grid experiences; add active challenges like kayaking or cycling; find neighbourhoods locals frequent; avoid peak-hour tourist hotspots",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  if (hasRelaxationStyle) {
+    return [
+      {
+        name: "Wellness Focus",
+        goal: "Design a restorative itinerary with a slower, more rejuvenating pace",
+        strategy: "Add spa mornings and meditation sessions; reduce the number of daily activities; replace high-energy sightseeing with leisurely neighbourhood strolls; prioritise late-morning starts and include afternoon rest windows; favour wellness retreats and nature escapes",
+      },
+      {
+        name: "Budget Optimizer",
+        goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+        strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+      },
+    ];
+  }
+
+  // 4. Default fallback
+  return [
+    {
+      name: "Budget Optimizer",
+      goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+      strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+    },
+    {
+      name: "Experience Enhancer",
+      goal: "Maximise the variety and quality of experiences across the itinerary",
+      strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+    },
+  ];
+}
+
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -211,6 +352,200 @@ function buildLogisticsContext(expType: ExperienceType): string {
   return `\n\nEXPERIENCE CONTEXT (use this to tailor the itinerary style and pacing):\n${lines.join('\n')}`;
 }
 
+// ── TravelPulse helpers ───────────────────────────────────────────────────────
+
+/** Extract a normalised city keyword from a destination string like "Tokyo, Japan" */
+function extractCityKey(destination: string): string {
+  return destination.split(',')[0].trim().toLowerCase();
+}
+
+interface CityIntelligence {
+  trending: Array<{ name: string; type: string; trendScore: number; bestTime?: string; worstTime?: string; crowdForecast?: any[] }>;
+  calendarEvents: Array<{ name: string; type: string; crowdImpact: string; description?: string; tips?: string[] }>;
+  seasonTag: string | null;
+}
+
+/** Fetch TravelPulse data for the destination city. Returns empty data on any failure. */
+async function fetchCityIntelligence(
+  destination: string,
+  startDate: string,
+  endDate: string,
+): Promise<CityIntelligence> {
+  const empty: CityIntelligence = { trending: [], calendarEvents: [], seasonTag: null };
+  try {
+    const cityKey = extractCityKey(destination);
+    const tripStartDate = new Date(startDate);
+    const tripEndDate = new Date(endDate);
+    const tripMonth = isNaN(tripStartDate.getTime()) ? null : tripStartDate.getMonth() + 1;
+
+    const [trendingRows, calendarRows, seasonRows] = await Promise.all([
+      db
+        .select()
+        .from(travelPulseTrending)
+        .where(
+          and(
+            or(
+              ilike(travelPulseTrending.city, cityKey),
+              ilike(travelPulseTrending.city, `${cityKey}%`),
+            ),
+            or(
+              gte(travelPulseTrending.expiresAt, new Date()),
+              isNull(travelPulseTrending.expiresAt),
+            ),
+          ),
+        )
+        .orderBy(desc(travelPulseTrending.trendScore))
+        .limit(5),
+
+      !isNaN(tripStartDate.getTime()) && !isNaN(tripEndDate.getTime())
+        ? db
+            .select()
+            .from(travelPulseCalendarEvents)
+            .where(
+              and(
+                or(
+                  ilike(travelPulseCalendarEvents.city, cityKey),
+                  ilike(travelPulseCalendarEvents.city, `${cityKey}%`),
+                ),
+                lte(travelPulseCalendarEvents.startDate, endDate),
+                or(
+                  gte(travelPulseCalendarEvents.endDate, startDate),
+                  isNull(travelPulseCalendarEvents.endDate),
+                ),
+              ),
+            )
+            .limit(5)
+        : Promise.resolve([]),
+
+      tripMonth
+        ? db
+            .select()
+            .from(destinationSeasons)
+            .where(
+              and(
+                or(
+                  ilike(destinationSeasons.city, cityKey),
+                  ilike(destinationSeasons.city, `${cityKey}%`),
+                ),
+                eq(destinationSeasons.month, tripMonth),
+              ),
+            )
+            .limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    const trending = trendingRows.map(r => ({
+      name: r.destinationName,
+      type: r.destinationType || 'experience',
+      trendScore: r.trendScore || 0,
+      bestTime: r.bestTimeToVisit || undefined,
+      worstTime: r.worstTimeToVisit || undefined,
+      crowdForecast: Array.isArray(r.crowdForecast) ? r.crowdForecast as any[] : [],
+    }));
+
+    const calendarEvents = calendarRows.map(r => ({
+      name: r.eventName,
+      type: r.eventType || 'event',
+      crowdImpact: r.crowdImpact || 'moderate',
+      description: r.description || undefined,
+      tips: Array.isArray(r.tips) ? (r.tips as string[]) : [],
+    }));
+
+    const seasonRow = seasonRows[0];
+    let seasonTag: string | null = null;
+    if (seasonRow) {
+      const highlights = Array.isArray(seasonRow.highlights) ? (seasonRow.highlights as string[]) : [];
+      const parts: string[] = [];
+      if (seasonRow.weatherDescription) parts.push(seasonRow.weatherDescription);
+      if (seasonRow.crowdLevel) parts.push(`crowd level: ${seasonRow.crowdLevel}`);
+      if (highlights.length > 0) parts.push(highlights.slice(0, 2).join(', '));
+      seasonTag = parts.length > 0 ? parts.join(' — ') : null;
+    }
+
+    return { trending, calendarEvents, seasonTag };
+  } catch (err) {
+    console.warn('[Optimizer] TravelPulse fetch failed (non-critical):', (err as Error).message);
+    return empty;
+  }
+}
+
+/** Format city intelligence into a compact prompt section. */
+function buildCityIntelligenceSection(intel: CityIntelligence): string {
+  if (intel.trending.length === 0 && intel.calendarEvents.length === 0 && !intel.seasonTag) {
+    return '';
+  }
+
+  const lines: string[] = ['\n\nCITY INTELLIGENCE (TravelPulse data — use to sharpen scheduling decisions):'];
+
+  if (intel.seasonTag) {
+    lines.push(`SEASONAL CONTEXT: ${intel.seasonTag}`);
+  }
+
+  if (intel.trending.length > 0) {
+    lines.push('TRENDING SPOTS (prefer these when selecting replacement activities):');
+    for (const t of intel.trending) {
+      let entry = `- ${t.name} (${t.type}, trend score ${t.trendScore})`;
+      if (t.bestTime) entry += ` — best time: ${t.bestTime}`;
+      if (t.worstTime) entry += ` — avoid: ${t.worstTime}`;
+      lines.push(entry);
+
+      // Surface peak crowd windows the AI should avoid
+      const peakSlots = (t.crowdForecast || [])
+        .filter((f: any) => f.level === 'packed' || f.percent >= 80)
+        .map((f: any) => `${f.hour}:00`);
+      if (peakSlots.length > 0) {
+        lines.push(`  ↳ Avoid scheduling this activity at: ${peakSlots.join(', ')} (peak crowd hours)`);
+      }
+    }
+  }
+
+  if (intel.calendarEvents.length > 0) {
+    lines.push('LOCAL EVENTS DURING TRIP (factor into scheduling):');
+    for (const ev of intel.calendarEvents) {
+      let entry = `- ${ev.name} (${ev.type}, crowd impact: ${ev.crowdImpact})`;
+      if (ev.description) entry += ` — ${ev.description}`;
+      lines.push(entry);
+      if (ev.tips && ev.tips.length > 0) {
+        lines.push(`  ↳ Tip: ${ev.tips[0]}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push('SCHEDULING RULES from city intelligence:');
+  lines.push('1. Prefer trending spots above as replacement candidates when proposing alternatives.');
+  lines.push('2. Do NOT schedule crowd-heavy activities during peak crowd hours listed above.');
+  lines.push('3. If a local event causes extreme crowd impact, avoid nearby areas that day or suggest early-morning timing.');
+
+  return lines.join('\n');
+}
+
+/** Re-sort availableServices so entries matching TravelPulse trending names/types appear first. */
+function weightTrendingServices(
+  services: ProviderService[],
+  trending: CityIntelligence['trending'],
+): ProviderService[] {
+  if (trending.length === 0) return services;
+
+  const trendingNames = new Set(trending.map(t => t.name.toLowerCase()));
+  const trendingTypes = new Set(trending.map(t => t.type.toLowerCase()));
+
+  const prioritised: ProviderService[] = [];
+  const rest: ProviderService[] = [];
+
+  for (const svc of services) {
+    const nameMatch = trendingNames.has((svc.serviceName || '').toLowerCase());
+    const typeMatch = trendingTypes.has((svc.serviceType || '').toLowerCase());
+    if (nameMatch || typeMatch) {
+      prioritised.push(svc);
+    } else {
+      rest.push(svc);
+    }
+  }
+
+  return [...prioritised, ...rest];
+}
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -222,7 +557,8 @@ export async function generateOptimizedItineraries(
   budget?: number,
   travelers?: number,
   tripId?: string,
-  userTransportPrefs?: Partial<UserTransportPrefs>
+  userTransportPrefs?: Partial<UserTransportPrefs>,
+  tripPreferences?: TripPreferences
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -270,6 +606,13 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         logisticsContextSection = buildLogisticsContext(expType);
       }
     }
+
+    // ── TravelPulse city intelligence (non-blocking fallback) ─────────────────
+    const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
+    const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
+
+    // ── Adaptive variant strategy (style-matched) ─────────────────────────────
+    const [variantA, variantB] = selectVariantStrategy(tripPreferences);
 
     await db
       .update(itineraryComparisons)
@@ -442,7 +785,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
     }
 
-    const servicesList = availableServices.map((s) => ({
+    // Weight trending services to appear first in the top-20 the AI sees
+    const weightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+
+    const servicesList = weightedServices.map((s) => ({
       id: s.id,
       name: s.serviceName,
       type: s.serviceType,
@@ -520,7 +866,7 @@ For each empty day, add activities that match the user's experience style (infer
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
@@ -530,14 +876,14 @@ ${compactServicesList}
 
 Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
 
-VARIANT 1 — "Budget Optimizer":
-- Goal: Reduce total cost by 15–30% while keeping the spirit of the trip
-- Strategy: Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs
+VARIANT 1 — "${variantA.name}":
+- Goal: ${variantA.goal}
+- Strategy: ${variantA.strategy}
 - Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
 
-VARIANT 2 — "Experience Enhancer":
-- Goal: Upgrade the quality and variety of experiences, even at slightly higher cost
-- Strategy: Find higher-rated venues, add a unique local or cultural experience, improve accommodation quality, replace generic activities with standout alternatives
+VARIANT 2 — "${variantB.name}":
+- Goal: ${variantB.goal}
+- Strategy: ${variantB.strategy}
 - Keep: the same trip duration and any PROTECTED ITEMS
 
 Rules for both variants:
@@ -552,8 +898,8 @@ Respond with valid JSON in this exact format:
 {
   "variants": [
     {
-      "name": "Budget Optimizer",
-      "description": "A more cost-effective version while maintaining quality",
+      "name": "${variantA.name}",
+      "description": "A tailored alternative that matches your travel style",
       "reasoning": "This alternative saves 20% on costs by...",
       "items": [
         {
@@ -937,6 +1283,151 @@ Respond with valid JSON in this exact format:
   }
 }
 
+export interface UpsellSuggestion {
+  serviceId: string;
+  title: string;
+  description: string | null;
+  price: string | null;
+  imageUrl: string | null;
+  category: string;
+  location: string | null;
+  rating: string | null;
+  matchReason: string;
+}
+
+function buildProfileCategories(
+  travelStyles: string[],
+  budget: number | null,
+  eventType: string
+): Array<{ category: string; keywords: string[]; matchReason: string }> {
+  const categories: Array<{ category: string; keywords: string[]; matchReason: string }> = [];
+
+  if (["honeymoon", "anniversary", "proposal", "wedding"].includes(eventType)) {
+    categories.push({
+      category: "romantic_dining",
+      keywords: ["romantic", "dinner", "candlelit", "intimate", "sunset", "cruise"],
+      matchReason: "Perfect for your romantic occasion",
+    });
+  }
+
+  if (travelStyles.includes("food")) {
+    categories.push({
+      category: "private_chef",
+      keywords: ["chef", "culinary", "cooking", "food", "dining", "tasting"],
+      matchReason: "Matches your culinary travel style",
+    });
+  }
+
+  if (travelStyles.includes("relaxation")) {
+    categories.push({
+      category: "spa",
+      keywords: ["spa", "massage", "wellness", "relaxation", "treatment"],
+      matchReason: "Perfect for your relaxation style",
+    });
+  }
+
+  if (budget && budget > 2000) {
+    categories.push({
+      category: "private_transfer",
+      keywords: ["transfer", "chauffeur", "private car", "driver", "limousine"],
+      matchReason: "Luxury transfer service for your trip",
+    });
+  }
+
+  if (travelStyles.includes("adventure")) {
+    categories.push({
+      category: "outdoor_addon",
+      keywords: ["adventure", "hiking", "outdoor", "excursion", "trekking", "kayak"],
+      matchReason: "Matches your adventure travel style",
+    });
+  }
+
+  return categories;
+}
+
+async function generateUpsellSuggestions(
+  comparison: any,
+  variants: any[]
+): Promise<UpsellSuggestion[]> {
+  try {
+    if (!comparison.tripId) return [];
+
+    const [trip] = await db
+      .select()
+      .from(trips)
+      .where(eq(trips.id, comparison.tripId))
+      .limit(1);
+    if (!trip) return [];
+
+    const eventType = trip.eventType || "vacation";
+    const budget = trip.budget ? parseFloat(trip.budget.toString()) : null;
+    const preferences = (trip.preferences as any) || {};
+    const travelStyles: string[] = preferences.travelStyles || [];
+
+    const scoredCategories = buildProfileCategories(travelStyles, budget, eventType);
+    if (scoredCategories.length === 0) return [];
+
+    const destination = comparison.destination || "";
+    const cityName = destination.split(",")[0].trim();
+    if (!cityName) return [];
+
+    const allKeywords = scoredCategories.flatMap(c => c.keywords);
+    if (allKeywords.length === 0) return [];
+
+    const keywordConditions = allKeywords.flatMap(kw => [
+      ilike(providerServices.serviceName, `%${kw}%`),
+      ilike(providerServices.shortDescription, `%${kw}%`),
+    ]);
+
+    const services = await db
+      .select()
+      .from(providerServices)
+      .where(
+        and(
+          eq(providerServices.status, "active"),
+          or(
+            ilike(providerServices.location, `%${cityName}%`),
+            ilike(providerServices.location, `%${destination}%`)
+          ),
+          or(...keywordConditions)
+        )
+      )
+      .orderBy(desc(providerServices.averageRating), desc(providerServices.reviewCount))
+      .limit(15);
+
+    const suggestions: UpsellSuggestion[] = [];
+    const usedIds = new Set<string>();
+
+    for (const category of scoredCategories) {
+      if (suggestions.length >= 3) break;
+      const matchingService = services.find(s => {
+        if (usedIds.has(s.id)) return false;
+        const haystack = `${s.serviceName} ${s.shortDescription || ""} ${s.serviceType || ""}`.toLowerCase();
+        return category.keywords.some(kw => haystack.includes(kw.toLowerCase()));
+      });
+      if (matchingService) {
+        usedIds.add(matchingService.id);
+        suggestions.push({
+          serviceId: matchingService.id,
+          title: matchingService.serviceName,
+          description: matchingService.shortDescription || null,
+          price: matchingService.price?.toString() || null,
+          imageUrl: matchingService.serviceImage || null,
+          category: category.category,
+          location: matchingService.location || null,
+          rating: matchingService.averageRating?.toString() || null,
+          matchReason: category.matchReason,
+        });
+      }
+    }
+
+    return suggestions;
+  } catch (err) {
+    console.warn("[upsell] Failed to generate suggestions (non-critical):", err);
+    return [];
+  }
+}
+
 export async function getComparisonWithVariants(comparisonId: string) {
   const comparison = await db.query.itineraryComparisons.findFirst({
     where: eq(itineraryComparisons.id, comparisonId),
@@ -1021,7 +1512,9 @@ export async function getComparisonWithVariants(comparisonId: string) {
     })
   );
 
-  return { comparison, variants: variantsWithDetails };
+  const upsellSuggestions = await generateUpsellSuggestions(comparison, variantsWithDetails);
+
+  return { comparison, variants: variantsWithDetails, upsellSuggestions };
 }
 
 export async function selectVariant(comparisonId: string, variantId: string) {

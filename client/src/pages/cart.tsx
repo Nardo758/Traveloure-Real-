@@ -805,7 +805,9 @@ export default function CartPage() {
       });
       
       const comparison = await response.json();
-      setLocation(`/itinerary-comparison/${comparison.id}`);
+      // G7: if we have a tripId, signal the comparison page to auto-apply and redirect
+      const autoApplyFlag = experienceContext?.tripId ? "?autoApply=1" : "";
+      setLocation(`/itinerary-comparison/${comparison.id}${autoApplyFlag}`);
     } catch (error: any) {
       console.error("Failed to create comparison:", error);
       toast({ 
