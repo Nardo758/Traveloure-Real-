@@ -130,6 +130,15 @@ export default {
           800: '#7d623e',
           900: '#665134',
         },
+        // User Console theme
+        console: {
+          darkest: '#1A1A18',
+          dark: '#1A1A18',
+          mid: '#7A7A72',
+          light: '#E8E8E2',
+          bg: '#FAFAF8',
+          hover: '#F3F3EE',
+        },
       },
       boxShadow: {
         'xs': '0 1px 2px 0 rgb(0 0 0 / 0.05)',

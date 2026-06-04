@@ -339,8 +339,8 @@ export default function ExpertBookings() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900" data-testid="text-bookings-title">Bookings & Calendar</h1>
-            <p className="text-gray-600">Manage your appointments and reservations</p>
+            <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-bookings-title">Bookings & Calendar</h1>
+            <p className="text-console-mid">Manage your appointments and reservations</p>
           </div>
           <Button className="bg-[#FF385C] " data-testid="button-new-booking">
             <CalendarDays className="w-4 h-4 mr-2" /> New Booking
@@ -348,7 +348,7 @@ export default function ExpertBookings() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardHeader>
               <CardTitle className="text-lg">Calendar</CardTitle>
             </CardHeader>
@@ -363,7 +363,7 @@ export default function ExpertBookings() {
             </CardContent>
           </Card>
 
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardHeader>
               <CardTitle className="text-lg">Today's Schedule</CardTitle>
             </CardHeader>
@@ -378,15 +378,15 @@ export default function ExpertBookings() {
                 bookings.slice(0, 3).map((booking, index) => (
                   <div
                     key={index}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover-elevate"
+                    className="flex items-start gap-3 p-3 rounded-lg border border-console-light hover-elevate"
                     data-testid={`today-event-${index}`}
                   >
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-600 min-w-16">
+                    <div className="flex items-center gap-2 text-sm font-medium text-console-mid min-w-16">
                       <Clock className="w-4 h-4" />
                       {booking.date || "N/A"}
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">{booking.travelerName || "Booking"}</p>
+                      <p className="text-sm font-medium text-console-darkest">{booking.travelerName || "Booking"}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-xs">{booking.status}</Badge>
                         {isVisaBooking(booking) && (
@@ -399,12 +399,12 @@ export default function ExpertBookings() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-500">No bookings scheduled for today</p>
+                <p className="text-sm text-console-mid">No bookings scheduled for today</p>
               )}
             </CardContent>
           </Card>
 
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardHeader>
               <CardTitle className="text-lg">All Bookings</CardTitle>
             </CardHeader>
@@ -447,7 +447,7 @@ export default function ExpertBookings() {
           </Card>
         </div>
 
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Upcoming Bookings</CardTitle>
@@ -469,13 +469,13 @@ export default function ExpertBookings() {
                 return (
                   <div
                     key={booking.id}
-                    className="p-4 rounded-lg border border-gray-200 hover-elevate"
+                    className="p-4 rounded-lg border border-console-light hover-elevate"
                     data-testid={`booking-${booking.id}`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
-                          <p className="font-semibold text-gray-900">Booking</p>
+                          <p className="font-semibold text-console-darkest">Booking</p>
                           {getStatusBadge(booking.status)}
                           {isVisa && (
                             <Badge variant="outline" className="text-[#FF385C] border-[#FF385C]/30 text-xs">
@@ -483,7 +483,7 @@ export default function ExpertBookings() {
                             </Badge>
                           )}
                         </div>
-                        <div className="space-y-1 text-sm text-gray-600">
+                        <div className="space-y-1 text-sm text-console-mid">
                           <p className="flex items-center gap-2">
                             <User className="w-4 h-4" /> {booking.travelerName || "Traveler"}
                           </p>
@@ -494,7 +494,7 @@ export default function ExpertBookings() {
                           )}
                         </div>
                         {isVisa && booking.bookingMetadata && (
-                          <div className="mt-2 text-xs text-gray-500 space-y-0.5">
+                          <div className="mt-2 text-xs text-console-mid space-y-0.5">
                             {booking.bookingMetadata.passportNationality && (
                               <span className="mr-3">Passport: <strong>{booking.bookingMetadata.passportNationality}</strong></span>
                             )}
@@ -509,7 +509,7 @@ export default function ExpertBookings() {
                           </div>
                         )}
                         {booking.notes && (
-                          <p className="text-sm text-gray-500 mt-2 italic">Note: {booking.notes}</p>
+                          <p className="text-sm text-console-mid mt-2 italic">Note: {booking.notes}</p>
                         )}
                       </div>
                       <div className="flex flex-col gap-2 ml-4">
@@ -558,17 +558,17 @@ export default function ExpertBookings() {
                 );
               })
             ) : (
-              <p className="text-sm text-gray-500 text-center py-8">No bookings yet</p>
+              <p className="text-sm text-console-mid text-center py-8">No bookings yet</p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader>
             <CardTitle className="text-lg">Booking Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600">View vendor management and detailed booking analytics from the trip logistics dashboard when managing specific trips.</p>
+            <p className="text-sm text-console-mid">View vendor management and detailed booking analytics from the trip logistics dashboard when managing specific trips.</p>
           </CardContent>
         </Card>
       </div>

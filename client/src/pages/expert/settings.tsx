@@ -109,7 +109,7 @@ function VerificationPayoutsTab() {
               <ShieldCheck className="w-5 h-5 text-blue-600" />
               Identity Verification
             </div>
-            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : idBadge}
+            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : idBadge}
           </CardTitle>
           <CardDescription>Verify your government-issued ID to build trust with travellers and unlock higher visibility on the platform.</CardDescription>
         </CardHeader>
@@ -137,7 +137,7 @@ function VerificationPayoutsTab() {
                   <p className="text-sm text-red-700">Verification failed. Please try again with a clear, unobstructed photo of your ID.</p>
                 </div>
               )}
-              <p className="text-sm text-gray-600">Supports passports, national IDs, and driver's licenses from 100+ countries. Takes about 2 minutes.</p>
+              <p className="text-sm text-console-mid">Supports passports, national IDs, and driver's licenses from 100+ countries. Takes about 2 minutes.</p>
               <Button
                 onClick={() => identityMutation.mutate()}
                 disabled={identityMutation.isPending}
@@ -157,17 +157,17 @@ function VerificationPayoutsTab() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-gray-600" />
+              <CreditCard className="w-5 h-5 text-console-mid" />
               Payout Account (Stripe Connect)
             </div>
-            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : stripeBadge}
+            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : stripeBadge}
           </CardTitle>
           <CardDescription>Connect your Stripe account to receive payouts directly when travellers book your services.</CardDescription>
         </CardHeader>
         <CardContent>
           {!stripeConnected ? (
             <div className="space-y-3">
-              <p className="text-sm text-gray-600">You'll be guided through a quick Stripe setup — takes about 5 minutes. Stripe collects your bank details securely.</p>
+              <p className="text-sm text-console-mid">You'll be guided through a quick Stripe setup — takes about 5 minutes. Stripe collects your bank details securely.</p>
               <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="w-full" data-testid="button-connect-stripe">
                 {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
                 Connect Stripe Account
@@ -257,8 +257,8 @@ export default function ExpertSettings() {
     <ExpertLayout>
       <div className="p-6 space-y-6 max-w-4xl">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-600 mt-1">Manage your preferences and account settings</p>
+          <h1 className="text-3xl font-bold text-console-darkest">Settings</h1>
+          <p className="text-console-mid mt-1">Manage your preferences and account settings</p>
         </div>
 
         <Tabs defaultValue="verification" className="w-full">
@@ -302,12 +302,12 @@ export default function ExpertSettings() {
                 {notifications.map((notification, index) => (
                   <div key={notification.name} className="flex items-center justify-between pb-4 border-b last:border-0 last:pb-0">
                     <div>
-                      <p className="font-semibold text-gray-900">{notification.name}</p>
-                      <p className="text-sm text-gray-600 mt-1">Receive via email and push notifications</p>
+                      <p className="font-semibold text-console-darkest">{notification.name}</p>
+                      <p className="text-sm text-console-mid mt-1">Receive via email and push notifications</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-gray-600">Email</Label>
+                        <Label className="text-xs text-console-mid">Email</Label>
                         <Switch
                           checked={notification.email}
                           onCheckedChange={() => toggleNotification(index, "email")}
@@ -315,7 +315,7 @@ export default function ExpertSettings() {
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-gray-600">Push</Label>
+                        <Label className="text-xs text-console-mid">Push</Label>
                         <Switch
                           checked={notification.push}
                           onCheckedChange={() => toggleNotification(index, "push")}
@@ -352,8 +352,8 @@ export default function ExpertSettings() {
                       data-testid="radio-available"
                     />
                     <label htmlFor="available" className="flex-1 cursor-pointer">
-                      <p className="font-semibold text-gray-900">Available</p>
-                      <p className="text-sm text-gray-600">You're ready to accept new bookings</p>
+                      <p className="font-semibold text-console-darkest">Available</p>
+                      <p className="text-sm text-console-mid">You're ready to accept new bookings</p>
                     </label>
                   </div>
 
@@ -368,8 +368,8 @@ export default function ExpertSettings() {
                       data-testid="radio-busy"
                     />
                     <label htmlFor="busy" className="flex-1 cursor-pointer">
-                      <p className="font-semibold text-gray-900">Busy</p>
-                      <p className="text-sm text-gray-600">You're working on existing projects, new bookings limited</p>
+                      <p className="font-semibold text-console-darkest">Busy</p>
+                      <p className="text-sm text-console-mid">You're working on existing projects, new bookings limited</p>
                     </label>
                   </div>
 
@@ -384,8 +384,8 @@ export default function ExpertSettings() {
                       data-testid="radio-vacation"
                     />
                     <label htmlFor="vacation" className="flex-1 cursor-pointer">
-                      <p className="font-semibold text-gray-900">On Vacation</p>
-                      <p className="text-sm text-gray-600">You're unavailable for new bookings</p>
+                      <p className="font-semibold text-console-darkest">On Vacation</p>
+                      <p className="text-sm text-console-mid">You're unavailable for new bookings</p>
                     </label>
                   </div>
                 </div>
@@ -407,13 +407,13 @@ export default function ExpertSettings() {
               <CardContent className="space-y-6">
                 {/* Existing Templates */}
                 <div className="space-y-3">
-                  <h3 className="font-semibold text-gray-900">Your Templates</h3>
+                  <h3 className="font-semibold text-console-darkest">Your Templates</h3>
                   {templates.map((template) => (
-                    <div key={template.id} className="p-4 border border-gray-200 rounded-lg">
+                    <div key={template.id} className="p-4 border border-console-light rounded-lg">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
-                          <p className="font-semibold text-gray-900">{template.title}</p>
-                          <p className="text-sm text-gray-600 mt-1">{template.body.substring(0, 100)}...</p>
+                          <p className="font-semibold text-console-darkest">{template.title}</p>
+                          <p className="text-sm text-console-mid mt-1">{template.body.substring(0, 100)}...</p>
                         </div>
                         <div className="flex gap-2">
                           <Button
@@ -441,7 +441,7 @@ export default function ExpertSettings() {
 
                 {/* Add New Template */}
                 <div className="border-t pt-6">
-                  <h3 className="font-semibold text-gray-900 mb-4">Add New Template</h3>
+                  <h3 className="font-semibold text-console-darkest mb-4">Add New Template</h3>
                   <div className="space-y-4">
                     <div>
                       <Label className="text-sm font-semibold">Title</Label>
@@ -459,7 +459,7 @@ export default function ExpertSettings() {
                         placeholder="Enter the template message"
                         value={newTemplate.body}
                         onChange={(e) => setNewTemplate({ ...newTemplate, body: e.target.value })}
-                        className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        className="w-full mt-2 px-3 py-2 border border-console-light rounded-lg text-sm"
                         rows={4}
                         data-testid="textarea-template-body"
                       />
@@ -581,10 +581,10 @@ export default function ExpertSettings() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-semibold text-gray-900">
+                      <p className="font-semibold text-console-darkest">
                         {twoFaEnabled ? "2FA Enabled" : "2FA Disabled"}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-console-mid">
                         {twoFaEnabled
                           ? "Your account is protected with two-factor authentication"
                           : "Enable 2FA to secure your account"}
@@ -611,8 +611,8 @@ export default function ExpertSettings() {
               <CardContent className="space-y-6">
                 <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
                   <div className="flex-1">
-                    <p className="font-semibold text-gray-900">Show on Leaderboard</p>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="font-semibold text-console-darkest">Show on Leaderboard</p>
+                    <p className="text-sm text-console-mid mt-1">
                       When enabled, your profile and stats will be visible on the expert leaderboard
                     </p>
                   </div>

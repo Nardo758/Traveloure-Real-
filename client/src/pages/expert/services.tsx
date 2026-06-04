@@ -137,9 +137,9 @@ export default function ExpertServices() {
       case "paused":
         return "bg-yellow-100 text-yellow-800";
       case "draft":
-        return "bg-gray-100 text-gray-800";
+        return "bg-console-light text-console-dark";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-console-light text-console-dark";
     }
   };
 
@@ -150,17 +150,17 @@ export default function ExpertServices() {
   const renderServiceCard = (service: ProviderService) => (
     <div 
       key={service.id} 
-      className={`p-4 rounded-lg border ${service.status === "active" ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50"}`}
+      className={`p-4 rounded-lg border ${service.status === "active" ? "border-console-light bg-white" : "border-console-light bg-console-bg"}`}
       data-testid={`service-${service.id}`}
     >
       <div className="flex items-start gap-4">
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${service.status === "active" ? "bg-[#FF385C]/10" : "bg-gray-200"}`}>
+        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${service.status === "active" ? "bg-[#FF385C]/10" : "bg-console-light"}`}>
           {getDeliveryIcon(service.deliveryMethod)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className={`font-semibold ${service.status === "active" ? "text-gray-900" : "text-gray-500"}`}>
+              <h3 className={`font-semibold ${service.status === "active" ? "text-console-darkest" : "text-console-mid"}`}>
                 {service.serviceName}
               </h3>
               <Badge className={getStatusColor(service.status)}>
@@ -177,7 +177,7 @@ export default function ExpertServices() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="icon" variant="ghost" data-testid={`button-service-menu-${service.id}`}>
-                    <MoreVertical className="w-4 h-4 text-gray-500" />
+                    <MoreVertical className="w-4 h-4 text-console-mid" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -204,7 +204,7 @@ export default function ExpertServices() {
               </DropdownMenu>
             </div>
           </div>
-          <p className={`text-sm mt-1 line-clamp-2 ${service.status === "active" ? "text-gray-600" : "text-gray-400"}`}>
+          <p className={`text-sm mt-1 line-clamp-2 ${service.status === "active" ? "text-console-mid" : "text-console-mid"}`}>
             {service.description || "No description"}
           </p>
           {service.includesExpertNotes && (
@@ -215,28 +215,28 @@ export default function ExpertServices() {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
-            <span className="flex items-center gap-1 font-medium text-gray-900">
+            <span className="flex items-center gap-1 font-medium text-console-darkest">
               <DollarSign className="w-4 h-4 text-green-600" />
               ${service.price}
             </span>
             {service.deliveryTimeframe && (
-              <span className="flex items-center gap-1 text-gray-600">
+              <span className="flex items-center gap-1 text-console-mid">
                 <Clock className="w-4 h-4" />
                 {service.deliveryTimeframe}
               </span>
             )}
             {service.averageRating && (
-              <span className="flex items-center gap-1 text-gray-600">
+              <span className="flex items-center gap-1 text-console-mid">
                 <Star className="w-4 h-4 text-yellow-500" />
                 {Number(service.averageRating).toFixed(1)} ({service.reviewCount || 0} reviews)
               </span>
             )}
-            <span className="flex items-center gap-1 text-gray-600">
+            <span className="flex items-center gap-1 text-console-mid">
               <Eye className="w-4 h-4" />
               {service.bookingsCount || 0} bookings
             </span>
             {service.deliveryMethod && (
-              <span className="flex items-center gap-1 text-gray-600">
+              <span className="flex items-center gap-1 text-console-mid">
                 {getDeliveryIcon(service.deliveryMethod)}
                 {service.deliveryMethod}
               </span>
@@ -252,8 +252,8 @@ export default function ExpertServices() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900" data-testid="text-services-title">My Services</h1>
-            <p className="text-gray-600">Create and manage your service offerings</p>
+            <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-services-title">My Services</h1>
+            <p className="text-console-mid">Create and manage your service offerings</p>
           </div>
           <Link href="/expert/services/new">
             <Button className="bg-[#FF385C] " data-testid="button-add-service">
@@ -265,7 +265,7 @@ export default function ExpertServices() {
         {analyticsLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
-              <Card key={i} className="border border-gray-200">
+              <Card key={i} className="border border-console-light">
                 <CardContent className="p-4">
                   <Skeleton className="h-10 w-16 mx-auto mb-2" />
                   <Skeleton className="h-4 w-24 mx-auto" />
@@ -275,64 +275,64 @@ export default function ExpertServices() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border border-gray-200" data-testid="card-total-services">
+            <Card className="border border-console-light" data-testid="card-total-services">
               <CardContent className="p-4 text-center">
-                <p className="text-3xl font-bold text-gray-900">{analytics?.totalServices || 0}</p>
-                <p className="text-sm text-gray-600">Total Services</p>
+                <p className="text-3xl font-bold text-console-darkest">{analytics?.totalServices || 0}</p>
+                <p className="text-sm text-console-mid">Total Services</p>
               </CardContent>
             </Card>
-            <Card className="border border-gray-200" data-testid="card-active-services">
+            <Card className="border border-console-light" data-testid="card-active-services">
               <CardContent className="p-4 text-center">
                 <p className="text-3xl font-bold text-green-600">{analytics?.activeServices || 0}</p>
-                <p className="text-sm text-gray-600">Active Services</p>
+                <p className="text-sm text-console-mid">Active Services</p>
               </CardContent>
             </Card>
-            <Card className="border border-gray-200" data-testid="card-total-revenue">
+            <Card className="border border-console-light" data-testid="card-total-revenue">
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-1">
                   <TrendingUp className="w-5 h-5 text-green-500" />
-                  <p className="text-3xl font-bold text-gray-900">${analytics?.totalRevenue || 0}</p>
+                  <p className="text-3xl font-bold text-console-darkest">${analytics?.totalRevenue || 0}</p>
                 </div>
-                <p className="text-sm text-gray-600">Total Revenue</p>
+                <p className="text-sm text-console-mid">Total Revenue</p>
               </CardContent>
             </Card>
-            <Card className="border border-gray-200" data-testid="card-avg-rating">
+            <Card className="border border-console-light" data-testid="card-avg-rating">
               <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-1">
                   <Star className="w-5 h-5 text-yellow-500" />
-                  <p className="text-3xl font-bold text-gray-900">
+                  <p className="text-3xl font-bold text-console-darkest">
                     {analytics?.averageRating ? Number(analytics.averageRating).toFixed(1) : "N/A"}
                   </p>
                 </div>
-                <p className="text-sm text-gray-600">Avg Rating</p>
+                <p className="text-sm text-console-mid">Avg Rating</p>
               </CardContent>
             </Card>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{analytics?.totalBookings || 0}</p>
-              <p className="text-sm text-gray-600">Total Bookings</p>
+              <p className="text-2xl font-bold text-console-darkest">{analytics?.totalBookings || 0}</p>
+              <p className="text-sm text-console-mid">Total Bookings</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-yellow-600">{analytics?.pendingBookings || 0}</p>
-              <p className="text-sm text-gray-600">Pending</p>
+              <p className="text-sm text-console-mid">Pending</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-green-600">{analytics?.completedBookings || 0}</p>
-              <p className="text-sm text-gray-600">Completed</p>
+              <p className="text-sm text-console-mid">Completed</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200">
+          <Card className="border border-console-light">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-500">{analytics?.draftServices || 0}</p>
-              <p className="text-sm text-gray-600">Drafts</p>
+              <p className="text-2xl font-bold text-console-mid">{analytics?.draftServices || 0}</p>
+              <p className="text-sm text-console-mid">Drafts</p>
             </CardContent>
           </Card>
         </div>
@@ -354,7 +354,7 @@ export default function ExpertServices() {
           </TabsList>
 
           <TabsContent value="all" className="mt-6">
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle className="text-lg">All Services</CardTitle>
                 <Link href="/expert/services/templates">
@@ -366,7 +366,7 @@ export default function ExpertServices() {
               <CardContent className="space-y-4">
                 {servicesLoading ? (
                   [...Array(3)].map((_, i) => (
-                    <div key={i} className="p-4 rounded-lg border border-gray-200">
+                    <div key={i} className="p-4 rounded-lg border border-console-light">
                       <div className="flex items-start gap-4">
                         <Skeleton className="w-12 h-12 rounded-lg" />
                         <div className="flex-1 space-y-2">
@@ -379,9 +379,9 @@ export default function ExpertServices() {
                   ))
                 ) : services.length === 0 ? (
                   <div className="text-center py-12">
-                    <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No services yet</h3>
-                    <p className="text-gray-600 mb-4">Create your first service to start accepting bookings</p>
+                    <Package className="w-12 h-12 text-console-mid mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-console-darkest mb-2">No services yet</h3>
+                    <p className="text-console-mid mb-4">Create your first service to start accepting bookings</p>
                     <Link href="/expert/services/new">
                       <Button className="bg-[#FF385C] " data-testid="button-create-first-service">
                         <Plus className="w-4 h-4 mr-2" /> Create Service
@@ -396,13 +396,13 @@ export default function ExpertServices() {
           </TabsContent>
 
           <TabsContent value="active" className="mt-6">
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader>
                 <CardTitle className="text-lg">Active Services</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {activeServices.length === 0 ? (
-                  <p className="text-center text-gray-500 py-8">No active services</p>
+                  <p className="text-center text-console-mid py-8">No active services</p>
                 ) : (
                   activeServices.map(renderServiceCard)
                 )}
@@ -411,13 +411,13 @@ export default function ExpertServices() {
           </TabsContent>
 
           <TabsContent value="draft" className="mt-6">
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader>
                 <CardTitle className="text-lg">Draft Services</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {draftServices.length === 0 ? (
-                  <p className="text-center text-gray-500 py-8">No draft services</p>
+                  <p className="text-center text-console-mid py-8">No draft services</p>
                 ) : (
                   draftServices.map(renderServiceCard)
                 )}
@@ -426,13 +426,13 @@ export default function ExpertServices() {
           </TabsContent>
 
           <TabsContent value="paused" className="mt-6">
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader>
                 <CardTitle className="text-lg">Paused Services</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {pausedServices.length === 0 ? (
-                  <p className="text-center text-gray-500 py-8">No paused services</p>
+                  <p className="text-center text-console-mid py-8">No paused services</p>
                 ) : (
                   pausedServices.map(renderServiceCard)
                 )}
