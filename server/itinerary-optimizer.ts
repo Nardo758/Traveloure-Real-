@@ -18,8 +18,11 @@ import {
   transportLegs,
   experienceTypes,
   ExperienceType,
+  travelPulseTrending,
+  travelPulseCalendarEvents,
+  destinationSeasons,
 } from "@shared/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, desc, or, ilike, isNull } from "drizzle-orm";
 import {
   reorderItinerary,
   calculateItineraryMetrics,
@@ -211,6 +214,200 @@ function buildLogisticsContext(expType: ExperienceType): string {
   return `\n\nEXPERIENCE CONTEXT (use this to tailor the itinerary style and pacing):\n${lines.join('\n')}`;
 }
 
+// ── TravelPulse helpers ───────────────────────────────────────────────────────
+
+/** Extract a normalised city keyword from a destination string like "Tokyo, Japan" */
+function extractCityKey(destination: string): string {
+  return destination.split(',')[0].trim().toLowerCase();
+}
+
+interface CityIntelligence {
+  trending: Array<{ name: string; type: string; trendScore: number; bestTime?: string; worstTime?: string; crowdForecast?: any[] }>;
+  calendarEvents: Array<{ name: string; type: string; crowdImpact: string; description?: string; tips?: string[] }>;
+  seasonTag: string | null;
+}
+
+/** Fetch TravelPulse data for the destination city. Returns empty data on any failure. */
+async function fetchCityIntelligence(
+  destination: string,
+  startDate: string,
+  endDate: string,
+): Promise<CityIntelligence> {
+  const empty: CityIntelligence = { trending: [], calendarEvents: [], seasonTag: null };
+  try {
+    const cityKey = extractCityKey(destination);
+    const tripStartDate = new Date(startDate);
+    const tripEndDate = new Date(endDate);
+    const tripMonth = isNaN(tripStartDate.getTime()) ? null : tripStartDate.getMonth() + 1;
+
+    const [trendingRows, calendarRows, seasonRows] = await Promise.all([
+      db
+        .select()
+        .from(travelPulseTrending)
+        .where(
+          and(
+            or(
+              ilike(travelPulseTrending.city, cityKey),
+              ilike(travelPulseTrending.city, `${cityKey}%`),
+            ),
+            or(
+              gte(travelPulseTrending.expiresAt, new Date()),
+              isNull(travelPulseTrending.expiresAt),
+            ),
+          ),
+        )
+        .orderBy(desc(travelPulseTrending.trendScore))
+        .limit(5),
+
+      !isNaN(tripStartDate.getTime()) && !isNaN(tripEndDate.getTime())
+        ? db
+            .select()
+            .from(travelPulseCalendarEvents)
+            .where(
+              and(
+                or(
+                  ilike(travelPulseCalendarEvents.city, cityKey),
+                  ilike(travelPulseCalendarEvents.city, `${cityKey}%`),
+                ),
+                lte(travelPulseCalendarEvents.startDate, endDate),
+                or(
+                  gte(travelPulseCalendarEvents.endDate, startDate),
+                  isNull(travelPulseCalendarEvents.endDate),
+                ),
+              ),
+            )
+            .limit(5)
+        : Promise.resolve([]),
+
+      tripMonth
+        ? db
+            .select()
+            .from(destinationSeasons)
+            .where(
+              and(
+                or(
+                  ilike(destinationSeasons.city, cityKey),
+                  ilike(destinationSeasons.city, `${cityKey}%`),
+                ),
+                eq(destinationSeasons.month, tripMonth),
+              ),
+            )
+            .limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    const trending = trendingRows.map(r => ({
+      name: r.destinationName,
+      type: r.destinationType || 'experience',
+      trendScore: r.trendScore || 0,
+      bestTime: r.bestTimeToVisit || undefined,
+      worstTime: r.worstTimeToVisit || undefined,
+      crowdForecast: Array.isArray(r.crowdForecast) ? r.crowdForecast as any[] : [],
+    }));
+
+    const calendarEvents = calendarRows.map(r => ({
+      name: r.eventName,
+      type: r.eventType || 'event',
+      crowdImpact: r.crowdImpact || 'moderate',
+      description: r.description || undefined,
+      tips: Array.isArray(r.tips) ? (r.tips as string[]) : [],
+    }));
+
+    const seasonRow = seasonRows[0];
+    let seasonTag: string | null = null;
+    if (seasonRow) {
+      const highlights = Array.isArray(seasonRow.highlights) ? (seasonRow.highlights as string[]) : [];
+      const parts: string[] = [];
+      if (seasonRow.weatherDescription) parts.push(seasonRow.weatherDescription);
+      if (seasonRow.crowdLevel) parts.push(`crowd level: ${seasonRow.crowdLevel}`);
+      if (highlights.length > 0) parts.push(highlights.slice(0, 2).join(', '));
+      seasonTag = parts.length > 0 ? parts.join(' — ') : null;
+    }
+
+    return { trending, calendarEvents, seasonTag };
+  } catch (err) {
+    console.warn('[Optimizer] TravelPulse fetch failed (non-critical):', (err as Error).message);
+    return empty;
+  }
+}
+
+/** Format city intelligence into a compact prompt section. */
+function buildCityIntelligenceSection(intel: CityIntelligence): string {
+  if (intel.trending.length === 0 && intel.calendarEvents.length === 0 && !intel.seasonTag) {
+    return '';
+  }
+
+  const lines: string[] = ['\n\nCITY INTELLIGENCE (TravelPulse data — use to sharpen scheduling decisions):'];
+
+  if (intel.seasonTag) {
+    lines.push(`SEASONAL CONTEXT: ${intel.seasonTag}`);
+  }
+
+  if (intel.trending.length > 0) {
+    lines.push('TRENDING SPOTS (prefer these when selecting replacement activities):');
+    for (const t of intel.trending) {
+      let entry = `- ${t.name} (${t.type}, trend score ${t.trendScore})`;
+      if (t.bestTime) entry += ` — best time: ${t.bestTime}`;
+      if (t.worstTime) entry += ` — avoid: ${t.worstTime}`;
+      lines.push(entry);
+
+      // Surface peak crowd windows the AI should avoid
+      const peakSlots = (t.crowdForecast || [])
+        .filter((f: any) => f.level === 'packed' || f.percent >= 80)
+        .map((f: any) => `${f.hour}:00`);
+      if (peakSlots.length > 0) {
+        lines.push(`  ↳ Avoid scheduling this activity at: ${peakSlots.join(', ')} (peak crowd hours)`);
+      }
+    }
+  }
+
+  if (intel.calendarEvents.length > 0) {
+    lines.push('LOCAL EVENTS DURING TRIP (factor into scheduling):');
+    for (const ev of intel.calendarEvents) {
+      let entry = `- ${ev.name} (${ev.type}, crowd impact: ${ev.crowdImpact})`;
+      if (ev.description) entry += ` — ${ev.description}`;
+      lines.push(entry);
+      if (ev.tips && ev.tips.length > 0) {
+        lines.push(`  ↳ Tip: ${ev.tips[0]}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push('SCHEDULING RULES from city intelligence:');
+  lines.push('1. Prefer trending spots above as replacement candidates when proposing alternatives.');
+  lines.push('2. Do NOT schedule crowd-heavy activities during peak crowd hours listed above.');
+  lines.push('3. If a local event causes extreme crowd impact, avoid nearby areas that day or suggest early-morning timing.');
+
+  return lines.join('\n');
+}
+
+/** Re-sort availableServices so entries matching TravelPulse trending names/types appear first. */
+function weightTrendingServices(
+  services: ProviderService[],
+  trending: CityIntelligence['trending'],
+): ProviderService[] {
+  if (trending.length === 0) return services;
+
+  const trendingNames = new Set(trending.map(t => t.name.toLowerCase()));
+  const trendingTypes = new Set(trending.map(t => t.type.toLowerCase()));
+
+  const prioritised: ProviderService[] = [];
+  const rest: ProviderService[] = [];
+
+  for (const svc of services) {
+    const nameMatch = trendingNames.has((svc.serviceName || '').toLowerCase());
+    const typeMatch = trendingTypes.has((svc.serviceType || '').toLowerCase());
+    if (nameMatch || typeMatch) {
+      prioritised.push(svc);
+    } else {
+      rest.push(svc);
+    }
+  }
+
+  return [...prioritised, ...rest];
+}
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -270,6 +467,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         logisticsContextSection = buildLogisticsContext(expType);
       }
     }
+
+    // ── TravelPulse city intelligence (non-blocking fallback) ─────────────────
+    const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
+    const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
 
     await db
       .update(itineraryComparisons)
@@ -442,7 +643,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
     }
 
-    const servicesList = availableServices.map((s) => ({
+    // Weight trending services to appear first in the top-20 the AI sees
+    const weightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+
+    const servicesList = weightedServices.map((s) => ({
       id: s.id,
       name: s.serviceName,
       type: s.serviceType,
@@ -520,7 +724,7 @@ For each empty day, add activities that match the user's experience style (infer
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
