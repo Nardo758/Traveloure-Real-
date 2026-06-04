@@ -560,7 +560,7 @@ export default function LandingPage() {
                       <p className="text-xs text-white/80 mb-3 leading-relaxed flex-1">
                         Verified local experts and trip planners who know every hidden gem.
                       </p>
-                      <Link href="/experts">
+                      <Link href="/experts?role=local_expert">
                         <Button
                           size="sm"
                           className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold shadow-lg text-xs"

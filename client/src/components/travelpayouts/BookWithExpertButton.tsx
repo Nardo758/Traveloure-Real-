@@ -21,6 +21,7 @@ export function BookWithExpertButton({
     const params = new URLSearchParams();
     if (destination) params.set("destination", destination);
     if (topic) params.set("topic", topic);
+    params.set("role", "travel_expert");
     navigate(`/experts?${params.toString()}`);
   };
 
@@ -33,7 +34,7 @@ export function BookWithExpertButton({
       data-testid={testId ?? "button-ask-expert"}
     >
       <UserCheck className="h-3 w-3" />
-      Ask an Expert
+      Work with a Trip Planner
     </Button>
   );
 }

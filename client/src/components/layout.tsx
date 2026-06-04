@@ -143,7 +143,7 @@ const navItems = [
       },
     ],
   },
-  { name: "Local Experts", href: "/experts" },
+  { name: "Local Experts", href: "/experts?role=local_expert" },
   { name: "Contact", href: "/contact" },
 ];
 
