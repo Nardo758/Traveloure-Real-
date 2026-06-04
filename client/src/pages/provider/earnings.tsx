@@ -322,7 +322,7 @@ export default function ProviderEarnings() {
               </div>
             ) : (
               <div className="text-center py-8 text-console-mid dark:text-gray-400">
-                <DollarSign className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                <DollarSign className="w-12 h-12 mx-auto text-console-light mb-3" />
                 <p>No transactions yet</p>
               </div>
             )}

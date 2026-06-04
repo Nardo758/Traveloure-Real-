@@ -137,7 +137,7 @@ export default function ProviderCalendar() {
       case "completed": return "bg-blue-100 text-blue-700 border-blue-200";
       case "pending": return "bg-amber-100 text-amber-700 border-amber-200";
       case "cancelled": return "bg-red-100 text-red-700 border-red-200";
-      default: return "bg-gray-100 text-gray-700 border-gray-200";
+      default: return "bg-console-bg text-console-dark border-console-light";
     }
   };
 
@@ -216,7 +216,7 @@ export default function ProviderCalendar() {
                             type="checkbox"
                             checked={rule.active}
                             onChange={(e) => updateScheduleRule(idx, "active", e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300"
+                            className="w-4 h-4 rounded border-console-light"
                           />
                           <span className="text-sm text-console-dark">Active</span>
                         </label>
@@ -529,7 +529,7 @@ export default function ProviderCalendar() {
                 </div>
               ) : selectedDate ? (
                 <div className="text-center py-8" data-testid="text-no-bookings">
-                  <CalendarIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                  <CalendarIcon className="w-12 h-12 mx-auto text-console-light mb-3" />
                   <p className="text-console-mid dark:text-gray-400">No bookings on this date</p>
                 </div>
               ) : (
@@ -588,7 +588,7 @@ export default function ProviderCalendar() {
               </div>
             ) : (
               <div className="text-center py-8 text-console-mid dark:text-gray-400">
-                <CalendarIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                <CalendarIcon className="w-12 h-12 mx-auto text-console-light mb-3" />
                 <p>No upcoming bookings</p>
               </div>
             )}
