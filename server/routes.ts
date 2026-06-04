@@ -9919,11 +9919,19 @@ Respond with this exact JSON structure:
           )
         );
       
-      // Create a map of city+country to seasonal data
+      // Create a map of seasonal data: prefer city-level, fall back to country-level
       const seasonMap = new Map<string, typeof seasonsData[0]>();
+      const countrySeasonMap = new Map<string, typeof seasonsData[0]>();
       for (const season of seasonsData) {
-        const key = `${season.city || ""}-${season.country}`.toLowerCase();
-        seasonMap.set(key, season);
+        if (season.city) {
+          // City-level season
+          const key = `${season.city}-${season.country}`.toLowerCase();
+          seasonMap.set(key, season);
+        } else {
+          // Country-level season (city = NULL)
+          const key = season.country.toLowerCase();
+          countrySeasonMap.set(key, season);
+        }
       }
       
       // Create a map of city to events
@@ -9936,16 +9944,19 @@ Respond with this exact JSON structure:
         eventMap.get(key)!.push(event);
       }
       
-      // Combine cities with seasonal data - ONLY include cities that have seasonal data for this month
+      // Combine cities with seasonal data - include if city has season OR events
       const citiesWithSeasons = cities
         .map(city => {
-          const key = `${city.cityName}-${city.country}`.toLowerCase();
-          const season = seasonMap.get(key);
-          const events = eventMap.get(key) || [];
-          
-          // Skip cities without seasonal data for this month
-          if (!season) return null;
-          
+          const cityKey = `${city.cityName}-${city.country}`.toLowerCase();
+          const countryKey = city.country.toLowerCase();
+
+          // Try city-level season first, then country-level
+          const season = seasonMap.get(cityKey) || countrySeasonMap.get(countryKey);
+          const events = eventMap.get(cityKey) || [];
+
+          // Skip cities with neither seasonal data nor events
+          if (!season && events.length === 0) return null;
+
           return {
             id: city.id,
             cityName: city.cityName,
@@ -9959,14 +9970,14 @@ Respond with this exact JSON structure:
             crowdLevel: city.crowdLevel,
             currentHighlight: city.currentHighlight,
             highlightEmoji: city.highlightEmoji,
-            // Seasonal data for this month
-            seasonalRating: season.rating,
-            weatherDescription: season.weatherDescription,
-            averageTemp: season.averageTemp,
-            rainfall: season.rainfall,
-            seasonCrowdLevel: season.crowdLevel,
-            priceLevel: season.priceLevel,
-            highlights: season.highlights || [],
+            // Seasonal data for this month (if available)
+            seasonalRating: season?.rating || null,
+            weatherDescription: season?.weatherDescription || null,
+            averageTemp: season?.averageTemp || null,
+            rainfall: season?.rainfall || null,
+            seasonCrowdLevel: season?.crowdLevel || null,
+            priceLevel: season?.priceLevel || null,
+            highlights: season?.highlights || [],
             // Events this month
             events: events.map(e => ({
               id: e.id,
@@ -10003,19 +10014,20 @@ Respond with this exact JSON structure:
       };
       
       filteredCities.sort((a: typeof citiesWithSeasons[0], b: typeof citiesWithSeasons[0]) => {
-        const aRating = ratingOrder[a.seasonalRating] ?? 2;
-        const bRating = ratingOrder[b.seasonalRating] ?? 2;
+        const aRating = a.seasonalRating ? ratingOrder[a.seasonalRating] ?? 2 : 2;
+        const bRating = b.seasonalRating ? ratingOrder[b.seasonalRating] ?? 2 : 2;
         if (aRating !== bRating) return aRating - bRating;
         // Secondary sort by pulse score
         return (b.pulseScore || 0) - (a.pulseScore || 0);
       });
       
-      // Group by rating for easier display
+      // Group by rating for easier display (null ratings go to "events-only")
       type CityWithSeason = typeof citiesWithSeasons[0];
       const grouped = {
         best: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "best" || c.seasonalRating === "excellent"),
         good: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "good"),
-        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average" || !c.seasonalRating),
+        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average"),
+        eventsOnly: filteredCities.filter((c: CityWithSeason) => !c.seasonalRating),
         avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
       };
       
