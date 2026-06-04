@@ -1,89 +1,56 @@
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, Star, Calendar, ExternalLink, Hotel, Compass } from "lucide-react";
-import { useGemPhoto } from "@/hooks/use-gem-photo";
-import { gemCategory } from "@/lib/feed-stream";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useGemPhoto } from "@/hooks/use-gem-photo";
 
-/**
- * Bookability level for a card.
- * green  = platform-bookable (direct booking flow)
- * blue   = affiliate link
- * grey   = browse-only
- */
+// ─── Shared types ─────────────────────────────────────────────────────────────
+
 export type Bookability = "platform" | "affiliate" | "browse";
 
-function BookabilityDot({ level }: { level: Bookability }) {
-  return (
-    <span
-      title={level === "platform" ? "Book directly" : level === "affiliate" ? "Partner booking" : "Browse only"}
-      className={cn(
-        "inline-block w-2.5 h-2.5 rounded-full flex-shrink-0",
-        level === "platform" && "bg-green-500",
-        level === "affiliate" && "bg-blue-500",
-        level === "browse" && "bg-gray-400",
-      )}
-      data-testid={`badge-bookability-${level}`}
-    />
-  );
+interface BookabilityDotProps {
+  level: Bookability;
 }
 
-function matchedServiceLabel(placeType: string | null | undefined): string | null {
-  const cat = gemCategory(placeType);
-  if (cat === "photo_spots") return "Find a photographer";
-  if (cat === "stay") return "Book transport";
-  if (cat === "do") return "Hire a guide";
-  if (cat === "eat") return "Reserve a table";
-  return null;
+function BookabilityDot({ level }: BookabilityDotProps) {
+  const color =
+    level === "platform"
+      ? "bg-green-400"
+      : level === "affiliate"
+        ? "bg-blue-400"
+        : "bg-gray-400";
+  return <span className={cn("w-2 h-2 rounded-full", color)} />;
 }
 
-interface PhotoSkeletonProps {
-  className?: string;
-}
-function PhotoSkeleton({ className }: PhotoSkeletonProps) {
-  return (
-    <div className={cn("bg-muted animate-pulse", className)} />
-  );
-}
+// ─── Gem card ─────────────────────────────────────────────────────────────────
 
 interface CityFeedCardGemProps {
   gem: any;
   city: string;
-  compact?: boolean;
   scheduledDate?: string | null;
   bookability?: Bookability;
   onAdd?: (item: any) => void;
+  compact?: boolean;
   className?: string;
 }
 
-/**
- * Photo-led card for a hidden gem.
- * - Blur-up LQIP skeleton while loading
- * - lazy-loaded below the fold
- * - Bookability badge dot
- * - Matched-service suggestion strip
- * - Action buttons (Add / Ask)
- */
 export function CityFeedCardGem({
   gem,
   city,
-  compact = false,
   scheduledDate,
   bookability = "browse",
   onAdd,
+  compact = false,
   className,
 }: CityFeedCardGemProps) {
-  const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
 
   if (!loading && !photoUrl) return null;
 
   const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
-
-  const serviceHint = matchedServiceLabel(gem.placeType);
 
   return (
     <div
@@ -93,9 +60,11 @@ export function CityFeedCardGem({
       )}
       data-testid={`feed-card-gem-${gem.id}`}
     >
-      {/* Photo — 4:3 standard aspect */}
-      <div className={cn("relative overflow-hidden bg-muted", compact ? "aspect-[4/3]" : "aspect-[4/3]")}>
-        {loading && <PhotoSkeleton className="absolute inset-0" />}
+      {/* Photo — 4:3 aspect */}
+      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+        {loading && (
+          <div className="absolute inset-0 bg-muted animate-pulse" />
+        )}
         {photoUrl && (
           <img
             src={photoUrl}
@@ -108,66 +77,65 @@ export function CityFeedCardGem({
             )}
           />
         )}
-        {/* Bookability dot — top-right */}
-        <span className="absolute top-2 right-2 flex items-center gap-1 bg-black/60 rounded-full px-2 py-0.5">
+        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
           <BookabilityDot level={bookability} />
         </span>
-        {/* Category badge */}
-        {gem.placeType && (
-          <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-medium rounded-full px-2 py-0.5 capitalize">
-            {gem.placeType.replace(/_/g, " ")}
+        {gem.isSecret && (
+          <span className="absolute bottom-2 left-2 bg-purple-600/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
+            Hidden Gem
           </span>
         )}
       </div>
 
-      {/* Content */}
       <div className="p-3 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-semibold text-sm leading-tight line-clamp-2">{gem.placeName}</h3>
-          {gem.localRating && (
+          {gem.gemScore !== undefined && (
             <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
               <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              <span>{gem.localRating}</span>
+              <span>{Number(gem.gemScore).toFixed(1)}</span>
             </div>
           )}
         </div>
 
-        {!compact && gem.description && (
+        {gem.description && !compact && (
           <p className="text-xs text-muted-foreground line-clamp-2">{gem.description}</p>
         )}
 
-        {/* Matched-service suggestion */}
-        {serviceHint && (
-          <p className="text-[11px] text-primary/80 font-medium">{serviceHint}</p>
+        {gem.neighborhood && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <MapPin className="w-3 h-3" />
+            <span>{gem.neighborhood}</span>
+          </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-1.5 pt-1">
-          <Button
-            size="sm"
-            className="flex-1 h-7 text-xs"
-            onClick={() =>
-              onAdd?.({
-                title: gem.placeName,
-                description: gem.description,
-                city,
-                type: "gem",
-                scheduledDate,
-              })
-            }
-            data-testid={`btn-add-gem-${gem.id}`}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            {addLabel}
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2" data-testid={`btn-expert-gem-${gem.id}`}>
-            <Search className="w-3 h-3" />
-          </Button>
-        </div>
+        {!compact && (
+          <div className="flex gap-1.5 pt-1">
+            <Button
+              size="sm"
+              className="flex-1 h-7 text-xs"
+              onClick={() =>
+                onAdd?.({
+                  title: gem.placeName,
+                  description: gem.description,
+                  city,
+                  type: "gem",
+                  scheduledDate,
+                })
+              }
+              data-testid={`btn-add-gem-${gem.id}`}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              {addLabel}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+// ─── Event card ───────────────────────────────────────────────────────────────
 
 interface CityFeedCardEventProps {
   event: any;
@@ -179,12 +147,19 @@ interface CityFeedCardEventProps {
 
 export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
-  const imageUrl = event.image || event.imageUrl || null;
+  const dbImageUrl = event.image || event.imageUrl || null;
+  const eventName = event.title || event.name || "";
+  const { photoUrl, loading } = useGemPhoto(
+    `event-${event.id ?? event.eventId ?? eventName}`,
+    eventName,
+    city,
+    dbImageUrl,
+  );
 
-  if (!imageUrl) return null;
+  if (!loading && !photoUrl) return null;
 
   const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
 
   return (
@@ -196,13 +171,16 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
       data-testid={`feed-card-event-${event.id ?? event.eventId}`}
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <img
-          src={imageUrl}
-          alt={event.title || event.name}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn("w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
-        />
+        {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        {photoUrl && (
+          <img
+            src={photoUrl}
+            alt={eventName}
+            loading="lazy"
+            onLoad={() => setImgLoaded(true)}
+            className={cn("w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+          />
+        )}
         <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
           <BookabilityDot level="affiliate" />
         </span>
@@ -212,7 +190,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
       </div>
 
       <div className="p-3 space-y-1.5">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2">{event.title || event.name}</h3>
+        <h3 className="font-semibold text-sm leading-tight line-clamp-2">{eventName}</h3>
         {event.date && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Calendar className="w-3 h-3" />
@@ -225,7 +203,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             className="flex-1 h-7 text-xs"
             onClick={() =>
               onAdd?.({
-                title: event.title || event.name,
+                title: eventName,
                 city,
                 type: "event",
                 scheduledDate,
@@ -249,6 +227,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   );
 }
 
+// ─── Supply card (hotel / activity) ──────────────────────────────────────────
+
 interface CityFeedCardSupplyProps {
   item: any;
   kind: "supply-hotel" | "supply-activity";
@@ -260,13 +240,21 @@ interface CityFeedCardSupplyProps {
 
 export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
-  const imageUrl = item.media?.[0]?.url || item.imageUrl || null;
+  const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
+  const itemName = item.name || item.title || "";
   const isHotel = kind === "supply-hotel";
 
-  if (!imageUrl) return null;
+  const { photoUrl, loading } = useGemPhoto(
+    `supply-${item.id ?? itemName}`,
+    itemName,
+    city,
+    dbImageUrl,
+  );
+
+  if (!loading && !photoUrl) return null;
 
   const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
 
   return (
@@ -278,38 +266,49 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
       data-testid={`feed-card-${kind}-${item.id}`}
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <img
-          src={imageUrl}
-          alt={item.name || item.title}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn("w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
-        />
+        {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        {photoUrl && (
+          <img
+            src={photoUrl}
+            alt={itemName}
+            loading="lazy"
+            onLoad={() => setImgLoaded(true)}
+            className={cn("w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+          />
+        )}
         <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
           <BookabilityDot level="platform" />
         </span>
-        <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
-          {isHotel ? "Stay" : "Do"}
+        <span className="absolute top-2 left-2 bg-muted/90 text-foreground text-[10px] font-medium rounded-full px-2 py-0.5">
+          {isHotel ? "Hotel" : "Activity"}
         </span>
       </div>
 
       <div className="p-3 space-y-1.5">
-        <div className="flex items-start gap-1">
-          {isHotel ? <Hotel className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" /> : <Compass className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />}
-          <h3 className="font-semibold text-sm leading-tight line-clamp-2">{item.name || item.title}</h3>
-        </div>
-        {item.aiReasons?.[0] && (
-          <p className="text-xs text-muted-foreground line-clamp-2 italic">{item.aiReasons[0]}</p>
+        <h3 className="font-semibold text-sm leading-tight line-clamp-2">{itemName}</h3>
+        {item.rating && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+            <span>{item.rating}</span>
+          </div>
+        )}
+        {isHotel && item.amenities && (
+          <div className="flex flex-wrap gap-1">
+            {(item.amenities as string[]).slice(0, 2).map((a) => (
+              <span key={a} className="text-[10px] bg-muted rounded-full px-2 py-0.5 flex items-center gap-0.5">
+                {a.toLowerCase().includes("wifi") ? <Wifi className="w-2.5 h-2.5" /> : <Waves className="w-2.5 h-2.5" />}
+                {a}
+              </span>
+            ))}
+          </div>
         )}
         <div className="flex gap-1.5 pt-1">
-          <Button size="sm" className="h-7 text-xs px-3">Book</Button>
           <Button
             size="sm"
-            variant="outline"
             className="flex-1 h-7 text-xs"
             onClick={() =>
               onAdd?.({
-                title: item.name || item.title,
+                title: itemName,
                 city,
                 type: isHotel ? "hotel" : "activity",
                 scheduledDate,

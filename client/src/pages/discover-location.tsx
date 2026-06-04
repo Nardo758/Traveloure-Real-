@@ -269,6 +269,52 @@ function HeroSection({
 
 // ─── Feed renderer ────────────────────────────────────────────────────────────
 
+/** Inline date-highlights card rendered as a FeedItem in the stream. */
+function DateHighlightsCard({ data }: { data: { date: string; events: any[]; heroData: any } }) {
+  const { date, events, heroData } = data;
+  const formatted = (() => {
+    try {
+      return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    } catch {
+      return date;
+    }
+  })();
+
+  const pinnedEvent = events?.[0];
+  const seasonalPick = heroData?.city?.currentHighlight;
+
+  if (!pinnedEvent && !seasonalPick) return null;
+
+  return (
+    <div
+      className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3"
+      data-testid="feed-date-highlights"
+    >
+      <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
+        <Sparkles className="w-4 h-4" />
+        On {formatted}
+      </p>
+      {pinnedEvent && (
+        <div className="flex items-start gap-3">
+          <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium">{pinnedEvent.title || pinnedEvent.name}</p>
+            {pinnedEvent.location && (
+              <p className="text-xs text-muted-foreground">{pinnedEvent.location}</p>
+            )}
+          </div>
+        </div>
+      )}
+      {seasonalPick && (
+        <div className="flex items-start gap-3">
+          <Sparkles className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-muted-foreground">{seasonalPick}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Render a single filler card (non-neighborhood) within a shared grid row. */
 function FillerCard({
   item,
@@ -345,26 +391,36 @@ function FeedRenderer({
     );
   }
 
-  // Bucket items into alternating [fillerGroup[], neighborhood, fillerGroup[], …]
+  // Bucket items into alternating sections.
+  // Full-width items (neighborhood, date-highlights) break the current card group.
+  // Everything else is grouped into 3-col bento grids.
   type Section =
     | { type: "neighborhood"; item: FeedItem }
+    | { type: "date-highlights"; item: FeedItem }
     | { type: "group"; items: FeedItem[] };
 
   const sections: Section[] = [];
   let currentGroup: FeedItem[] = [];
 
+  const flushGroup = () => {
+    if (currentGroup.length > 0) {
+      sections.push({ type: "group", items: [...currentGroup] });
+      currentGroup = [];
+    }
+  };
+
   for (const item of items) {
     if (item.kind === "neighborhood") {
-      if (currentGroup.length > 0) {
-        sections.push({ type: "group", items: [...currentGroup] });
-        currentGroup = [];
-      }
+      flushGroup();
       sections.push({ type: "neighborhood", item });
+    } else if (item.kind === "date-highlights") {
+      flushGroup();
+      sections.push({ type: "date-highlights", item });
     } else {
       currentGroup.push(item);
     }
   }
-  if (currentGroup.length > 0) sections.push({ type: "group", items: currentGroup });
+  flushGroup();
 
   return (
     <div className="space-y-6" data-testid="city-feed">
@@ -378,6 +434,11 @@ function FeedRenderer({
               scheduledDate={scheduledDate}
               onAdd={onAdd}
             />
+          );
+        }
+        if (section.type === "date-highlights") {
+          return (
+            <DateHighlightsCard key={section.item.id} data={section.item.data} />
           );
         }
         return (
@@ -585,9 +646,26 @@ export default function DiscoverLocationPage() {
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
 
-  const feedItems = data
+  const baseFeedItems = data
     ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities)
     : [];
+
+  // Inject date-highlights as a FeedItem at position 1 so it appears as the
+  // second item in the stream (spec: "second item in the feed when date active").
+  const dateHighlightsItem: FeedItem | null =
+    planningDate && data
+      ? {
+          kind: "date-highlights",
+          id: "date-highlights",
+          data: { date: planningDate, events, heroData: data.hero?.data },
+        }
+      : null;
+
+  const feedItems: FeedItem[] = dateHighlightsItem
+    ? baseFeedItems.length > 0
+      ? [baseFeedItems[0], dateHighlightsItem, ...baseFeedItems.slice(1)]
+      : [dateHighlightsItem]
+    : baseFeedItems;
 
   const filteredItems =
     activeFilter === "all" ? feedItems : filterFeedStream(feedItems, activeFilter);
@@ -647,15 +725,6 @@ export default function DiscoverLocationPage() {
               planningDate={planningDate}
               onDismissDate={handleDismissDate}
             />
-
-            {/* ── On-date highlights (only when ?date= is active) ───────── */}
-            {planningDate && (
-              <OnDateHighlights
-                date={planningDate}
-                events={events}
-                heroData={data.hero?.data}
-              />
-            )}
 
             {/* ── Spine filter bar (sticky) ─────────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />

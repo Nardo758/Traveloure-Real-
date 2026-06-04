@@ -5,7 +5,9 @@
  * and events so that:
  * - Gems with a `neighborhood` field are grouped inside their NeighborhoodContainer
  * - Gems with no neighborhood appear as loose cards
- * - No two NeighborhoodContainers are ever adjacent (guaranteed)
+ * - Neighborhood containers are separated by filler with best-effort non-adjacency
+ *   (all neighborhoods are always shown — non-adjacency is best-effort when filler
+ *    runs short, but NO neighborhood is ever dropped)
  * - Loose gems / expert cards / events are woven between containers
  */
 
@@ -15,7 +17,8 @@ export type FeedItemKind =
   | "event"
   | "expert"
   | "supply-hotel"
-  | "supply-activity";
+  | "supply-activity"
+  | "date-highlights";
 
 export interface FeedItem {
   kind: FeedItemKind;
@@ -38,10 +41,10 @@ export function gemCategory(placeType: string | null | undefined): string {
 /**
  * Build the ordered FeedItem[] stream from raw data sections.
  *
- * Strict non-adjacency guarantee: fillers are distributed into N+1 slots
- * (before, between, after neighborhoods). If there are fewer fillers than
- * neighborhoods - 1, the cap `maxNeighborhoods = fillers.length + 1` ensures
- * every displayed neighborhood container has at least one filler on each side.
+ * Non-adjacency guarantee: fillers are distributed as evenly as possible into
+ * N+1 slots (before, between, after N neighborhoods). ALL neighborhoods are
+ * always emitted. When filler is insufficient for full non-adjacency some
+ * neighborhoods may end up adjacent — this is acceptable; dropping content is not.
  *
  * @param neighborhoods     - array from `data.neighborhoods.data`
  * @param allGems           - array from `data.gems.data`
@@ -75,11 +78,15 @@ export function buildFeedStream(
 
   // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
   const neighborhoodItems: FeedItem[] = neighborhoods
-    .filter((n) => (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
+    .filter((n) => (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0 || (n.gems?.length ?? 0) > 0)
     .map((n) => ({
       kind: "neighborhood" as FeedItemKind,
       id: `neighborhood-${n.id}`,
-      data: { ...n, gems: gemsByNeighborhood.get(n.slug) ?? [] },
+      data: {
+        ...n,
+        // Prefer server-embedded gems; fall back to client-grouped gems
+        gems: n.gems?.length ? n.gems : (gemsByNeighborhood.get(n.slug) ?? []),
+      },
     }));
 
   // ── 3. Build filler pool (order: gems, experts, events, supply) ──────────
@@ -109,23 +116,14 @@ export function buildFeedStream(
 
   // ── 4. Edge cases ────────────────────────────────────────────────────────
   if (neighborhoodItems.length === 0) return fillerPool;
-  if (fillerPool.length === 0) {
-    // No filler — return just the first neighborhood (cannot guarantee non-adjacency for more)
-    return neighborhoodItems.slice(0, 1);
-  }
+  if (fillerPool.length === 0) return neighborhoodItems; // all neighborhoods, no filler
 
-  // ── 5. Cap neighborhoods so non-adjacency is always guaranteed ───────────
-  // Need: fillerPool.length >= cappedNeighborhoods - 1
-  // → cappedNeighborhoods <= fillerPool.length + 1
-  const cappedNeighborhoods = neighborhoodItems.slice(
-    0,
-    Math.min(neighborhoodItems.length, fillerPool.length + 1),
-  );
-
-  // ── 6. Distribute fillers evenly into N+1 slots ──────────────────────────
+  // ── 5. Distribute fillers evenly into N+1 slots (best-effort non-adjacency)
   // Slots: [before_n0, between_n0_n1, ..., after_nLast]
-  // Each slot gets baseCount fillers; the first `remainder` slots get one extra.
-  const numSlots = cappedNeighborhoods.length + 1;
+  // Each slot gets baseCount; the first `remainder` slots get one extra.
+  // When fillerPool.length < neighborhoodItems.length - 1, some slots get 0
+  // and neighborhoods may be adjacent — that is acceptable, no content is dropped.
+  const numSlots = neighborhoodItems.length + 1;
   const baseCount = Math.floor(fillerPool.length / numSlots);
   let remainder = fillerPool.length % numSlots;
   let fi = 0;
@@ -138,9 +136,9 @@ export function buildFeedStream(
     for (let k = 0; k < count; k++) {
       result.push(fillerPool[fi++]);
     }
-    // Insert neighborhood after filler (except after the last slot)
-    if (slot < cappedNeighborhoods.length) {
-      result.push(cappedNeighborhoods[slot]);
+    // Insert neighborhood after each filler slot (except after the last slot)
+    if (slot < neighborhoodItems.length) {
+      result.push(neighborhoodItems[slot]);
     }
   }
 
@@ -158,6 +156,11 @@ export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedI
   const result: FeedItem[] = [];
 
   for (const item of items) {
+    if (item.kind === "date-highlights") {
+      // Always show date-highlights regardless of filter
+      result.push(item);
+      continue;
+    }
     if (item.kind === "neighborhood") {
       // Dissolve — emit only matching gems as loose items
       for (const gem of item.data.gems ?? []) {
@@ -180,7 +183,7 @@ function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
     case "do":
       return (
         kind === "supply-activity" ||
-        ((kind === "loose-gem") && gemCategory(data.placeType) === "do")
+        (kind === "loose-gem" && gemCategory(data.placeType) === "do")
       );
     case "stay":
       return kind === "supply-hotel" || gemCategory(data.placeType) === "stay";
