@@ -23,14 +23,15 @@ This document captures architectural decisions to maintain consistency across co
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
 **Consolidation Timeline:**
-- **Phase 1+2 (DONE):** Migration 0007 copies `expert_custom_services` → `provider_services` with category mapping, preserving approval workflow as `approval_status` enum
-- **Phase 3:** Build shared ServiceForm component targeting provider_services (role-aware, covers both expert and provider creation/edit)
-- **Phase 4:** Apply console theme to expert pages
-- **Phase 5:** Drop deprecated columns from ESO (status, submittedAt, deliverables, etc.) — they're redundant and misleading
+- **Phase 1+2 (DONE):** Migrations 011-012 add schema columns and consolidate `expert_custom_services` → `provider_services` with category mapping
+- **Phase 3 (DONE):** Build shared ServiceForm component targeting provider_services (role-aware, both expert and provider)
+- **Phase 4 (DONE):** Apply User Console theme to expert pages (#1A1A18, #7A7A72, #E8E8E2, #FAFAF8)
+- **Phase 5 (DONE):** Migration 013 drops deprecated tables/columns: expert_custom_services, expert_selected_services, expert_service_categories, ESO workflow columns
 
 **What Was Deprecated:**
-- Commit `bfc3db2` ("Make expert_service_offerings the canonical service catalog") made ESO canonical by adding workflow columns. This contradicted the booking-FK fact. That decision is superseded by this document.
-- The `runEsoBackfill()` startup migration (server/index.ts) that wrote to ESO is disabled; migration 0007 handles all backfilling to provider_services.
+- Commit `bfc3db2` made ESO canonical by adding workflow columns. This contradicted the booking-FK fact and is superseded by this document.
+- The `runEsoBackfill()` startup migration is disabled; migrations 011-012 handle schema + data consolidation to provider_services.
+- Deprecated tables (expert_custom_services, expert_selected_services, expert_service_categories) and ESO workflow columns are dropped by migration 013.
 
 ---
 
