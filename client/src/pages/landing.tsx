@@ -539,48 +539,73 @@ export default function LandingPage() {
             </motion.div>
 
             <div className="flex flex-col gap-5">
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-              >
-                <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-emerald-500/20 to-transparent rounded-bl-full" />
-                  <CardContent className="p-5 relative">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
-                        <UserCheck className="w-5 h-5 text-white" />
+              <div className="grid grid-cols-2 gap-3">
+                <motion.div
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                >
+                  <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl overflow-hidden h-full">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-emerald-500/20 to-transparent rounded-bl-full" />
+                    <CardContent className="p-4 relative flex flex-col h-full">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shrink-0">
+                          <UserCheck className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-white leading-tight">Local Experts</h3>
+                          <p className="text-[10px] text-white/70">Insider guidance from locals</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-white">Plan with an Expert</h3>
-                        <p className="text-xs text-white/70">Get personalized guidance from locals</p>
+                      <p className="text-xs text-white/80 mb-3 leading-relaxed flex-1">
+                        Verified local experts and trip planners who know every hidden gem.
+                      </p>
+                      <Link href="/experts">
+                        <Button
+                          size="sm"
+                          className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold shadow-lg text-xs"
+                          data-testid="button-find-expert"
+                        >
+                          Find an Expert <ArrowRight className="w-3 h-3 ml-1" />
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 0.5 }}
+                >
+                  <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl overflow-hidden h-full">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-pink-500/20 to-transparent rounded-bl-full" />
+                    <CardContent className="p-4 relative flex flex-col h-full">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center shadow-lg shrink-0">
+                          <Heart className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-white leading-tight">Plan Your Event</h3>
+                          <p className="text-[10px] text-white/70">Weddings, proposals & more</p>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
-                      <span className="flex items-center gap-1.5 text-xs text-white/90 bg-white/10 px-2.5 py-1 rounded-full">
-                        <Sparkles className="w-3 h-3 text-emerald-400" /> Local tips
-                      </span>
-                      <span className="flex items-center gap-1.5 text-xs text-white/90 bg-white/10 px-2.5 py-1 rounded-full">
-                        <Star className="w-3 h-3 text-emerald-400" /> Personal support
-                      </span>
-                      <span className="flex items-center gap-1.5 text-xs text-white/90 bg-white/10 px-2.5 py-1 rounded-full">
-                        <Shield className="w-3 h-3 text-emerald-400" /> Verified experts
-                      </span>
-                    </div>
-
-                    <Link href="/experts">
-                      <Button
-                        size="default"
-                        className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold shadow-lg"
-                        data-testid="button-find-expert"
-                      >
-                        Find an Expert <ArrowRight className="w-4 h-4 ml-2" />
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                      <p className="text-xs text-white/80 mb-3 leading-relaxed flex-1">
+                        Specialist planners for weddings, proposals, and group celebrations.
+                      </p>
+                      <Link href="/experts?role=event_planner">
+                        <Button
+                          size="sm"
+                          className="w-full bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold shadow-lg text-xs"
+                          data-testid="button-plan-event"
+                        >
+                          Plan your event <ArrowRight className="w-3 h-3 ml-1" />
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </div>
 
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
