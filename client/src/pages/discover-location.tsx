@@ -128,60 +128,6 @@ function PlanningDatePill({
   );
 }
 
-// ─── On-date highlights strip ─────────────────────────────────────────────────
-
-function OnDateHighlights({
-  date,
-  events,
-  heroData,
-}: {
-  date: string;
-  events: any[];
-  heroData: any;
-}) {
-  const formatted = (() => {
-    try {
-      return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    } catch {
-      return date;
-    }
-  })();
-
-  const pinnedEvent = events?.[0];
-  const seasonalPick = heroData?.city?.currentHighlight;
-
-  if (!pinnedEvent && !seasonalPick) return null;
-
-  return (
-    <div
-      className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3"
-      data-testid="on-date-highlights"
-    >
-      <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
-        <Sparkles className="w-4 h-4" />
-        On {formatted}
-      </p>
-      {pinnedEvent && (
-        <div className="flex items-start gap-3">
-          <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium">{pinnedEvent.title || pinnedEvent.name}</p>
-            {pinnedEvent.location && (
-              <p className="text-xs text-muted-foreground">{pinnedEvent.location}</p>
-            )}
-          </div>
-        </div>
-      )}
-      {seasonalPick && (
-        <div className="flex items-start gap-3">
-          <Sparkles className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-muted-foreground">{seasonalPick}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Hero section ─────────────────────────────────────────────────────────────
 
 function HeroSection({

@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { MapPin, Plus, ArrowRight } from "lucide-react";
-import { CityFeedCardGem } from "@/components/city-feed-card";
-import type { Bookability } from "@/components/city-feed-card";
+import { CityFeedCardGem, computeBookability } from "@/components/city-feed-card";
 import { cn } from "@/lib/utils";
 
 interface NeighborhoodContainerProps {
@@ -95,7 +94,7 @@ export function NeighborhoodContainer({
               city={city}
               compact
               scheduledDate={scheduledDate}
-              bookability={"browse" as Bookability}
+              bookability={computeBookability(gem)}
               onAdd={onAdd}
             />
           ))}
