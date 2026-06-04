@@ -7,6 +7,8 @@ import { Link, useLocation, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -157,7 +159,7 @@ interface OptimizationResult {
   warnings: string[];
 }
 
-type FlowStep = "cart" | "optimize" | "itinerary" | "payment";
+type FlowStep = "cart" | "trip-details" | "optimize" | "itinerary" | "payment";
 
 interface OptimizationPreview {
   estimatedSavingsPct: number;
@@ -201,6 +203,15 @@ export default function CartPage() {
   const [optimizationPreview, setOptimizationPreview] = useState<OptimizationPreview | null>(null);
   const [optimizationPayment, setOptimizationPayment] = useState<OptimizationPaymentState | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+
+  // G6: Trip auto-creation state
+  const [resolvingTrip, setResolvingTrip] = useState(false);
+  const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
+  const [tripTitle, setTripTitle] = useState("");
+  const [tripDestination, setTripDestination] = useState("");
+  const [tripStartDate, setTripStartDate] = useState("");
+  const [tripEndDate, setTripEndDate] = useState("");
+  const [tripTravelers, setTripTravelers] = useState(2);
 
   // Initialize guest session ID on first visit (ensures localStorage entry exists)
   useEffect(() => {
@@ -537,6 +548,106 @@ export default function CartPage() {
     }
   };
 
+  // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
+  const handleOptimizeClick = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (previewLoading || resolvingTrip) return;
+    if (isLoading) {
+      toast({ title: "Loading cart...", description: "Please wait a moment" });
+      return;
+    }
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
+      return;
+    }
+
+    setResolvingTrip(true);
+    try {
+      let ctxExperienceSlug: string | undefined;
+      let ctxUserExperienceId: string | undefined;
+      try {
+        const stored = sessionStorage.getItem("experienceContext");
+        if (stored) {
+          const ctx = JSON.parse(stored);
+          ctxExperienceSlug = ctx.experienceSlug || undefined;
+          ctxUserExperienceId = ctx.userExperienceId || ctx.id || undefined;
+        }
+      } catch { /* ignore */ }
+
+      const res = await fetch("/api/cart/resolve-trip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ experienceSlug: ctxExperienceSlug, userExperienceId: ctxUserExperienceId }),
+      });
+      if (!res.ok) throw new Error("Could not prepare trip");
+      const data = await res.json();
+      const trip = data.trip;
+
+      setResolvedTrip(trip);
+      setTripTitle(trip.title || "");
+      setTripDestination(trip.destination || "");
+      setTripStartDate(trip.startDate || "");
+      setTripEndDate(trip.endDate || "");
+      setTripTravelers(trip.numberOfTravelers || 2);
+
+      // Persist the resolved tripId back into the experience context so
+      // downstream steps (createComparison, requestOptimizationPayment) pick it up
+      try {
+        const stored = sessionStorage.getItem("experienceContext");
+        const ctx = stored ? JSON.parse(stored) : {};
+        ctx.tripId = trip.id;
+        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
+      } catch { /* ignore */ }
+
+      setFlowStep("trip-details");
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Could not prepare trip", description: err.message });
+    } finally {
+      setResolvingTrip(false);
+    }
+  };
+
+  // ── G6: Save user edits to the trip details, then proceed to preview ─────
+  const handleConfirmTripDetails = async () => {
+    if (!resolvedTrip) return;
+
+    // Persist any user edits to the trip record (non-blocking on failure)
+    try {
+      await fetch(`/api/trips/${resolvedTrip.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title: tripTitle,
+          destination: tripDestination,
+          startDate: tripStartDate,
+          endDate: tripEndDate,
+          numberOfTravelers: tripTravelers,
+        }),
+      });
+
+      // Update sessionStorage so the optimizer uses the confirmed values
+      try {
+        const stored = sessionStorage.getItem("experienceContext");
+        const ctx = stored ? JSON.parse(stored) : {};
+        ctx.tripId = resolvedTrip.id;
+        ctx.destination = tripDestination;
+        ctx.startDate = tripStartDate;
+        ctx.endDate = tripEndDate;
+        ctx.travelers = tripTravelers;
+        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
+      } catch { /* ignore */ }
+    } catch { /* non-fatal */ }
+
+    // Proceed to the optimization preview step
+    await fetchPreview();
+  };
+
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
   const requestOptimizationPayment = async () => {
     if (!user) {
@@ -843,6 +954,11 @@ export default function CartPage() {
             <span className="text-sm font-medium">Cart</span>
           </div>
           <div className="w-8 h-px bg-border" />
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "trip-details" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
+            <MapPin className="w-4 h-4" />
+            <span className="text-sm font-medium">Trip</span>
+          </div>
+          <div className="w-8 h-px bg-border" />
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "optimize" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
             <Lock className="w-4 h-4" />
             <span className="text-sm font-medium">Optimize</span>
@@ -866,8 +982,11 @@ export default function CartPage() {
             onClick={() => {
               if (flowStep === "cart") {
                 window.history.back();
-              } else if (flowStep === "optimize") {
+              } else if (flowStep === "trip-details") {
                 setFlowStep("cart");
+                setResolvedTrip(null);
+              } else if (flowStep === "optimize") {
+                setFlowStep("trip-details");
                 setOptimizationPreview(null);
                 setOptimizationPayment(null);
               } else if (flowStep === "itinerary") {
@@ -883,6 +1002,7 @@ export default function CartPage() {
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
               {flowStep === "cart" && "Your Cart"}
+              {flowStep === "trip-details" && "Your Trip Details"}
               {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}
@@ -1253,16 +1373,16 @@ export default function CartPage() {
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
-                          onClick={fetchPreview}
-                          disabled={previewLoading}
+                          onClick={handleOptimizeClick}
+                          disabled={previewLoading || resolvingTrip}
                           data-testid="button-generate-itinerary-comparison"
                         >
-                          {previewLoading ? (
+                          {(previewLoading || resolvingTrip) ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           ) : (
                             <Sparkles className="w-4 h-4 mr-2" />
                           )}
-                          {previewLoading ? "Analyzing..." : "Generate Itinerary"}
+                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing..." : "Generate Itinerary"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
@@ -1283,6 +1403,101 @@ export default function CartPage() {
                     </CardFooter>
                   </Card>
                 </div>
+              </div>
+            )}
+
+            {/* Step 1.5: Trip Details (G6) */}
+            {flowStep === "trip-details" && resolvedTrip && (
+              <div className="max-w-2xl mx-auto space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5 text-[#FF385C]" />
+                      Confirm your trip
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      We've pre-filled these from your cart. Review and edit before the AI optimizes your plan.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="space-y-2">
+                      <Label htmlFor="trip-title">Trip name</Label>
+                      <Input
+                        id="trip-title"
+                        value={tripTitle}
+                        onChange={(e) => setTripTitle(e.target.value)}
+                        placeholder="My trip to Tokyo"
+                        data-testid="input-trip-title"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="trip-destination">Destination</Label>
+                      <Input
+                        id="trip-destination"
+                        value={tripDestination}
+                        onChange={(e) => setTripDestination(e.target.value)}
+                        placeholder="Tokyo, Japan"
+                        data-testid="input-trip-destination"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="trip-start">Start date</Label>
+                        <Input
+                          id="trip-start"
+                          type="date"
+                          value={tripStartDate}
+                          onChange={(e) => setTripStartDate(e.target.value)}
+                          data-testid="input-trip-start-date"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="trip-end">End date</Label>
+                        <Input
+                          id="trip-end"
+                          type="date"
+                          value={tripEndDate}
+                          onChange={(e) => setTripEndDate(e.target.value)}
+                          data-testid="input-trip-end-date"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="trip-travelers">Number of travelers</Label>
+                      <Input
+                        id="trip-travelers"
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={tripTravelers}
+                        onChange={(e) => setTripTravelers(Math.max(1, parseInt(e.target.value) || 1))}
+                        data-testid="input-trip-travelers"
+                      />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-col gap-3">
+                    <Button
+                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      size="lg"
+                      onClick={handleConfirmTripDetails}
+                      disabled={previewLoading || !tripDestination.trim()}
+                      data-testid="button-confirm-trip-details"
+                    >
+                      {previewLoading ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4 mr-2" />
+                      )}
+                      {previewLoading ? "Analyzing your cart..." : "Confirm & Optimize"}
+                    </Button>
+                    <p className="text-xs text-center text-muted-foreground">
+                      This trip will appear on your dashboard
+                    </p>
+                  </CardFooter>
+                </Card>
               </div>
             )}
 
