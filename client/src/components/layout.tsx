@@ -143,7 +143,7 @@ const navItems = [
       },
     ],
   },
-  { name: "Local Experts", href: "/experts" },
+  { name: "Local Experts", href: "/experts?role=local_expert" },
   { name: "Contact", href: "/contact" },
 ];
 
@@ -331,9 +331,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-72 p-2">
                       {[
-                        { label: "Travel Expert", desc: "Share your destination expertise & guide travellers worldwide", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Trip Planner", desc: "Help travellers design itineraries & craft unforgettable journeys", href: "/become-expert?type=travel_expert", icon: Plane },
                         { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
-                        { label: "Event Planner", desc: "Plan weddings, proposals & celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
+                        { label: "Event Planner", desc: "Plan your event — weddings, proposals & group celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
                         { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
                       ].map(({ label, desc, href, icon: Icon }) => (
                         <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
@@ -465,7 +465,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <div className="flex flex-col gap-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Join as a Partner</p>
                     {[
-                      { label: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Trip Planner", href: "/become-expert?type=travel_expert", icon: Plane },
                       { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
                       { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
                       { label: "Service Provider", href: "/become-provider", icon: Building2 },
@@ -512,7 +512,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span className="font-display font-bold text-xl text-foreground">Traveloure</span>
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
-                Experience personalized travel planning with insider knowledge from travel experts, powered by advanced AI technology.
+                Experience personalized travel planning with insider knowledge from local experts and trip planners, powered by advanced AI technology.
               </p>
               {/* Social Links */}
               <div className="flex items-center gap-3">
