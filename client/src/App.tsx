@@ -46,6 +46,7 @@ import EAEvents from "@/pages/ea/events";
 import EACommunications from "@/pages/ea/communications";
 import EAAIAssistant from "@/pages/ea/ai-assistant";
 import EATravel from "@/pages/ea/travel";
+import EATrips from "@/pages/ea/trips";
 import EAVenues from "@/pages/ea/venues";
 import EAGifts from "@/pages/ea/gifts";
 import EAReports from "@/pages/ea/reports";
@@ -503,6 +504,9 @@ function Router() {
       </Route>
       <Route path="/ea/travel">
         {() => <ProtectedRoute component={EATravel} requiredRole="executive_assistant" />}
+      </Route>
+      <Route path="/ea/trips">
+        {() => <ProtectedRoute component={EATrips} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/venues">
         {() => <ProtectedRoute component={EAVenues} requiredRole="executive_assistant" />}
