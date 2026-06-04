@@ -122,8 +122,8 @@ export default function ProviderAnalytics() {
     <ProviderLayout title="Analytics">
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
-          <p className="text-gray-600 mt-1">Track your performance metrics and insights</p>
+          <h1 className="text-3xl font-bold text-console-darkest">Analytics Dashboard</h1>
+          <p className="text-console-dark mt-1">Track your performance metrics and insights</p>
         </div>
 
         {/* Metrics Grid */}
@@ -133,8 +133,8 @@ export default function ProviderAnalytics() {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <p className="text-sm text-gray-600">{metric.label}</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">{metric.value}</p>
+                    <p className="text-sm text-console-dark">{metric.label}</p>
+                    <p className="text-2xl font-bold text-console-darkest mt-2">{metric.value}</p>
                     <div className="flex items-center gap-1 mt-2">
                       {metric.trend === "up" ? (
                         <ArrowUpRight className="w-4 h-4 text-green-600" />
@@ -175,7 +175,7 @@ export default function ProviderAnalytics() {
                       }}
                       title={`${month.month}: $${month.revenue}`}
                     />
-                    <p className="text-xs text-gray-600 mt-2">{month.month}</p>
+                    <p className="text-xs text-console-dark mt-2">{month.month}</p>
                   </div>
                 ))}
               </div>
@@ -194,13 +194,13 @@ export default function ProviderAnalytics() {
                   <div key={service.id} className="flex items-center gap-3">
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
-                        <p className="text-sm font-semibold text-gray-900">{service.title}</p>
+                        <p className="text-sm font-semibold text-console-darkest">{service.title}</p>
                         <Badge variant="outline" className="text-xs">
                           ${service.revenue}
                         </Badge>
                       </div>
                       <Progress value={(service.revenue / 5000) * 100} className="h-2" />
-                      <p className="text-xs text-gray-600 mt-1">
+                      <p className="text-xs text-console-dark mt-1">
                         {service.bookings} bookings • {service.rating} ★
                       </p>
                     </div>
@@ -220,20 +220,20 @@ export default function ProviderAnalytics() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-gray-600">Your Avg Booking Value</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm text-console-dark">Your Avg Booking Value</p>
+                <p className="text-2xl font-bold text-console-darkest mt-2">
                   ${(analytics?.benchmarks?.avgBookingValue || 0).toLocaleString()}
                 </p>
               </div>
               <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                <p className="text-sm text-gray-600">Category Average</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm text-console-dark">Category Average</p>
+                <p className="text-2xl font-bold text-console-darkest mt-2">
                   ${(analytics?.benchmarks?.categoryAvg || 0).toLocaleString()}
                 </p>
               </div>
               <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-sm text-gray-600">Top Performer Average</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm text-console-dark">Top Performer Average</p>
+                <p className="text-2xl font-bold text-console-darkest mt-2">
                   ${(analytics?.benchmarks?.topPerformerAvg || 0).toLocaleString()}
                 </p>
               </div>
@@ -263,40 +263,40 @@ export default function ProviderAnalytics() {
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-100" data-testid="crosssell-impressions">
                     <div className="flex items-center gap-2 mb-1">
                       <Eye className="w-4 h-4 text-blue-500" />
-                      <p className="text-xs text-gray-500 font-medium">Impressions</p>
+                      <p className="text-xs text-console-mid font-medium">Impressions</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{(crossSell?.impressions ?? 0).toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-console-darkest">{(crossSell?.impressions ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="p-4 bg-violet-50 rounded-lg border border-violet-100" data-testid="crosssell-clicks">
                     <div className="flex items-center gap-2 mb-1">
                       <MousePointerClick className="w-4 h-4 text-violet-500" />
-                      <p className="text-xs text-gray-500 font-medium">Clicks</p>
+                      <p className="text-xs text-console-mid font-medium">Clicks</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{(crossSell?.clicks ?? 0).toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-console-darkest">{(crossSell?.clicks ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="p-4 bg-amber-50 rounded-lg border border-amber-100" data-testid="crosssell-ctr">
                     <div className="flex items-center gap-2 mb-1">
                       <TrendingUp className="w-4 h-4 text-amber-500" />
-                      <p className="text-xs text-gray-500 font-medium">CTR</p>
+                      <p className="text-xs text-console-mid font-medium">CTR</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{crossSell?.ctr ?? 0}%</p>
+                    <p className="text-2xl font-bold text-console-darkest">{crossSell?.ctr ?? 0}%</p>
                   </div>
                   <div className="p-4 bg-green-50 rounded-lg border border-green-100" data-testid="crosssell-bookings">
                     <div className="flex items-center gap-2 mb-1">
                       <ShoppingCart className="w-4 h-4 text-green-500" />
-                      <p className="text-xs text-gray-500 font-medium">Bookings via Cross-Sell</p>
+                      <p className="text-xs text-console-mid font-medium">Bookings via Cross-Sell</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{(crossSell?.conversions ?? 0).toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-console-darkest">{(crossSell?.conversions ?? 0).toLocaleString()}</p>
                   </div>
                 </div>
 
                 {(crossSell?.byService?.length ?? 0) > 0 && (
                   <div className="space-y-3">
-                    <p className="text-sm font-semibold text-gray-700">By Service</p>
+                    <p className="text-sm font-semibold text-console-dark">By Service</p>
                     {(crossSell?.byService ?? []).map((row) => (
-                      <div key={row.serviceId} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0" data-testid={`crosssell-service-${row.serviceId}`}>
-                        <p className="text-sm font-medium text-gray-800 truncate max-w-[200px]">{row.serviceName}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <div key={row.serviceId} className="flex items-center justify-between py-2 border-b border-console-light last:border-0" data-testid={`crosssell-service-${row.serviceId}`}>
+                        <p className="text-sm font-medium text-console-dark truncate max-w-[200px]">{row.serviceName}</p>
+                        <div className="flex items-center gap-4 text-sm text-console-mid">
                           <span>{row.impressions.toLocaleString()} views</span>
                           <span>{row.clicks.toLocaleString()} clicks</span>
                           <Badge variant="outline" className="text-xs">{row.ctr}% CTR</Badge>
@@ -308,7 +308,7 @@ export default function ProviderAnalytics() {
                 )}
 
                 {(crossSell?.impressions ?? 0) === 0 && (
-                  <p className="text-center text-gray-400 text-sm py-4">
+                  <p className="text-center text-console-mid text-sm py-4">
                     No cross-sell data yet — data populates as travellers view the "Users also book" strip.
                   </p>
                 )}

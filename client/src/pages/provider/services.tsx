@@ -107,7 +107,7 @@ const inspirationCards = [
   { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
   { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
   { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
-  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-gray-50 text-gray-600" },
+  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
   { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
   { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
   { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
@@ -192,13 +192,13 @@ export default function ProviderServices() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900" data-testid="text-services-title">
+            <h2 className="text-xl font-semibold text-console-darkest" data-testid="text-services-title">
               Your Services
             </h2>
             {isLoading ? (
               <Skeleton className="h-4 w-40 mt-1" />
             ) : (
-              <p className="text-gray-500 text-sm">{activeCount} of {totalServices} services active</p>
+              <p className="text-console-mid text-sm">{activeCount} of {totalServices} services active</p>
             )}
           </div>
           <Link href="/provider/services/new">
@@ -236,8 +236,8 @@ export default function ProviderServices() {
           /* First-time empty state: show all categories */
           <div className="space-y-6">
             <div className="text-center py-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">What will you offer?</h3>
-              <p className="text-gray-500 text-sm">
+              <h3 className="text-lg font-semibold text-console-darkest mb-1">What will you offer?</h3>
+              <p className="text-console-mid text-sm">
                 Pick a category below to get started, or build your own service from scratch.
               </p>
             </div>
@@ -249,13 +249,13 @@ export default function ProviderServices() {
                   <button
                     key={card.slug}
                     onClick={() => navigate(`/provider/services/new?category=${encodeURIComponent(card.slug)}`)}
-                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:border-[#FF385C] hover:shadow-sm transition-all text-center group"
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-[#FF385C] hover:shadow-sm transition-all text-center group"
                     data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}>
                       <Icon className="w-5 h-5" />
                     </div>
-                    <span className="text-xs font-medium text-gray-700 leading-tight">{card.label}</span>
+                    <span className="text-xs font-medium text-console-dark leading-tight">{card.label}</span>
                   </button>
                 );
               })}
@@ -272,8 +272,8 @@ export default function ProviderServices() {
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-gray-500 font-medium">No services in this category.</p>
-              <p className="text-gray-400 text-sm mt-1">Try a different filter or add a new service.</p>
+              <p className="text-console-mid font-medium">No services in this category.</p>
+              <p className="text-console-mid text-sm mt-1">Try a different filter or add a new service.</p>
               <Button
                 variant="outline"
                 className="mt-4"
@@ -303,7 +303,7 @@ export default function ProviderServices() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-gray-900 truncate">{displayName}</h3>
+                          <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
                           {service.isFeatured && (
                             <Badge className="bg-[#FF385C] text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
                               Featured
@@ -315,7 +315,7 @@ export default function ProviderServices() {
                         </div>
 
                         {service.description && (
-                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{service.description}</p>
+                          <p className="text-sm text-console-mid mt-1 line-clamp-2">{service.description}</p>
                         )}
 
                         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
@@ -323,17 +323,17 @@ export default function ProviderServices() {
                             <DollarSign className="w-4 h-4" /> {price}
                           </span>
                           {service.deliveryTimeframe && (
-                            <span className="flex items-center gap-1 text-gray-400">
+                            <span className="flex items-center gap-1 text-console-mid">
                               <Clock className="w-4 h-4" /> {service.deliveryTimeframe}
                             </span>
                           )}
                           {service.maxConcurrentBookings && service.maxConcurrentBookings > 1 && (
-                            <span className="flex items-center gap-1 text-gray-400">
+                            <span className="flex items-center gap-1 text-console-mid">
                               <Users className="w-4 h-4" /> Up to {service.maxConcurrentBookings}
                             </span>
                           )}
                           {service.meetingPoint && (
-                            <span className="flex items-center gap-1 text-gray-400 truncate max-w-[160px]">
+                            <span className="flex items-center gap-1 text-console-mid truncate max-w-[160px]">
                               <MapPin className="w-4 h-4 flex-shrink-0" /> {service.meetingPoint}
                             </span>
                           )}
@@ -347,7 +347,7 @@ export default function ProviderServices() {
                         {/* Affinity tag chips */}
                         {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
                           <div className="mt-3" data-testid={`affinity-tags-${service.id}`}>
-                            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
+                            <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
                               Surfaces when travellers view:
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -375,13 +375,13 @@ export default function ProviderServices() {
                           disabled={toggleMutation.isPending}
                           data-testid={`switch-active-${service.id}`}
                         />
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-console-mid">
                           {isActive ? "Active" : "Paused"}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
                       <Link href={`/provider/services/${service.id}/edit`}>
                         <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
                           <Edit className="w-4 h-4 mr-1" /> Edit
