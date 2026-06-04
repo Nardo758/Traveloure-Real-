@@ -3,6 +3,7 @@ import { hotelCache, activityCache, flightCache, hotelOfferCache, restaurantCach
 import { sql, eq, gte, lte, and, desc } from "drizzle-orm";
 import { cacheService } from "./cache.service";
 import { feverCacheService } from "./fever-cache.service";
+import { sharedCache } from "./shared-cache.service";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 
@@ -121,9 +122,10 @@ class CacheSchedulerService {
       // Note: TravelPulse city intelligence is refreshed by its dedicated scheduler
       // (travelpulse-scheduler.service.ts) to manage Grok AI rate limits separately
 
-      // Clean up expired cache entries
-      await cacheService.cleanupExpiredCache();
-      await feverCacheService.cleanupExpiredCache();
+      // Clean up expired cache entries via shared primitive and domain-specific services
+      await sharedCache.flushExpired(); // travelpayouts KV store
+      await cacheService.cleanupExpiredCache(); // hotels / activities / flights
+      await feverCacheService.cleanupExpiredCache(); // fever events (delegates to sharedCache.cleanupDomainTable)
 
       console.log(`[CacheScheduler] Refresh complete - Hotels: ${stats.hotelsRefreshed}, Activities: ${stats.activitiesRefreshed}, Flights: ${stats.flightsRefreshed}, Fever: ${stats.feverEventsRefreshed}`);
     } catch (error: any) {

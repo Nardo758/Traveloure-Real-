@@ -3,12 +3,16 @@ import crypto from "crypto";
 import { createServer, request as httpRequest } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { runMigrations } from "./migrations/run-migrations";
+import { runEsoBackfill } from "./migrations/run-eso-backfill";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { seedTravelPulseData } from "./seed-travelpulse";
+import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
+import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -106,6 +110,20 @@ async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
   logger.info("Database seeding started");
 
+  // Apply SQL schema migrations first (idempotent, safe to re-run).
+  // Fail-fast: if migrations fail, ESO columns may be missing and all ESO writes/reads
+  // will produce runtime errors. Throw so the server does not start in a broken state.
+  await runMigrations();
+
+  // Run ESO backfill: migrates legacy service_templates + approved expert_custom_services
+  // into expert_service_offerings as the canonical service catalog.
+  // Uses externalId for deterministic deduplication (safe to re-run).
+  try {
+    await runEsoBackfill();
+  } catch (err) {
+    logger.warn({ err }, "ESO backfill failed (non-fatal)");
+  }
+
   try {
     const result = await seedCategories();
     if (result.created > 0) {
@@ -168,7 +186,28 @@ async function runDatabaseSeeding() {
   } catch (err) {
     logger.error({ err }, "Failed to seed TravelPulse data");
   }
-  
+
+  try {
+    const neighborhoodResult = await seedCityNeighborhoods();
+    if (neighborhoodResult.inserted > 0) {
+      logger.info({ count: neighborhoodResult.inserted }, "Seeded city neighborhoods");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed city neighborhoods");
+  }
+
+  try {
+    const popularCitiesResult = await seedPopularCitiesContent();
+    if (popularCitiesResult.gems > 0 || popularCitiesResult.services > 0) {
+      logger.info(
+        { gems: popularCitiesResult.gems, services: popularCitiesResult.services },
+        "Seeded popular cities content (hidden gems + services)",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed popular cities content");
+  }
+
   seedingDurationMs = Date.now() - seedingStartTime;
   seedingComplete = true;
   logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");

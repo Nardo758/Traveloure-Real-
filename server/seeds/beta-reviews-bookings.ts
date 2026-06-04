@@ -335,7 +335,7 @@ export async function seedReviewsAndBookings(
     }
     
     const price = parseFloat(service.price);
-    const platformFee = price * 0.15; // 15% platform fee
+    const platformFee = price * 0.15; // 15% platform fee (stable seed fixture — do not replace with live rate)
     const providerEarnings = price - platformFee;
     
     const createdAt = randomPastDate(180);

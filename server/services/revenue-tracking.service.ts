@@ -6,10 +6,11 @@ import {
   dailyRevenueSummary, revenueSplits,
   contentRegistry
 } from "@shared/schema";
+import { resolveCommissionRates, PROCESSING_FEE_RATE } from "./commission";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
-  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'other';
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'other';
   sourceId: string;
   trackingNumber?: string;
   grossAmount: number;
@@ -57,13 +58,16 @@ export interface UnifiedRevenueDashboard {
 
 class RevenueTrackingService {
   async recordRevenueEvent(event: RevenueEvent): Promise<void> {
-    const revenueSplit = await storage.getRevenueSplit(event.sourceType.replace('_commission', ''));
-    const platformPercentage = parseFloat(revenueSplit?.platformPercentage || '10') / 100;
-    
-    const platformFee = event.grossAmount * platformPercentage;
-    // Use consistent 3% processing fee rate across all revenue calculations
-    const processingFeeRate = 0.03;
-    const processingFees = platformFee * processingFeeRate;
+    // Optimization fees are 100% platform revenue — route through 'ai' source tier.
+    const isOptimizationFee = event.sourceType === 'optimization_fee';
+    // Derive source flag for the resolver so affiliate events get the 70% tier.
+    const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
+    const rates = await resolveCommissionRates({
+      category: isOptimizationFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
+      source: isOptimizationFee ? 'ai' : affiliateSource,
+    });
+    const platformFee = event.grossAmount * rates.platformFeeRate;
+    const processingFees = platformFee * PROCESSING_FEE_RATE;
     const netAmount = platformFee - processingFees;
 
     await storage.recordPlatformRevenue({

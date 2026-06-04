@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
+import { useEffect, useRef } from "react";
 
 import LandingPage from "@/pages/landing";
 import LandingMockups from "@/pages/landing-mockups";
@@ -33,11 +34,8 @@ import ExpertClients from "@/pages/expert/clients";
 import ExpertEarnings from "@/pages/expert/earnings";
 import ExpertProfile from "@/pages/expert/profile";
 import ExpertAIAssistant from "@/pages/expert/ai-assistant";
-import ExpertMessages from "@/pages/expert/messages";
 import ExpertBookings from "@/pages/expert/bookings";
 import ExpertServices from "@/pages/expert/services";
-import ExpertPerformance from "@/pages/expert/performance";
-import ExpertCustomServices from "@/pages/expert/custom-services";
 import ExpertAssignedTrips from "@/pages/expert/assigned-trips";
 import EADashboard from "@/pages/ea/dashboard";
 import EAExecutives from "@/pages/ea/executives";
@@ -55,7 +53,6 @@ import EAProfile from "@/pages/ea/profile";
 import EASettings from "@/pages/ea/settings";
 import ProviderDashboard from "@/pages/provider/dashboard";
 import ProviderBookings from "@/pages/provider/bookings";
-import ProviderMessages from "@/pages/provider/messages";
 import ProviderServices from "@/pages/provider/services";
 import ProviderEarnings from "@/pages/provider/earnings";
 import ProviderPerformance from "@/pages/provider/performance";
@@ -83,6 +80,7 @@ import AdminServices from "@/pages/admin/services";
 import AdminAICosts from "@/pages/admin/ai-costs";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
+import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
@@ -108,10 +106,8 @@ import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
-import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
-import ExpertLeaderboard from "@/pages/expert/leaderboard";
+import AdminCrossSellAnalytics from "@/pages/admin/cross-sell-analytics";
 import ExpertAnalytics from "@/pages/expert/analytics";
-import ExpertTemplates from "@/pages/expert/templates";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
 import ExpertSettings from "@/pages/expert/settings";
@@ -119,7 +115,6 @@ import ExpertVerification from "@/pages/expert/verification";
 import ExpertServiceForm from "@/pages/expert/service-form";
 import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
-import ServiceTemplates from "@/pages/expert/service-templates";
 import ExpertWorkspace from "@/pages/expert/workspace";
 import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
@@ -239,10 +234,13 @@ function Router() {
       <Route path="/discover">
         <DiscoverPage />
       </Route>
-      {/* Phase 2 shell for the new location view (v2 spec §3, Decision #5). */}
-      {/* Phase 3 fills the section renderers; the orchestrator endpoint and IA are live now. */}
+      {/* Phase 3 LocationView — 9-section city marketplace (Decision #5 = Replace). */}
       <Route path="/discover/location/:city">
         <DiscoverLocationPage />
+      </Route>
+      {/* Phase B: /city/:slug deep-link redirect (CityDetailView retirement). */}
+      <Route path="/city/:slug">
+        {(params: any) => <Redirect to={`/discover/location/${params.slug}`} />}
       </Route>
 
       {/* Phase B: Legacy route redirect — /city/:slug → /discover/location/:slug for bookmark continuity */}
@@ -323,6 +321,8 @@ function Router() {
       <Route path="/discover-experiences">
         <Redirect to="/discover" />
       </Route>
+      {/* /deals kept: unique content (flash sales, seasonal, last-minute, bundle listings)
+          with countdown timers and discount data not surfaced inside /discover. */}
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
       </Route>
@@ -332,6 +332,9 @@ function Router() {
       <Route path="/spontaneous">
         <Redirect to="/discover" />
       </Route>
+      {/* /hidden-gems kept: unique Grok-powered discovery of authentic local experiences with
+          category-based filtering (local food secrets, hidden viewpoints, etc.) — not present
+          inside /discover. */}
       <Route path="/hidden-gems">
         <Layout><HiddenGemsPage /></Layout>
       </Route>
@@ -353,6 +356,13 @@ function Router() {
         <TravelExpertsPage />
       </Route>
       <Route path="/become-provider">
+        <ServicesProviderPage />
+      </Route>
+      {/* Supply recruitment entry points from location feed CTAs */}
+      <Route path="/expert/apply">
+        <TravelExpertsPage />
+      </Route>
+      <Route path="/provider/new-service">
         <ServicesProviderPage />
       </Route>
       
@@ -403,14 +413,19 @@ function Router() {
       <Route path="/expert/dashboard">
         {() => <ProtectedRoute component={ExpertDashboard} requiredRole="expert" />}
       </Route>
+      {/* /expert/ai-assistant is role-specific AI task delegation (auto-draft, vendor research,
+          quality scoring) — distinct from /chat (human messaging). Keep separate. */}
       <Route path="/expert/ai-assistant">
         {() => <ProtectedRoute component={ExpertAIAssistant} requiredRole="expert" />}
       </Route>
-      <Route path="/expert/messages">
-        {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
-      </Route>
+      {/* /expert/messages consolidated into /chat (ChatWithRoleLayout already applies
+          ExpertLayout when user role is expert). Deep-link clientId forwarded as ?clientId=
+          so chat.tsx pre-populates the search box with the client's name. */}
       <Route path="/expert/messages/:clientId">
-        {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
+        {(params: any) => <Redirect to={`/chat?clientId=${params.clientId}`} />}
+      </Route>
+      <Route path="/expert/messages">
+        <Redirect to="/chat" />
       </Route>
       <Route path="/expert/clients">
         {() => <ProtectedRoute component={ExpertClients} requiredRole="expert" />}
@@ -431,28 +446,28 @@ function Router() {
         {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/templates">
-        {() => <ProtectedRoute component={ServiceTemplates} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/custom-services">
-        {() => <ProtectedRoute component={ExpertCustomServices} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/earnings">
         {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/performance">
-        {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
+        <Redirect to="/expert/analytics?tab=performance" />
       </Route>
       <Route path="/expert/revenue-optimization">
-        {() => <ProtectedRoute component={ExpertRevenueOptimization} requiredRole="expert" />}
+        <Redirect to="/expert/analytics?tab=revenue-optimization" />
       </Route>
       <Route path="/expert/leaderboard">
-        {() => <ProtectedRoute component={ExpertLeaderboard} requiredRole="expert" />}
+        <Redirect to="/expert/analytics?tab=leaderboard" />
       </Route>
       <Route path="/expert/analytics">
         {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
       <Route path="/expert/templates">
-        {() => <ProtectedRoute component={ExpertTemplates} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
@@ -479,7 +494,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertBookingPartners} requiredRole="expert" />}
       </Route>
       <Route path="/expert/service-wizard">
-        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
+        <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/workspace/:tripId">
         {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
@@ -504,6 +519,8 @@ function Router() {
       <Route path="/ea/communications">
         {() => <ProtectedRoute component={EACommunications} requiredRole="executive_assistant" />}
       </Route>
+      {/* /ea/ai-assistant kept: EA-specific AI task management (approve/reject delegated tasks,
+          executive travel research, vendor options) — role-specific tools distinct from /chat. */}
       <Route path="/ea/ai-assistant">
         {() => <ProtectedRoute component={EAAIAssistant} requiredRole="executive_assistant" />}
       </Route>
@@ -536,8 +553,14 @@ function Router() {
       <Route path="/provider/bookings">
         {() => <ProtectedRoute component={ProviderBookings} requiredRole="provider" />}
       </Route>
+      {/* /provider/messages consolidated into /chat (ChatWithRoleLayout applies ProviderLayout
+          when user role is service_provider). Deep-link clientId forwarded as ?clientId=
+          so chat.tsx pre-populates the search box with the client's name. */}
+      <Route path="/provider/messages/:clientId">
+        {(params: any) => <Redirect to={`/chat?clientId=${params.clientId}`} />}
+      </Route>
       <Route path="/provider/messages">
-        {() => <ProtectedRoute component={ProviderMessages} requiredRole="provider" />}
+        <Redirect to="/chat" />
       </Route>
       <Route path="/provider/services">
         {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
@@ -637,6 +660,12 @@ function Router() {
       <Route path="/admin/routing-queue">
         {() => <ProtectedRoute component={AdminRoutingQueue} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/neighborhood-backfill">
+        {() => <ProtectedRoute component={AdminNeighborhoodBackfill} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/analytics/cross-sell">
+        {() => <ProtectedRoute component={AdminCrossSellAnalytics} requiredRole="admin" />}
+      </Route>
 
       {/* Redirects for consolidated/renamed pages */}
       <Route path="/create-trip">
@@ -670,6 +699,9 @@ function Router() {
       <Route path="/chat">
         {() => <ProtectedRoute component={ChatWithRoleLayout} />}
       </Route>
+      {/* /ai-assistant kept: general travel AI chat with conversation history and streaming
+          (uses /api/conversations). Serves traveler role. Distinct from /chat (human
+          expert-to-traveler messaging) and from role-specific expert/ea AI tool pages. */}
       <Route path="/ai-assistant">
         {() => <DashboardLayout><ProtectedRoute component={AIAssistant} /></DashboardLayout>}
       </Route>
@@ -688,6 +720,39 @@ function Router() {
   );
 }
 
+function GuestCartMigrator() {
+  const { user, isLoading } = useAuth();
+  const qc = useQueryClient();
+  const wasAuthenticated = useRef(false);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const isNowAuth = !!user;
+    if (!wasAuthenticated.current && isNowAuth) {
+      const guestSessionId = localStorage.getItem("traveloure_guest_session");
+      if (guestSessionId) {
+        fetch("/api/cart/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ guestSessionId }),
+          credentials: "include",
+        })
+          .then((res) => {
+            if (!res.ok) {
+              console.warn("[cart] Guest cart migration returned", res.status);
+            } else {
+              qc.invalidateQueries({ queryKey: ["/api/cart"] });
+            }
+          })
+          .catch((err) => console.warn("[cart] Guest cart migration failed", err));
+      }
+    }
+    wasAuthenticated.current = isNowAuth;
+  }, [user, isLoading, qc]);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -696,6 +761,7 @@ function App() {
           <SignInModalProvider>
             <TooltipProvider>
               <Toaster />
+              <GuestCartMigrator />
               <Router />
             </TooltipProvider>
           </SignInModalProvider>

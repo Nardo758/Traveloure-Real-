@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -511,16 +511,30 @@ function CityGridSkeleton() {
 
 export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   const [, navigate] = useLocation();
+
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
   });
 
+  // Phase B: auto-navigate when selectedCityName prop is set and data loads
+  useEffect(() => {
+    if (selectedCityName && data?.cities) {
+      const matchedCity = data.cities.find(
+        (city) => city.cityName.toLowerCase() === selectedCityName.toLowerCase()
+      );
+      if (matchedCity) {
+        navigate(
+          `/discover/location/${encodeURIComponent(matchedCity.cityName)}?country=${encodeURIComponent(matchedCity.country || "")}`
+        );
+      }
+    }
+  }, [selectedCityName, data?.cities, navigate]);
+
   const handleCityClick = (city: TravelPulseCity) => {
-    // Phase B: Navigate to LocationView instead of inline modal
-    const qs = new URLSearchParams();
-    qs.set("country", city.country);
-    navigate(`/discover/location/${encodeURIComponent(city.cityName)}?${qs.toString()}`);
     onCitySelect?.(city);
+    navigate(
+      `/discover/location/${encodeURIComponent(city.cityName)}?country=${encodeURIComponent(city.country || "")}`
+    );
   };
 
   if (isLoading) {

@@ -772,6 +772,21 @@ function getCostCategory(activityCategory: ActivityCategory): string {
   return 'Activities';
 }
 
+// ── Complexity tier mapping ──────────────────────────────────────────────────
+export type ComplexityTier = 'simple' | 'standard' | 'complex';
+
+/**
+ * Map an event type or experience type slug to an optimization complexity tier.
+ * Used to determine the fee charged for full AI optimization.
+ */
+export function complexityTier(eventType?: string | null): ComplexityTier {
+  if (!eventType) return 'simple';
+  const t = eventType.toLowerCase().trim();
+  if (t === 'wedding' || t === 'corporate') return 'complex';
+  if (t === 'honeymoon' || t === 'proposal' || t === 'anniversary' || t === 'multi_city' || t === 'multi-city') return 'standard';
+  return 'simple';
+}
+
 // Export all rules for display
 export function getSequencingRulesDisplay() {
   return SEQUENCING_RULES.map(rule => ({

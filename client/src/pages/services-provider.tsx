@@ -91,6 +91,11 @@ export default function ServicesProviderPage() {
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const _urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const _cityFromUrl = _urlParams.get('city') || '';
+  const _countryFromUrl = _urlParams.get('country') || '';
+
   const [formData, setFormData] = useState({
     businessName: "",
     businessType: "",
@@ -100,8 +105,8 @@ export default function ServicesProviderPage() {
     phone: "",
     website: "",
     address: "",
-    city: "",
-    country: "",
+    city: _cityFromUrl,
+    country: _countryFromUrl,
     serviceCategories: [] as string[],
     description: "",
     capacity: "",

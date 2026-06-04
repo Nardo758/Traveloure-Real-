@@ -198,6 +198,25 @@ export const helpGuideTrips = pgTable("help_guide_trips", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// =============================================================
+// EVENTS MODEL — Canonical Source of Truth
+// See EVENTS_MODEL.md for the full ownership map.
+//
+// CANONICAL TABLE:  destination_events
+//   • Single source of truth for user-facing event display
+//   • All Events-view queries read exclusively from this table
+//   • sourceType + sourceId columns prevent duplicate inserts
+//
+// INTEGRATION CACHES (write into destination_events):
+//   • fever_event_cache      — Fever API (24 h TTL); write path via fever-cache.service.ts
+//   • travel_pulse_calendar_events — AI impact intelligence; write path via travelpulse.service.ts
+//
+// CONTEXT-SPECIFIC (separate namespaces, NOT part of the event calendar):
+//   • live_events                   — tourist search result cache
+//   • tourist_help_me_guide_events  — Help Me Guide user flow
+//   • ea_events                     — Executive Assistant module
+// =============================================================
+
 export const liveEvents = pgTable("live_events", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   searchId: varchar("search_id").notNull().references(() => touristPlacesSearches.id, { onDelete: "cascade" }),
@@ -525,6 +544,10 @@ export const providerServices = pgTable("provider_services", {
   // populated by provider in listing form + admin backfill for legacy rows.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
+  // Content-affinity tags — canonical slugs indicating which traveller contexts
+  // surface this service. e.g. ['hotel_arrival','photo_shoot'].
+  // Empty array → system falls back to serviceType inference in content-matching.service.
+  contentAffinityTags: text("content_affinity_tags").array().default([]),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -596,6 +619,10 @@ export const serviceBookings = pgTable("service_bookings", {
   
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
+
+  // Attribution
+  source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
+  crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
 
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
@@ -740,9 +767,13 @@ export type InsertContactSubmission = z.infer<typeof insertContactSubmissionSche
 
 export const cartItems = pgTable("cart_items", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  guestSessionId: varchar("guest_session_id", { length: 64 }),
   serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "cascade" }),
   customVenueId: varchar("custom_venue_id").references(() => customVenues.id, { onDelete: "cascade" }),
+  contentType: varchar("content_type", { length: 20 }),
+  contentId: text("content_id"),
+  contentMeta: jsonb("content_meta").default({}),
   experienceSlug: varchar("experience_slug", { length: 50 }),
   quantity: integer("quantity").default(1),
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
@@ -822,9 +853,27 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   experienceTypeSlug: varchar("experience_type_slug", { length: 50 }),
   status: varchar("status", { length: 30 }).default("pending"),
   selectedVariantId: varchar("selected_variant_id"),
+  optimizedAt: timestamp("optimized_at"),
+  optimizationPaymentId: varchar("optimization_payment_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// === Optimization Fee Tiers ===
+export const optimizationFees = pgTable("optimization_fees", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  complexityTier: varchar("complexity_tier", { length: 20 }).notNull().unique(), // simple | standard | complex
+  priceCents: integer("price_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOptimizationFeeSchema = createInsertSchema(optimizationFees).omit({ id: true, createdAt: true, updatedAt: true });
+export type OptimizationFee = typeof optimizationFees.$inferSelect;
+export type InsertOptimizationFee = z.infer<typeof insertOptimizationFeeSchema>;
 
 export const itineraryVariants = pgTable("itinerary_variants", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -955,6 +1004,28 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isDefault: boolean("is_default").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // Migration 006: ESO canonicalization
+  // expertId=null → platform template; expertId set → expert-owned offering
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "cascade" }),
+  // externalId links back to the originating service_templates / expert_custom_services row
+  // Used for deterministic deduplication instead of fragile name-matching
+  externalId: varchar("external_id"),
+  // Migration 007: workflow/lifecycle columns (null for platform templates where expertId IS NULL)
+  status: varchar("status", { length: 20 }).default("draft"),       // draft | submitted | approved | rejected
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
+  duration: varchar("duration", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }),
+  imageUrl: text("image_url"),
+  galleryImages: jsonb("gallery_images").default([]),
+  experienceTypes: jsonb("experience_types").default([]),
+  isActive: boolean("is_active").default(true),
+  categoryName: varchar("category_name", { length: 100 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Link experts to their selected service offerings
@@ -1064,6 +1135,7 @@ export const userExperiences = pgTable("user_experiences", {
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }),
   status: varchar("status", { length: 20 }).default("draft"), // draft, planning, confirmed, completed, cancelled
   eventDate: date("event_date"),
@@ -2336,6 +2408,11 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug;
   // populated by backfill-gem-neighborhoods.ts or set directly on AI generation.
   neighborhood: varchar("neighborhood", { length: 100 }),
+
+  // Expert curation link — when set, the gem was explicitly recommended or
+  // curated by this expert. Soft FK into users.id (expert role). Populated
+  // manually by admins or via the expert workspace "Recommend a gem" action.
+  curatedByExpertId: varchar("curated_by_expert_id", { length: 255 }),
 
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
@@ -5612,3 +5689,70 @@ export type InsertVisaRequirementsCache = z.infer<typeof insertVisaRequirementsC
 export const insertCityNeighborhoodSchema = createInsertSchema(cityNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
 export type CityNeighborhood = typeof cityNeighborhoods.$inferSelect;
 export type InsertCityNeighborhood = z.infer<typeof insertCityNeighborhoodSchema>;
+
+// === Affiliate Booking Requests ===
+// Partner/affiliate bookings routed through experts — users never leave the site.
+
+export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id),
+  expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  itemName: varchar("item_name", { length: 255 }).notNull(),
+  itemDescription: text("item_description"),
+  partnerName: varchar("partner_name", { length: 100 }).notNull(),
+  partnerCategory: varchar("partner_category", { length: 50 }),
+  affiliateUrl: text("affiliate_url").notNull(),
+  travelDate: date("travel_date"),
+  travelers: integer("travelers").default(1),
+  userNotes: text("user_notes"),
+  expertNotes: text("expert_notes"),
+  confirmationRef: varchar("confirmation_ref", { length: 255 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  status: varchar("status", { length: 30 }).default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAffiliateBookingRequest = z.infer<typeof insertAffiliateBookingRequestSchema>;
+export type AffiliateBookingRequest = typeof affiliateBookingRequests.$inferSelect;
+
+// === Saved Items (Wishlist) ===
+// Single-user wishlist: saves gems, hotels, activities without requiring an active trip.
+
+export const savedItems = pgTable("saved_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contentType: varchar("content_type", { length: 50 }).notNull(), // gem | hotel | activity | service
+  contentId: varchar("content_id", { length: 255 }).notNull(),
+  contentName: varchar("content_name", { length: 255 }).notNull(),
+  contentImage: text("content_image"),
+  city: varchar("city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueUserItem: unique("saved_items_user_content_unique").on(table.userId, table.contentType, table.contentId),
+}));
+
+export const insertSavedItemSchema = createInsertSchema(savedItems).omit({ id: true, createdAt: true });
+export type SavedItem = typeof savedItems.$inferSelect;
+export type InsertSavedItem = z.infer<typeof insertSavedItemSchema>;
+
+// === Cross-Sell Conversion Tracking ===
+
+export const crossSellEvents = pgTable("cross_sell_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: varchar("event_type", { length: 20 }).notNull(), // impression | click | conversion
+  sourceContentType: varchar("source_content_type", { length: 50 }).notNull(), // hotel | activity | gem | service | etc.
+  sourceContentId: varchar("source_content_id", { length: 255 }).notNull(),
+  sourceContentName: varchar("source_content_name", { length: 255 }),
+  targetServiceId: varchar("target_service_id", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  userId: varchar("user_id", { length: 255 }), // nullable — anonymous events allowed
+  sessionId: varchar("session_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCrossSellEventSchema = createInsertSchema(crossSellEvents).omit({ id: true, createdAt: true });
+export type CrossSellEvent = typeof crossSellEvents.$inferSelect;
+export type InsertCrossSellEvent = z.infer<typeof insertCrossSellEventSchema>;

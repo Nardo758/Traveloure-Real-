@@ -42,7 +42,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
     );
   };
 
-  const defaultImage = "https://images.unsplash.com/photo-1519167758481-83f29da8fd21?w=800&q=80";
+  const defaultImage = "https://picsum.photos/seed/venue/800/600";
   const venueImage = venue.photos && venue.photos.length > 0 && !imageError 
     ? venue.photos[0] 
     : defaultImage;

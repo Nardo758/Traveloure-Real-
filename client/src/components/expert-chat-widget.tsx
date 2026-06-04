@@ -287,7 +287,7 @@ export function ExpertSidebarCard({
       <CardContent className="p-4">
         <div className="flex items-center gap-3 mb-4">
           <Avatar className="h-12 w-12 border-2 border-[#FF385C]/30">
-            <AvatarImage src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=face" />
+            <AvatarImage src="https://picsum.photos/seed/expert-avatar/100/100" />
             <AvatarFallback>SE</AvatarFallback>
           </Avatar>
           <div>

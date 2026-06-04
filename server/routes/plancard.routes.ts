@@ -34,6 +34,108 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
   });
 }
 
+// ── G7: Apply top AI variant to the trip's itinerary items ──────────────────
+router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, async (req, res) => {
+  try {
+    const { id: comparisonId } = req.params;
+    const userId = (req.user as any)?.claims?.sub;
+
+    const comparison = await db.query.itineraryComparisons.findFirst({
+      where: eq(itineraryComparisons.id, comparisonId),
+    });
+    if (!comparison || comparison.userId !== userId) {
+      return res.status(404).json({ error: "Comparison not found" });
+    }
+    if (!comparison.tripId) {
+      return res.status(400).json({ error: "Comparison has no associated trip" });
+    }
+
+    // Find best variant: prefer selectedVariantId, else top AI variant by optimizationScore
+    let variant: any = null;
+    if (comparison.selectedVariantId) {
+      variant = await db.query.itineraryVariants.findFirst({
+        where: eq(itineraryVariants.id, comparison.selectedVariantId),
+      });
+    }
+    if (!variant) {
+      const aiVariants = await db.select().from(itineraryVariants)
+        .where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai_optimized")))
+        .orderBy(desc(itineraryVariants.optimizationScore))
+        .limit(1);
+      variant = aiVariants[0] ?? null;
+    }
+    if (!variant) {
+      return res.status(400).json({ error: "No AI variant available to apply" });
+    }
+
+    const variantItems = await db.select().from(itineraryVariantItems)
+      .where(eq(itineraryVariantItems.variantId, variant.id))
+      .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+
+    // Replace itinerary items for this trip
+    await db.delete(itineraryItems).where(eq(itineraryItems.tripId, comparison.tripId));
+
+    for (const item of variantItems) {
+      await db.insert(itineraryItems).values({
+        tripId: comparison.tripId,
+        title: item.name,
+        description: item.description || "",
+        itemType: item.serviceType || "activity",
+        status: "planned",
+        dayNumber: item.dayNumber,
+        startTime: item.startTime || "",
+        durationMinutes: item.duration || 60,
+        locationName: item.location || "",
+        estimatedCost: item.price ? String(item.price) : null,
+        currency: "USD",
+        sortOrder: item.sortOrder ?? 0,
+        suggestedBy: "AI Optimizer",
+        latitude: item.latitude ? String(item.latitude) : null,
+        longitude: item.longitude ? String(item.longitude) : null,
+      });
+    }
+
+    // Read metrics for delta computation
+    const metrics = await db.select().from(itineraryVariantMetrics)
+      .where(eq(itineraryVariantMetrics.variantId, variant.id));
+
+    const rawMetrics: Record<string, number> = {};
+    for (const m of metrics) {
+      const v = parseFloat(m.value?.toString() ?? "0");
+      if (!isNaN(v)) rawMetrics[m.metricKey] = v;
+    }
+
+    const delta = {
+      savings: rawMetrics["savings"] ?? null,
+      savingsPercent: rawMetrics["savings_percent"] ?? rawMetrics["savingsPercent"] ?? null,
+      starRatingDelta: rawMetrics["star_rating_delta"] ?? rawMetrics["starRatingDelta"] ?? null,
+      travelDistanceMinutes: rawMetrics["travel_distance_minutes"] ?? rawMetrics["travelDistanceMinutes"] ?? null,
+      optimizationScore: variant.optimizationScore ?? null,
+    };
+
+    // Insert AI changelog entry
+    await storage.createItineraryChange({
+      tripId: comparison.tripId,
+      activityId: null,
+      who: "AI Optimizer",
+      action: `Applied optimized itinerary${delta.savings != null ? ` — saved $${Math.round(delta.savings)}` : ""}${delta.savingsPercent != null ? `, ${Math.round(delta.savingsPercent)}% tighter schedule` : ""}`,
+      changeType: "optimize",
+      role: "ai",
+      metadata: { comparisonId, variantId: variant.id, delta },
+    });
+
+    // Mark comparison with optimizedAt timestamp
+    await db.update(itineraryComparisons)
+      .set({ optimizedAt: new Date(), selectedVariantId: variant.id } as any)
+      .where(eq(itineraryComparisons.id, comparisonId));
+
+    res.json({ tripId: comparison.tripId, delta });
+  } catch (error) {
+    console.error("Error applying variant to trip:", error);
+    res.status(500).json({ error: "Failed to apply variant to trip" });
+  }
+});
+
 router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
@@ -258,6 +360,13 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       }
     }
 
+    // Build optimizationDelta from AI optimize changelog entry (set by apply-to-trip)
+    const optimizeEntry = changes.find(c => c.role === "ai" && c.changeType === "optimize");
+    const optimizationDelta = optimizeEntry?.metadata
+      ? (optimizeEntry.metadata as any).delta ?? null
+      : null;
+    const lastOptimizedAt = comparison?.optimizedAt ?? null;
+
     res.json({
       trip: {
         id: trip.id,
@@ -280,6 +389,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
         role: c.role,
       })),
       metrics: metricsMap,
+      optimizationDelta,
+      lastOptimizedAt,
       stats: {
         totalDays: fallbackDays || days.length,
         totalActivities: fallbackActivityCount,
