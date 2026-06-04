@@ -58,6 +58,72 @@ const typeColors: Record<string, string> = {
   car_rental: "bg-amber-50 text-amber-700",
 };
 
+const BASE = "https://images.unsplash.com/photo-";
+const Q = "?w=600&q=80&auto=format&fit=crop";
+
+const DESTINATION_PHOTOS: Record<string, string> = {
+  tokyo: `${BASE}1540959733332-eab4deabeeaf${Q}`,
+  paris: `${BASE}1502602898657-3e91760cbb34${Q}`,
+  london: `${BASE}1513635269975-59663e0ac1ad${Q}`,
+  "new york": `${BASE}1496442226666-8d4d0e62e6e9${Q}`,
+  nyc: `${BASE}1496442226666-8d4d0e62e6e9${Q}`,
+  bali: `${BASE}1537996194471-e657df975ab4${Q}`,
+  barcelona: `${BASE}1583422409516-2895a77efded${Q}`,
+  rome: `${BASE}1552832230-c0197dd311b5${Q}`,
+  dubai: `${BASE}1512453979798-5ea266f8880c${Q}`,
+  sydney: `${BASE}1506973035872-a4ec16b8e8d9${Q}`,
+  bangkok: `${BASE}1508009603885-50cf7c579365${Q}`,
+  amsterdam: `${BASE}1534351590666-13e3e96b5017${Q}`,
+  prague: `${BASE}1541849546-216549ae216d${Q}`,
+  kyoto: `${BASE}1528360983277-13d401cdc186${Q}`,
+  singapore: `${BASE}1525625293386-3f8f99389edd${Q}`,
+  lisbon: `${BASE}1555881400-74d7acaacd8b${Q}`,
+  istanbul: `${BASE}1524231757912-21f4fe3a7200${Q}`,
+  maldives: `${BASE}1514282401047-d79a71a590e8${Q}`,
+  santorini: `${BASE}1507501336603-6760db98977c${Q}`,
+  venice: `${BASE}1534113414509-0eec2bfb493f${Q}`,
+  "mexico city": `${BASE}1518105779142-d975f22f1b0a${Q}`,
+  miami: `${BASE}1506905925346-21bda4d32df4${Q}`,
+  hawaii: `${BASE}1542259009477-d625272157b7${Q}`,
+  phuket: `${BASE}1552465011-b4e21bf6e79a${Q}`,
+  cancun: `${BASE}1510097467424-192d713fd8b2${Q}`,
+  cairo: `${BASE}1539650116574-75c0c6d73f6e${Q}`,
+  marrakech: `${BASE}1493246507139-91e8fad9978e${Q}`,
+  berlin: `${BASE}1587330979470-3595ac206bf5${Q}`,
+  vienna: `${BASE}1516550135131-bb55e6144e4b${Q}`,
+  zurich: `${BASE}1515488042361-ee00e0ddd4e4${Q}`,
+  seoul: `${BASE}1538485399081-7191377e8241${Q}`,
+  beijing: `${BASE}1547981609-4b6bfe67ca0b${Q}`,
+  shanghai: `${BASE}1533929736458-ca588d08c8be${Q}`,
+  mumbai: `${BASE}1570168007204-dfb528c6958f${Q}`,
+  delhi: `${BASE}1524492412937-b28074a5d7da${Q}`,
+  rio: `${BASE}1516306580123-e6e138591e27${Q}`,
+  "rio de janeiro": `${BASE}1516306580123-e6e138591e27${Q}`,
+  "buenos aires": `${BASE}1589909202802-8f4aab6d9a84${Q}`,
+  toronto: `${BASE}1517935706615-2717063c2225${Q}`,
+  vancouver: `${BASE}1559511260-66a654ae982a${Q}`,
+  "los angeles": `${BASE}1534430480872-3498386e7856${Q}`,
+  la: `${BASE}1534430480872-3498386e7856${Q}`,
+  "san francisco": `${BASE}1501594907352-04cda38ebc29${Q}`,
+  "hong kong": `${BASE}1536431311719-398b6704d4cc${Q}`,
+};
+
+const TYPE_FALLBACK_PHOTOS: Record<string, string> = {
+  flight: `${BASE}1436491865332-7a61a109cc05${Q}`,
+  hotel: `${BASE}1566073771259-6a8506099945${Q}`,
+  activity: `${BASE}1527004013197-933c4bb611b3${Q}`,
+  car_rental: `${BASE}1449965408869-eaa3f722e40d${Q}`,
+};
+
+function resolveImage(deal: DealItem): string | null {
+  if (deal.imageUrl) return deal.imageUrl;
+  const dest = (deal.destination || "").toLowerCase().trim();
+  for (const [key, url] of Object.entries(DESTINATION_PHOTOS)) {
+    if (dest.includes(key)) return url;
+  }
+  return TYPE_FALLBACK_PHOTOS[deal.type] ?? null;
+}
+
 function DealCardSkeleton() {
   return (
     <Card className="bg-white border-[#E5E7EB] overflow-hidden">
@@ -80,6 +146,8 @@ function DealCardSkeleton() {
 function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
   const TypeIcon = typeIcons[deal.type] || Tag;
   const colorClass = typeColors[deal.type] || "bg-gray-50 text-gray-700";
+  const [imgFailed, setImgFailed] = useState(false);
+  const resolvedImage = resolveImage(deal);
 
   const formattedPrice =
     deal.price !== null
@@ -100,14 +168,13 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
         <CardContent className="p-0 flex flex-col flex-1">
           {/* Image / placeholder */}
           <div className="relative h-40 bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0">
-            {deal.imageUrl ? (
+            {resolvedImage && !imgFailed ? (
               <img
-                src={deal.imageUrl}
-                alt={deal.title}
+                src={resolvedImage}
+                alt={deal.destination || deal.title}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
+                loading="lazy"
+                onError={() => setImgFailed(true)}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-gray-300">
