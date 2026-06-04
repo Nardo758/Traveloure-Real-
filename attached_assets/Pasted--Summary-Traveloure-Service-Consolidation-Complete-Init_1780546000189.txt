@@ -1,0 +1,58 @@
+# Summary: Traveloure Service Consolidation (Complete)
+
+## Initial Problem
+You requested consolidation of expert and provider service management. The codebase had services spread across three tables (provider_services, expert_custom_services, expert_service_offerings) with divergent workflows and duplicate code in the UI.
+
+## Architectural Decision
+After audit, you discovered the immutable structural constraint: `service_bookings.serviceId` and `service_reviews.serviceId` both FK to `provider_services.id`. This means:
+- **provider_services is the canonical source** — no alternative is viable without fragmenting the booking/review/payment path
+- expert_custom_services and expert_service_offerings become read-only reference catalogs
+- User role distinction happens via read-time filtering (expert vs provider), not separate tables
+- Category mapping is critical: services migrated without mapping become invisible to feeds/browse/matching
+
+## Five-Phase Plan (Approved)
+1. **Phase 1+2 (Done, merged to main):** Schema migration (011) + data migration (012) with category mapping
+   - 011: Added approval_status, cancellation_policy, lead_time, deliverables, experience_types, gallery_images, submitted_at, reviewed_at, reviewed_by, rejection_reason columns to provider_services
+   - 012: Copied expert_custom_services → provider_services with deterministic name-match category mapping (LOWER(TRIM) on both sides), auto-promoted expert_selected_services to approved
+   - Parallel-run: old tables preserved for safety until prod verification
+
+2. **Phase 3 (Done, now merged to main):** Shared ServiceForm component
+   - 600+ line `/client/src/components/ServiceForm.tsx` with role-branching ('expert' vs 'provider')
+   - Expert: shows approval workflow (draft/submit buttons)
+   - Provider: shows active/paused toggle, affinity tags, provider features
+   - Both post to single endpoint: `POST /api/provider/services`
+   - Wrappers at `/client/src/pages/expert/service-form.tsx` and `/client/src/pages/provider/service-form.tsx` (reduced from 244/784 lines to 10 lines each)
+
+3. **Phase 4 (Done, now merged to main):** User Console theme
+   - Added console color palette to tailwind.config.ts: darkest (#1A1A18), dark (#2A2A26), mid (#7A7A72), light (#E8E8E2), bg (#FAFAF8), hover (#F3F3EE)
+   - Replaced 236+ hardcoded gray references across 9 expert dashboard pages with Tailwind console palette (text-console-dark, bg-console-bg, border-console-light, hover:bg-console-hover)
+   - Semantic brand colors (green/red/blue) preserved for status/alerts
+
+4. **Phase 5 (Done, now merged to main):** Table cleanup
+   - Migration 013: Drops expert_custom_services, expert_selected_services, expert_service_categories tables
+   - Removes workflow columns from expert_service_offerings (status, submittedAt, etc.) — ESO becomes pure template/reference
+
+5. **Coordination prevention:** Created `/CLAUDE.md` with binding architectural decisions, decision-maker (you), and rules preventing future coordination failures like commit bfc3db2
+
+## What Just Happened
+- Feature branch `claude/laughing-bardeen-KyTUY` contained Phases 1-5 (all five commits: 071fcdc6 through 061a0e5)
+- Previous PR #9 only merged Phases 1+2 to main; Phases 3-5 were left unmerged on the feature branch
+- You selected Option A: full feature branch merge
+- Executed: `git checkout main && git pull origin main`
+- Result: main fast-forwarded by 201 commits (5773d91 → 042f979)
+- All five phases now live in main
+
+## Current State
+Main branch now contains:
+- ✅ Schema consolidation (011+012 migrations, run-migrations.ts updated)
+- ✅ Data migration with category mapping (expert_custom_services → provider_services)
+- ✅ Shared ServiceForm component (600 lines, both consoles, both roles)
+- ✅ Expert dashboard themed with console colors (9 pages updated)
+- ✅ Table cleanup migration (013) ready to run after prod verification
+- ✅ CLAUDE.md establishing provider_services as canonical with decision gates
+
+## No Open Tasks
+The consolidation is complete and merged. The codebase is ready for:
+1. Testing the merged code (verify migrations, ServiceForm UX, theme rendering)
+2. Deployment to production
+3. Running migration 013 after confirming provider_services stability in prod

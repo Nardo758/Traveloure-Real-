@@ -197,11 +197,7 @@ function HeroSection({
             </CardContent>
           </Card>
         )}
-        {children}
-        <p className="text-xs text-muted-foreground italic border-t pt-3">
-          {phaseNote}
-        </p>
-      )}
+      </div>
     </section>
   );
 }

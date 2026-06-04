@@ -46,7 +46,7 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
-import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
+import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
 import Stripe from "stripe";
 
@@ -657,6 +657,24 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           return d;
         };
 
+        // Build trip preferences for adaptive variant strategy
+        let tripPreferences: TripPreferences | undefined;
+        if (tripId) {
+          const [tripRow] = await db
+            .select({ eventType: trips.eventType, budget: trips.budget, preferences: trips.preferences })
+            .from(trips)
+            .where(eq(trips.id, tripId))
+            .limit(1);
+          if (tripRow) {
+            const prefs = (tripRow.preferences as Record<string, any>) || {};
+            tripPreferences = {
+              eventType: tripRow.eventType,
+              budget: tripRow.budget ? parseFloat(tripRow.budget) : null,
+              travelStyles: Array.isArray(prefs.travelStyles) ? prefs.travelStyles : [],
+            };
+          }
+        }
+
         generateOptimizedItineraries(
           comparison.id,
           userId,
@@ -666,7 +684,10 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           formatDate(startDate),
           formatDate(endDate),
           budget ? parseFloat(budget) : undefined,
-          travelers || 1
+          travelers || 1,
+          tripId,
+          undefined,
+          tripPreferences
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
@@ -805,6 +826,24 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
 
       res.json({ message: "Optimization started", status: "generating" });
 
+      // Build trip preferences for adaptive variant strategy
+      let tripPreferencesForGen: TripPreferences | undefined;
+      if (comparison.tripId) {
+        const [tripRowForGen] = await db
+          .select({ eventType: trips.eventType, budget: trips.budget, preferences: trips.preferences })
+          .from(trips)
+          .where(eq(trips.id, comparison.tripId))
+          .limit(1);
+        if (tripRowForGen) {
+          const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
+          tripPreferencesForGen = {
+            eventType: tripRowForGen.eventType,
+            budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
+            travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
+          };
+        }
+      }
+
       generateOptimizedItineraries(
         comparisonId,
         userId,
@@ -814,7 +853,10 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
         comparison.startDate || new Date().toISOString(),
         comparison.endDate || new Date().toISOString(),
         comparison.budget ? parseFloat(comparison.budget) : undefined,
-        comparison.travelers || 1
+        comparison.travelers || 1,
+        comparison.tripId || undefined,
+        undefined,
+        tripPreferencesForGen
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
