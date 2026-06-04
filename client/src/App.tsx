@@ -10,6 +10,7 @@ import { ProviderLayout } from "@/components/provider/provider-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
+import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { useEffect, useRef } from "react";
 
 import LandingPage from "@/pages/landing";
@@ -44,6 +45,7 @@ import EAEvents from "@/pages/ea/events";
 import EACommunications from "@/pages/ea/communications";
 import EAAIAssistant from "@/pages/ea/ai-assistant";
 import EATravel from "@/pages/ea/travel";
+import EATrips from "@/pages/ea/trips";
 import EAVenues from "@/pages/ea/venues";
 import EAGifts from "@/pages/ea/gifts";
 import EAReports from "@/pages/ea/reports";
@@ -140,6 +142,7 @@ import VisaHelpPage from "@/pages/visa-help";
 import { Loader2 } from "lucide-react";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
+import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
   const { user, isLoading } = useAuth();
@@ -190,6 +193,9 @@ function ChatWithRoleLayout() {
 }
 
 function Router() {
+  // Automatically claim guest trips when user signs up
+  useClaimGuestTrips();
+
   return (
     <Switch>
       {/* Public Routes with Layout */}
@@ -521,6 +527,9 @@ function Router() {
       <Route path="/ea/travel">
         {() => <ProtectedRoute component={EATravel} requiredRole="executive_assistant" />}
       </Route>
+      <Route path="/ea/trips">
+        {() => <ProtectedRoute component={EATrips} requiredRole="executive_assistant" />}
+      </Route>
       <Route path="/ea/venues">
         {() => <ProtectedRoute component={EAVenues} requiredRole="executive_assistant" />}
       </Route>
@@ -747,15 +756,17 @@ function GuestCartMigrator() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TripQueueProvider>
-        <SignInModalProvider>
-          <TooltipProvider>
-            <Toaster />
-            <GuestCartMigrator />
-            <Router />
-          </TooltipProvider>
-        </SignInModalProvider>
-      </TripQueueProvider>
+      <GuestTripProvider>
+        <TripQueueProvider>
+          <SignInModalProvider>
+            <TooltipProvider>
+              <Toaster />
+              <GuestCartMigrator />
+              <Router />
+            </TooltipProvider>
+          </SignInModalProvider>
+        </TripQueueProvider>
+      </GuestTripProvider>
     </QueryClientProvider>
   );
 }
