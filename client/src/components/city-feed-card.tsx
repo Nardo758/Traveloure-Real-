@@ -52,16 +52,36 @@ interface TypeMeta {
 
 function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
   const cat = gemCategory(placeType);
-  switch (cat) {
-    case "photo_spots":
-      return { label: "Photo spot", emoji: "📷", tagBg: "bg-teal-50", tagText: "text-teal-700", phBg: "bg-teal-50", phText: "text-teal-600" };
-    case "stay":
-      return { label: "Stay", emoji: "🏨", tagBg: "bg-blue-50", tagText: "text-blue-700", phBg: "bg-blue-50", phText: "text-blue-600" };
-    case "eat":
-      return { label: "Eat", emoji: "🍵", tagBg: "bg-pink-50", tagText: "text-pink-700", phBg: "bg-pink-50", phText: "text-pink-600" };
-    default:
-      return { label: "Attraction", emoji: "⛩", tagBg: "bg-amber-50", tagText: "text-amber-800", phBg: "bg-amber-50", phText: "text-amber-700" };
+  const t = (placeType ?? "").toLowerCase();
+
+  if (cat === "photo_spots") {
+    return { label: "Photo spot", emoji: "📷", tagBg: "bg-teal-50", tagText: "text-teal-700", phBg: "bg-teal-50", phText: "text-teal-600" };
   }
+  if (cat === "stay") {
+    const isMarquee = ["ryokan", "resort", "boutique"].some((k) => t.includes(k));
+    return {
+      label: isMarquee ? "Marquee stay" : "Stay",
+      emoji: isMarquee ? "🏯" : "🏨",
+      tagBg: "bg-blue-50",
+      tagText: "text-blue-700",
+      phBg: "bg-blue-50",
+      phText: "text-blue-600",
+    };
+  }
+  if (cat === "eat") {
+    return { label: "Eat", emoji: "🍵", tagBg: "bg-pink-50", tagText: "text-pink-700", phBg: "bg-pink-50", phText: "text-pink-600" };
+  }
+
+  // "do" — distinguish landmark, day-trip, and general attraction
+  const isLandmark = ["temple", "shrine", "palace", "castle", "landmark", "monument"].some((k) => t.includes(k));
+  const isDayTrip = ["day trip", "day-trip", "daytrip"].some((k) => t.includes(k));
+  if (isDayTrip) {
+    return { label: "Day trip", emoji: "🚌", tagBg: "bg-indigo-50", tagText: "text-indigo-700", phBg: "bg-indigo-50", phText: "text-indigo-600" };
+  }
+  if (isLandmark) {
+    return { label: "Landmark", emoji: "🌉", tagBg: "bg-stone-100", tagText: "text-stone-700", phBg: "bg-stone-100", phText: "text-stone-600" };
+  }
+  return { label: "Do", emoji: "⛩", tagBg: "bg-amber-50", tagText: "text-amber-800", phBg: "bg-amber-50", phText: "text-amber-700" };
 }
 
 // ─── Booking badge ─────────────────────────────────────────────────────────────
@@ -328,8 +348,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     dbImageUrl,
   );
 
-  if (!loading && !photoUrl) return null;
-
   const bookability: Bookability = computeBookability({ ...event, externalUrl: event.url });
   const eventSuggestion: MatchSuggestion = {
     icon: "🎫",
@@ -544,8 +562,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
     dbImageUrl,
   );
-
-  if (!loading && !photoUrl) return null;
 
   const supplySuggestion: MatchSuggestion = isHotel
     ? {
