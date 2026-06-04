@@ -292,6 +292,45 @@ function NeighborhoodSection({
 // ─── §4 GEMS BY CATEGORY ───────────────────────────────────────────────────
 // Reads from orchestrator's hero.data.hiddenGems (populated by Phase 4 network fill)
 // Phase C: Gems are addable to experiences
+// Inline matched-supply strip — fetches top 3 providers for a gem
+function MatchedSupplyStrip({ gemId, gemName }: { gemId: string; gemName: string }) {
+  const { data, isLoading } = useQuery<any>({
+    queryKey: [`/api/content/gems/${gemId}/matched-supply`, { limit: 3, minScore: 30 }],
+    queryFn: async () => {
+      const res = await fetch(`/api/content/gems/${gemId}/matched-supply?limit=3&minScore=30`);
+      if (!res.ok) return { matches: [] };
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading || !data?.matches?.length) return null;
+
+  return (
+    <div className="border-t bg-muted/20 px-4 py-3" data-testid={`gem-matched-supply-${gemId}`}>
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Pair "{gemName}" with:
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {data.matches.slice(0, 3).map((m: any) => (
+          <button
+            key={m.serviceId}
+            className="flex items-center gap-2 px-2 py-1 rounded-md border bg-background hover:border-primary text-xs"
+            onClick={() => (window.location.href = `/services/${m.serviceId}`)}
+            data-testid={`matched-supply-${m.serviceId}`}
+          >
+            <span className="font-medium">{m.serviceName}</span>
+            {m.averageRating > 0 && (
+              <span className="text-muted-foreground">{m.averageRating.toFixed(1)}★</span>
+            )}
+            {m.isFeatured && <Badge variant="secondary" className="text-[10px] h-4">Featured</Badge>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function GemsSection({
   gems,
   city,
@@ -381,6 +420,8 @@ function GemsSection({
               </Button>
             </div>
           </div>
+          {/* Matched supply strip (content→supply matching) */}
+          <MatchedSupplyStrip gemId={gem.id} gemName={gem.placeName} />
         </Card>
       ))}
     </div>
