@@ -100,7 +100,7 @@ function VerificationPayoutsSection() {
               <ShieldCheck className="w-5 h-5 text-blue-600" />
               Identity Verification
             </div>
-            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : statusBadge(idVerifStatus)}
+            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : statusBadge(idVerifStatus)}
           </CardTitle>
           <CardDescription>Verify your personal government-issued ID. Required for all providers before payouts are enabled.</CardDescription>
         </CardHeader>
@@ -126,7 +126,7 @@ function VerificationPayoutsSection() {
                   <p className="text-sm text-red-700">Verification failed. Please try again with a clear photo of your ID.</p>
                 </div>
               )}
-              <p className="text-sm text-gray-600">Supports passports, national IDs, and driver's licenses from 100+ countries. Takes about 2 minutes.</p>
+              <p className="text-sm text-console-dark">Supports passports, national IDs, and driver's licenses from 100+ countries. Takes about 2 minutes.</p>
               <Button onClick={() => identityMutation.mutate()} disabled={identityMutation.isPending} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-verify-identity">
                 {identityMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
                 {idVerifStatus === "failed" ? "Retry Verification" : "Verify My Identity"}
@@ -144,7 +144,7 @@ function VerificationPayoutsSection() {
               <FileText className="w-5 h-5 text-purple-600" />
               Business Verification
             </div>
-            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : statusBadge(bizVerifStatus)}
+            {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : statusBadge(bizVerifStatus)}
           </CardTitle>
           <CardDescription>Verify your business registration to unlock full provider features and higher booking limits.</CardDescription>
         </CardHeader>
@@ -167,7 +167,7 @@ function VerificationPayoutsSection() {
                   <p className="text-sm text-red-700">Business verification was unsuccessful. Please re-submit your documents.</p>
                 </div>
               )}
-              <p className="text-sm text-gray-600">Submit your business registration number and supporting documents (business license, certificate of incorporation, or equivalent).</p>
+              <p className="text-sm text-console-dark">Submit your business registration number and supporting documents (business license, certificate of incorporation, or equivalent).</p>
               <a href="/provider-status" className="block">
                 <Button variant="outline" className="w-full border-purple-200 text-purple-700 hover:bg-purple-50" data-testid="button-business-verify">
                   <ExternalLink className="w-4 h-4 mr-2" />
@@ -184,17 +184,17 @@ function VerificationPayoutsSection() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-gray-600" />
+              <CreditCard className="w-5 h-5 text-console-dark" />
               Payout Account (Stripe Connect)
             </div>
-            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : stripeBadge}
+            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : stripeBadge}
           </CardTitle>
           <CardDescription>Connect your Stripe account to receive payouts directly when clients book your services.</CardDescription>
         </CardHeader>
         <CardContent>
           {!stripeStatus?.connected ? (
             <div className="space-y-3">
-              <p className="text-sm text-gray-600">You'll be guided through a quick Stripe setup — about 5 minutes. Stripe securely collects your bank details.</p>
+              <p className="text-sm text-console-dark">You'll be guided through a quick Stripe setup — about 5 minutes. Stripe securely collects your bank details.</p>
               <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="w-full" data-testid="button-connect-stripe">
                 {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
                 Connect Stripe Account
@@ -288,7 +288,7 @@ export default function ProviderSettings() {
       <div className="p-6 space-y-6 max-w-4xl">
         {/* Verification & Payouts */}
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-console-darkest mb-4 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-blue-600" />
             Verification & Payouts
           </h2>
@@ -299,7 +299,7 @@ export default function ProviderSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-gray-500" />
+              <User className="w-5 h-5 text-console-mid" />
               Account Settings
             </CardTitle>
             <CardDescription>Manage your account credentials and security</CardDescription>
@@ -320,7 +320,7 @@ export default function ProviderSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Building className="w-5 h-5 text-gray-500" />
+              <Building className="w-5 h-5 text-console-mid" />
               Business Preferences
             </CardTitle>
             <CardDescription>Configure how you receive and manage bookings</CardDescription>
@@ -329,7 +329,7 @@ export default function ProviderSettings() {
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label className="text-base">Instant Booking</Label>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-console-mid">
                   Allow clients to book without prior approval
                 </p>
               </div>
@@ -343,7 +343,7 @@ export default function ProviderSettings() {
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label className="text-base">Auto-Response</Label>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-console-mid">
                   Send automatic responses to new inquiries
                 </p>
               </div>
@@ -365,7 +365,7 @@ export default function ProviderSettings() {
                   className="w-24"
                   data-testid="input-lead-time"
                 />
-                <span className="text-gray-600">days before event</span>
+                <span className="text-console-dark">days before event</span>
               </div>
             </div>
 
@@ -383,7 +383,7 @@ export default function ProviderSettings() {
                   className="w-24"
                   data-testid="input-response-time"
                 />
-                <span className="text-gray-600">hours</span>
+                <span className="text-console-dark">hours</span>
               </div>
             </div>
           </CardContent>
@@ -393,7 +393,7 @@ export default function ProviderSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-gray-500" />
+              <Bell className="w-5 h-5 text-console-mid" />
               Notification Preferences
             </CardTitle>
             <CardDescription>Choose how you want to be notified</CardDescription>
@@ -413,7 +413,7 @@ export default function ProviderSettings() {
                 <div key={key} className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
                     <Label className="text-base">{labels[key]?.title ?? key}</Label>
-                    <p className="text-sm text-gray-500">{labels[key]?.desc ?? ""}</p>
+                    <p className="text-sm text-console-mid">{labels[key]?.desc ?? ""}</p>
                   </div>
                   <Switch
                     checked={value}
@@ -432,7 +432,7 @@ export default function ProviderSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-gray-500" />
+              <CreditCard className="w-5 h-5 text-console-mid" />
               Payment Settings
             </CardTitle>
             <CardDescription>Manage your payout methods and preferences</CardDescription>
@@ -459,7 +459,7 @@ export default function ProviderSettings() {
             <div className="space-y-2">
               <Label>Minimum Payout Amount</Label>
               <div className="flex items-center gap-2">
-                <span className="text-gray-600">$</span>
+                <span className="text-console-dark">$</span>
                 <Input 
                   type="number" 
                   value={minPayout}

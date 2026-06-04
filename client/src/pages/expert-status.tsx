@@ -156,7 +156,7 @@ export default function ExpertStatusPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
               Expert Application Status
             </h1>
-            <p className="text-[#6B7280] mt-1">Track your progress to becoming a travel expert</p>
+            <p className="text-[#6B7280] mt-1">Track your progress to becoming a trip planner</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] })} data-testid="button-refresh">

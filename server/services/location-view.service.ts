@@ -66,6 +66,8 @@ export interface LocationViewOptions {
   year?: number;
   /** Cap on recommendations + events lists. */
   limit?: number;
+  /** ISO date string (YYYY-MM-DD) for date-aware planning mode. Passed through to payload; no behavior change yet. */
+  date?: string;
 }
 
 const SECTION_TIMEOUT_MS = 12_000;
@@ -166,8 +168,8 @@ class LocationViewService {
       return result ?? { events: [], total: 0, page: 1, totalPages: 0, city: null };
     })();
 
-    // Neighborhoods for this city — annotated with gem + service counts
-    // Uses 2 aggregate queries instead of N+1 to avoid per-neighborhood round-trips
+    // Neighborhoods for this city — annotated with gem + service counts + top gems[]
+    // Uses aggregate queries + one bulk gem fetch instead of N+1 round-trips.
     const neighborhoodsPromise = (async () => {
       const neighborhoods = await db
         .select()
@@ -175,7 +177,7 @@ class LocationViewService {
         .where(eq(cityNeighborhoods.city, cityName))
         .orderBy(cityNeighborhoods.name);
 
-      const [gemRows, svcRows] = await Promise.all([
+      const [gemRows, svcRows, allCityGems] = await Promise.all([
         db
           .select({
             neighborhood: travelPulseHiddenGems.neighborhood,
@@ -197,6 +199,12 @@ class LocationViewService {
             ),
           )
           .groupBy(providerServices.neighborhood),
+        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood
+        db
+          .select()
+          .from(travelPulseHiddenGems)
+          .where(eq(travelPulseHiddenGems.city, cityName))
+          .orderBy(travelPulseHiddenGems.gemScore),
       ]);
 
       const gemCountMap = new Map<string, number>();
@@ -209,10 +217,20 @@ class LocationViewService {
         if (row.neighborhood) svcCountMap.set(row.neighborhood, row.count);
       }
 
+      // Group gems by neighborhood slug for the gems[] embed
+      const gemsBySlug = new Map<string, any[]>();
+      for (const gem of allCityGems) {
+        if (gem.neighborhood) {
+          if (!gemsBySlug.has(gem.neighborhood)) gemsBySlug.set(gem.neighborhood, []);
+          gemsBySlug.get(gem.neighborhood)!.push(gem);
+        }
+      }
+
       return neighborhoods.map((n) => ({
         ...n,
         gemCount: gemCountMap.get(n.slug) ?? 0,
         serviceCount: svcCountMap.get(n.slug) ?? 0,
+        gems: (gemsBySlug.get(n.slug) ?? []).slice(0, 6),
       }));
     })();
 

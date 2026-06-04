@@ -798,14 +798,22 @@ export default function TripDetails() {
                           <p className="text-muted-foreground mb-6">
                             Get personalized advice, hidden gems, and real-time support from someone who knows {trip.destination} well.
                           </p>
-                          <Button
-                            className="gap-2"
-                            onClick={() => setExpertPickerOpen(true)}
-                            data-testid="button-add-expert"
-                          >
-                            <UserPlus className="w-4 h-4" />
-                            Add an expert
-                          </Button>
+                          <div className="flex flex-wrap gap-3">
+                            <Button
+                              className="gap-2"
+                              onClick={() => setExpertPickerOpen(true)}
+                              data-testid="button-add-expert"
+                            >
+                              <UserPlus className="w-4 h-4" />
+                              Add a local expert
+                            </Button>
+                            <Link href="/experts?role=travel_expert">
+                              <Button variant="outline" className="gap-2" data-testid="button-find-trip-planner">
+                                <Sparkles className="w-4 h-4" />
+                                Work with a Trip Planner
+                              </Button>
+                            </Link>
+                          </div>
                         </div>
                         <div className="relative">
                           <img

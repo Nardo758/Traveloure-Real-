@@ -77,7 +77,7 @@ export default function ProviderDashboard() {
     return (
       <ProviderLayout title="Dashboard">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-console-dark" />
         </div>
       </ProviderLayout>
     );
@@ -88,10 +88,10 @@ export default function ProviderDashboard() {
       <div className="p-6 space-y-6">
         {/* Welcome Section */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900" data-testid="text-welcome">
+          <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-welcome">
             Welcome back!
           </h2>
-          <p className="text-gray-600 mt-1">3 bookings today • {analytics?.summary?.totalBookings || 0} this month</p>
+          <p className="text-console-dark mt-1">3 bookings today • {analytics?.summary?.totalBookings || 0} this month</p>
         </div>
 
         {/* Stripe Connect Setup Banner */}
@@ -128,8 +128,8 @@ export default function ProviderDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">{stat.label}</p>
-                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                    <p className="text-sm text-console-mid">{stat.label}</p>
+                    <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
                   </div>
                   <stat.icon className={`w-8 h-8 ${stat.color}`} />
                 </div>
@@ -143,7 +143,7 @@ export default function ProviderDashboard() {
           {/* Left Panel - 60% width */}
           <div className="lg:col-span-2 space-y-6">
             {/* Quick Actions */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Quick Actions</CardTitle>
               </CardHeader>
@@ -170,7 +170,7 @@ export default function ProviderDashboard() {
             </Card>
 
             {/* Today's Bookings */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export default function ProviderDashboard() {
                 {confirmedBookings.length > 0 ? confirmedBookings.slice(0, 4).map((booking) => (
                   <div
                     key={booking.id}
-                    className="p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                    className="p-4 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors"
                     data-testid={`card-booking-${booking.id}`}
                   >
                     <div className="flex items-start gap-3">
@@ -198,14 +198,14 @@ export default function ProviderDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-gray-900">{booking.service?.serviceName || "Service"}</p>
-                            <p className="text-sm text-gray-500 mt-0.5">{booking.traveler?.displayName || "Client"}</p>
+                            <p className="font-semibold text-console-darkest">{booking.service?.serviceName || "Service"}</p>
+                            <p className="text-sm text-console-mid mt-0.5">{booking.traveler?.displayName || "Client"}</p>
                           </div>
                           <Badge variant="outline" className="text-xs flex-shrink-0">
                             Confirmed
                           </Badge>
                         </div>
-                        <p className="text-sm font-medium text-gray-900 mt-2">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
+                        <p className="text-sm font-medium text-console-darkest mt-2">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
                         {booking.referredBy && booking.referredBy !== "Direct" && (
                           <p className="text-xs text-[#2E8B8B] font-medium mt-1">via {booking.referredBy}</p>
                         )}
@@ -213,13 +213,13 @@ export default function ProviderDashboard() {
                     </div>
                   </div>
                 )) : (
-                  <p className="text-gray-500 text-center py-4">No confirmed bookings today</p>
+                  <p className="text-console-mid text-center py-4">No confirmed bookings today</p>
                 )}
               </CardContent>
             </Card>
 
             {/* My Services */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -234,25 +234,25 @@ export default function ProviderDashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="font-medium text-gray-900">Premium Service</span>
+                <div className="flex items-center justify-between py-2 border-b border-console-light">
+                  <span className="font-medium text-console-darkest">Premium Service</span>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="bg-green-50">Active</Badge>
-                    <span className="text-sm text-gray-500">8 bookings</span>
+                    <span className="text-sm text-console-mid">8 bookings</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="font-medium text-gray-900">Standard Service</span>
+                <div className="flex items-center justify-between py-2 border-b border-console-light">
+                  <span className="font-medium text-console-darkest">Standard Service</span>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="bg-green-50">Active</Badge>
-                    <span className="text-sm text-gray-500">5 bookings</span>
+                    <span className="text-sm text-console-mid">5 bookings</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between py-2">
-                  <span className="font-medium text-gray-900">Basic Package</span>
+                  <span className="font-medium text-console-darkest">Basic Package</span>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-gray-50">Inactive</Badge>
-                    <span className="text-sm text-gray-500">0 bookings</span>
+                    <Badge variant="outline" className="bg-console-bg">Inactive</Badge>
+                    <span className="text-sm text-console-mid">0 bookings</span>
                   </div>
                 </div>
                 <Button variant="outline" className="w-full mt-2" data-testid="button-add-service">
@@ -265,7 +265,7 @@ export default function ProviderDashboard() {
           {/* Right Panel - 40% width */}
           <div className="space-y-6 hidden lg:block">
             {/* Earnings Card */}
-            <Card className="border border-gray-200 bg-gradient-to-br from-green-50 to-white">
+            <Card className="border border-console-light bg-gradient-to-br from-green-50 to-white">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-green-600" />
@@ -274,10 +274,10 @@ export default function ProviderDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-sm text-gray-500">This Month</p>
-                  <p className="text-3xl font-bold text-gray-900">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
+                  <p className="text-sm text-console-mid">This Month</p>
+                  <p className="text-3xl font-bold text-console-darkest">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
                 </div>
-                <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-1 bg-console-light rounded-full overflow-hidden">
                   <div className="h-full bg-green-500" style={{ width: "72%" }}></div>
                 </div>
                 <Button className="w-full bg-green-600 hover:bg-green-700" data-testid="button-request-payout">
@@ -287,41 +287,41 @@ export default function ProviderDashboard() {
             </Card>
 
             {/* Upcoming 5 Days */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Upcoming 5 Days</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
-                  <span className="text-gray-600">Apr 9</span>
-                  <span className="font-semibold text-gray-900">4 rides</span>
+                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
+                  <span className="text-console-dark">Apr 9</span>
+                  <span className="font-semibold text-console-darkest">4 rides</span>
                   <span className="font-semibold text-green-600">$310</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
-                  <span className="text-gray-600">Apr 10</span>
-                  <span className="font-semibold text-gray-900">2 rides</span>
+                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
+                  <span className="text-console-dark">Apr 10</span>
+                  <span className="font-semibold text-console-darkest">2 rides</span>
                   <span className="font-semibold text-green-600">$170</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
-                  <span className="text-gray-600">Apr 11</span>
-                  <span className="font-semibold text-gray-900">5 rides</span>
+                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
+                  <span className="text-console-dark">Apr 11</span>
+                  <span className="font-semibold text-console-darkest">5 rides</span>
                   <span className="font-semibold text-green-600">$425</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
-                  <span className="text-gray-600">Apr 12</span>
-                  <span className="font-semibold text-gray-900">3 rides</span>
+                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
+                  <span className="text-console-dark">Apr 12</span>
+                  <span className="font-semibold text-console-darkest">3 rides</span>
                   <span className="font-semibold text-green-600">$255</span>
                 </div>
                 <div className="flex items-center justify-between py-2 text-sm">
-                  <span className="text-gray-600">Apr 13</span>
-                  <span className="font-semibold text-gray-900">1 ride</span>
+                  <span className="text-console-dark">Apr 13</span>
+                  <span className="font-semibold text-console-darkest">1 ride</span>
                   <span className="font-semibold text-green-600">$85</span>
                 </div>
               </CardContent>
             </Card>
 
             {/* Action Items */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-amber-500" />
@@ -337,8 +337,8 @@ export default function ProviderDashboard() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{request.service?.serviceName || "Request"}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">{request.traveler?.displayName || "Client"}</p>
+                        <p className="font-medium text-console-darkest">{request.service?.serviceName || "Request"}</p>
+                        <p className="text-xs text-console-dark mt-0.5">{request.traveler?.displayName || "Client"}</p>
                       </div>
                       <Badge variant="outline" className="text-xs flex-shrink-0 border-amber-300 bg-amber-100">
                         {request.status}
@@ -351,13 +351,13 @@ export default function ProviderDashboard() {
                     </div>
                   </div>
                 )) : (
-                  <p className="text-gray-500 text-center py-3 text-sm">No pending items</p>
+                  <p className="text-console-mid text-center py-3 text-sm">No pending items</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Performance */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <Star className="w-5 h-5 text-amber-500" />
@@ -367,15 +367,15 @@ export default function ProviderDashboard() {
               <CardContent className="space-y-3">
                 <div className="text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600">Rating</span>
+                    <span className="text-console-dark">Rating</span>
                     <span className="font-semibold text-amber-600">{(analytics?.summary?.avgRating ?? 0).toFixed(1)}/5</span>
                   </div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600">Bookings</span>
-                    <span className="font-semibold text-gray-900">{analytics?.summary?.totalBookings ?? 0}</span>
+                    <span className="text-console-dark">Bookings</span>
+                    <span className="font-semibold text-console-darkest">{analytics?.summary?.totalBookings ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Completion</span>
+                    <span className="text-console-dark">Completion</span>
                     <span className="font-semibold text-green-600">94%</span>
                   </div>
                 </div>
@@ -386,7 +386,7 @@ export default function ProviderDashboard() {
             </Card>
 
             {/* Expert Partners */}
-            <Card className="border border-gray-200 bg-gradient-to-br from-blue-50 to-white">
+            <Card className="border border-console-light bg-gradient-to-br from-blue-50 to-white">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <Users className="w-5 h-5 text-blue-600" />
@@ -395,15 +395,15 @@ export default function ProviderDashboard() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Active Partners</span>
-                  <span className="font-semibold text-gray-900">12</span>
+                  <span className="text-console-dark">Active Partners</span>
+                  <span className="font-semibold text-console-darkest">12</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Referral Revenue</span>
+                  <span className="text-console-dark">Referral Revenue</span>
                   <span className="font-semibold text-green-600">$2,450</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">% of Business</span>
+                  <span className="text-console-dark">% of Business</span>
                   <span className="font-semibold text-blue-600">28%</span>
                 </div>
                 <Button variant="outline" size="sm" className="w-full mt-2" data-testid="button-view-partners">

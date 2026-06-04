@@ -2941,6 +2941,9 @@ export const itineraryItems = pgTable("itinerary_items", {
   conflictsWith: jsonb("conflicts_with").default([]), // itinerary item IDs that can't overlap
   peakTimingPreference: varchar("peak_timing_preference", { length: 20 }), // morning, afternoon, evening, night, flexible
 
+  // Calendar date when this item is planned — carries the "Add to {date}" intent
+  scheduledDate: date("scheduled_date"),
+
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes

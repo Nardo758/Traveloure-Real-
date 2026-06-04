@@ -31,7 +31,6 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
-  expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
@@ -58,7 +57,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -68,6 +67,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { getSequencingRulesForTemplate } from "./services/smart-sequencing.service";
+import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
@@ -329,19 +329,8 @@ export async function registerRoutes(
   // from the template UI and from-template flow.
   (async () => {
     try {
-      // Resolve the category FK by name so this is safe on a clean DB.
-      // If "Itinerary Planning" doesn't exist yet, create it.
-      let categoryRow = await db.select({ id: expertServiceCategories.id })
-        .from(expertServiceCategories)
-        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-        .then(r => r[0]);
-      if (!categoryRow) {
-        const [inserted] = await db.insert(expertServiceCategories)
-          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
-          .returning({ id: expertServiceCategories.id });
-        categoryRow = inserted;
-      }
-      const categoryId = categoryRow.id;
+      // expert_service_categories was dropped by migration 013; insert with null categoryId.
+      const categoryId: string | null = null;
 
       const CANONICAL_OFFERINGS = [
         { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
@@ -1573,18 +1562,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         const offerings = await db.select().from(expertServiceOfferings)
           .where(inArray(expertServiceOfferings.id, selectedOfferingIds));
         for (const offering of offerings) {
-          // DEPRECATED: Map expert_service_categories → service_categories (best-effort).
-          // expert_service_categories is deprecated in favor of canonical service_categories.
-          // This mapping is temporary for signup-time offerings. New expert services use
-          // service_categories directly. (See CLAUDE.md for consolidation details.)
-          const [esc] = await db.select().from(expertServiceCategories)
-            .where(eq(expertServiceCategories.id, offering.categoryId));
+          // expert_service_categories was dropped by migration 013; skip category mapping.
           let canonicalCategoryId: string | null = null;
-          if (esc) {
-            const [sc] = await db.select().from(serviceCategories)
-              .where(ilike(serviceCategories.name, esc.name));
-            if (sc) canonicalCategoryId = sc.id;
-          }
           await storage.createProviderService({
             userId: updated.userId,
             serviceName: offering.name,
@@ -2002,13 +1981,57 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const month = req.query.month ? Number(req.query.month) : undefined;
       const year = req.query.year ? Number(req.query.year) : undefined;
       const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const date = typeof req.query.date === "string" ? req.query.date : undefined;
 
       const { locationViewService } = await import("./services/location-view.service");
-      const payload = await locationViewService.getLocationView(city, country, { month, year, limit });
+      const payload = await locationViewService.getLocationView(city, country, { month, year, limit, date });
       res.json(payload);
     } catch (err: any) {
       console.error("Error building location view:", err);
       res.status(500).json({ message: "Failed to build location view", error: err?.message });
+    }
+  });
+
+  // Lightweight place-photo proxy — resolution order: Google Places → Unsplash
+  // Used by the useGemPhoto hook (source=google first, then source=unsplash fallback).
+  app.get("/api/media/place-photo", async (req, res) => {
+    try {
+      const q = typeof req.query.q === "string" ? req.query.q : "";
+      const city = typeof req.query.city === "string" ? req.query.city : "";
+      const source = typeof req.query.source === "string" ? req.query.source : "google";
+      if (!q) return res.json({ photoUrl: null });
+
+      if (source === "unsplash") {
+        // Unsplash → Pexels fallback chain via media aggregator services
+        const { unsplashService } = await import("./services/unsplash.service");
+        const { pexelsService } = await import("./services/pexels.service");
+        // Try Unsplash first
+        try {
+          const unsplashPhotos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
+          if (unsplashPhotos[0]?.url) {
+            return res.json({ photoUrl: unsplashPhotos[0].url });
+          }
+        } catch {
+          // fall through to Pexels
+        }
+        // Pexels fallback
+        try {
+          const pexelsPhotos = await pexelsService.searchPhotos(`${q} ${city}`, { perPage: 1, orientation: "landscape" });
+          const photoUrl = pexelsPhotos[0]?.url ?? null;
+          return res.json({ photoUrl });
+        } catch {
+          return res.json({ photoUrl: null });
+        }
+      }
+
+      // Google Places (default)
+      const { googlePlacesPhotosService } = await import("./services/google-places-photos.service");
+      const photos = await googlePlacesPhotosService.getAttractionPhotos(q, city, 1);
+      const photoUrl = photos[0]?.url ?? null;
+      res.json({ photoUrl });
+    } catch (err: any) {
+      console.error("Error fetching place photo:", err);
+      res.json({ photoUrl: null });
     }
   });
 
@@ -2703,6 +2726,202 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Deals Aggregation Endpoint ===
+  // --- /api/deals caching state (module-scoped, survives across requests) ---
+  type DealItem = {
+    id: string;
+    type: string;
+    title: string;
+    destination: string;
+    price: number | null;
+    currency: string;
+    rating: number | null;
+    reviewCount: number | null;
+    imageUrl: string | null;
+    affiliateUrl: string | null;
+    provider: string;
+    providerLabel: string;
+    featured: boolean;
+  };
+  type DealsPayload = { deals: DealItem[]; total: number };
+  const DEALS_CACHE_NS = "deals";
+  const DEALS_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const DEALS_STALE_MAX = 50; // max in-memory stale entries (FIFO eviction)
+  const dealsStaleCache = new Map<string, DealsPayload>();
+  const dealsRevalidating = new Set<string>();
+
+  function setDealsStale(key: string, payload: DealsPayload): void {
+    if (dealsStaleCache.size >= DEALS_STALE_MAX) {
+      const oldest = dealsStaleCache.keys().next().value;
+      if (oldest !== undefined) dealsStaleCache.delete(oldest);
+    }
+    dealsStaleCache.set(key, payload);
+  }
+
+  async function fetchDealsFromProviders(
+    type: string,
+    destination: string,
+    origin: string
+  ): Promise<DealsPayload> {
+    const { searchAviasalesFlights } = await import("./services/travelpayouts/aviasales.service");
+    const { searchHotellook } = await import("./services/travelpayouts/hotellook.service");
+    const { searchAgoda } = await import("./services/travelpayouts/agoda.service");
+    const { searchGetYourGuide } = await import("./services/travelpayouts/getyourguide.service");
+    const { searchKlook } = await import("./services/travelpayouts/klook.service");
+    const { searchTiqetsProducts } = await import("./services/travelpayouts/tiqets.service");
+    const { searchDiscoverCars } = await import("./services/travelpayouts/discovercars.service");
+
+    const popularHotelDests = destination ? [destination] : ["Tokyo", "Paris", "Bali"];
+    const popularCarDests = destination ? [destination] : ["Bali", "Barcelona", "Lisbon"];
+    const pickupDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const dropoffDate = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+
+    const providerLabel: Record<string, string> = {
+      aviasales: "via Aviasales",
+      hotellook: "via Hotellook",
+      agoda: "via Agoda",
+      getyourguide: "via GetYourGuide",
+      klook: "via Klook",
+      tiqets: "via Tiqets",
+      discovercars: "via DiscoverCars",
+    };
+
+    const normalize = (items: any[], featured = false): DealItem[] =>
+      items.map((item) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        destination: item.destination || "",
+        price: item.price,
+        currency: item.currency || "USD",
+        rating: item.rating,
+        reviewCount: item.reviewCount,
+        imageUrl: item.imageUrl,
+        affiliateUrl: item.affiliateUrl || item.bookingUrl,
+        provider: item.provider,
+        providerLabel: providerLabel[item.provider] || `via ${item.provider}`,
+        featured: featured || (item.rating !== null && item.rating >= 4.7),
+      }));
+
+    const tasks: Promise<DealItem[]>[] = [];
+
+    if (type === "all" || type === "flights") {
+      tasks.push(
+        searchAviasalesFlights({ origin, destination: destination || undefined, limit: 8 })
+          .then((r) => normalize(r, false))
+          .catch(() => [])
+      );
+    }
+
+    if (type === "all" || type === "hotels") {
+      for (const dest of popularHotelDests.slice(0, 2)) {
+        tasks.push(
+          searchHotellook({ destination: dest, limit: 4 })
+            .then((r) => normalize(r, false))
+            .catch(() => [])
+        );
+        tasks.push(
+          searchAgoda({ destination: dest, checkIn: pickupDate, checkOut: dropoffDate, limit: 2 })
+            .then((r) => normalize(r, false))
+            .catch(() => [])
+        );
+      }
+    }
+
+    if (type === "all" || type === "experiences") {
+      const expDests = destination ? [destination] : ["Tokyo", "Paris", "Bali"];
+      for (const dest of expDests.slice(0, 2)) {
+        tasks.push(
+          searchGetYourGuide({ destination: dest, limit: 3 })
+            .then((r) => normalize(r, false))
+            .catch(() => [])
+        );
+        tasks.push(
+          searchKlook({ destination: dest, limit: 2 })
+            .then((r) => normalize(r, false))
+            .catch(() => [])
+        );
+        tasks.push(
+          searchTiqetsProducts({ city: dest, limit: 2 })
+            .then((r) => normalize(r, true))
+            .catch(() => [])
+        );
+      }
+    }
+
+    if (type === "all" || type === "cars") {
+      for (const dest of popularCarDests.slice(0, 2)) {
+        tasks.push(
+          searchDiscoverCars({ pickupLocation: dest, pickupDate, dropoffDate, limit: 3 })
+            .then((r) => normalize(r, false))
+            .catch(() => [])
+        );
+      }
+    }
+
+    const results = await Promise.all(tasks);
+    let deals: DealItem[] = results.flat();
+
+    if (destination) {
+      const q = destination.toLowerCase();
+      deals = deals.filter(
+        (d) =>
+          d.destination.toLowerCase().includes(q) ||
+          d.title.toLowerCase().includes(q)
+      );
+    }
+
+    const seen = new Set<string>();
+    deals = deals.filter((d) => {
+      if (seen.has(d.id)) return false;
+      seen.add(d.id);
+      return true;
+    });
+
+    return { deals, total: deals.length };
+  }
+
+  app.get("/api/deals", async (req, res) => {
+    try {
+      const type = (req.query.type as string) || "all";
+      const destination = (req.query.destination as string) || "";
+      const origin = (req.query.origin as string) || "NYC";
+      const cacheKey = `${type}:${destination || "all"}:${origin}`;
+
+      // 1. Fresh DB cache hit → return immediately
+      const cached = await sharedCache.get<DealsPayload>(DEALS_CACHE_NS, cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      // 2. Stale-while-revalidate: serve last known result while refreshing in background.
+      //    Always return stale immediately; only *start* a new refresh if none is running.
+      const stale = dealsStaleCache.get(cacheKey);
+      if (stale) {
+        if (!dealsRevalidating.has(cacheKey)) {
+          dealsRevalidating.add(cacheKey);
+          fetchDealsFromProviders(type, destination, origin)
+            .then(async (fresh) => {
+              await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
+              setDealsStale(cacheKey, fresh);
+            })
+            .catch((err) => console.error("[Deals] Background revalidation error:", err))
+            .finally(() => dealsRevalidating.delete(cacheKey));
+        }
+        return res.json({ ...stale, stale: true });
+      }
+
+      // 3. Cold fetch: no cache at all → fetch synchronously, then cache
+      const fresh = await fetchDealsFromProviders(type, destination, origin);
+      await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
+      setDealsStale(cacheKey, fresh);
+      return res.json(fresh);
+    } catch (error) {
+      console.error("Deals aggregation error:", error);
+      res.status(500).json({ message: "Failed to fetch deals" });
+    }
+  });
+
   // Alias: /api/destinations -> /api/catalog/destinations
   app.get("/api/destinations", async (req, res) => {
     try {
@@ -2970,6 +3189,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       "Honeymoon Planning Package",
       "Group Trip Coordinator",
     ];
+    // expert_service_categories was dropped by migration 013; omit category join.
     const rows = await db.select({
       id:           expertServiceOfferings.id,
       name:         expertServiceOfferings.name,
@@ -2978,10 +3198,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       isDefault:    expertServiceOfferings.isDefault,
       sortOrder:    expertServiceOfferings.sortOrder,
       createdAt:    expertServiceOfferings.createdAt,
-      categoryName: expertServiceCategories.name,
+      categoryName: sql<string | null>`null`,
     })
     .from(expertServiceOfferings)
-    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
     .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
     .orderBy(expertServiceOfferings.sortOrder);
 
@@ -3299,9 +3518,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     const location = req.query.location as string | undefined;
     const experienceType = req.query.experienceType as string | undefined;
     const neighbourhood = req.query.neighbourhood as string | undefined;
+    const role = req.query.role as string | undefined;
     const experts = await storage.getExpertsWithProfiles(experienceTypeId);
 
     let filtered = experts;
+
+    // Filter by role (travel_expert, local_expert, event_planner)
+    if (role) {
+      filtered = filtered.filter((expert: any) => expert.role === role);
+    }
 
     // Filter by location (match against expert form destinations, city, or country)
     if (location) {

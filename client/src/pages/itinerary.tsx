@@ -616,7 +616,7 @@ export default function ItineraryPage() {
                         <Badge className="bg-primary/10 text-primary text-xs" data-testid="badge-recommended">Recommended</Badge>
                       </h4>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Our travel experts handle all bookings — on-site and partner.
+                        Our trip planners handle all bookings — on-site and partner.
                       </p>
                     </div>
                   </div>
@@ -781,7 +781,7 @@ export default function ItineraryPage() {
               Request Expert Booking Assistance
             </DialogTitle>
             <DialogDescription>
-              Let our travel experts handle all bookings for your itinerary. They'll coordinate both on-site and partner bookings, ensuring everything is confirmed before your trip.
+              Let our trip planners handle all bookings for your itinerary. They'll coordinate both on-site and partner bookings, ensuring everything is confirmed before your trip.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
