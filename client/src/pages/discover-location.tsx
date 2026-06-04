@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  AlertCircle, MapPin, Sparkles, X, Zap, Users, Calendar,
+  AlertCircle, MapPin, Zap, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
@@ -90,45 +90,6 @@ function SpineFilterBar({
   );
 }
 
-// ─── Date pill ───────────────────────────────────────────────────────────────
-
-function PlanningDatePill({
-  date,
-  onDismiss,
-}: {
-  date: string;
-  onDismiss: () => void;
-}) {
-  const formatted = (() => {
-    try {
-      return new Date(date + "T00:00:00").toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-      });
-    } catch {
-      return date;
-    }
-  })();
-
-  return (
-    <div
-      className="inline-flex items-center gap-2 bg-primary/10 border border-primary/30 text-primary rounded-full px-3 py-1 text-sm font-medium"
-      data-testid="planning-date-pill"
-    >
-      <Calendar className="w-3.5 h-3.5" />
-      Planning {formatted}
-      <button
-        onClick={onDismiss}
-        className="text-primary/70 hover:text-primary ml-1"
-        data-testid="btn-dismiss-date-pill"
-        aria-label="Clear planning date"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
-}
-
 // ─── Hero section ─────────────────────────────────────────────────────────────
 
 function HeroSection({
@@ -136,15 +97,11 @@ function HeroSection({
   country,
   heroData,
   heroPhoto,
-  planningDate,
-  onDismissDate,
 }: {
   city: string;
   country: string | null;
   heroData: any;
   heroPhoto?: string | null;
-  planningDate?: string | null;
-  onDismissDate?: () => void;
 }) {
   const cityIntel = heroData?.city;
 
@@ -206,59 +163,7 @@ function HeroSection({
         )}
       </div>
 
-      {/* Planning date pill */}
-      {planningDate && onDismissDate && (
-        <PlanningDatePill date={planningDate} onDismiss={onDismissDate} />
-      )}
     </section>
-  );
-}
-
-// ─── Feed renderer ────────────────────────────────────────────────────────────
-
-/** Inline date-highlights card rendered as a FeedItem in the stream. */
-function DateHighlightsCard({ data }: { data: { date: string; events: any[]; heroData: any } }) {
-  const { date, events, heroData } = data;
-  const formatted = (() => {
-    try {
-      return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    } catch {
-      return date;
-    }
-  })();
-
-  const pinnedEvent = events?.[0];
-  const seasonalPick = heroData?.city?.currentHighlight;
-
-  if (!pinnedEvent && !seasonalPick) return null;
-
-  return (
-    <div
-      className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3"
-      data-testid="feed-date-highlights"
-    >
-      <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
-        <Sparkles className="w-4 h-4" />
-        On {formatted}
-      </p>
-      {pinnedEvent && (
-        <div className="flex items-start gap-3">
-          <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium">{pinnedEvent.title || pinnedEvent.name}</p>
-            {pinnedEvent.location && (
-              <p className="text-xs text-muted-foreground">{pinnedEvent.location}</p>
-            )}
-          </div>
-        </div>
-      )}
-      {seasonalPick && (
-        <div className="flex items-start gap-3">
-          <Sparkles className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-muted-foreground">{seasonalPick}</p>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -347,11 +252,10 @@ function FeedRenderer({
   }
 
   // Bucket items into alternating sections.
-  // Full-width items (neighborhood, date-highlights) break the current card group.
+  // Neighborhood containers break the current card group into their own full-width block.
   // Everything else is grouped into 3-col bento grids.
   type Section =
     | { type: "neighborhood"; item: FeedItem }
-    | { type: "date-highlights"; item: FeedItem }
     | { type: "group"; items: FeedItem[] };
 
   const sections: Section[] = [];
@@ -368,9 +272,6 @@ function FeedRenderer({
     if (item.kind === "neighborhood") {
       flushGroup();
       sections.push({ type: "neighborhood", item });
-    } else if (item.kind === "date-highlights") {
-      flushGroup();
-      sections.push({ type: "date-highlights", item });
     } else if (item.kind === "city-separator") {
       flushGroup();
       sections.push({ type: "city-separator" as any, item });
@@ -392,11 +293,6 @@ function FeedRenderer({
               scheduledDate={scheduledDate}
               onAdd={onAdd}
             />
-          );
-        }
-        if (section.type === "date-highlights") {
-          return (
-            <DateHighlightsCard key={section.item.id} data={section.item.data} />
           );
         }
         if ((section as any).type === "city-separator") {
@@ -462,13 +358,6 @@ function FlatFilteredFeed({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" data-testid="city-feed-flat">
       {items.map((item) => {
-        if (item.kind === "date-highlights") {
-          return (
-            <div key={item.id} className="col-span-full">
-              <DateHighlightsCard data={item.data} />
-            </div>
-          );
-        }
         switch (item.kind) {
           case "loose-gem":
             return (
@@ -537,10 +426,6 @@ export default function DiscoverLocationPage() {
   const cityRaw = params?.city ?? "";
   const city = decodeURIComponent(cityRaw);
 
-  // Date-awareness — from URL ?date=YYYY-MM-DD only
-  const urlDate = searchParams.get("date");
-  const [planningDate, setPlanningDate] = useState<string | null>(urlDate);
-
   // Spine filter
   const [activeFilter, setActiveFilter] = useState("all");
 
@@ -553,22 +438,12 @@ export default function DiscoverLocationPage() {
     setAddToExperienceOpen(true);
   };
 
-  // Dismiss date pill — clears both state and URL query param
-  const handleDismissDate = () => {
-    setPlanningDate(null);
-    const newParams = new URLSearchParams(searchString);
-    newParams.delete("date");
-    const qs = newParams.toString();
-    navigate(`/discover/location/${encodeURIComponent(city)}${qs ? `?${qs}` : ""}`, { replace: true });
-  };
-
   // ── Data fetching ───────────────────────────────────────────────────────
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
-    queryKey: ["/api/discover/location", city, country, planningDate],
+    queryKey: ["/api/discover/location", city, country],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (country) qs.set("country", country);
-      if (planningDate) qs.set("date", planningDate);
       const res = await fetch(
         `/api/discover/location/${encodeURIComponent(city)}${qs.toString() ? `?${qs.toString()}` : ""}`,
       );
@@ -636,26 +511,9 @@ export default function DiscoverLocationPage() {
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
 
-  const baseFeedItems = data
+  const feedItems: FeedItem[] = data
     ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
     : [];
-
-  // Inject date-highlights as a FeedItem at position 1 so it appears as the
-  // second item in the stream (spec: "second item in the feed when date active").
-  const dateHighlightsItem: FeedItem | null =
-    planningDate && data
-      ? {
-          kind: "date-highlights",
-          id: "date-highlights",
-          data: { date: planningDate, events, heroData: data.hero?.data },
-        }
-      : null;
-
-  const feedItems: FeedItem[] = dateHighlightsItem
-    ? baseFeedItems.length > 0
-      ? [baseFeedItems[0], dateHighlightsItem, ...baseFeedItems.slice(1)]
-      : [dateHighlightsItem]
-    : baseFeedItems;
 
   const filteredItems =
     activeFilter === "all" ? feedItems : filterFeedStream(feedItems, activeFilter);
@@ -712,8 +570,6 @@ export default function DiscoverLocationPage() {
               country={heroCountry}
               heroData={data.hero?.data}
               heroPhoto={heroPhoto}
-              planningDate={planningDate}
-              onDismissDate={handleDismissDate}
             />
 
             {/* ── Spine filter bar (sticky) ─────────────────────────────── */}
@@ -724,14 +580,14 @@ export default function DiscoverLocationPage() {
               <FeedRenderer
                 items={filteredItems}
                 city={city}
-                scheduledDate={planningDate}
+                scheduledDate={null}
                 onAdd={handleAdd}
               />
             ) : (
               <FlatFilteredFeed
                 items={filteredItems}
                 city={city}
-                scheduledDate={planningDate}
+                scheduledDate={null}
                 onAdd={handleAdd}
                 activeFilter={activeFilter}
               />
