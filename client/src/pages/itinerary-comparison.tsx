@@ -386,6 +386,7 @@ export default function ItineraryComparisonPage() {
   // G7: auto-apply state
   const [autoApplying, setAutoApplying] = useState(false);
   const [autoApplied, setAutoApplied] = useState(false);
+  const [autoApplyError, setAutoApplyError] = useState<"no_variants" | null>(null);
 
   const getBookingType = (serviceType: string): "inApp" | "partner" => {
     const partnerTypes = ["transport", "ground_transport", "train", "bus", "ferry", "event", "entertainment", "concert", "show"];
@@ -537,12 +538,29 @@ export default function ItineraryComparisonPage() {
 
   // G7: Auto-apply top variant + redirect to PlanCard when autoApply=1 and optimization is done
   useEffect(() => {
-    if (!autoApply || autoApplying || autoApplied) return;
+    if (!autoApply || autoApplying || autoApplied || autoApplyError) return;
     if (!data?.comparison) return;
     const status = data.comparison.status;
+
+    // If still waiting on payment, redirect back to cart with an explanation
+    if (status === "pending_payment") {
+      toast({
+        variant: "destructive",
+        title: "Payment required",
+        description: "Please complete payment before your optimized plan can be applied.",
+      });
+      setLocation("/cart");
+      return;
+    }
+
     if (status !== "generated") return;
+
     const aiVariants = data.variants?.filter((v: Variant) => v.source === "ai_optimized") ?? [];
-    if (aiVariants.length === 0) return;
+    if (aiVariants.length === 0) {
+      // Generation completed but produced no AI variants — show inline error
+      setAutoApplyError("no_variants");
+      return;
+    }
 
     setAutoApplying(true);
     (async () => {
@@ -566,7 +584,7 @@ export default function ItineraryComparisonPage() {
         setAutoApplying(false);
       }
     })();
-  }, [autoApply, autoApplying, autoApplied, data, id, setLocation, toast]);
+  }, [autoApply, autoApplying, autoApplied, autoApplyError, data, id, setLocation, toast]);
 
   if (authLoading) {
     return (
@@ -775,7 +793,44 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
-        {!hasVariants && !isGenerating && !hasFailed && (
+        {autoApplyError === "no_variants" && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-auto-apply-error">
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+              <h3 className="text-lg font-semibold mb-2">No optimized variants were generated</h3>
+              <p className="text-muted-foreground mb-6">
+                The AI optimization completed but didn't produce any alternative itineraries — this can happen if the trip is already well-optimized or if the AI timed out. You can retry generation or browse your original plan below.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation("/cart")}
+                  data-testid="button-back-to-cart-error"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Cart
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAutoApplyError(null);
+                    retryMutation.mutate();
+                  }}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry-no-variants"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Retry Optimization
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
