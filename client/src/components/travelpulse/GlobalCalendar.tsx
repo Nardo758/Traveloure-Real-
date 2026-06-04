@@ -52,7 +52,7 @@ interface GlobalCity {
   crowdLevel?: string | null;
   currentHighlight?: string | null;
   highlightEmoji?: string | null;
-  seasonalRating: string;
+  seasonalRating: string | null;
   weatherDescription?: string | null;
   averageTemp?: string | null;
   rainfall?: string | null;
@@ -86,6 +86,7 @@ interface GlobalCalendarResponse {
     best: GlobalCity[];
     good: GlobalCity[];
     average: GlobalCity[];
+    eventsOnly: GlobalCity[];
     avoid: GlobalCity[];
   };
   allEvents: GlobalEvent[];
@@ -144,6 +145,8 @@ function getRatingColor(rating: string) {
       return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800";
     case "average":
       return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800";
+    case "events-only":
+      return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800";
     case "avoid":
     case "poor":
       return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800";
@@ -161,6 +164,8 @@ function getRatingLabel(rating: string) {
       return "Good Time";
     case "average":
       return "Average";
+    case "events-only":
+      return "Events";
     case "avoid":
     case "poor":
       return "Off Season";
@@ -196,7 +201,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         const res = await fetch(`/api/travelpulse/global-calendar?month=${m}&limit=10`);
         if (res.ok) {
           const monthData: GlobalCalendarResponse = await res.json();
-          const allCities = [...monthData.grouped.best, ...monthData.grouped.good, ...monthData.grouped.average];
+          const allCities = [...monthData.grouped.best, ...monthData.grouped.good, ...monthData.grouped.average, ...monthData.grouped.eventsOnly];
           const topRating = monthData.grouped.best.length > 0 ? "best" :
                            monthData.grouped.good.length > 0 ? "good" :
                            monthData.grouped.average.length > 0 ? "average" : "avoid";
@@ -375,7 +380,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     );
   }
 
-  const { grouped, allEvents, monthName } = data || { grouped: { best: [], good: [], average: [], avoid: [] }, allEvents: [], monthName: "" };
+  const { grouped, allEvents, monthName } = data || { grouped: { best: [], good: [], average: [], eventsOnly: [], avoid: [] }, allEvents: [], monthName: "" };
 
   const getFilterDescription = () => {
     if (filterMode === "day" && selectedDay) {
@@ -589,6 +594,17 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             />
           )}
 
+          {grouped.eventsOnly.length > 0 && (
+            <CitySection
+              title="Events & Highlights"
+              subtitle="Destinations with notable events this period"
+              cities={grouped.eventsOnly}
+              rating="events-only"
+              onCityClick={handleCityClick}
+              calendarVisible={calendarVisible}
+            />
+          )}
+
           {filteredEvents.length > 0 && (
             <div className="mt-8">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -632,7 +648,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             </div>
           )}
 
-          {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && (
+          {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && grouped.eventsOnly.length === 0 && (
             <Card className="p-8 text-center">
               <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No destination data available for {monthName}</p>
