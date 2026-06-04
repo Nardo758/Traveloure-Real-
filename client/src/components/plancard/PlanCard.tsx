@@ -129,12 +129,38 @@ interface ExpertPolishDialogProps {
     title?: string;
   };
   optimizationScore?: number | string;
+  optimizationDelta?: {
+    savings?: string | null;
+    savingsPercent?: string | null;
+    starDelta?: number | null;
+  };
 }
 
-function ExpertPolishDialog({ open, onClose, trip, optimizationScore }: ExpertPolishDialogProps) {
+function buildDeltaSummary(
+  score?: number | string,
+  delta?: ExpertPolishDialogProps["optimizationDelta"]
+): string {
+  const parts: string[] = [];
+  if (score != null) parts.push(`Optimization score: ${score}`);
+  if (delta?.savings) parts.push(`Estimated savings: ${delta.savings}`);
+  if (delta?.savingsPercent) parts.push(`Cost reduction: ${delta.savingsPercent}`);
+  if (delta?.starDelta != null && delta.starDelta !== 0) {
+    parts.push(`Star-rating delta: ${delta.starDelta > 0 ? "+" : ""}${delta.starDelta}`);
+  }
+  return parts.join(" · ");
+}
+
+function ExpertPolishDialog({ open, onClose, trip, optimizationScore, optimizationDelta }: ExpertPolishDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [note, setNote] = useState("");
+
+  const deltaSummary = buildDeltaSummary(optimizationScore, optimizationDelta);
+  const [note, setNote] = useState(deltaSummary);
+
+  // Sync prefill when dialog opens
+  useEffect(() => {
+    if (open) setNote(buildDeltaSummary(optimizationScore, optimizationDelta));
+  }, [open, optimizationScore, optimizationDelta]);
 
   const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–";
@@ -151,6 +177,7 @@ function ExpertPolishDialog({ open, onClose, trip, optimizationScore }: ExpertPo
           startDate: trip.startDate,
           endDate: trip.endDate,
           score: optimizationScore ?? null,
+          delta: optimizationDelta ?? null,
         },
       });
     },
@@ -308,6 +335,11 @@ function PlanCardSummary({
   ));
 
   const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
+  const optimizationDelta = {
+    savings: metrics.savings != null ? `$${Number(metrics.savings).toLocaleString()}` : null,
+    savingsPercent: metrics.savingsPercent != null ? `${metrics.savingsPercent}%` : null,
+    starDelta: metrics.starRatingDelta ?? null,
+  };
   const hasActivities = totalActivities > 0;
 
   // Summary-specific queries
@@ -328,8 +360,10 @@ function PlanCardSummary({
     enabled: !advisor,
   });
 
+  // Only treat admin-confirm states (queued / pending) as "pending review".
+  // "assigned" means the expert is already working → let advisor strip take over.
   const pendingExpertRequest = expertRequestsData?.requests?.find(
-    (r) => r.status === "queued" || r.status === "pending" || r.status === "assigned"
+    (r) => r.status === "queued" || r.status === "pending"
   ) ?? null;
 
   const { data: suggestionsData } = useQuery<{ suggestions: Array<{ id: string; status: string }> }>({
@@ -644,6 +678,7 @@ function PlanCardSummary({
         onClose={() => setShowPolishDialog(false)}
         trip={trip}
         optimizationScore={optimizationScore}
+        optimizationDelta={optimizationDelta}
       />
     </>
   );

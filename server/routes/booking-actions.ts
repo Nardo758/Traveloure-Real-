@@ -133,13 +133,27 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const resolvedDestination = (destination || optimizationContext?.destination || '').toLowerCase();
 
-    // Prevent duplicate pending requests for the same trip
+    // Verify trip ownership when a tripId is supplied (prevents cross-user contamination)
+    if (tripId) {
+      const tripRow = await db.execute(sql`
+        SELECT user_id FROM trips WHERE id = ${tripId} LIMIT 1
+      `);
+      if (!tripRow.rows || tripRow.rows.length === 0) {
+        return res.status(404).json({ error: 'Trip not found' });
+      }
+      if ((tripRow.rows[0] as any).user_id !== resolvedUserId) {
+        return res.status(403).json({ error: 'You do not own this trip' });
+      }
+    }
+
+    // Prevent duplicate pending/admin-confirm requests for the same trip
+    // (assigned = expert is already working → allow re-request if they finish)
     if (tripId) {
       const existing = await db.execute(sql`
         SELECT id FROM expert_requests
         WHERE user_id = ${resolvedUserId}
           AND trip_id = ${tripId}
-          AND status IN ('queued', 'pending', 'assigned')
+          AND status IN ('queued', 'pending')
         LIMIT 1
       `);
       if (existing.rows && existing.rows.length > 0) {
@@ -162,7 +176,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const optimizationContextJson = optimizationContext ? JSON.stringify(optimizationContext) : null;
 
-    // Create expert request
+    // Create expert request, returning full row
     const result = await db.execute(sql`
       INSERT INTO expert_requests (
         id, user_id, trip_id, variant_id, comparison_id, destination_city,
@@ -183,12 +197,16 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
         ${optimizationContextJson}::jsonb,
         NOW()
       )
-      RETURNING id
+      RETURNING id, user_id, trip_id, status, queue_position, destination_city,
+                request_type, notes, optimization_context, created_at
     `);
+
+    const created = result.rows?.[0] ?? {};
 
     res.json({
       success: true,
-      requestId: result.rows?.[0]?.id,
+      request: created,
+      requestId: (created as any).id,
       queuePosition,
       message: `Expert request submitted. You are #${queuePosition} in the queue for ${resolvedDestination}.`,
     });
