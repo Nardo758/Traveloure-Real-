@@ -2375,6 +2375,50 @@ const weddingTabs: TabDef[] = [
       },
     ]
   },
+  {
+    name: "Contingency & Risk",
+    slug: "contingency_risk",
+    description: "Weather backup plans, vendor cancellation protocols, emergency contacts (richer anchoring)",
+    icon: "AlertCircle",
+    filters: [
+      {
+        name: "Weather Backup Plan",
+        slug: "weather_backup",
+        filterType: "multi_select",
+        icon: "Cloud",
+        options: [
+          { label: "Indoor Alternative Space Available", value: "indoor_backup" },
+          { label: "Tent/Cover Rental (Outdoor)", value: "tent_backup" },
+          { label: "Date Postponement Plan", value: "date_postponement" },
+          { label: "Weather Insurance", value: "weather_insurance" },
+        ]
+      },
+      {
+        name: "Vendor Cancellation Protocol",
+        slug: "vendor_cancellation",
+        filterType: "multi_select",
+        icon: "AlertTriangle",
+        options: [
+          { label: "Backup Photographer", value: "backup_photo" },
+          { label: "Backup Caterer", value: "backup_catering" },
+          { label: "Backup Florist", value: "backup_floral" },
+          { label: "Backup DJ/Musicians", value: "backup_music" },
+        ]
+      },
+      {
+        name: "Key Contingencies",
+        slug: "key_contingencies",
+        filterType: "multi_select",
+        icon: "CheckCircle",
+        options: [
+          { label: "Officiant Backup (Second Officiant Name/Contact)", value: "officiant_backup" },
+          { label: "Transportation Backup (If Vendor No-Show)", value: "transport_backup" },
+          { label: "Accommodation Overflow Plan", value: "accommodation_backup" },
+          { label: "Emergency Day-Of Coordinator Contact", value: "coordinator_backup" },
+        ]
+      },
+    ]
+  },
 ];
 
 // ============ DATE NIGHT TEMPLATE ============
@@ -2992,6 +3036,59 @@ const corporateTabs: TabDef[] = [
       },
     ]
   },
+  {
+    name: "Contingency & Failsafe",
+    slug: "contingency_failsafe",
+    description: "Speaker no-show protocol, A/V failure backup, overflow capacity, approval chain backup",
+    icon: "AlertCircle",
+    filters: [
+      {
+        name: "Speaker/Presenter Backup",
+        slug: "speaker_backup",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Backup Speaker Identified", value: "backup_speaker" },
+          { label: "Pre-Recorded Session Available", value: "prerecorded" },
+          { label: "Internal Replacement Plan", value: "internal_replacement" },
+        ]
+      },
+      {
+        name: "AV/Tech Failure Backup",
+        slug: "av_backup",
+        filterType: "multi_select",
+        icon: "Zap",
+        options: [
+          { label: "Backup Projector/Screen", value: "backup_projector" },
+          { label: "Backup Internet/WiFi", value: "backup_internet" },
+          { label: "Backup Video Conferencing Capability", value: "backup_videoconf" },
+          { label: "On-Site Tech Support Team", value: "onsite_tech" },
+        ]
+      },
+      {
+        name: "Capacity & Overflow",
+        slug: "capacity_overflow",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Overflow Breakout Room", value: "overflow_room" },
+          { label: "Livestream to Remote", value: "livestream_remote" },
+          { label: "Virtual Attendance Option", value: "virtual_option" },
+        ]
+      },
+      {
+        name: "Approval Chain Backup",
+        slug: "approval_backup",
+        filterType: "multi_select",
+        icon: "FileText",
+        options: [
+          { label: "Secondary Approver Identified", value: "secondary_approver" },
+          { label: "Pre-Authorization Limits Set", value: "preauth_limits" },
+          { label: "Emergency Spending Authority", value: "emergency_authority" },
+        ]
+      },
+    ]
+  },
 ];
 
 // ============ RETREATS TEMPLATE ============
@@ -3201,6 +3298,62 @@ const standardUniversalFilters: UniversalFilterDef[] = [
 
 // ============ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ============
 const weddingAnniversariesTabs: TabDef[] = [
+  {
+    name: "Anniversary Date",
+    slug: "anniversary_date",
+    description: "Anniversary date and milestone (immovable anchor - sentimental)",
+    icon: "Heart",
+    filters: [
+      {
+        name: "Anniversary Milestone",
+        slug: "milestone",
+        filterType: "single_select",
+        icon: "Heart",
+        options: [
+          { label: "1st Anniversary (Paper)", value: "1st" },
+          { label: "5th Anniversary (Wood)", value: "5th" },
+          { label: "10th Anniversary (Tin)", value: "10th" },
+          { label: "25th Anniversary (Silver)", value: "25th" },
+          { label: "50th Anniversary (Gold)", value: "50th" },
+          { label: "Other Milestone", value: "other" },
+        ]
+      },
+      {
+        name: "Celebration Date",
+        slug: "celebration_date",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Exact Anniversary Date (Immovable)", value: "exact_date" },
+          { label: "Weekend Near Anniversary", value: "weekend_near" },
+          { label: "Flexible Timing", value: "flexible" },
+        ]
+      },
+      {
+        name: "Couple's Celebration Style",
+        slug: "celebration_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Intimate (Just the Couple)", value: "intimate" },
+          { label: "Small Gathering (Family/Close Friends)", value: "small" },
+          { label: "Larger Celebration (Extended Friends)", value: "large" },
+        ]
+      },
+      {
+        name: "Celebration Focus",
+        slug: "celebration_focus",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Romantic Dinner", value: "romantic_dinner" },
+          { label: "Renewal of Vows", value: "vows_renewal" },
+          { label: "Trip/Getaway", value: "trip" },
+          { label: "Party with Loved Ones", value: "party" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
