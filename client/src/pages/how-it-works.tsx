@@ -66,7 +66,7 @@ const planningOptions = [
   },
   {
     title: "Hybrid AI + Expert",
-    description: "Combine AI efficiency with human expertise. Get AI suggestions refined by local travel experts.",
+    description: "Combine AI efficiency with human expertise. Get AI suggestions refined by local experts and trip planners.",
     icon: Users,
     price: "10 - 25 Credits",
     features: ["AI-generated base plan", "Expert review and refinement", "Insider local tips", "Priority support"]
@@ -76,7 +76,7 @@ const planningOptions = [
     description: "Work directly with a certified local expert who crafts every detail of your trip personally.",
     icon: MessageSquare,
     price: "25 - 50 Credits",
-    features: ["Dedicated travel expert", "Fully customized experience", "Real-time chat support", "Concierge-level service"]
+    features: ["Dedicated trip planner", "Fully customized experience", "Real-time chat support", "Concierge-level service"]
   }
 ];
 

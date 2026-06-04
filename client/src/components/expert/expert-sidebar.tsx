@@ -70,7 +70,7 @@ function buildMenuGroups(expertType?: string | null) {
 }
 
 const roleLabel: Record<string, string> = {
-  travel_expert: "Travel Expert",
+  travel_expert: "Trip Planner",
   local_expert: "Local Expert",
   event_planner: "Event Planner",
   executive_assistant: "Executive Assistant",

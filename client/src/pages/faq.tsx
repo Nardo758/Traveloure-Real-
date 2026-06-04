@@ -68,9 +68,9 @@ const faqs = [
   },
   {
     category: "experts",
-    question: "Who are the travel experts?",
+    question: "Who are the local experts and trip planners?",
     answer:
-      "Our experts are verified locals and travel professionals with deep knowledge of their destinations. They undergo a thorough vetting process including background checks, interview, and verification of their expertise.",
+      "Our local experts are verified destination insiders with deep knowledge of their city. Our trip planners are itinerary specialists who help design and refine your travel plans. Both undergo a thorough vetting process including background checks, interview, and verification of their expertise.",
   },
   {
     category: "experts",
