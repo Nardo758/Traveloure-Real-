@@ -1,15 +1,12 @@
 import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import DOMPurify from "dompurify";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  AlertCircle, MapPin, Zap, Users,
-} from "lucide-react";
+import { AlertCircle, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
@@ -43,18 +40,109 @@ interface CityMediaResponse {
   byAttraction: Record<string, any[]>;
 }
 
+// ─── Teal gradient hero ───────────────────────────────────────────────────────
+
+function HeroSection({
+  city,
+  heroData,
+}: {
+  city: string;
+  heroData: any;
+}) {
+  const cityIntel = heroData?.city;
+  const pulse = cityIntel?.pulseScore;
+  const highlight = cityIntel?.currentHighlight;
+  const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
+
+  return (
+    <div
+      className="relative rounded-xl overflow-hidden px-6 py-6"
+      style={{ background: "linear-gradient(135deg, #0F6E56 0%, #0c5a47 100%)" }}
+      data-testid="section-hero"
+    >
+      <h1
+        className="text-[30px] font-bold tracking-tight text-white leading-tight"
+        data-testid="text-city-name"
+      >
+        {city}
+      </h1>
+      {highlight ? (
+        <div className="text-sm mt-1" style={{ color: "#5DCAA5" }}>
+          {highlightEmoji} {highlight}
+        </div>
+      ) : null}
+      {pulse !== undefined && (
+        <div
+          className="absolute top-5 right-5 rounded-xl px-3.5 py-2 text-center"
+          style={{ background: "#04342C" }}
+        >
+          <b
+            className="block text-lg font-bold leading-tight"
+            style={{ color: "#5DCAA5" }}
+          >
+            {pulse}
+          </b>
+          <span
+            className="text-[10px] uppercase tracking-widest"
+            style={{ color: "#5DCAA5" }}
+          >
+            pulse
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Stats row ────────────────────────────────────────────────────────────────
+
+function StatsRow({
+  heroData,
+  neighborhoodCount,
+  serviceCount,
+}: {
+  heroData: any;
+  neighborhoodCount: number;
+  serviceCount: number;
+}) {
+  const cityIntel = heroData?.city;
+  if (!cityIntel) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
+      {cityIntel.activeTravelers !== undefined && (
+        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+          👥{" "}
+          <b className="text-foreground font-semibold">
+            {Number(cityIntel.activeTravelers).toLocaleString()}
+          </b>{" "}
+          travelers here now
+        </div>
+      )}
+      {serviceCount > 0 && (
+        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+          <b className="text-foreground font-semibold">{serviceCount}</b> services
+        </div>
+      )}
+      {neighborhoodCount > 0 && (
+        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+          <b className="text-foreground font-semibold">{neighborhoodCount}</b> neighborhoods
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Spine filter bar ─────────────────────────────────────────────────────────
 
 const SPINE_CHIPS = [
-  { id: "all", label: "All" },
+  { id: "all", label: "All gems" },
   { id: "eat", label: "Eat" },
   { id: "do", label: "Do" },
   { id: "stay", label: "Stay" },
-  { id: "services", label: "Services" },
   { id: "experts", label: "Experts" },
   { id: "events", label: "Events" },
-  { id: "photo_spots", label: "Photo Spots" },
-  { id: "vibe", label: "Vibe" },
+  { id: "photo_spots", label: "Photo spots" },
 ];
 
 function SpineFilterBar({
@@ -69,17 +157,22 @@ function SpineFilterBar({
       className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b py-2"
       data-testid="spine-filter-bar"
     >
-      <div className="flex gap-2 overflow-x-auto pb-0.5 px-1 scrollbar-none">
+      <div className="flex gap-2 overflow-x-auto pb-0.5 px-0.5 scrollbar-none">
         {SPINE_CHIPS.map((chip) => (
           <button
             key={chip.id}
             onClick={() => onSelect(chip.id)}
             className={cn(
-              "flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap",
+              "flex-shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap border",
               active === chip.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted hover:bg-muted-foreground/20 text-foreground",
+                ? "border-transparent font-semibold"
+                : "bg-card border-border text-muted-foreground hover:bg-muted",
             )}
+            style={
+              active === chip.id
+                ? { background: "#E1F5EE", color: "#0F6E56" }
+                : undefined
+            }
             data-testid={`spine-chip-${chip.id}`}
           >
             {chip.label}
@@ -90,112 +183,37 @@ function SpineFilterBar({
   );
 }
 
-// ─── Hero section ─────────────────────────────────────────────────────────────
+// ─── Filler card (non-neighborhood) ──────────────────────────────────────────
 
-function HeroSection({
-  city,
-  country,
-  heroData,
-  heroPhoto,
-}: {
-  city: string;
-  country: string | null;
-  heroData: any;
-  heroPhoto?: string | null;
-}) {
-  const cityIntel = heroData?.city;
-
-  return (
-    <section data-testid="section-hero" className="space-y-4">
-      {/* Hero photo — 21:9 wide cinematic crop */}
-      {heroPhoto && (
-        <div className="relative rounded-xl overflow-hidden aspect-[16/6] md:aspect-[21/7]">
-          <img
-            src={heroPhoto}
-            alt={city}
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          <div className="absolute bottom-4 left-4 right-4">
-            <div className="flex items-center gap-2 text-white/80 text-sm mb-1">
-              <MapPin className="w-4 h-4" />
-              <span>{country ?? cityIntel?.country ?? ""}</span>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white" data-testid="text-city-name">
-              {city}
-            </h1>
-          </div>
-        </div>
-      )}
-
-      {!heroPhoto && (
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <MapPin className="w-4 h-4" />
-            <span>{country ?? cityIntel?.country ?? ""}</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-bold" data-testid="text-city-name">
-            {city}
-          </h1>
-        </div>
-      )}
-
-      {/* Pulse stats row */}
-      <div className="flex flex-wrap items-center gap-3">
-        {cityIntel?.pulseScore !== undefined && (
-          <div className="flex items-center gap-1.5 text-sm">
-            <Zap className="w-4 h-4 text-amber-500" />
-            <span className="font-semibold">{cityIntel.pulseScore}</span>
-            <span className="text-muted-foreground">Pulse</span>
-          </div>
-        )}
-        {cityIntel?.activeTravelers !== undefined && (
-          <div className="flex items-center gap-1.5 text-sm">
-            <Users className="w-4 h-4 text-blue-500" />
-            <span className="font-semibold">{cityIntel.activeTravelers}</span>
-            <span className="text-muted-foreground">active travelers</span>
-          </div>
-        )}
-        {cityIntel?.currentHighlight && (
-          <p className="text-sm text-muted-foreground">
-            {cityIntel.highlightEmoji} {cityIntel.currentHighlight}
-          </p>
-        )}
-      </div>
-
-    </section>
-  );
-}
-
-/** Render a single filler card (non-neighborhood) within a shared grid row. */
 function FillerCard({
   item,
   city,
   scheduledDate,
   onAdd,
+  isMarquee,
 }: {
   item: FeedItem;
   city: string;
   scheduledDate: string | null;
   onAdd: (item: any) => void;
+  isMarquee?: boolean;
 }) {
   switch (item.kind) {
     case "loose-gem":
       return (
         <CityFeedCardGem
-          key={item.id}
           gem={item.data}
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          layout={isMarquee ? "row" : "column"}
         />
       );
     case "expert":
-      return <CityFeedCardExpert key={item.id} expert={item.data} city={city} />;
+      return <CityFeedCardExpert expert={item.data} city={city} />;
     case "event":
       return (
         <CityFeedCardEvent
-          key={item.id}
           event={item.data}
           city={city}
           scheduledDate={scheduledDate}
@@ -206,7 +224,6 @@ function FillerCard({
     case "supply-activity":
       return (
         <CityFeedCardSupply
-          key={item.id}
           item={item.data}
           kind={item.kind}
           city={city}
@@ -217,7 +234,6 @@ function FillerCard({
     case "vendor-service":
       return (
         <CityFeedCardVendorService
-          key={item.id}
           service={item.data}
           city={city}
         />
@@ -227,10 +243,12 @@ function FillerCard({
   }
 }
 
+// ─── Bento feed renderer ──────────────────────────────────────────────────────
+
 /**
- * Blended feed — groups consecutive filler items into shared bento grids so
- * the continuous rhythm is [bento] [neighborhood] [bento] [neighborhood] …
- * rather than one card per row.
+ * Groups consecutive filler items into 2-column bento grids.
+ * First item in each group = span-2 row layout (marquee).
+ * Rhythm: [bento] [neighborhood] [bento] [neighborhood] …
  */
 function FeedRenderer({
   items,
@@ -251,12 +269,10 @@ function FeedRenderer({
     );
   }
 
-  // Bucket items into alternating sections.
-  // Neighborhood containers break the current card group into their own full-width block.
-  // Everything else is grouped into 3-col bento grids.
   type Section =
     | { type: "neighborhood"; item: FeedItem }
-    | { type: "group"; items: FeedItem[] };
+    | { type: "group"; items: FeedItem[] }
+    | { type: "city-separator"; item: FeedItem };
 
   const sections: Section[] = [];
   let currentGroup: FeedItem[] = [];
@@ -274,7 +290,7 @@ function FeedRenderer({
       sections.push({ type: "neighborhood", item });
     } else if (item.kind === "city-separator") {
       flushGroup();
-      sections.push({ type: "city-separator" as any, item });
+      sections.push({ type: "city-separator", item });
     } else {
       currentGroup.push(item);
     }
@@ -282,7 +298,7 @@ function FeedRenderer({
   flushGroup();
 
   return (
-    <div className="space-y-6" data-testid="city-feed">
+    <div className="space-y-5" data-testid="city-feed">
       {sections.map((section, si) => {
         if (section.type === "neighborhood") {
           return (
@@ -295,35 +311,39 @@ function FeedRenderer({
             />
           );
         }
-        if ((section as any).type === "city-separator") {
-          const sep = (section as any).item as FeedItem;
+
+        if (section.type === "city-separator") {
           return (
             <div
-              key={sep.id}
+              key={section.item.id}
               className="flex items-center gap-3 py-2"
-              data-testid={`separator-${sep.id}`}
+              data-testid={`separator-${section.item.id}`}
             >
               <div className="flex-1 h-px bg-border" />
               <span className="text-xs text-muted-foreground whitespace-nowrap px-2">
-                More in {sep.data.cityName}
+                More in {section.item.data.cityName}
               </span>
               <div className="flex-1 h-px bg-border" />
             </div>
           );
         }
+
+        // Bento group: first item is span-2 (marquee), rest are half-width
         return (
-          <div
-            key={`group-${si}`}
-            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"
-          >
-            {section.items.map((item) => (
-              <FillerCard
+          <div key={`group-${si}`} className="grid grid-cols-2 gap-3">
+            {section.items.map((item, itemIdx) => (
+              <div
                 key={item.id}
-                item={item}
-                city={city}
-                scheduledDate={scheduledDate}
-                onAdd={onAdd}
-              />
+                className={itemIdx === 0 ? "col-span-2" : ""}
+              >
+                <FillerCard
+                  item={item}
+                  city={city}
+                  scheduledDate={scheduledDate}
+                  onAdd={onAdd}
+                  isMarquee={itemIdx === 0}
+                />
+              </div>
             ))}
           </div>
         );
@@ -332,7 +352,7 @@ function FeedRenderer({
   );
 }
 
-// ─── Flat filtered feed (dissolves neighborhoods) ────────────────────────────
+// ─── Flat filtered feed ───────────────────────────────────────────────────────
 
 function FlatFilteredFeed({
   items,
@@ -356,61 +376,96 @@ function FlatFilteredFeed({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" data-testid="city-feed-flat">
-      {items.map((item) => {
-        switch (item.kind) {
-          case "loose-gem":
-            return (
-              <CityFeedCardGem
-                key={item.id}
-                gem={item.data}
-                city={city}
-                scheduledDate={scheduledDate}
-                onAdd={onAdd}
-              />
-            );
-          case "expert":
-            return (
-              <CityFeedCardExpert
-                key={item.id}
-                expert={item.data}
-                city={city}
-              />
-            );
-          case "event":
-            return (
-              <CityFeedCardEvent
-                key={item.id}
-                event={item.data}
-                city={city}
-                scheduledDate={scheduledDate}
-                onAdd={onAdd}
-              />
-            );
-          case "supply-hotel":
-          case "supply-activity":
-            return (
-              <CityFeedCardSupply
-                key={item.id}
-                item={item.data}
-                kind={item.kind}
-                city={city}
-                scheduledDate={scheduledDate}
-                onAdd={onAdd}
-              />
-            );
-          case "vendor-service":
-            return (
-              <CityFeedCardVendorService
-                key={item.id}
-                service={item.data}
-                city={city}
-              />
-            );
-          default:
-            return null;
-        }
-      })}
+    <div className="grid grid-cols-2 gap-3" data-testid="city-feed-flat">
+      {items.map((item, idx) => (
+        <div key={item.id} className={idx === 0 ? "col-span-2" : ""}>
+          <FillerCard
+            item={item}
+            city={city}
+            scheduledDate={scheduledDate}
+            onAdd={onAdd}
+            isMarquee={idx === 0}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Trip-level complements strip ─────────────────────────────────────────────
+
+interface AddOn {
+  icon: string;
+  label: string;
+  badge: string;
+  href: string;
+  variant: "platform" | "affiliate";
+}
+
+function TripComplementsStrip({
+  city,
+  highlight,
+}: {
+  city: string;
+  highlight?: string | null;
+}) {
+  const staticAddOns: AddOn[] = [
+    { icon: "🚖", label: "Airport transfer", badge: "Book on Traveloure", href: "/experiences/transport", variant: "platform" },
+    { icon: "📱", label: "eSIM for travel", badge: "via Airalo", href: "/experiences/esim", variant: "affiliate" },
+    { icon: "🛡", label: "Travel insurance", badge: "via SafetyWing", href: "/experiences/insurance", variant: "affiliate" },
+    { icon: "🧳", label: "Luggage storage", badge: "via Bounce", href: "/experiences/luggage", variant: "affiliate" },
+  ];
+
+  const contentAddOn: AddOn | null = (() => {
+    if (!highlight) return null;
+    const h = highlight.toLowerCase();
+    if (h.includes("blossom") || h.includes("sakura") || h.includes("cherry")) {
+      return { icon: "👘", label: "Kimono rental", badge: "↑ for blossom season", href: "/experiences/kimono", variant: "platform" };
+    }
+    if (h.includes("snow") || h.includes("winter") || h.includes("ski")) {
+      return { icon: "🎿", label: "Winter gear rental", badge: "↑ for winter", href: "/experiences/gear", variant: "platform" };
+    }
+    if (h.includes("festival") || h.includes("matsuri") || h.includes("carnival")) {
+      return { icon: "🎋", label: "Festival guide", badge: "↑ for festival season", href: "/local-experts", variant: "platform" };
+    }
+    if (h.includes("autumn") || h.includes("fall") || h.includes("foliage")) {
+      return { icon: "🍂", label: "Foliage photography tour", badge: "↑ peak autumn colour", href: "/experiences/photo", variant: "platform" };
+    }
+    return null;
+  })();
+
+  const addOns: AddOn[] = contentAddOn ? [contentAddOn, ...staticAddOns] : staticAddOns;
+
+  return (
+    <div data-testid="trip-complements-strip">
+      <div className="text-[11px] text-muted-foreground font-semibold uppercase tracking-widest mb-2.5 px-0.5">
+        COMPLETE YOUR {city.toUpperCase()} TRIP · complements any itinerary
+      </div>
+      <div className="flex gap-2.5 flex-wrap">
+        {addOns.map((addon) => (
+          <a
+            key={addon.label}
+            href={addon.href}
+            className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
+            data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xl">{addon.icon}</span>
+              <span className="font-semibold text-[13px]">{addon.label}</span>
+            </div>
+            <span
+              className={cn(
+                "text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide",
+                addon.variant === "platform"
+                  ? "bg-teal-50 text-teal-700"
+                  : "bg-blue-50 text-blue-700",
+              )}
+            >
+              {addon.badge}
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -426,10 +481,8 @@ export default function DiscoverLocationPage() {
   const cityRaw = params?.city ?? "";
   const city = decodeURIComponent(cityRaw);
 
-  // Spine filter
   const [activeFilter, setActiveFilter] = useState("all");
 
-  // Add-to-experience dialog
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
 
@@ -438,7 +491,6 @@ export default function DiscoverLocationPage() {
     setAddToExperienceOpen(true);
   };
 
-  // ── Data fetching ───────────────────────────────────────────────────────
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country],
     queryFn: async () => {
@@ -455,7 +507,7 @@ export default function DiscoverLocationPage() {
 
   const heroCountry = country ?? data?.country ?? null;
 
-  // Media — separate query for hero photo
+  // Media — for Unsplash download tracking compliance only (hero no longer uses photo)
   const { data: mediaData } = useQuery<CityMediaResponse>({
     queryKey: ["/api/travelpulse/media", city, heroCountry],
     queryFn: async () => {
@@ -518,11 +570,7 @@ export default function DiscoverLocationPage() {
   const filteredItems =
     activeFilter === "all" ? feedItems : filterFeedStream(feedItems, activeFilter);
 
-  const heroPhoto =
-    mediaData?.hero?.url ??
-    mediaData?.gallery?.[0]?.url ??
-    data?.hero?.data?.city?.imageUrl ??
-    null;
+  const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
   if (!city) {
     return (
@@ -543,12 +591,16 @@ export default function DiscoverLocationPage() {
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-4">
-            <Skeleton className="h-48 w-full rounded-xl" />
-            <Skeleton className="h-10 w-full rounded-xl" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <Skeleton className="aspect-[4/3] rounded-xl" />
-              <Skeleton className="aspect-[4/3] rounded-xl" />
-              <Skeleton className="aspect-[4/3] rounded-xl" />
+            <Skeleton className="h-[96px] w-full rounded-xl" />
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-28 rounded-xl" />
+              <Skeleton className="h-9 w-24 rounded-xl" />
+              <Skeleton className="h-9 w-20 rounded-xl" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="col-span-2 h-28 rounded-xl" />
+              <Skeleton className="h-44 rounded-xl" />
+              <Skeleton className="h-44 rounded-xl" />
             </div>
           </div>
         )}
@@ -563,26 +615,31 @@ export default function DiscoverLocationPage() {
         )}
 
         {data && (
-          <div className="space-y-6">
-            {/* ── Hero ─────────────────────────────────────────────────── */}
-            <HeroSection
-              city={city}
-              country={heroCountry}
+          <div className="space-y-5">
+            {/* ── Teal gradient hero ─────────────────────────────────── */}
+            <HeroSection city={city} heroData={data.hero?.data} />
+
+            {/* ── Stats row ─────────────────────────────────────────── */}
+            <StatsRow
               heroData={data.hero?.data}
-              heroPhoto={heroPhoto}
+              neighborhoodCount={neighborhoods.length}
+              serviceCount={platformServices.length}
             />
 
-            {/* ── Spine filter bar (sticky) ─────────────────────────────── */}
+            {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
 
-            {/* ── Blended feed ──────────────────────────────────────────── */}
+            {/* ── Blended bento feed ────────────────────────────────── */}
             {activeFilter === "all" ? (
-              <FeedRenderer
-                items={filteredItems}
-                city={city}
-                scheduledDate={null}
-                onAdd={handleAdd}
-              />
+              <>
+                <FeedRenderer
+                  items={filteredItems}
+                  city={city}
+                  scheduledDate={null}
+                  onAdd={handleAdd}
+                />
+                <TripComplementsStrip city={city} highlight={currentHighlight} />
+              </>
             ) : (
               <FlatFilteredFeed
                 items={filteredItems}
