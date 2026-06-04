@@ -8,6 +8,12 @@
 --   Without this, migrated rows become uncategorized and invisible to feeds/matching.
 --
 -- Draft/rejected handling:
+
+-- 0. Schema patch: add duration column if missing (expert_custom_services carries it)
+ALTER TABLE provider_services ADD COLUMN IF NOT EXISTS duration VARCHAR;
+
+-- Original header continues:
+--
 --   - draft|submitted|approved → migrate with approval_status preserved
 --   - rejected → discard (failed review; expert resubmits as new draft if needed)
 
