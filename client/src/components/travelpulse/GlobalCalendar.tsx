@@ -682,6 +682,177 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   );
 }
 
+// Helper: Convert season rating to a numeric score for display (best=9, good=7, average=5, etc.)
+function getSeasonScore(rating: string | null): number {
+  switch (rating) {
+    case "best":
+    case "excellent":
+      return 9;
+    case "good":
+      return 7;
+    case "average":
+      return 5;
+    case "avoid":
+    case "poor":
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+// Helper: Get guidance text based on season conditions
+function getSeasonGuidance(city: GlobalCity): string {
+  const parts: string[] = [];
+
+  if (city.highlights && city.highlights.length > 0) {
+    parts.push(city.highlights[0]);
+  }
+
+  if (city.weatherDescription) {
+    const weather = city.weatherDescription.toLowerCase();
+    if (weather.includes("snow") || weather.includes("cold")) {
+      parts.push("cold");
+    } else if (weather.includes("rain") || weather.includes("wet")) {
+      parts.push("wet season");
+    } else if (weather.includes("mild")) {
+      parts.push("mild");
+    }
+  }
+
+  if (city.seasonCrowdLevel) {
+    parts.push(`${city.seasonCrowdLevel} crowds`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : "Visit this month";
+}
+
+// Component: Individual city card with season guidance
+function CityCard({
+  city,
+  onCityClick,
+}: {
+  city: GlobalCity;
+  onCityClick?: (cityName: string, country: string) => void;
+}) {
+  const experienceSuggestions = getExperienceSuggestionsForCity(city);
+  const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
+  const seasonScore = getSeasonScore(city.seasonalRating);
+  const seasonGuidance = getSeasonGuidance(city);
+
+  return (
+    <Card
+      key={city.id}
+      className="overflow-hidden h-full flex flex-col"
+      data-testid={`city-card-${city.id}`}
+    >
+      <div
+        className="cursor-pointer hover-elevate flex-1"
+        onClick={() => onCityClick?.(city.cityName, city.country)}
+      >
+        {city.heroImage && (
+          <div className="h-32 relative">
+            <img
+              src={city.heroImage}
+              alt={city.cityName}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            <div className="absolute bottom-2 left-3 right-3">
+              <h4 className="font-semibold text-white">{city.cityName}</h4>
+              <p className="text-xs text-white/80">{city.country}</p>
+            </div>
+          </div>
+        )}
+        <CardContent className={city.heroImage ? "p-3" : "p-4"}>
+          {!city.heroImage && (
+            <div className="mb-2">
+              <h4 className="font-semibold">{city.cityName}</h4>
+              <p className="text-xs text-muted-foreground">{city.country}</p>
+            </div>
+          )}
+
+          {/* Season suitability score (prominent guidance) */}
+          {city.seasonalRating && seasonScore > 0 && (
+            <div className="mb-3 p-2 rounded-lg bg-muted/50 border border-muted">
+              <div className="flex items-center gap-2">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold">{seasonScore}</span>
+                  <span className="text-xs text-muted-foreground">/10</span>
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">Ideal month</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{seasonGuidance}</p>
+            </div>
+          )}
+
+          {/* Seasonal details: weather, crowds, price */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {city.weatherDescription && (
+              <span className="flex items-center gap-1">
+                {getWeatherIcon(city.weatherDescription)}
+                <span className="text-muted-foreground">{city.averageTemp}</span>
+              </span>
+            )}
+            {city.seasonCrowdLevel && (
+              <span className="flex items-center gap-1">
+                <Users className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
+              </span>
+            )}
+            {city.pulseScore && city.pulseScore > 70 && (
+              <span className="flex items-center gap-1">
+                <TrendingUp className="h-3 w-3 text-green-500" />
+                <span className="text-green-600 dark:text-green-400">Trending</span>
+              </span>
+            )}
+          </div>
+
+          {city.events.length > 0 && (
+            <div className="mt-2 pt-2 border-t">
+              <div className="flex items-center gap-1 text-xs">
+                <Ticket className="h-3 w-3 text-muted-foreground" />
+                <span className="font-medium">{city.events[0].title}</span>
+              </div>
+            </div>
+          )}
+
+          {city.vibeTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {city.vibeTags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs capitalize">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </div>
+
+      <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
+        <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
+        <div className="flex flex-wrap gap-2">
+          {experienceSuggestions.map((suggestion, idx) => (
+            <Link
+              key={idx}
+              href={`/experiences/${suggestion.slug}?destination=${destination}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-plan-${city.id}-${suggestion.slug}`}
+              >
+                <Plane className="h-3 w-3 mr-1" />
+                {suggestion.label}
+              </Button>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function getExperienceSuggestionsForCity(city: GlobalCity): Array<{ label: string; slug: string }> {
   const suggestions: Array<{ label: string; slug: string }> = [];
   const vibes = city.vibeTags.map(v => v.toLowerCase());
@@ -783,347 +954,26 @@ function CitySection({
       </div>
       {/* First row: 2 cards when calendar visible (beside 648px calendar), 4 cards when hidden */}
       <div className={`grid grid-cols-1 md:grid-cols-2 ${calendarVisible ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 mb-4`}>
-        {firstRowCities.map((city) => {
-          const experienceSuggestions = getExperienceSuggestionsForCity(city);
-          const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
-          
-          return (
-          <Card 
-            key={city.id}
-            className="overflow-hidden h-full"
-            data-testid={`city-card-${city.id}`}
-          >
-            <div 
-              className="cursor-pointer hover-elevate"
-              onClick={() => onCityClick?.(city.cityName, city.country)}
-            >
-              {city.heroImage && (
-                <div className="h-32 relative">
-                  <img
-                    src={city.heroImage}
-                    alt={city.cityName}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-2 left-3 right-3">
-                    <h4 className="font-semibold text-white">{city.cityName}</h4>
-                    <p className="text-xs text-white/80">{city.country}</p>
-                  </div>
-                </div>
-              )}
-              <CardContent className={city.heroImage ? "p-3" : "p-4"}>
-                {!city.heroImage && (
-                  <div className="mb-2">
-                    <h4 className="font-semibold">{city.cityName}</h4>
-                    <p className="text-xs text-muted-foreground">{city.country}</p>
-                  </div>
-                )}
-                
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  {city.weatherDescription && (
-                    <span className="flex items-center gap-1">
-                      {getWeatherIcon(city.weatherDescription)}
-                      <span className="text-muted-foreground">{city.averageTemp}</span>
-                    </span>
-                  )}
-                  {city.seasonCrowdLevel && (
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
-                    </span>
-                  )}
-                  {city.pulseScore && city.pulseScore > 70 && (
-                    <span className="flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3 text-green-500" />
-                      <span className="text-green-600 dark:text-green-400">Trending</span>
-                    </span>
-                  )}
-                </div>
-
-                {city.events.length > 0 && (
-                  <div className="mt-2 pt-2 border-t">
-                    <div className="flex items-center gap-1 text-xs">
-                      <Ticket className="h-3 w-3 text-muted-foreground" />
-                      <span className="font-medium">{city.events[0].title}</span>
-                    </div>
-                  </div>
-                )}
-
-                {city.currentHighlight && (
-                  <div className="mt-2 pt-2 border-t">
-                    <p className="text-xs text-muted-foreground">
-                      {city.currentHighlight}
-                    </p>
-                  </div>
-                )}
-
-                {city.vibeTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {city.vibeTags.slice(0, 3).map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs capitalize">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </div>
-            
-            <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
-              <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
-              <div className="flex flex-wrap gap-2">
-                {experienceSuggestions.map((suggestion, idx) => (
-                  <Link 
-                    key={idx} 
-                    href={`/experiences/${suggestion.slug}?destination=${destination}`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      data-testid={`button-plan-${city.id}-${suggestion.slug}`}
-                    >
-                      <Plane className="h-3 w-3 mr-1" />
-                      {suggestion.label}
-                    </Button>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </Card>
-          );
-        })}
+        {firstRowCities.map((city) => (
+          <CityCard key={city.id} city={city} onCityClick={onCityClick} />
+        ))}
       </div>
       
       {/* Second row: 4 cards wide, clear of the calendar */}
       {secondRowCities.length > 0 && (
         <div className="clear-both grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {secondRowCities.map((city) => {
-            const experienceSuggestions = getExperienceSuggestionsForCity(city);
-            const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
-            
-            return (
-            <Card 
-              key={city.id}
-              className="overflow-hidden h-full"
-              data-testid={`city-card-${city.id}`}
-            >
-              <div 
-                className="cursor-pointer hover-elevate"
-                onClick={() => onCityClick?.(city.cityName, city.country)}
-              >
-                {city.heroImage && (
-                  <div className="h-32 relative">
-                    <img
-                      src={city.heroImage}
-                      alt={city.cityName}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    <div className="absolute bottom-2 left-3 right-3">
-                      <h4 className="font-semibold text-white">{city.cityName}</h4>
-                      <p className="text-xs text-white/80">{city.country}</p>
-                    </div>
-                  </div>
-                )}
-                <CardContent className={city.heroImage ? "p-3" : "p-4"}>
-                  {!city.heroImage && (
-                    <div className="mb-2">
-                      <h4 className="font-semibold">{city.cityName}</h4>
-                      <p className="text-xs text-muted-foreground">{city.country}</p>
-                    </div>
-                  )}
-                  
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    {city.weatherDescription && (
-                      <span className="flex items-center gap-1">
-                        {getWeatherIcon(city.weatherDescription)}
-                        <span className="text-muted-foreground">{city.averageTemp}</span>
-                      </span>
-                    )}
-                    {city.seasonCrowdLevel && (
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
-                      </span>
-                    )}
-                    {city.pulseScore && city.pulseScore > 70 && (
-                      <span className="flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3 text-green-500" />
-                        <span className="text-green-600 dark:text-green-400">Trending</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {city.events.length > 0 && (
-                    <div className="mt-2 pt-2 border-t">
-                      <div className="flex items-center gap-1 text-xs">
-                        <Ticket className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium">{city.events[0].title}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {city.currentHighlight && (
-                    <div className="mt-2 pt-2 border-t">
-                      <p className="text-xs text-muted-foreground">
-                        {city.currentHighlight}
-                      </p>
-                    </div>
-                  )}
-
-                  {city.vibeTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {city.vibeTags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs capitalize">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </div>
-              
-              <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
-                <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
-                <div className="flex flex-wrap gap-2">
-                  {experienceSuggestions.map((suggestion, idx) => (
-                    <Link 
-                      key={idx} 
-                      href={`/experiences/${suggestion.slug}?destination=${destination}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        data-testid={`button-plan-${city.id}-${suggestion.slug}`}
-                      >
-                        <Plane className="h-3 w-3 mr-1" />
-                        {suggestion.label}
-                      </Button>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </Card>
-            );
-          })}
+          {secondRowCities.map((city) => (
+            <CityCard key={city.id} city={city} onCityClick={onCityClick} />
+          ))}
         </div>
       )}
 
       {/* Third row: 4 more cards */}
       {thirdRowCities.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          {thirdRowCities.map((city) => {
-            const experienceSuggestions = getExperienceSuggestionsForCity(city);
-            const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
-            
-            return (
-            <Card 
-              key={city.id}
-              className="overflow-hidden h-full"
-              data-testid={`city-card-${city.id}`}
-            >
-              <div 
-                className="cursor-pointer hover-elevate"
-                onClick={() => onCityClick?.(city.cityName, city.country)}
-              >
-                {city.heroImage && (
-                  <div className="h-32 relative">
-                    <img
-                      src={city.heroImage}
-                      alt={city.cityName}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    <div className="absolute bottom-2 left-3 right-3">
-                      <h4 className="font-semibold text-white">{city.cityName}</h4>
-                      <p className="text-xs text-white/80">{city.country}</p>
-                    </div>
-                  </div>
-                )}
-                <CardContent className={city.heroImage ? "p-3" : "p-4"}>
-                  {!city.heroImage && (
-                    <div className="mb-2">
-                      <h4 className="font-semibold">{city.cityName}</h4>
-                      <p className="text-xs text-muted-foreground">{city.country}</p>
-                    </div>
-                  )}
-                  
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    {city.weatherDescription && (
-                      <span className="flex items-center gap-1">
-                        {getWeatherIcon(city.weatherDescription)}
-                        <span className="text-muted-foreground">{city.averageTemp}</span>
-                      </span>
-                    )}
-                    {city.seasonCrowdLevel && (
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
-                      </span>
-                    )}
-                    {city.pulseScore && city.pulseScore > 70 && (
-                      <span className="flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3 text-green-500" />
-                        <span className="text-green-600 dark:text-green-400">Trending</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {city.events.length > 0 && (
-                    <div className="mt-2 pt-2 border-t">
-                      <div className="flex items-center gap-1 text-xs">
-                        <Ticket className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium">{city.events[0].title}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {city.currentHighlight && (
-                    <div className="mt-2 pt-2 border-t">
-                      <p className="text-xs text-muted-foreground">
-                        {city.currentHighlight}
-                      </p>
-                    </div>
-                  )}
-
-                  {city.vibeTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {city.vibeTags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs capitalize">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </div>
-              
-              <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
-                <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
-                <div className="flex flex-wrap gap-2">
-                  {experienceSuggestions.map((suggestion, idx) => (
-                    <Link 
-                      key={idx} 
-                      href={`/experiences/${suggestion.slug}?destination=${destination}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        data-testid={`button-plan-${city.id}-${suggestion.slug}`}
-                      >
-                        <Plane className="h-3 w-3 mr-1" />
-                        {suggestion.label}
-                      </Button>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </Card>
-            );
-          })}
+          {thirdRowCities.map((city) => (
+            <CityCard key={city.id} city={city} onCityClick={onCityClick} />
+          ))}
         </div>
       )}
     </div>
