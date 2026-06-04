@@ -19,7 +19,6 @@ export type FeedItemKind =
   | "supply-hotel"
   | "supply-activity"
   | "vendor-service"
-  | "date-highlights"
   | "city-separator";
 
 export interface FeedItem {
@@ -196,7 +195,7 @@ function makeSeparator(index: number, cityName?: string): FeedItem {
 /**
  * Filter a FeedItem[] by spine chip type.
  * When a type filter is active, NeighborhoodContainers are dissolved and their
- * gems rendered as flat matching items. date-highlights always passes through.
+ * gems rendered as flat matching items.
  */
 export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedItem[] {
   if (activeFilter === "all") return items;
@@ -204,10 +203,6 @@ export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedI
   const result: FeedItem[] = [];
 
   for (const item of items) {
-    if (item.kind === "date-highlights") {
-      result.push(item);
-      continue;
-    }
     if (item.kind === "city-separator") continue; // hide separators in filtered view
     if (item.kind === "neighborhood") {
       // Dissolve — emit only matching gems as loose items
