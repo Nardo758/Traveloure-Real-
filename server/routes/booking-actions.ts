@@ -57,65 +57,140 @@ router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res)
 });
 
 /**
+ * GET /api/expert-requests
+ * List expert requests for the authenticated user, optionally filtered by tripId
+ */
+router.get('/expert-requests', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { tripId } = req.query;
+
+    let result;
+    if (tripId) {
+      result = await db.execute(sql`
+        SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
+               request_type, expert_fee, status, assigned_expert_id, queue_position,
+               notes, optimization_context, created_at, assigned_at, completed_at
+        FROM expert_requests
+        WHERE user_id = ${userId}
+          AND trip_id = ${tripId as string}
+        ORDER BY created_at DESC
+      `);
+    } else {
+      result = await db.execute(sql`
+        SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
+               request_type, expert_fee, status, assigned_expert_id, queue_position,
+               notes, optimization_context, created_at, assigned_at, completed_at
+        FROM expert_requests
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+      `);
+    }
+
+    res.json({ requests: result.rows || [] });
+  } catch (error: any) {
+    console.error('Get expert requests error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /api/expert-requests
- * Create expert review request
+ * Create expert review request — supports both variant-based (optimizer flow)
+ * and trip-based (PlanCard "polish this" CTA) creation.
  */
 router.post('/expert-requests', isAuthenticated, async (req, res) => {
   try {
+    const authUserId = (req as any).user?.claims?.sub;
     const {
       userId,
+      tripId,
       variantId,
       comparisonId,
       destination,
       requestType,
       expertFee,
       notes,
+      optimizationContext,
     } = req.body;
 
-    if (!userId || !variantId || !comparisonId || !destination || !requestType) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    const resolvedUserId = authUserId || userId;
+    if (!resolvedUserId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Trip-based request (PlanCard CTA) — variantId/comparisonId optional
+    const isTripBased = !!tripId && !variantId;
+
+    if (!isTripBased && (!variantId || !comparisonId)) {
+      return res.status(400).json({ error: 'Missing required fields: variantId and comparisonId are required for optimizer-based requests' });
+    }
+    if (!destination && !optimizationContext?.destination) {
+      return res.status(400).json({ error: 'Missing required field: destination' });
+    }
+
+    const resolvedDestination = (destination || optimizationContext?.destination || '').toLowerCase();
+
+    // Prevent duplicate pending requests for the same trip
+    if (tripId) {
+      const existing = await db.execute(sql`
+        SELECT id FROM expert_requests
+        WHERE user_id = ${resolvedUserId}
+          AND trip_id = ${tripId}
+          AND status IN ('queued', 'pending', 'assigned')
+        LIMIT 1
+      `);
+      if (existing.rows && existing.rows.length > 0) {
+        return res.status(409).json({
+          error: 'A pending expert request already exists for this trip',
+          requestId: (existing.rows[0] as any).id,
+        });
+      }
     }
 
     // Get current queue position for this city
     const queueResult = await db.execute(sql`
       SELECT COALESCE(MAX(queue_position), 0) + 1 as next_position
       FROM expert_requests
-      WHERE destination_city = ${destination.toLowerCase()}
+      WHERE destination_city = ${resolvedDestination}
         AND status IN ('queued', 'assigned')
     `);
 
     const queuePosition = queueResult.rows?.[0]?.next_position || 1;
 
+    const optimizationContextJson = optimizationContext ? JSON.stringify(optimizationContext) : null;
+
     // Create expert request
     const result = await db.execute(sql`
       INSERT INTO expert_requests (
-        id, user_id, variant_id, comparison_id, destination_city,
+        id, user_id, trip_id, variant_id, comparison_id, destination_city,
         request_type, expert_fee, status, queue_position, notes,
-        created_at
+        optimization_context, created_at
       ) VALUES (
         ${crypto.randomUUID()},
-        ${userId},
-        ${variantId},
-        ${comparisonId},
-        ${destination.toLowerCase()},
-        ${requestType},
-        ${expertFee},
+        ${resolvedUserId},
+        ${tripId || null},
+        ${variantId || null},
+        ${comparisonId || null},
+        ${resolvedDestination},
+        ${requestType || 'polish'},
+        ${expertFee || null},
         'queued',
         ${queuePosition},
         ${notes || null},
+        ${optimizationContextJson}::jsonb,
         NOW()
       )
       RETURNING id
     `);
 
-    // TODO: Notify experts in city queue
-    // TODO: Send email to user confirming request
-
     res.json({
       success: true,
       requestId: result.rows?.[0]?.id,
       queuePosition,
-      message: `Expert request submitted. You are #${queuePosition} in the queue for ${destination}.`,
+      message: `Expert request submitted. You are #${queuePosition} in the queue for ${resolvedDestination}.`,
     });
   } catch (error: any) {
     console.error('Expert request error:', error);
