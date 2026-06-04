@@ -2711,8 +2711,17 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   type DealsPayload = { deals: DealItem[]; total: number };
   const DEALS_CACHE_NS = "deals";
   const DEALS_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const DEALS_STALE_MAX = 50; // max in-memory stale entries (FIFO eviction)
   const dealsStaleCache = new Map<string, DealsPayload>();
   const dealsRevalidating = new Set<string>();
+
+  function setDealsStale(key: string, payload: DealsPayload): void {
+    if (dealsStaleCache.size >= DEALS_STALE_MAX) {
+      const oldest = dealsStaleCache.keys().next().value;
+      if (oldest !== undefined) dealsStaleCache.delete(oldest);
+    }
+    dealsStaleCache.set(key, payload);
+  }
 
   async function fetchDealsFromProviders(
     type: string,
@@ -2850,24 +2859,27 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.json(cached);
       }
 
-      // 2. Stale-while-revalidate: serve last known result while refreshing in background
+      // 2. Stale-while-revalidate: serve last known result while refreshing in background.
+      //    Always return stale immediately; only *start* a new refresh if none is running.
       const stale = dealsStaleCache.get(cacheKey);
-      if (stale && !dealsRevalidating.has(cacheKey)) {
-        dealsRevalidating.add(cacheKey);
-        fetchDealsFromProviders(type, destination, origin)
-          .then(async (fresh) => {
-            await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
-            dealsStaleCache.set(cacheKey, fresh);
-          })
-          .catch((err) => console.error("[Deals] Background revalidation error:", err))
-          .finally(() => dealsRevalidating.delete(cacheKey));
+      if (stale) {
+        if (!dealsRevalidating.has(cacheKey)) {
+          dealsRevalidating.add(cacheKey);
+          fetchDealsFromProviders(type, destination, origin)
+            .then(async (fresh) => {
+              await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
+              setDealsStale(cacheKey, fresh);
+            })
+            .catch((err) => console.error("[Deals] Background revalidation error:", err))
+            .finally(() => dealsRevalidating.delete(cacheKey));
+        }
         return res.json({ ...stale, stale: true });
       }
 
       // 3. Cold fetch: no cache at all → fetch synchronously, then cache
       const fresh = await fetchDealsFromProviders(type, destination, origin);
       await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
-      dealsStaleCache.set(cacheKey, fresh);
+      setDealsStale(cacheKey, fresh);
       return res.json(fresh);
     } catch (error) {
       console.error("Deals aggregation error:", error);
