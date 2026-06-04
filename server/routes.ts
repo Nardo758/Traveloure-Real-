@@ -1968,13 +1968,57 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const month = req.query.month ? Number(req.query.month) : undefined;
       const year = req.query.year ? Number(req.query.year) : undefined;
       const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const date = typeof req.query.date === "string" ? req.query.date : undefined;
 
       const { locationViewService } = await import("./services/location-view.service");
-      const payload = await locationViewService.getLocationView(city, country, { month, year, limit });
+      const payload = await locationViewService.getLocationView(city, country, { month, year, limit, date });
       res.json(payload);
     } catch (err: any) {
       console.error("Error building location view:", err);
       res.status(500).json({ message: "Failed to build location view", error: err?.message });
+    }
+  });
+
+  // Lightweight place-photo proxy — resolution order: Google Places → Unsplash
+  // Used by the useGemPhoto hook (source=google first, then source=unsplash fallback).
+  app.get("/api/media/place-photo", async (req, res) => {
+    try {
+      const q = typeof req.query.q === "string" ? req.query.q : "";
+      const city = typeof req.query.city === "string" ? req.query.city : "";
+      const source = typeof req.query.source === "string" ? req.query.source : "google";
+      if (!q) return res.json({ photoUrl: null });
+
+      if (source === "unsplash") {
+        // Unsplash → Pexels fallback chain via media aggregator services
+        const { unsplashService } = await import("./services/unsplash.service");
+        const { pexelsService } = await import("./services/pexels.service");
+        // Try Unsplash first
+        try {
+          const unsplashPhotos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
+          if (unsplashPhotos[0]?.url) {
+            return res.json({ photoUrl: unsplashPhotos[0].url });
+          }
+        } catch {
+          // fall through to Pexels
+        }
+        // Pexels fallback
+        try {
+          const pexelsPhotos = await pexelsService.searchPhotos(`${q} ${city}`, { perPage: 1, orientation: "landscape" });
+          const photoUrl = pexelsPhotos[0]?.url ?? null;
+          return res.json({ photoUrl });
+        } catch {
+          return res.json({ photoUrl: null });
+        }
+      }
+
+      // Google Places (default)
+      const { googlePlacesPhotosService } = await import("./services/google-places-photos.service");
+      const photos = await googlePlacesPhotosService.getAttractionPhotos(q, city, 1);
+      const photoUrl = photos[0]?.url ?? null;
+      res.json({ photoUrl });
+    } catch (err: any) {
+      console.error("Error fetching place photo:", err);
+      res.json({ photoUrl: null });
     }
   });
 
