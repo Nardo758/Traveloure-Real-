@@ -23,6 +23,26 @@ import { MapControlCenter } from "./MapControlCenter";
 
 // ── Summary-stage helpers ──────────────────────────────────────────────────
 
+function formatRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const then = new Date(dateStr);
+  const diffMs = now.getTime() - then.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return diffHours === 1 ? "1 hour ago" : `${diffHours} hours ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks === 1) return "1 week ago";
+  if (diffWeeks < 5) return `${diffWeeks} weeks ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths === 1) return "1 month ago";
+  return `${diffMonths} months ago`;
+}
+
 function daysUntilDate(dateStr: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -320,6 +340,9 @@ function PlanCardSummary({
                   · +{optimizationDelta.starRatingDelta.toFixed(1)}★
                 </span>
               )}
+              <span style={{ color: "#A05A30", fontWeight: 400 }}>
+                · {formatRelativeTime(lastOptimizedAt)}
+              </span>
             </button>
           )}
         </div>
