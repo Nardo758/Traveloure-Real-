@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
-import { useParams, Link, useSearch } from "wouter";
+import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
@@ -129,9 +129,11 @@ interface ExpertAdvisor {
 export default function TripDetails() {
   const { id } = useParams();
   const searchStr = useSearch();
+  const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(searchStr);
   const initialTab = searchParams.get("tab") || "itinerary";
   const deepSection = searchParams.get("section");
+  const justOptimized = searchParams.get("optimized") === "1";
   const { data: trip, isLoading } = useTrip(id || "");
   const generateItinerary = useGenerateItinerary();
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
@@ -152,6 +154,8 @@ export default function TripDetails() {
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
+  // G7: "Plan ready" banner
+  const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
 
   useEffect(() => {
     if (initialTab === "expert" && deepSection === "suggestions") {
@@ -198,6 +202,17 @@ export default function TripDetails() {
       setTimeout(() => setCopied(false), 2000);
     });
   };
+
+  // G7: Fetch plancard data for optimizationDelta
+  const { data: plancardData } = useQuery<{
+    optimizationDelta: { savings: number | null; savingsPercent: number | null; starRatingDelta: number | null } | null;
+    lastOptimizedAt: string | null;
+  }>({
+    queryKey: [`/api/trips/${id}/plancard`],
+    enabled: !!id && justOptimized,
+    staleTime: 10000,
+  });
+  const optimizationDelta = plancardData?.optimizationDelta ?? null;
 
   const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
     queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
@@ -405,6 +420,51 @@ export default function TripDetails() {
           </div>
         </div>
       </div>
+
+      {/* G7: "Plan ready" banner — shown after optimization redirect */}
+      {showOptimizedBanner && (
+        <div className="container mx-auto px-4 mt-3 relative z-20">
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl px-4 py-3 flex items-start gap-3"
+            style={{ background: "linear-gradient(135deg,#1a7f5a,#2aab7c)", color: "#fff" }}
+            data-testid="banner-plan-ready"
+          >
+            <Sparkles className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Your optimized plan is ready</p>
+              <p className="text-xs opacity-90 mt-0.5">
+                AI Optimizer · just now
+                {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+                  <> · saved <strong>${Math.round(optimizationDelta.savings)}</strong></>
+                )}
+                {optimizationDelta?.savingsPercent != null && optimizationDelta.savingsPercent > 0 && (
+                  <> · <strong>{Math.round(optimizationDelta.savingsPercent)}%</strong> tighter schedule</>
+                )}
+                {optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+                  <> · ⭐ +{optimizationDelta.starRatingDelta.toFixed(1)} rating</>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowOptimizedBanner(false);
+                // Remove ?optimized=1 from URL without a full reload
+                const params = new URLSearchParams(searchStr);
+                params.delete("optimized");
+                const newQ = params.toString();
+                setLocation(`/trip/${id}${newQ ? `?${newQ}` : ""}`);
+              }}
+              className="flex-shrink-0 opacity-80 hover:opacity-100 transition-opacity"
+              aria-label="Dismiss"
+              data-testid="button-dismiss-optimized-banner"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </motion.div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="container mx-auto px-4 -mt-6 relative z-10">

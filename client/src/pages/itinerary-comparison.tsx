@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
 import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -376,10 +376,16 @@ export default function ItineraryComparisonPage() {
   const userEmail = user?.email || undefined;
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
+  const searchParams = new URLSearchParams(searchStr);
+  const autoApply = searchParams.get("autoApply") === "1";
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [modalVariant, setModalVariant] = useState<Variant | null>(null);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
+  // G7: auto-apply state
+  const [autoApplying, setAutoApplying] = useState(false);
+  const [autoApplied, setAutoApplied] = useState(false);
 
   const getBookingType = (serviceType: string): "inApp" | "partner" => {
     const partnerTypes = ["transport", "ground_transport", "train", "bus", "ferry", "event", "entertainment", "concert", "show"];
@@ -528,6 +534,39 @@ export default function ItineraryComparisonPage() {
       setSelectedVariantId(data.comparison.selectedVariantId);
     }
   }, [data]);
+
+  // G7: Auto-apply top variant + redirect to PlanCard when autoApply=1 and optimization is done
+  useEffect(() => {
+    if (!autoApply || autoApplying || autoApplied) return;
+    if (!data?.comparison) return;
+    const status = data.comparison.status;
+    if (status !== "generated") return;
+    const aiVariants = data.variants?.filter((v: Variant) => v.source === "ai_optimized") ?? [];
+    if (aiVariants.length === 0) return;
+
+    setAutoApplying(true);
+    (async () => {
+      try {
+        const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-trip`);
+        const result = await res.json();
+        setAutoApplied(true);
+        toast({
+          title: "Your optimized plan is ready!",
+          description: "Redirecting to your trip…",
+        });
+        setLocation(`/trip/${result.tripId}?optimized=1`);
+      } catch (err: any) {
+        console.error("Auto-apply failed:", err);
+        toast({
+          variant: "destructive",
+          title: "Could not apply optimized plan",
+          description: "You can apply it manually from this page.",
+        });
+      } finally {
+        setAutoApplying(false);
+      }
+    })();
+  }, [autoApply, autoApplying, autoApplied, data, id, setLocation, toast]);
 
   if (authLoading) {
     return (
