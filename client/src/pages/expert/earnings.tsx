@@ -83,7 +83,7 @@ export default function ExpertEarnings() {
     return (
       <ExpertLayout title="Earnings">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-console-mid" />
         </div>
       </ExpertLayout>
     );
@@ -97,8 +97,8 @@ export default function ExpertEarnings() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Earnings Dashboard</h1>
-            <p className="text-gray-600">Track your revenue and manage payouts</p>
+            <h1 className="text-2xl font-bold text-console-darkest">Earnings Dashboard</h1>
+            <p className="text-console-mid">Track your revenue and manage payouts</p>
           </div>
           <div className="flex items-center gap-2">
             {!canRequestPayout && (
@@ -120,13 +120,13 @@ export default function ExpertEarnings() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat, index) => (
-            <Card key={index} className="border border-gray-200" data-testid={`card-earnings-stat-${index}`}>
+            <Card key={index} className="border border-console-light" data-testid={`card-earnings-stat-${index}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">{stat.label}</p>
-                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                    {stat.date && <p className="text-sm text-gray-500">{stat.date}</p>}
+                    <p className="text-sm text-console-mid">{stat.label}</p>
+                    <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
+                    {stat.date && <p className="text-sm text-console-mid">{stat.date}</p>}
                   </div>
                   <div className="w-12 h-12 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
                     <stat.icon className="w-6 h-6 text-[#FF385C]" />
@@ -138,7 +138,7 @@ export default function ExpertEarnings() {
         </div>
 
         {/* Revenue Share Breakdown */}
-        <Card className="border border-gray-200" data-testid="card-revenue-share">
+        <Card className="border border-console-light" data-testid="card-revenue-share">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <PieChart className="w-5 h-5 text-[#FF385C]" />
@@ -147,12 +147,12 @@ export default function ExpertEarnings() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center" data-testid="stat-gross-total">
-                <p className="text-sm text-gray-500 mb-1">Gross Booking Value</p>
-                <p className="text-xl font-bold text-gray-900">
+              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-gross-total">
+                <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
+                <p className="text-xl font-bold text-console-darkest">
                   ${(summary?.grossBookingTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">Total from all bookings</p>
+                <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
               </div>
               <div className="p-4 bg-red-50 rounded-lg border border-red-100 text-center" data-testid="stat-platform-fee">
                 <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round(platformRate * 100)}%)</p>
@@ -170,14 +170,14 @@ export default function ExpertEarnings() {
               </div>
             </div>
             {/* Visual bar */}
-            <div className="mt-4 h-3 bg-gray-100 rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+            <div className="mt-4 h-3 bg-console-light rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
                 className="h-full bg-[#FF385C] transition-all"
                 style={{ width: `${Math.round(platformRate * 100)}%` }}
               />
               <div className="h-full bg-green-500 flex-1" />
             </div>
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <div className="flex justify-between text-xs text-console-mid mt-1">
               <span>Platform {Math.round(platformRate * 100)}%</span>
               <span>You {Math.round(shareRate * 100)}%</span>
             </div>
@@ -187,7 +187,7 @@ export default function ExpertEarnings() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Transactions */}
           <div className="lg:col-span-2">
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Recent Transactions</CardTitle>
@@ -201,7 +201,7 @@ export default function ExpertEarnings() {
                   {recentTransactions.length > 0 ? recentTransactions.map((transaction) => (
                     <div
                       key={transaction.id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50"
+                      className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
                       data-testid={`transaction-${transaction.id}`}
                     >
                       <div className="flex items-center gap-3">
@@ -209,14 +209,14 @@ export default function ExpertEarnings() {
                           <TrendingUp className="w-5 h-5 text-green-600" />
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{transaction.type || "Earning"}</p>
-                          <p className="text-sm text-gray-500">{transaction.description || ""}</p>
+                          <p className="font-medium text-console-darkest">{transaction.type || "Earning"}</p>
+                          <p className="text-sm text-console-mid">{transaction.description || ""}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-gray-900">+${parseFloat(transaction.amount || "0").toLocaleString()}</p>
+                        <p className="font-semibold text-console-darkest">+${parseFloat(transaction.amount || "0").toLocaleString()}</p>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-500">{new Date(transaction.createdAt).toLocaleDateString()}</span>
+                          <span className="text-sm text-console-mid">{new Date(transaction.createdAt).toLocaleDateString()}</span>
                           <Badge
                             variant="outline"
                             className={transaction.status === "completed"
