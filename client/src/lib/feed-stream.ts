@@ -19,7 +19,6 @@ export type FeedItemKind =
   | "supply-hotel"
   | "supply-activity"
   | "vendor-service"
-  | "date-highlights"
   | "city-separator";
 
 export interface FeedItem {
@@ -222,13 +221,14 @@ export function buildFeedStream(
 }
 
 /**
- * Filter a feed stream by a spine chip category.
- * When filtering, neighborhood containers are dissolved — their gems are extracted
- * and filtered individually.
+ * Filter a FeedItem[] by spine chip type.
+ * When a type filter is active, NeighborhoodContainers are dissolved and their
+ * gems rendered as flat matching items.
  */
 export function filterFeedStream(items: FeedItem[], category: string): FeedItem[] {
   const dissolved: FeedItem[] = [];
   for (const item of items) {
+    if (item.kind === "city-separator") continue; // hide separators in filtered view
     if (item.kind === "neighborhood") {
       const gems: any[] = item.data.gems ?? [];
       gems.forEach((g) =>
