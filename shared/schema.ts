@@ -531,6 +531,19 @@ export const providerServices = pgTable("provider_services", {
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
   formStatus: varchar("form_status", { length: 50 }).default("pending"), // For approval workflow
+
+  // Approval workflow (consolidated from expert_custom_services in 0007)
+  approvalStatus: varchar("approval_status", { length: 20 }).default("approved"), // draft, submitted, approved, rejected
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
+  experienceTypes: jsonb("experience_types").default([]),
+  galleryImages: jsonb("gallery_images").default([]),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
+
   isFeatured: boolean("is_featured").default(false),
   bookingsCount: integer("bookings_count").default(0),
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),

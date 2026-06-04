@@ -1552,16 +1552,36 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const role = (updated as any).expertType || "expert";
       await db.update(users).set({ role }).where(eq(users.id, updated.userId));
 
-      // Auto-populate expert's service catalogue from their application selections
+      // Auto-populate expert's service catalogue from their application selections.
+      // Post-0007 consolidation: write directly into provider_services as approved rows
+      // so the expert's catalog is non-empty on first login and bookings/reviews can FK.
       const selectedOfferingIds = ((updated as any).selectedServices ?? []) as string[];
       if (selectedOfferingIds.length > 0) {
-        await db.insert(expertSelectedServices)
-          .values(selectedOfferingIds.map(serviceOfferingId => ({
-            expertId: updated.userId,
-            serviceOfferingId,
-            isActive: true,
-          })))
-          .onConflictDoNothing();
+        const offerings = await db.select().from(expertServiceOfferings)
+          .where(inArray(expertServiceOfferings.id, selectedOfferingIds));
+        for (const offering of offerings) {
+          // Map expert taxonomy → canonical service_categories by name (best-effort).
+          const [esc] = await db.select().from(expertServiceCategories)
+            .where(eq(expertServiceCategories.id, offering.categoryId));
+          let canonicalCategoryId: string | null = null;
+          if (esc) {
+            const [sc] = await db.select().from(serviceCategories)
+              .where(ilike(serviceCategories.name, esc.name));
+            if (sc) canonicalCategoryId = sc.id;
+          }
+          await storage.createProviderService({
+            userId: updated.userId,
+            serviceName: offering.name,
+            description: offering.description ?? undefined,
+            serviceType: "planning",
+            categoryId: canonicalCategoryId ?? undefined,
+            price: offering.price,
+            priceType: "fixed",
+            deliveryMethod: "async_messaging",
+            approvalStatus: "approved",
+            status: "active",
+          } as any);
+        }
       }
 
       // Notify the user to complete Stripe Connect setup
