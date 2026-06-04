@@ -700,6 +700,38 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Contact Submissions (landing page / contact page) ===
+
+export const contactSubmissions = pgTable("contact_submissions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 100 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  subject: varchar("subject", { length: 200 }).notNull(),
+  message: text("message").notNull(),
+  reason: varchar("reason", { length: 50 }), // general, support, partnership, press, feedback
+  preferredContactMethod: varchar("preferred_contact_method", { length: 20 }), // email, phone
+  source: varchar("source", { length: 50 }).default("contact_page"), // contact_page, landing, footer, etc.
+  status: varchar("status", { length: 20 }).default("new"), // new, in_progress, resolved, archived
+  assignedAdminId: varchar("assigned_admin_id").references(() => users.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at"),
+  responseNotes: text("response_notes"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertContactSubmissionSchema = createInsertSchema(contactSubmissions).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+  status: true,
+  assignedAdminId: true,
+  responseNotes: true,
+});
+export type ContactSubmission = typeof contactSubmissions.$inferSelect;
+export type InsertContactSubmission = z.infer<typeof insertContactSubmissionSchema>;
+
 // === Shopping Cart ===
 
 export const cartItems = pgTable("cart_items", {
