@@ -12773,6 +12773,88 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   // === Content Tracking System API ===
 
+  // Content → Supply matching (gem/neighborhood/experience → providers)
+  app.get("/api/content/gems/:gemId/matched-supply", async (req, res) => {
+    try {
+      const { matchSupplyForGem } = await import("./services/content-supply-matching.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+      const minScore = parseInt(req.query.minScore as string) || 20;
+      const autoTag = req.query.autoTag === "true";
+
+      const result = await matchSupplyForGem(req.params.gemId, { limit, minScore, autoTag });
+      if (!result) return res.status(404).json({ message: "Gem not found" });
+      res.json(result);
+    } catch (err: any) {
+      console.error("Gem matched-supply error:", err);
+      res.status(500).json({ message: err.message || "Failed to match supply" });
+    }
+  });
+
+  app.get("/api/content/neighborhoods/:slug/matched-supply", async (req, res) => {
+    try {
+      const { matchSupplyForNeighborhood } = await import("./services/content-supply-matching.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+      const minScore = parseInt(req.query.minScore as string) || 20;
+      const autoTag = req.query.autoTag === "true";
+
+      const result = await matchSupplyForNeighborhood(req.params.slug, { limit, minScore, autoTag });
+      if (!result) return res.status(404).json({ message: "Neighborhood not found" });
+      res.json(result);
+    } catch (err: any) {
+      console.error("Neighborhood matched-supply error:", err);
+      res.status(500).json({ message: err.message || "Failed to match supply" });
+    }
+  });
+
+  app.get("/api/content/:trackingNumber/matched-supply", async (req, res) => {
+    try {
+      const { matchSupplyForTrackingNumber } = await import("./services/content-supply-matching.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+      const minScore = parseInt(req.query.minScore as string) || 20;
+      const autoTag = req.query.autoTag === "true";
+
+      const result = await matchSupplyForTrackingNumber(req.params.trackingNumber, { limit, minScore, autoTag });
+      if (!result) return res.status(404).json({ message: "Content not found" });
+      res.json(result);
+    } catch (err: any) {
+      console.error("Content matched-supply error:", err);
+      res.status(500).json({ message: err.message || "Failed to match supply" });
+    }
+  });
+
+  // Admin: trigger batch auto-tag for all gems in a city
+  app.post("/api/admin/content/auto-tag-city", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { city } = req.body;
+      if (!city || typeof city !== "string") {
+        return res.status(400).json({ message: "city is required" });
+      }
+
+      const { matchSupplyForGem } = await import("./services/content-supply-matching.service");
+      const gems = await db.select({ id: travelPulseHiddenGems.id })
+        .from(travelPulseHiddenGems)
+        .where(ilike(travelPulseHiddenGems.city, city));
+
+      let tagged = 0;
+      for (const gem of gems) {
+        const result = await matchSupplyForGem(gem.id, { autoTag: true, limit: 5 });
+        if (result && result.matches.length > 0) tagged++;
+      }
+
+      res.json({ success: true, gemsProcessed: gems.length, tagged });
+    } catch (err: any) {
+      console.error("Auto-tag city error:", err);
+      res.status(500).json({ message: err.message || "Failed to auto-tag city" });
+    }
+  });
+
+
   // Get content tracking summary (admin only)
   app.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
     try {
