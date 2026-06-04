@@ -51,6 +51,7 @@ const menuGroups = [
     label: "Coordination",
     items: [
       { title: "AI Assist", href: "/ea/ai-assistant", icon: Bot },
+      { title: "Trips", href: "/ea/trips", icon: Plane },
       { title: "Travel", href: "/ea/travel", icon: Plane },
       { title: "Venues", href: "/ea/venues", icon: Building },
       { title: "Gifts", href: "/ea/gifts", icon: Gift },
