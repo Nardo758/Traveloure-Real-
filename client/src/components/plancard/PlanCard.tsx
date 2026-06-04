@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
@@ -20,6 +20,16 @@ import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
 import { MapControlCenter } from "./MapControlCenter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { apiRequest } from "@/lib/queryClient";
 
 // ── Summary-stage helpers ──────────────────────────────────────────────────
 
@@ -106,6 +116,170 @@ const AVATAR_COLORS = [
   { bg: "#F4C0D1", text: "#72243E" },
 ];
 
+// ── Expert Polish Dialog ────────────────────────────────────────────────────
+
+interface ExpertPolishDialogProps {
+  open: boolean;
+  onClose: () => void;
+  trip: {
+    id: string;
+    destination: string;
+    startDate?: string;
+    endDate?: string;
+    title?: string;
+  };
+  optimizationScore?: number | string;
+  optimizationDelta?: {
+    savings?: string | null;
+    savingsPercent?: string | null;
+    starDelta?: number | null;
+  };
+}
+
+function buildDeltaSummary(
+  score?: number | string,
+  delta?: ExpertPolishDialogProps["optimizationDelta"]
+): string {
+  const parts: string[] = [];
+  if (score != null) parts.push(`Optimization score: ${score}`);
+  if (delta?.savings) parts.push(`Estimated savings: ${delta.savings}`);
+  if (delta?.savingsPercent) parts.push(`Cost reduction: ${delta.savingsPercent}`);
+  if (delta?.starDelta != null && delta.starDelta !== 0) {
+    parts.push(`Star-rating delta: ${delta.starDelta > 0 ? "+" : ""}${delta.starDelta}`);
+  }
+  return parts.join(" · ");
+}
+
+function ExpertPolishDialog({ open, onClose, trip, optimizationScore, optimizationDelta }: ExpertPolishDialogProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const deltaSummary = buildDeltaSummary(optimizationScore, optimizationDelta);
+  const [note, setNote] = useState(deltaSummary);
+
+  // Sync prefill when dialog opens
+  useEffect(() => {
+    if (open) setNote(buildDeltaSummary(optimizationScore, optimizationDelta));
+  }, [open, optimizationScore, optimizationDelta]);
+
+  const formatDate = (d?: string) =>
+    d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–";
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/expert-requests", {
+        tripId: trip.id,
+        destination: trip.destination,
+        requestType: "polish",
+        notes: note.trim() || null,
+        optimizationContext: {
+          destination: trip.destination,
+          startDate: trip.startDate,
+          endDate: trip.endDate,
+          score: optimizationScore ?? null,
+          delta: optimizationDelta ?? null,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/expert-requests`, trip.id] });
+      toast({
+        title: "Expert requested!",
+        description: "We'll match you with a local expert shortly.",
+      });
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to submit request";
+      if (msg.includes("already exists")) {
+        toast({
+          title: "Already submitted",
+          description: "A request is already pending for this trip.",
+        });
+        onClose();
+      } else {
+        toast({ title: "Something went wrong", description: msg, variant: "destructive" });
+      }
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md" data-testid="expert-polish-dialog">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            Have an expert polish this
+          </DialogTitle>
+          <DialogDescription>
+            A local expert will review and refine your itinerary based on their on-the-ground knowledge.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-1">
+          {/* Trip summary */}
+          <div
+            className="rounded-xl p-3 space-y-1 text-[13px]"
+            style={{ background: "#F3F3EE" }}
+          >
+            <div className="font-medium" style={{ color: "#1A1A18" }}>
+              {trip.title || trip.destination}
+            </div>
+            <div style={{ color: "#7A7A72" }}>
+              📍 {trip.destination}
+            </div>
+            <div style={{ color: "#7A7A72" }}>
+              🗓 {formatDate(trip.startDate)} – {formatDate(trip.endDate)}
+            </div>
+            {optimizationScore != null && (
+              <div style={{ color: "#7A7A72" }}>
+                ⭐ Optimization score: {optimizationScore}
+              </div>
+            )}
+          </div>
+
+          {/* Special requests */}
+          <div className="space-y-1.5">
+            <Label htmlFor="expert-polish-note" className="text-[13px]">
+              Special requests (optional)
+            </Label>
+            <Textarea
+              id="expert-polish-note"
+              data-testid="input-expert-polish-note"
+              placeholder="e.g. We prefer quiet neighbourhoods, avoid tourist traps, vegetarian dining…"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="text-[13px] resize-none"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1 text-[13px]"
+              onClick={onClose}
+              disabled={mutation.isPending}
+              data-testid="btn-expert-polish-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 text-[13px] text-white"
+              style={{ background: "#E85D55" }}
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              data-testid="btn-expert-polish-confirm"
+            >
+              {mutation.isPending ? "Submitting…" : "Request an expert"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Summary stage component ────────────────────────────────────────────────
 
 interface SummaryAdvisor {
@@ -126,6 +300,12 @@ interface SummaryNotification {
   read?: boolean;
 }
 
+interface ExpertRequest {
+  id: string;
+  status: string;
+  trip_id?: string;
+}
+
 function PlanCardSummary({
   trip,
   index,
@@ -136,11 +316,13 @@ function PlanCardSummary({
   plancardData: PlanCardData | undefined;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [showPolishDialog, setShowPolishDialog] = useState(false);
   const [, navigate] = useLocation();
   const deleteTrip = useDeleteTrip();
 
   const days: PlanCardDay[] = plancardData?.days || [];
   const stats = plancardData?.stats || {};
+  const metrics = plancardData?.metrics || {};
 
   const totalActivities = stats.totalActivities ?? days.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
   const totalLegs = stats.totalLegs ?? days.reduce((s, d) => s + (d.transports?.length ?? 0), 0);
@@ -152,12 +334,37 @@ function PlanCardSummary({
     (new Date(trip.endDate ?? Date.now()).getTime() - new Date(trip.startDate ?? Date.now()).getTime()) / 86400000
   ));
 
+  const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
+  const optimizationDelta = {
+    savings: metrics.savings != null ? `$${Number(metrics.savings).toLocaleString()}` : null,
+    savingsPercent: metrics.savingsPercent != null ? `${metrics.savingsPercent}%` : null,
+    starDelta: metrics.starRatingDelta ?? null,
+  };
+  const hasActivities = totalActivities > 0;
+
   // Summary-specific queries
   const { data: advisorData } = useQuery<{ advisor: SummaryAdvisor | null }>({
     queryKey: [`/api/trips/${trip.id}/expert-advisor`],
     staleTime: 60000,
   });
   const advisor = advisorData?.advisor ?? null;
+
+  const { data: expertRequestsData } = useQuery<{ requests: ExpertRequest[] }>({
+    queryKey: [`/api/expert-requests`, trip.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/expert-requests?tripId=${trip.id}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch expert requests");
+      return res.json();
+    },
+    staleTime: 60000,
+    enabled: !advisor,
+  });
+
+  // Only treat admin-confirm states (queued / pending) as "pending review".
+  // "assigned" means the expert is already working → let advisor strip take over.
+  const pendingExpertRequest = expertRequestsData?.requests?.find(
+    (r) => r.status === "queued" || r.status === "pending"
+  ) ?? null;
 
   const { data: suggestionsData } = useQuery<{ suggestions: Array<{ id: string; status: string }> }>({
     queryKey: [`/api/trips/${trip.id}/suggestions`],
@@ -220,222 +427,260 @@ function PlanCardSummary({
     deleteTrip.mutate(trip.id);
   };
 
+  // Show "polish" CTA only when:
+  // - user owns trip and has activities
+  // - no expert already assigned
+  // - no pending request already in flight
+  const showPolishCta = hasActivities && !advisor && !pendingExpertRequest;
+
   return (
-    <div
-      className="rounded-[14px] overflow-hidden"
-      style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF" }}
-      data-testid={`dashboard-plan-card-${trip.id}`}
-    >
-      {/* Header */}
-      <div className="relative text-white" style={{ background: gradient, padding: "13px 15px 11px" }}>
-        <div className="flex gap-1.5 mb-[7px]">
-          <span
-            className="text-[9px] font-semibold px-2.5 py-[3px] rounded-lg uppercase tracking-[0.4px]"
-            style={{ background: "rgba(255,255,255,0.25)" }}
-            data-testid={`status-pill-${trip.id}`}
-          >
-            ⚡ {statusLabel}
-          </span>
-        </div>
-
-        <div className="absolute top-3 right-3.5 flex flex-col items-end gap-1">
-          <button
-            onClick={handleDelete}
-            disabled={deleteTrip.isPending}
-            data-testid={`button-delete-plan-${trip.id}`}
-            title={confirming ? "Click again to confirm delete" : "Remove this plan"}
-            className={`w-6 h-6 flex items-center justify-center rounded-full transition-all ${
-              confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
-            }`}
-          >
-            {confirming ? "?" : <X className="w-3.5 h-3.5" />}
-          </button>
-          {showCountdown && (
-            <div className="text-right leading-none">
-              <div className="text-[22px] font-medium leading-none" data-testid={`text-countdown-${trip.id}`}>{daysTil}</div>
-              <div className="text-[9px] opacity-70">days</div>
-            </div>
-          )}
-        </div>
-
-        <div className="text-[15px] font-medium mb-0.5 pr-[50px]" data-testid={`text-plan-title-${trip.id}`}>{tripTitle}</div>
-        <div className="text-[11px] opacity-85">
-          📍 {trip.destination} · {formatShortDate(trip.startDate ?? "")}–{formatShortDate(trip.endDate ?? "")}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ padding: "10px 14px" }}>
-        <div className="flex text-center mb-2">
-          {([
-            { label: "Days", value: numDays },
-            { label: "Activities", value: totalActivities },
-            { label: "Transit legs", value: totalLegs },
-            { label: "Transit time", value: formatMinutes(totalMinutes) },
-          ] as const).map((s, i) => (
-            <div
-              key={i}
-              className="flex-1 py-1"
-              style={{ borderLeft: i > 0 ? "0.5px solid #E8E8E2" : "none" }}
+    <>
+      <div
+        className="rounded-[14px] overflow-hidden"
+        style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF" }}
+        data-testid={`dashboard-plan-card-${trip.id}`}
+      >
+        {/* Header */}
+        <div className="relative text-white" style={{ background: gradient, padding: "13px 15px 11px" }}>
+          <div className="flex gap-1.5 mb-[7px]">
+            <span
+              className="text-[9px] font-semibold px-2.5 py-[3px] rounded-lg uppercase tracking-[0.4px]"
+              style={{ background: "rgba(255,255,255,0.25)" }}
+              data-testid={`status-pill-${trip.id}`}
             >
-              <div className="text-[9px]" style={{ color: "#7A7A72", marginBottom: 1 }}>{s.label}</div>
-              <div className="text-[14px] font-medium" style={{ color: "#1A1A18" }}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Chips */}
-        <div className="flex gap-[5px] flex-wrap">
-          {serviceBookingsCount > 0 && (
-            <button
-              type="button"
-              onClick={() => navigate(`/trip/${trip.id}?tab=bookings`)}
-              className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: "#E6F1FB", color: "#0C447C" }}
-              data-testid={`pill-services-${trip.id}`}
-            >
-              💼 {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
-            </button>
-          )}
-          {totalLegs > 0 && (
-            <button
-              type="button"
-              onClick={() => navigate(`/trip/${trip.id}?tab=itinerary&section=transport`)}
-              className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: "#E1F5EE", color: "#085041" }}
-              data-testid={`pill-transport-${trip.id}`}
-            >
-              🚗 {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
-            </button>
-          )}
-          {advisor && (
-            <button
-              type="button"
-              onClick={() => navigate(`/trip/${trip.id}?tab=expert`)}
-              className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: "#EEEDFE", color: "#3C3489" }}
-              data-testid={`pill-expert-${trip.id}`}
-            >
-              👥 Expert
-            </button>
-          )}
-          {lastOptimizedAt && (
-            <button
-              type="button"
-              onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
-              className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: "#FFF3E8", color: "#8B3A00" }}
-              data-testid={`pill-ai-optimized-${trip.id}`}
-              title="This itinerary was AI-optimized"
-            >
-              <Sparkles className="w-[9px] h-[9px]" />
-              AI Optimized
-              {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
-                <span style={{ color: "#2C7A44", fontWeight: 600 }}>
-                  · ${Math.round(optimizationDelta.savings)} saved
-                </span>
-              )}
-              {optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
-                <span style={{ color: "#B07C00", fontWeight: 600 }}>
-                  · +{optimizationDelta.starRatingDelta.toFixed(1)}★
-                </span>
-              )}
-              <span style={{ color: "#A05A30", fontWeight: 400 }}>
-                · {formatRelativeTime(lastOptimizedAt)}
+              ⚡ {statusLabel}
+            </span>
+            {pendingExpertRequest && (
+              <span
+                className="text-[9px] font-semibold px-2.5 py-[3px] rounded-lg uppercase tracking-[0.4px] flex items-center gap-1"
+                style={{ background: "rgba(255,255,255,0.25)" }}
+                data-testid={`badge-expert-pending-${trip.id}`}
+              >
+                <Clock className="w-2.5 h-2.5" />
+                Expert review pending
               </span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Advisor strip */}
-      {advisor && (
-        <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`}>
-          <div
-            className="flex items-center gap-2.5 cursor-pointer hover:bg-[#F3F3EE] transition-colors"
-            style={{ padding: "9px 14px", borderTop: "0.5px solid #E8E8E2" }}
-            data-testid={`advisor-strip-${trip.id}`}
-          >
-            {advisor.profile_image_url ? (
-              <img
-                src={advisor.profile_image_url}
-                alt={`${advisor.first_name} ${advisor.last_name}`}
-                className="w-[26px] h-[26px] rounded-full object-cover flex-shrink-0"
-              />
-            ) : (
-              <div
-                className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-[9px] font-semibold flex-shrink-0"
-                style={{ background: avatarColor.bg, color: avatarColor.text }}
-              >
-                {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>
-                {advisor.first_name} {advisor.last_name}
-              </div>
-              {advisor.status === "accepted" && expertMsgText && (
-                <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
-                  "{expertMsgText}"
-                </div>
-              )}
-            </div>
-            {pendingSuggestions > 0 ? (
-              <div
-                className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: "#FAEEDA", color: "#633806" }}
-                data-testid={`badge-suggestions-${trip.id}`}
-              >
-                <Lightbulb className="w-2.5 h-2.5" />
-                {pendingSuggestions}
-              </div>
-            ) : (
-              advisor.status === "accepted" && (
-                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#5DCAA5" }} />
-              )
             )}
           </div>
-        </Link>
-      )}
 
-      {/* Action items */}
-      {actionItems.length > 0 && (
-        <div className="rounded-lg" style={{ margin: "0 14px 10px", background: "#F3F3EE", padding: "7px 10px" }}>
-          {actionItems.map((n, i) => (
-            <div key={n.id ?? i} className="flex items-start gap-[5px] py-[2px]">
-              <div
-                className="w-[5px] h-[5px] rounded-full mt-[5px] flex-shrink-0"
-                style={{ background: n.type === "urgent" || n.type === "alert" ? "#E24B4A" : "#EF9F27" }}
-              />
-              <span className="text-[10px] flex-1" style={{ color: "#1A1A18" }}>{n.title || n.message}</span>
-            </div>
-          ))}
+          <div className="absolute top-3 right-3.5 flex flex-col items-end gap-1">
+            <button
+              onClick={handleDelete}
+              disabled={deleteTrip.isPending}
+              data-testid={`button-delete-plan-${trip.id}`}
+              title={confirming ? "Click again to confirm delete" : "Remove this plan"}
+              className={`w-6 h-6 flex items-center justify-center rounded-full transition-all ${
+                confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
+              }`}
+            >
+              {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+            </button>
+            {showCountdown && (
+              <div className="text-right leading-none">
+                <div className="text-[22px] font-medium leading-none" data-testid={`text-countdown-${trip.id}`}>{daysTil}</div>
+                <div className="text-[9px] opacity-70">days</div>
+              </div>
+            )}
+          </div>
+
+          <div className="text-[15px] font-medium mb-0.5 pr-[50px]" data-testid={`text-plan-title-${trip.id}`}>{tripTitle}</div>
+          <div className="text-[11px] opacity-85">
+            📍 {trip.destination} · {formatShortDate(trip.startDate ?? "")}–{formatShortDate(trip.endDate ?? "")}
+          </div>
         </div>
-      )}
 
-      {/* Footer */}
-      <div className="flex gap-[7px]" style={{ padding: "0 14px 12px" }}>
-        <button
-          onClick={() => {
-            openMapsDeepLink({ places: [{ name: trip.destination }] });
-          }}
-          className="flex-none py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:bg-[#F3F3EE] transition-colors"
-          style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF", color: "#1A1A18" }}
-          data-testid={`btn-maps-${trip.id}`}
-        >
-          📍 Maps
-        </button>
-        <Link href={`/trip/${trip.id}?tab=itinerary`} className="flex-1">
+        {/* Stats */}
+        <div style={{ padding: "10px 14px" }}>
+          <div className="flex text-center mb-2">
+            {([
+              { label: "Days", value: numDays },
+              { label: "Activities", value: totalActivities },
+              { label: "Transit legs", value: totalLegs },
+              { label: "Transit time", value: formatMinutes(totalMinutes) },
+            ] as const).map((s, i) => (
+              <div
+                key={i}
+                className="flex-1 py-1"
+                style={{ borderLeft: i > 0 ? "0.5px solid #E8E8E2" : "none" }}
+              >
+                <div className="text-[9px]" style={{ color: "#7A7A72", marginBottom: 1 }}>{s.label}</div>
+                <div className="text-[14px] font-medium" style={{ color: "#1A1A18" }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Chips */}
+          <div className="flex gap-[5px] flex-wrap">
+            {serviceBookingsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=bookings`)}
+                className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#E6F1FB", color: "#0C447C" }}
+                data-testid={`pill-services-${trip.id}`}
+              >
+                💼 {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
+              </button>
+            )}
+            {totalLegs > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary&section=transport`)}
+                className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#E1F5EE", color: "#085041" }}
+                data-testid={`pill-transport-${trip.id}`}
+              >
+                🚗 {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
+              </button>
+            )}
+            {advisor && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=expert`)}
+                className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#EEEDFE", color: "#3C3489" }}
+                data-testid={`pill-expert-${trip.id}`}
+              >
+                👥 Expert
+              </button>
+            )}
+            {lastOptimizedAt && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+                className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ background: "#FFF3E8", color: "#8B3A00" }}
+                data-testid={`pill-ai-optimized-${trip.id}`}
+                title="This itinerary was AI-optimized"
+              >
+                <Sparkles className="w-[9px] h-[9px]" />
+                AI Optimized
+                {optimizationDelta?.savings != null && (optimizationDelta.savings as number) > 0 && (
+                  <span style={{ color: "#2C7A44", fontWeight: 600 }}>
+                    · ${Math.round(optimizationDelta.savings as number)} saved
+                  </span>
+                )}
+                {optimizationDelta?.starRatingDelta != null && (optimizationDelta.starRatingDelta as number) > 0 && (
+                  <span style={{ color: "#B07C00", fontWeight: 600 }}>
+                    · +{(optimizationDelta.starRatingDelta as number).toFixed(1)}★
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Advisor strip */}
+        {advisor && (
+          <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`}>
+            <div
+              className="flex items-center gap-2.5 cursor-pointer hover:bg-[#F3F3EE] transition-colors"
+              style={{ padding: "9px 14px", borderTop: "0.5px solid #E8E8E2" }}
+              data-testid={`advisor-strip-${trip.id}`}
+            >
+              {advisor.profile_image_url ? (
+                <img
+                  src={advisor.profile_image_url}
+                  alt={`${advisor.first_name} ${advisor.last_name}`}
+                  className="w-[26px] h-[26px] rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div
+                  className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-[9px] font-semibold flex-shrink-0"
+                  style={{ background: avatarColor.bg, color: avatarColor.text }}
+                >
+                  {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>
+                  {advisor.first_name} {advisor.last_name}
+                </div>
+                {advisor.status === "accepted" && expertMsgText && (
+                  <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
+                    "{expertMsgText}"
+                  </div>
+                )}
+              </div>
+              {pendingSuggestions > 0 ? (
+                <div
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: "#FAEEDA", color: "#633806" }}
+                  data-testid={`badge-suggestions-${trip.id}`}
+                >
+                  <Lightbulb className="w-2.5 h-2.5" />
+                  {pendingSuggestions}
+                </div>
+              ) : (
+                advisor.status === "accepted" && (
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#5DCAA5" }} />
+                )
+              )}
+            </div>
+          </Link>
+        )}
+
+        {/* Action items */}
+        {actionItems.length > 0 && (
+          <div className="rounded-lg" style={{ margin: "0 14px 10px", background: "#F3F3EE", padding: "7px 10px" }}>
+            {actionItems.map((n, i) => (
+              <div key={n.id ?? i} className="flex items-start gap-[5px] py-[2px]">
+                <div
+                  className="w-[5px] h-[5px] rounded-full mt-[5px] flex-shrink-0"
+                  style={{ background: n.type === "urgent" || n.type === "alert" ? "#E24B4A" : "#EF9F27" }}
+                />
+                <span className="text-[10px] flex-1" style={{ color: "#1A1A18" }}>{n.title || n.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex gap-[7px]" style={{ padding: "0 14px 12px" }}>
           <button
-            className="w-full py-[7px] px-3 rounded-lg text-[11px] font-medium text-white cursor-pointer transition-colors"
-            style={{ background: "#E85D55", border: "none" }}
-            data-testid={`btn-itinerary-${trip.id}`}
+            onClick={() => {
+              openMapsDeepLink({ places: [{ name: trip.destination }] });
+            }}
+            className="flex-none py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:bg-[#F3F3EE] transition-colors"
+            style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF", color: "#1A1A18" }}
+            data-testid={`btn-maps-${trip.id}`}
           >
-            📅 View itinerary ›
+            📍 Maps
           </button>
-        </Link>
+          <Link href={`/trip/${trip.id}?tab=itinerary`} className="flex-1">
+            <button
+              className="w-full py-[7px] px-3 rounded-lg text-[11px] font-medium text-white cursor-pointer transition-colors"
+              style={{ background: "#E85D55", border: "none" }}
+              data-testid={`btn-itinerary-${trip.id}`}
+            >
+              📅 View itinerary ›
+            </button>
+          </Link>
+        </div>
+
+        {/* Expert polish CTA */}
+        {showPolishCta && (
+          <div style={{ padding: "0 14px 12px", borderTop: "0.5px solid #E8E8E2", paddingTop: 10 }}>
+            <button
+              onClick={() => setShowPolishDialog(true)}
+              className="w-full flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ background: "#FAEEDA", color: "#633806", border: "0.5px solid #F5D08A" }}
+              data-testid={`btn-expert-polish-${trip.id}`}
+            >
+              <Sparkles className="w-3 h-3" />
+              Have an expert polish this
+            </button>
+          </div>
+        )}
       </div>
-    </div>
+
+      <ExpertPolishDialog
+        open={showPolishDialog}
+        onClose={() => setShowPolishDialog(false)}
+        trip={trip}
+        optimizationScore={optimizationScore}
+        optimizationDelta={optimizationDelta}
+      />
+    </>
   );
 }
 

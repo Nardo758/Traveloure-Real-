@@ -19,6 +19,7 @@ const MIGRATION_FILES = [
   "008_content_affinity_tags.sql",
   "009_cross_sell_events.sql",
   "009_curated_by_expert.sql",
+  "010_expert_request_optimization_context.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
