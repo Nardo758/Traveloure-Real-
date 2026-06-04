@@ -31,7 +31,6 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
-  expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
@@ -58,7 +57,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -329,19 +328,8 @@ export async function registerRoutes(
   // from the template UI and from-template flow.
   (async () => {
     try {
-      // Resolve the category FK by name so this is safe on a clean DB.
-      // If "Itinerary Planning" doesn't exist yet, create it.
-      let categoryRow = await db.select({ id: expertServiceCategories.id })
-        .from(expertServiceCategories)
-        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-        .then(r => r[0]);
-      if (!categoryRow) {
-        const [inserted] = await db.insert(expertServiceCategories)
-          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
-          .returning({ id: expertServiceCategories.id });
-        categoryRow = inserted;
-      }
-      const categoryId = categoryRow.id;
+      // expert_service_categories was dropped by migration 013; insert with null categoryId.
+      const categoryId: string | null = null;
 
       const CANONICAL_OFFERINGS = [
         { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
@@ -1561,18 +1549,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         const offerings = await db.select().from(expertServiceOfferings)
           .where(inArray(expertServiceOfferings.id, selectedOfferingIds));
         for (const offering of offerings) {
-          // DEPRECATED: Map expert_service_categories → service_categories (best-effort).
-          // expert_service_categories is deprecated in favor of canonical service_categories.
-          // This mapping is temporary for signup-time offerings. New expert services use
-          // service_categories directly. (See CLAUDE.md for consolidation details.)
-          const [esc] = await db.select().from(expertServiceCategories)
-            .where(eq(expertServiceCategories.id, offering.categoryId));
+          // expert_service_categories was dropped by migration 013; skip category mapping.
           let canonicalCategoryId: string | null = null;
-          if (esc) {
-            const [sc] = await db.select().from(serviceCategories)
-              .where(ilike(serviceCategories.name, esc.name));
-            if (sc) canonicalCategoryId = sc.id;
-          }
           await storage.createProviderService({
             userId: updated.userId,
             serviceName: offering.name,
@@ -3154,6 +3132,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       "Honeymoon Planning Package",
       "Group Trip Coordinator",
     ];
+    // expert_service_categories was dropped by migration 013; omit category join.
     const rows = await db.select({
       id:           expertServiceOfferings.id,
       name:         expertServiceOfferings.name,
@@ -3162,10 +3141,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       isDefault:    expertServiceOfferings.isDefault,
       sortOrder:    expertServiceOfferings.sortOrder,
       createdAt:    expertServiceOfferings.createdAt,
-      categoryName: expertServiceCategories.name,
+      categoryName: sql<string | null>`null`,
     })
     .from(expertServiceOfferings)
-    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
     .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
     .orderBy(expertServiceOfferings.sortOrder);
 
