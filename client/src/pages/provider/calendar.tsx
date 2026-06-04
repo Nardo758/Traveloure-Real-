@@ -417,7 +417,7 @@ export default function ProviderCalendar() {
               
               <div className="grid grid-cols-7 gap-1">
                 {emptyDays.map((i) => (
-                  <div key={`empty-${i}`} className="h-20 bg-console-bg dark:bg-gray-800/50 rounded-lg" />
+                  <div key={`empty-${i}`} className="h-20 bg-console-bg rounded-lg" />
                 ))}
                 {days.map((day) => {
                   const dayBookings = getBookingsForDay(day);
@@ -437,11 +437,11 @@ export default function ProviderCalendar() {
                             ? hasConfirmed 
                               ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" 
                               : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
-                            : "bg-white dark:bg-gray-900 border-console-light dark:border-gray-700 hover:bg-console-hover dark:hover:bg-gray-800"
+                            : "bg-white border-console-light hover:bg-console-hover"
                       }`}
                       data-testid={`calendar-day-${day}`}
                     >
-                      <span className="text-sm font-medium text-console-darkest dark:text-gray-100">
+                      <span className="text-sm font-medium text-console-darkest">
                         {day}
                       </span>
                       {hasBookings && (
@@ -462,18 +462,18 @@ export default function ProviderCalendar() {
                 })}
               </div>
 
-              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-console-light dark:border-gray-800">
+              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-console-light">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-green-50 border border-green-200 rounded" />
-                  <span className="text-sm text-console-dark dark:text-gray-400">Confirmed</span>
+                  <span className="text-sm text-console-dark">Confirmed</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-amber-50 border border-amber-200 rounded" />
-                  <span className="text-sm text-console-dark dark:text-gray-400">Pending</span>
+                  <span className="text-sm text-console-dark">Pending</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-white border border-console-light rounded" />
-                  <span className="text-sm text-console-dark dark:text-gray-400">Available</span>
+                  <span className="text-sm text-console-dark">Available</span>
                 </div>
               </div>
             </CardContent>
@@ -494,18 +494,18 @@ export default function ProviderCalendar() {
                     return (
                       <div 
                         key={booking.id}
-                        className="p-4 bg-console-bg dark:bg-gray-800 rounded-lg space-y-3" 
+                        className="p-4 bg-console-bg rounded-lg space-y-3" 
                         data-testid={`card-booking-${booking.id}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-semibold text-console-darkest dark:text-gray-100 text-sm">
+                          <h3 className="font-semibold text-console-darkest text-sm">
                             {booking.service?.serviceName || "Service"}
                           </h3>
                           <Badge className={getStatusColor(booking.status || "pending")}>
                             {booking.status || "pending"}
                           </Badge>
                         </div>
-                        <div className="space-y-2 text-sm text-console-dark dark:text-gray-400">
+                        <div className="space-y-2 text-sm text-console-dark">
                           {booking.service?.location && (
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4" />
@@ -520,7 +520,7 @@ export default function ProviderCalendar() {
                             <p className="text-xs italic">{details.notes}</p>
                           )}
                         </div>
-                        <div className="text-sm font-medium text-console-darkest dark:text-gray-100">
+                        <div className="text-sm font-medium text-console-darkest">
                           ${booking.totalAmount}
                         </div>
                       </div>
@@ -530,10 +530,10 @@ export default function ProviderCalendar() {
               ) : selectedDate ? (
                 <div className="text-center py-8" data-testid="text-no-bookings">
                   <CalendarIcon className="w-12 h-12 mx-auto text-console-light mb-3" />
-                  <p className="text-console-mid dark:text-gray-400">No bookings on this date</p>
+                  <p className="text-console-mid">No bookings on this date</p>
                 </div>
               ) : (
-                <div className="text-center py-8 text-console-mid dark:text-gray-400">
+                <div className="text-center py-8 text-console-mid">
                   <p>Click on a date to see bookings</p>
                 </div>
               )}
@@ -555,20 +555,20 @@ export default function ProviderCalendar() {
                   return (
                     <div 
                       key={booking.id}
-                      className="flex items-center justify-between py-3 border-b border-console-light dark:border-gray-800 last:border-0"
+                      className="flex items-center justify-between py-3 border-b border-console-light last:border-0"
                       data-testid={`row-booking-${booking.id}`}
                     >
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-console-bg dark:bg-gray-800 rounded-lg flex flex-col items-center justify-center">
+                        <div className="w-12 h-12 bg-console-bg rounded-lg flex flex-col items-center justify-center">
                           {date && (
                             <>
                               <span className="text-xs text-console-mid">{date.toLocaleString('default', { month: 'short' })}</span>
-                              <span className="font-bold text-console-darkest dark:text-gray-100">{date.getDate()}</span>
+                              <span className="font-bold text-console-darkest">{date.getDate()}</span>
                             </>
                           )}
                         </div>
                         <div>
-                          <p className="font-medium text-console-darkest dark:text-gray-100">
+                          <p className="font-medium text-console-darkest">
                             {booking.service?.serviceName || "Service Booking"}
                           </p>
                           <div className="flex items-center gap-3 text-sm text-console-mid">
@@ -587,7 +587,7 @@ export default function ProviderCalendar() {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8 text-console-mid dark:text-gray-400">
+              <div className="text-center py-8 text-console-mid">
                 <CalendarIcon className="w-12 h-12 mx-auto text-console-light mb-3" />
                 <p>No upcoming bookings</p>
               </div>

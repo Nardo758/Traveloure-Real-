@@ -151,8 +151,8 @@ export default function ProviderEarnings() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-console-mid dark:text-gray-400">{stat.label}</p>
-                    <p className="text-2xl font-bold text-console-darkest dark:text-gray-100">{stat.value}</p>
+                    <p className="text-sm text-console-mid">{stat.label}</p>
+                    <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
                   </div>
                   <stat.icon className={`w-8 h-8 ${stat.color}`} />
                 </div>
@@ -187,10 +187,10 @@ export default function ProviderEarnings() {
                   {monthlyEarnings.map((month) => (
                     <div key={month.month} className="space-y-1" data-testid={`chart-bar-${month.month.toLowerCase()}`}>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-console-dark dark:text-gray-400">{month.month}</span>
-                        <span className="font-medium text-console-darkest dark:text-gray-100">${month.amount.toFixed(2)}</span>
+                        <span className="text-console-dark">{month.month}</span>
+                        <span className="font-medium text-console-darkest">${month.amount.toFixed(2)}</span>
                       </div>
-                      <div className="h-3 bg-console-bg dark:bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-3 bg-console-bg rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-[#FF385C] rounded-full transition-all"
                           style={{ width: `${(month.amount / maxEarning) * 100}%` }}
@@ -200,7 +200,7 @@ export default function ProviderEarnings() {
                   ))}
                 </div>
               ) : (
-                <p className="text-console-mid dark:text-gray-400 text-center py-8">No earnings data yet</p>
+                <p className="text-console-mid text-center py-8">No earnings data yet</p>
               )}
             </CardContent>
           </Card>
@@ -247,9 +247,9 @@ export default function ProviderEarnings() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-console-bg dark:bg-gray-800 rounded-lg border border-console-light dark:border-gray-700 text-center" data-testid="stat-gross-total">
+              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-gross-total">
                 <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
-                <p className="text-xl font-bold text-console-darkest dark:text-gray-100">
+                <p className="text-xl font-bold text-console-darkest">
                   ${revenueBreakdown.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
@@ -269,7 +269,7 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
               </div>
             </div>
-            <div className="mt-4 h-3 bg-console-bg dark:bg-gray-800 rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+            <div className="mt-4 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
                 className="h-full bg-[#FF385C] transition-all"
                 style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
@@ -293,7 +293,7 @@ export default function ProviderEarnings() {
                 {transactions.map((tx) => (
                   <div 
                     key={tx.id}
-                    className="flex items-center justify-between py-3 border-b border-console-light dark:border-gray-800 last:border-0"
+                    className="flex items-center justify-between py-3 border-b border-console-light last:border-0"
                     data-testid={`row-transaction-${tx.id}`}
                   >
                     <div className="flex items-center gap-3">
@@ -301,7 +301,7 @@ export default function ProviderEarnings() {
                         <ArrowUpRight className="w-5 h-5 text-green-600" />
                       </div>
                       <div>
-                        <p className="font-medium text-console-darkest dark:text-gray-100">{tx.description}</p>
+                        <p className="font-medium text-console-darkest">{tx.description}</p>
                         <p className="text-sm text-console-mid">{tx.date}</p>
                       </div>
                     </div>
@@ -321,7 +321,7 @@ export default function ProviderEarnings() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-console-mid dark:text-gray-400">
+              <div className="text-center py-8 text-console-mid">
                 <DollarSign className="w-12 h-12 mx-auto text-console-light mb-3" />
                 <p>No transactions yet</p>
               </div>
