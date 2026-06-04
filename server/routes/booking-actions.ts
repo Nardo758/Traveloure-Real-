@@ -87,13 +87,15 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     const queuePosition = queueResult.rows?.[0]?.next_position || 1;
 
     // Create expert request
+    const requestId = crypto.randomUUID();
+
     const result = await db.execute(sql`
       INSERT INTO expert_requests (
         id, user_id, variant_id, comparison_id, destination_city,
         request_type, expert_fee, status, queue_position, notes,
         created_at
       ) VALUES (
-        ${crypto.randomUUID()},
+        ${requestId},
         ${userId},
         ${variantId},
         ${comparisonId},
@@ -108,8 +110,41 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       RETURNING id
     `);
 
-    // TODO: Notify experts in city queue
-    // TODO: Send email to user confirming request
+    // Notify experts in destination queue (fire & forget)
+    try {
+      const { storage } = await import('../storage');
+      const experts = await db.execute(sql`
+        SELECT DISTINCT u.id, u.first_name, u.last_name
+        FROM users u
+        JOIN expert_service_categories esc ON u.id = esc.expert_id
+        WHERE u.role = 'expert' AND u.status = 'verified'
+          AND LOWER(esc.destination) LIKE LOWER(${'%' + destination + '%'})
+        LIMIT 10
+      `);
+
+      for (const expert of experts.rows || []) {
+        try {
+          await storage.createNotification({
+            userId: (expert as any).id,
+            type: 'expert_request',
+            title: 'New Expert Request',
+            message: `New ${requestType} request for ${destination} — you are #${queuePosition} in queue.`,
+            relatedId: requestId,
+            relatedType: 'expert_request',
+            data: {
+              requestId,
+              destination,
+              queuePosition,
+              requestType,
+            },
+          });
+        } catch (err) {
+          console.error(`Failed to notify expert ${(expert as any).id}:`, err);
+        }
+      }
+    } catch (notifErr) {
+      console.error('Failed to notify experts of request:', notifErr);
+    }
 
     res.json({
       success: true,

@@ -838,10 +838,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           // Non-fatal: log but don't fail the booking creation
           console.error("Failed to create booking notification:", notifErr);
         }
+      } else if (tripId) {
+        // No specific service — route inquiry to relevant experts for the trip destination
+        try {
+          const trip = await storage.getTrip(tripId);
+          if (trip) {
+            const destination = trip.destination?.toLowerCase() || '';
+            const traveler = await storage.getUser(userId);
+            const travelerName = traveler
+              ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+              : "A traveler";
+
+            // Find experts specializing in this destination
+            const expertsResult = await db.execute(sql`
+              SELECT DISTINCT u.id, u.first_name, u.last_name
+              FROM users u
+              JOIN local_expert_forms lef ON u.id = lef.user_id
+              WHERE u.role = 'expert' AND u.status = 'verified'
+                AND (LOWER(lef.destinations) LIKE LOWER(${'%' + destination + '%'})
+                  OR LOWER(u.display_name) LIKE LOWER(${'%' + destination + '%'}))
+              LIMIT 15
+            `);
+
+            for (const expert of (expertsResult.rows || []) as any[]) {
+              try {
+                await storage.createNotification({
+                  userId: expert.id,
+                  type: 'expert_inquiry',
+                  title: 'New Expert Inquiry',
+                  message: `${travelerName} is looking for expert help planning a trip to ${trip.destination}.`,
+                  relatedId: tripId,
+                  relatedType: 'trip',
+                  data: {
+                    tripId,
+                    destination: trip.destination,
+                    notes,
+                    travelerName,
+                  },
+                });
+              } catch (err) {
+                console.error(`Failed to notify expert ${expert.id} of inquiry:`, err);
+              }
+            }
+          }
+        } catch (routeErr) {
+          // Non-fatal: log but don't fail the inquiry submission
+          console.error("Failed to route inquiry to experts:", routeErr);
+        }
       }
-      
-      res.status(201).json({ 
-        success: true, 
+
+      res.status(201).json({
+        success: true,
         message: bookingId
           ? "Booking request submitted successfully"
           : "Inquiry submitted — no service selected so no booking record was created",
@@ -11164,6 +11211,41 @@ Respond with this exact JSON structure:
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
+
+      // If traveler added item and expert is assigned, notify the expert
+      if (owned) {
+        try {
+          const advisors = await db.select().from(tripExpertAdvisors)
+            .where(and(
+              eq(tripExpertAdvisors.tripId, tripId),
+              eq(tripExpertAdvisors.status, "assigned")
+            ));
+
+          for (const advisor of advisors) {
+            try {
+              await storage.createNotification({
+                userId: advisor.localExpertId,
+                type: 'itinerary_item_added',
+                title: 'Trip Item Added',
+                message: `"${item.title}" was added to the itinerary.`,
+                relatedId: tripId,
+                relatedType: 'trip',
+                data: {
+                  tripId,
+                  itemId: item.id,
+                  itemTitle: item.title,
+                  itemType: item.itemType,
+                },
+              });
+            } catch (err) {
+              console.error(`Failed to notify expert ${advisor.localExpertId}:`, err);
+            }
+          }
+        } catch (notifErr) {
+          console.error("Failed to notify experts of added item:", notifErr);
+        }
+      }
+
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
@@ -18173,6 +18255,29 @@ export async function registerDiscoveryRoutes(app: Express) {
       return result;
     });
 
+    // Notify the expert that they've been assigned (fire & forget)
+    try {
+      const expertUser = await storage.getUser(row.assigned_expert_id);
+      const tripRecord = await storage.getTrip(row.trip_id);
+      const tripName = tripRecord?.title || `Trip to ${tripRecord?.destination || "destination"}`;
+
+      await storage.createNotification({
+        userId: row.assigned_expert_id,
+        type: "expert_assignment",
+        title: "New Assignment",
+        message: `You've been assigned to plan "${tripName}". Your workspace is ready.`,
+        relatedId: row.trip_id,
+        relatedType: "trip",
+        data: {
+          tripId: row.trip_id,
+          expertRequestId: requestId,
+          tripName,
+        },
+      });
+    } catch (notifErr) {
+      console.error("Failed to notify expert of assignment:", notifErr);
+    }
+
     return res.json({ assignment });
   }
 
@@ -18213,6 +18318,8 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!row) return res.status(404).json({ error: "Routing request not found" });
       if (row.status === "confirmed") return res.status(409).json({ error: "Assignment already confirmed; cannot reassign" });
 
+      const oldExpertId = row.assigned_expert_id;
+
       await db.execute(sql`
         UPDATE expert_requests
         SET assigned_expert_id = ${expertId}, assigned_at = NOW()
@@ -18223,6 +18330,47 @@ export async function registerDiscoveryRoutes(app: Express) {
         SELECT first_name || ' ' || last_name AS expert_name FROM users WHERE id = ${expertId}
       `);
       const expertName = (expertResult.rows?.[0] as any)?.expert_name || expertId;
+      const tripRecord = await storage.getTrip(row.trip_id);
+      const tripName = tripRecord?.title || `Trip to ${tripRecord?.destination || "destination"}`;
+
+      // Notify old expert they've been unassigned (fire & forget)
+      if (oldExpertId) {
+        try {
+          await storage.createNotification({
+            userId: oldExpertId,
+            type: "expert_unassigned",
+            title: "Assignment Reassigned",
+            message: `You've been unassigned from "${tripName}". The assignment has been given to another expert.`,
+            relatedId: row.trip_id,
+            relatedType: "trip",
+            data: {
+              tripId: row.trip_id,
+              expertRequestId: requestId,
+            },
+          });
+        } catch (notifErr) {
+          console.error("Failed to notify old expert of reassignment:", notifErr);
+        }
+      }
+
+      // Notify new expert they've been assigned (fire & forget)
+      try {
+        await storage.createNotification({
+          userId: expertId,
+          type: "expert_assignment",
+          title: "New Assignment",
+          message: `You've been assigned to plan "${tripName}". Your workspace is ready.`,
+          relatedId: row.trip_id,
+          relatedType: "trip",
+          data: {
+            tripId: row.trip_id,
+            expertRequestId: requestId,
+            tripName,
+          },
+        });
+      } catch (notifErr) {
+        console.error("Failed to notify new expert of assignment:", notifErr);
+      }
 
       res.json({ success: true, newExpertId: expertId, expertName });
     } catch (error: any) {
