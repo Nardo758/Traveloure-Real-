@@ -714,6 +714,78 @@ router.post("/api/cart/migrate", isAuthenticated, async (req, res) => {
     }
   });
 
+  // Convert content cart items into itinerary items
+router.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId, newTripName, destination, cartItemIds } = req.body;
+
+      if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
+        return res.status(400).json({ message: "cartItemIds is required and must be a non-empty array" });
+      }
+
+      let targetTripId: string = tripId;
+
+      if (!targetTripId) {
+        if (!newTripName || typeof newTripName !== "string") {
+          return res.status(400).json({ message: "Either tripId or newTripName is required" });
+        }
+        const today = new Date();
+        const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const newTrip = await storage.createTrip({
+          title: newTripName.trim(),
+          destination: (destination || "To be determined").trim(),
+          startDate: today.toISOString().split("T")[0],
+          endDate: nextWeek.toISOString().split("T")[0],
+          status: "draft",
+          userId,
+        } as any);
+        targetTripId = newTrip.id;
+      } else {
+        const trip = await storage.getTrip(targetTripId);
+        if (!trip) return res.status(404).json({ message: "Trip not found" });
+        if (trip.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      }
+
+      let convertedCount = 0;
+      for (const cartItemId of cartItemIds) {
+        const cartItem = await storage.getCartItemById(cartItemId);
+        if (!cartItem) continue;
+        if (cartItem.userId !== userId) continue;
+        // Only convert genuine Discover content items — both contentId AND
+        // contentType must be populated. contentMeta alone is not sufficient
+        // because addToCart always writes {} for all cart rows.
+        if (!cartItem.contentId || !cartItem.contentType) continue;
+
+        const meta: Record<string, any> = cartItem.contentMeta || {};
+        const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
+        const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
+
+        await storage.createItineraryItem({
+          tripId: targetTripId,
+          title: meta.name || cartItem.contentId || "Discovered item",
+          description: meta.description || null,
+          itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
+          dayNumber: 1,
+          locationName: meta.city || meta.location || null,
+          notes: cartItem.notes || null,
+          suggestedBy: "user",
+          status: "planned",
+          isFlexible: true,
+          estimatedCost,
+        } as any);
+
+        await storage.removeFromCart(cartItemId);
+        convertedCount++;
+      }
+
+      res.json({ tripId: targetTripId, convertedCount });
+    } catch (err) {
+      console.error("Convert to itinerary error:", err);
+      res.status(500).json({ message: "Failed to convert items to itinerary" });
+    }
+  });
+
   // Update cart item
 
 router.patch("/api/cart/:id", async (req, res) => {
