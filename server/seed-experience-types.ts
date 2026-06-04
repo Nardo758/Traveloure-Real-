@@ -54,25 +54,9 @@ const coreExperienceTypes = [
     typicalDurationMinDays: 1,
     typicalDurationMaxDays: 1
   },
-  { 
-    name: "Romance", 
-    slug: "romance", 
-    description: "Plan a romantic getaway or special date experience",
-    icon: "HeartHandshake",
-    color: "#F43F5E",
-    sortOrder: 4,
-    paymentFlowType: "joint",
-    paymentComplexity: "low",
-    timingComplexity: "low",
-    contingencyLevel: "flexible",
-    typicalGroupSizeMin: 2,
-    typicalGroupSizeMax: 2,
-    typicalDurationMinDays: 1,
-    typicalDurationMaxDays: 5
-  },
-  { 
-    name: "Birthday", 
-    slug: "birthday", 
+  {
+    name: "Birthday",
+    slug: "birthday",
     description: "Celebrate in style with venue, entertainment, and catering",
     icon: "Cake",
     color: "#F59E0B",
@@ -85,22 +69,6 @@ const coreExperienceTypes = [
     typicalGroupSizeMax: 50,
     typicalDurationMinDays: 1,
     typicalDurationMaxDays: 1
-  },
-  { 
-    name: "Corporate", 
-    slug: "corporate", 
-    description: "Professional events, conferences, and team building",
-    icon: "Briefcase",
-    color: "#6366F1",
-    sortOrder: 6,
-    paymentFlowType: "single_payer",
-    paymentComplexity: "medium",
-    timingComplexity: "extreme",
-    contingencyLevel: "critical",
-    typicalGroupSizeMin: 20,
-    typicalGroupSizeMax: 500,
-    typicalDurationMinDays: 1,
-    typicalDurationMaxDays: 5
   },
   { 
     name: "Boys Trip", 
@@ -362,9 +330,9 @@ const coreExperienceTypes = [
     typicalDurationMinDays: 2,
     typicalDurationMaxDays: 4
   },
-  { 
-    name: "Anniversary Trip", 
-    slug: "anniversary-trip", 
+  {
+    name: "Anniversary Trip",
+    slug: "anniversary-trip",
     description: "Romantic getaway to celebrate your love",
     icon: "HeartHandshake",
     color: "#F43F5E",
@@ -378,6 +346,23 @@ const coreExperienceTypes = [
     typicalGroupSizeMax: 2,
     typicalDurationMinDays: 2,
     typicalDurationMaxDays: 7
+  },
+  {
+    name: "Sports Event",
+    slug: "sports-event",
+    description: "Organize group experiences around sporting events and activities",
+    icon: "Trophy",
+    color: "#06B6D4",
+    sortOrder: 24,
+    // HIGH complexity - Group coordination, ticketing, travel logistics
+    paymentFlowType: "group_split",
+    paymentComplexity: "high",
+    timingComplexity: "high",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 4,
+    typicalGroupSizeMax: 50,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 5
   },
 ];
 
@@ -418,15 +403,6 @@ const templateSteps: Record<string, Array<{ stepNumber: number; name: string; de
     { stepNumber: 10, name: "Backup Plan", description: "Weather contingency", icon: "Cloud", isRequired: false },
     { stepNumber: 11, name: "Review", description: "Full proposal setup with location map", icon: "CheckCircle", isRequired: true },
   ],
-  "romance": [
-    { stepNumber: 1, name: "Basics", description: "Dates, occasion, budget, preferences", icon: "Calendar", isRequired: true },
-    { stepNumber: 2, name: "Dining", description: "Romantic restaurants, private chef, picnic", icon: "UtensilsCrossed", isRequired: false },
-    { stepNumber: 3, name: "Stay", description: "Boutique hotels, suites, villas", icon: "Hotel", isRequired: false },
-    { stepNumber: 4, name: "Activities", description: "Couples massage, sunset cruise, wine tasting", icon: "Heart", isRequired: false },
-    { stepNumber: 5, name: "Spa", description: "Wellness and relaxation", icon: "Sparkles", isRequired: false },
-    { stepNumber: 6, name: "Extras", description: "Flowers delivery, room decoration", icon: "Gift", isRequired: false },
-    { stepNumber: 7, name: "Review", description: "Full romantic getaway with map and timeline", icon: "CheckCircle", isRequired: true },
-  ],
   "birthday": [
     { stepNumber: 1, name: "Basics", description: "Date, age/milestone, guest count, budget, theme", icon: "Calendar", isRequired: true },
     { stepNumber: 2, name: "Venue", description: "Party location selection", icon: "Building", isRequired: true },
@@ -437,16 +413,6 @@ const templateSteps: Record<string, Array<{ stepNumber: number; name: string; de
     { stepNumber: 7, name: "Photography", description: "Event photographer", icon: "Camera", isRequired: false },
     { stepNumber: 8, name: "Party Favors", description: "Gifts and takeaways", icon: "Gift", isRequired: false },
     { stepNumber: 9, name: "Review", description: "Full party plan with venue map", icon: "CheckCircle", isRequired: true },
-  ],
-  "corporate": [
-    { stepNumber: 1, name: "Basics", description: "Event type, date, attendees, budget", icon: "Calendar", isRequired: true },
-    { stepNumber: 2, name: "Venue", description: "Conference rooms, hotels, unique spaces", icon: "Building", isRequired: true },
-    { stepNumber: 3, name: "Catering", description: "Meals, coffee breaks, dietary accommodations", icon: "UtensilsCrossed", isRequired: false },
-    { stepNumber: 4, name: "A/V Equipment", description: "Projectors, mics, staging, tech support", icon: "Monitor", isRequired: false },
-    { stepNumber: 5, name: "Transportation", description: "Airport transfers, shuttles", icon: "Car", isRequired: false },
-    { stepNumber: 6, name: "Accommodation", description: "Group hotel blocks", icon: "Hotel", isRequired: false },
-    { stepNumber: 7, name: "Team Building", description: "Activities and experiences", icon: "Users", isRequired: false },
-    { stepNumber: 8, name: "Review", description: "Full event plan with logistics map", icon: "CheckCircle", isRequired: true },
   ],
   "boys-trip": [
     { stepNumber: 1, name: "Basics", description: "Destination, dates, group size, budget, vibe", icon: "Calendar", isRequired: true },
@@ -564,6 +530,14 @@ const templateSteps: Record<string, Array<{ stepNumber: number; name: string; de
     { stepNumber: 4, name: "Decorations", description: "Seasonal decorations", icon: "TreePine", isRequired: false },
     { stepNumber: 5, name: "Entertainment", description: "Music, games, activities", icon: "Music", isRequired: false },
     { stepNumber: 6, name: "Review", description: "Full party plan", icon: "CheckCircle", isRequired: true },
+  ],
+  "sports-event": [
+    { stepNumber: 1, name: "Basics", description: "Event, date, group size, budget, travel", icon: "Calendar", isRequired: true },
+    { stepNumber: 2, name: "Tickets", description: "Event tickets and seating", icon: "Trophy", isRequired: true },
+    { stepNumber: 3, name: "Accommodation", description: "Hotels near venue", icon: "Hotel", isRequired: false },
+    { stepNumber: 4, name: "Transportation", description: "Travel and parking logistics", icon: "Car", isRequired: false },
+    { stepNumber: 5, name: "Dining & Entertainment", description: "Restaurants, bars, pregame activities", icon: "UtensilsCrossed", isRequired: false },
+    { stepNumber: 6, name: "Review", description: "Full event experience with logistics", icon: "CheckCircle", isRequired: true },
   ],
 };
 
