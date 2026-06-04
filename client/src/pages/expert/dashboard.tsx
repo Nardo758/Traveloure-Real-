@@ -116,7 +116,7 @@ export default function ExpertDashboard() {
       case "medium":
         return "bg-blue-100 text-blue-700 border-blue-200";
       default:
-        return "bg-gray-100 text-gray-700 border-gray-200";
+        return "bg-console-light text-console-dark border-console-light";
     }
   };
 
@@ -124,7 +124,7 @@ export default function ExpertDashboard() {
     return (
       <ExpertLayout>
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-console-mid" />
         </div>
       </ExpertLayout>
     );
@@ -135,10 +135,10 @@ export default function ExpertDashboard() {
       <div className="p-6 space-y-6">
         {/* Welcome Section */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" data-testid="text-expert-welcome">
+          <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-expert-welcome">
             Welcome back, Expert!
           </h1>
-          <p className="text-gray-600 mt-1">{analytics?.summary?.pendingBookings || 0} active clients • Top Destination Expert</p>
+          <p className="text-console-mid mt-1">{analytics?.summary?.pendingBookings || 0} active clients • Top Destination Expert</p>
         </div>
 
         {/* Stripe Connect Setup Banner */}
@@ -162,14 +162,14 @@ export default function ExpertDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat, index) => (
-            <Card key={index} className="border border-gray-200" data-testid={`card-stat-${index}`}>
+            <Card key={index} className="border border-console-light" data-testid={`card-stat-${index}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">{stat.label}</p>
-                    <p className="text-2xl font-bold text-gray-900">
+                    <p className="text-sm text-console-mid">{stat.label}</p>
+                    <p className="text-2xl font-bold text-console-darkest">
                       {stat.value}
-                      {stat.suffix && <span className="text-lg text-gray-500">{stat.suffix}</span>}
+                      {stat.suffix && <span className="text-lg text-console-mid">{stat.suffix}</span>}
                     </p>
                   </div>
                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${stat.color}`}>
@@ -195,7 +195,7 @@ export default function ExpertDashboard() {
           {/* Left Panel - 60% width */}
           <div className="lg:col-span-2 space-y-6">
             {/* Quick Actions */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Quick Actions</CardTitle>
               </CardHeader>
@@ -230,7 +230,7 @@ export default function ExpertDashboard() {
             </Card>
 
             {/* My Clients */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">My Clients ({analytics?.summary?.pendingBookings || 0})</CardTitle>
@@ -245,7 +245,7 @@ export default function ExpertDashboard() {
                 {activeTrips.length > 0 ? activeTrips.map((trip) => (
                   <div
                     key={trip.trip_id}
-                    className="p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                    className="p-4 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors"
                     data-testid={`card-client-${trip.trip_id}`}
                   >
                     <div className="flex items-start gap-3">
@@ -255,8 +255,8 @@ export default function ExpertDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-gray-900">{trip.traveler_name}</p>
-                            <p className="text-sm text-gray-500 mt-0.5 truncate">
+                            <p className="font-semibold text-console-darkest">{trip.traveler_name}</p>
+                            <p className="text-sm text-console-mid mt-0.5 truncate">
                               {trip.trip_title || trip.destination}
                             </p>
                           </div>
@@ -287,7 +287,7 @@ export default function ExpertDashboard() {
                 )) : activeClients.length > 0 ? activeClients.map((client) => (
                   <div
                     key={client.id}
-                    className="p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                    className="p-4 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors"
                     data-testid={`card-client-booking-${client.id}`}
                   >
                     <div className="flex items-start gap-3">
@@ -297,8 +297,8 @@ export default function ExpertDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-gray-900">{client.traveler?.displayName || "Client"}</p>
-                            <p className="text-sm text-gray-500 mt-0.5">
+                            <p className="font-semibold text-console-darkest">{client.traveler?.displayName || "Client"}</p>
+                            <p className="text-sm text-console-mid mt-0.5">
                               ${parseFloat(client.totalAmount || "0").toLocaleString()}
                             </p>
                           </div>
@@ -327,27 +327,27 @@ export default function ExpertDashboard() {
                     </div>
                   </div>
                 )) : (
-                  <p className="text-gray-500 text-center py-4">No active clients yet</p>
+                  <p className="text-console-mid text-center py-4">No active clients yet</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Recent Bookings */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Recent Bookings</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {bookings && bookings.length > 0 ? bookings.slice(0, 3).map((booking) => (
-                  <div key={booking.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:pb-0 last:border-0">
+                  <div key={booking.id} className="flex items-start gap-3 pb-3 border-b border-console-light last:pb-0 last:border-0">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm">
+                      <p className="font-semibold text-console-darkest text-sm">
                         {booking.serviceName || booking.tripDestination || "Booking"}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-console-mid mt-0.5">
                         {booking.traveler?.displayName || booking.travelerName || "Client"}
                       </p>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-console-mid mt-1">
                         {booking.createdAt ? new Date(booking.createdAt).toLocaleDateString() : ""}
                       </p>
                     </div>
@@ -363,27 +363,27 @@ export default function ExpertDashboard() {
                     </div>
                   </div>
                 )) : (
-                  <p className="text-sm text-gray-500 text-center py-4">No bookings yet</p>
+                  <p className="text-sm text-console-mid text-center py-4">No bookings yet</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Recent Activity */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Recent Activity</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {pendingBookings.length > 0 ? pendingBookings.slice(0, 4).map((booking, index) => (
-                    <div key={booking.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:pb-0 last:border-0">
+                    <div key={booking.id} className="flex items-start gap-3 pb-3 border-b border-console-light last:pb-0 last:border-0">
                       <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                         <Plane className="w-5 h-5 text-blue-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{booking.traveler?.displayName || "Client"}</p>
-                        <p className="text-sm text-gray-500">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="font-medium text-console-darkest truncate">{booking.traveler?.displayName || "Client"}</p>
+                        <p className="text-sm text-console-mid">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
+                        <p className="text-xs text-console-mid mt-1">
                           {booking.createdAt ? new Date(booking.createdAt).toLocaleDateString() : "Recently"}
                         </p>
                       </div>
@@ -392,7 +392,7 @@ export default function ExpertDashboard() {
                       </Badge>
                     </div>
                   )) : (
-                    <p className="text-gray-500 text-center py-4">No recent activity</p>
+                    <p className="text-console-mid text-center py-4">No recent activity</p>
                   )}
                 </div>
               </CardContent>
@@ -402,7 +402,7 @@ export default function ExpertDashboard() {
           {/* Right Panel - 40% width */}
           <div className="space-y-6 hidden lg:block">
             {/* Earnings Snapshot */}
-            <Card className="border border-gray-200 bg-gradient-to-br from-green-50 to-white">
+            <Card className="border border-console-light bg-gradient-to-br from-green-50 to-white">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-green-600" />
@@ -411,10 +411,10 @@ export default function ExpertDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-sm text-gray-500">This Month</p>
-                  <p className="text-3xl font-bold text-gray-900">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
+                  <p className="text-sm text-console-mid">This Month</p>
+                  <p className="text-3xl font-bold text-console-darkest">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
                 </div>
-                <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-1 bg-console-light rounded-full overflow-hidden">
                   <div className="h-full bg-green-500" style={{ width: "65%" }}></div>
                 </div>
                 <Link href="/expert/earnings">
@@ -426,7 +426,7 @@ export default function ExpertDashboard() {
             </Card>
 
             {/* Action Items */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-amber-500" />
@@ -442,8 +442,8 @@ export default function ExpertDashboard() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{booking.traveler?.displayName || "Client"}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">Booking: ${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
+                        <p className="font-medium text-console-darkest">{booking.traveler?.displayName || "Client"}</p>
+                        <p className="text-xs text-console-mid mt-0.5">Booking: ${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
                       </div>
                       <Badge variant="outline" className="text-xs flex-shrink-0">
                         {booking.status}
@@ -458,13 +458,13 @@ export default function ExpertDashboard() {
                     </div>
                   </div>
                 )) : (
-                  <p className="text-gray-500 text-center py-3 text-sm">All caught up!</p>
+                  <p className="text-console-mid text-center py-3 text-sm">All caught up!</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Market Insights */}
-            <Card className="border border-gray-200 bg-gradient-to-br from-blue-50 to-white">
+            <Card className="border border-console-light bg-gradient-to-br from-blue-50 to-white">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
@@ -474,17 +474,17 @@ export default function ExpertDashboard() {
               <CardContent className="space-y-3">
                 <div className="text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600">Total Bookings</span>
-                    <span className="font-semibold text-gray-900">{bookings?.length ?? 0}</span>
+                    <span className="text-console-mid">Total Bookings</span>
+                    <span className="font-semibold text-console-darkest">{bookings?.length ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600">Confirmed</span>
+                    <span className="text-console-mid">Confirmed</span>
                     <span className="font-semibold text-emerald-700">
                       {bookings?.filter(b => b.status === "confirmed" || b.status === "completed").length ?? 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Pending Review</span>
+                    <span className="text-console-mid">Pending Review</span>
                     <span className="font-semibold text-amber-600">
                       {bookings?.filter(b => b.status === "pending").length ?? 0}
                     </span>
@@ -499,7 +499,7 @@ export default function ExpertDashboard() {
             </Card>
 
             {/* AI Assistant Activity */}
-            <Card className="border border-gray-200">
+            <Card className="border border-console-light">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <Bot className="w-5 h-5 text-green-600" />
@@ -508,15 +508,15 @@ export default function ExpertDashboard() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Tasks Completed</span>
+                  <span className="text-console-mid">Tasks Completed</span>
                   <span className="font-semibold">{aiStats?.tasksCompleted ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Time Saved</span>
+                  <span className="text-console-mid">Time Saved</span>
                   <span className="font-semibold">{aiStats?.timeSaved ?? 0}h</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Quality Score</span>
+                  <span className="text-console-mid">Quality Score</span>
                   <span className="font-semibold text-green-600">{aiStats?.avgQualityScore ?? "N/A"}</span>
                 </div>
                 <Link href="/expert/ai-assistant">
@@ -529,7 +529,7 @@ export default function ExpertDashboard() {
           </div>
         </div>
         {/* Trip Logistics Coordination */}
-        <Card className="border border-gray-200">
+        <Card className="border border-console-light">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -537,7 +537,7 @@ export default function ExpertDashboard() {
                 <CardTitle className="text-lg">Trip Logistics</CardTitle>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-sm text-gray-500">Trip ID:</Label>
+                <Label className="text-sm text-console-mid">Trip ID:</Label>
                 <Input
                   value={selectedTripId}
                   onChange={(e) => setSelectedTripId(e.target.value)}
@@ -562,7 +562,7 @@ export default function ExpertDashboard() {
                 </TabsContent>
               </Tabs>
             ) : (
-              <div className="text-center py-8 text-gray-500 text-sm">
+              <div className="text-center py-8 text-console-mid text-sm">
                 Enter a trip ID above to view client constraints and coordinate vendors.
                 Select a client from the Active Clients list to get started.
               </div>
