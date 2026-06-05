@@ -32,6 +32,7 @@ import HowItWorks from "@/pages/how-it-works";
 import Pricing from "@/pages/pricing";
 import About from "@/pages/about";
 import NotFound from "@/pages/not-found";
+import ResetPassword from "@/pages/reset-password";
 import ExpertDashboard from "@/pages/expert/dashboard";
 import ExpertClients from "@/pages/expert/clients";
 import ExpertEarnings from "@/pages/expert/earnings";
@@ -705,6 +706,9 @@ function Router() {
       </Route>
       <Route path="/checkout">
         <Redirect to="/cart" />
+      </Route>
+      <Route path="/reset-password">
+        {() => <ResetPassword />}
       </Route>
       <Route path="/admin">
         <Redirect to="/admin/dashboard" />
