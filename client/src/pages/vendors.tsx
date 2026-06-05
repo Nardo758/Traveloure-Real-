@@ -386,6 +386,17 @@ export default function Vendors() {
           </div>
         </div>
 
+        {!isPlanner && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+            <span className="text-gray-700 dark:text-gray-300">
+              Looking for tours, transport, or photography?
+            </span>
+            <a href="/discover?tab=services" className="ml-auto shrink-0 font-medium text-primary underline-offset-2 hover:underline" data-testid="link-browse-services-banner">
+              Browse Service Catalog →
+            </a>
+          </div>
+        )}
+
         <ScrollArea className="flex-1 px-1">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -396,17 +407,27 @@ export default function Vendors() {
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <Building2 className="w-16 h-16 text-gray-600 dark:text-gray-400 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  No vendors found
+                  No service providers found
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-6">
                   {searchQuery || selectedCategory !== "all"
                     ? "Try adjusting your search or filters"
-                    : "Add your first vendor to get started"}
+                    : isPlanner
+                    ? "Add your first vendor to get started"
+                    : "Browse the full service catalog to find tours, photography, transport, and more."}
                 </p>
-                <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-vendor-empty">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Vendor
-                </Button>
+                {isPlanner ? (
+                  <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-vendor-empty">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Vendor
+                  </Button>
+                ) : (
+                  <a href="/discover?tab=services">
+                    <Button data-testid="button-browse-services-empty">
+                      Browse Service Catalog
+                    </Button>
+                  </a>
+                )}
               </CardContent>
             </Card>
           ) : viewMode === "grid" ? (
