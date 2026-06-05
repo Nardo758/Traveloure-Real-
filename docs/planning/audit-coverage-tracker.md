@@ -39,8 +39,8 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | `concierge_requests` intent log (N5) | CON-A | ✅ Shipped (P3 `db1f3e1`) |
 | `event_packages` catalog (N6) | CON-A | ✅ Shipped (P8 `74c481f`) |
 | Legacy `/api/ai/optimize-experience` free LLM leak | CON-A | ✅ Shipped (P1 `e6da614`) |
-| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | Plan pending |
-| Full / Done-for-You transactional flow | CON-C | Plan pending |
+| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | **Specced** — `docs/planning/concierge-phase-b-brief.md` (`1d032dc`); execution gated on ≥4 weeks of `ai_cost_tracking` data to set included-plan cap per §4.7 |
+| Full / Done-for-You transactional flow | CON-C | **Specced** — `docs/planning/concierge-phase-c-brief.md` (`87c4aec`); execution gated on ≥1 active `event_package` per launch market + ≥1 assignable expert |
 
 ## Fee Architecture (needs planning — dependency of Concierge)
 
