@@ -1265,8 +1265,14 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
   });
 
   // Experience AI Optimization endpoint
+  // Restricted to admin/expert only (CON-A.P1): full LLM optimization is delivered to
+  // travelers via the gated paid path (/api/optimization-payments → /confirm), not here.
   app.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || (user.role !== "admin" && user.role !== "expert")) {
+        return res.status(403).json({ message: "Admin or expert access required" });
+      }
       const { experienceType, destination, date, selectedServices, preferences } = req.body;
 
       const servicesContext = selectedServices?.map((s: any) => ({
