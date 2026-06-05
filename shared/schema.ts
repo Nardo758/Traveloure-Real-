@@ -5240,6 +5240,33 @@ export const expertRequests = pgTable("expert_requests", {
   completedAt: timestamp("completed_at"),
 });
 
+// === Concierge Requests (CON-A.P3 / N5) ===
+// Intent log for the pay-per-use Concierge layer. Persists every concierge request
+// — including guest previews — for funnel metrics and resume-after-abandonment.
+// userId is nullable so the guest hook (D6) is captured the same way as authed flows.
+// chosenTier is null until the user picks a delivery tier (Phase 5 router writes it).
+export const conciergeRequestStatuses = ["draft", "quoted", "selected", "paid", "delivered", "abandoned"] as const;
+export type ConciergeRequestStatus = (typeof conciergeRequestStatuses)[number];
+
+export const conciergeTiers = ["ai", "expert", "full"] as const;
+export type ConciergeTier = (typeof conciergeTiers)[number];
+
+export const conciergeRequests = pgTable("concierge_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id"), // nullable: guests can submit intent before sign-up
+  intent: text("intent").notNull(),
+  eventType: text("event_type"),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  cartId: text("cart_id"),
+  chosenTier: text("chosen_tier"), // ai | expert | full — null until the user picks
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertConciergeRequestSchema = createInsertSchema(conciergeRequests).omit({ id: true, createdAt: true });
+export type ConciergeRequest = typeof conciergeRequests.$inferSelect;
+export type InsertConciergeRequest = z.infer<typeof insertConciergeRequestSchema>;
+
 export const expertCityQueues = pgTable("expert_city_queues", {
   id: uuid("id").primaryKey().defaultRandom(),
   city: text("city"),

@@ -84,6 +84,7 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
+import conciergeRoutes from "./routes/concierge.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -571,6 +572,9 @@ export async function registerRoutes(
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);
+
+  // Concierge routes - pay-per-use Concierge layer (intent log; Phase 5 adds router + quote)
+  app.use(conciergeRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
