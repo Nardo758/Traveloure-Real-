@@ -14,9 +14,7 @@ import {
   Plane,
   PartyPopper,
 } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 
 interface ServiceTemplate {
@@ -56,31 +54,30 @@ const ROLE_BADGE_STYLE: Record<string, { bg: string; text: string; icon: React.R
 };
 
 export default function ServiceTemplates() {
-  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
     queryKey: ["/api/expert/service-templates"],
   });
 
-  const createFromTemplateMutation = useMutation({
-    mutationFn: async (template: ServiceTemplate) => {
-      const res = await apiRequest("POST", `/api/expert/services/from-template/${template.id}`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
-      toast({ title: "Service created from template. You can now customize it." });
-      if (data?.id) {
-        navigate(`/expert/services/${data.id}/edit`);
-      } else {
-        navigate("/expert/services");
-      }
-    },
-    onError: () => {
-      toast({ title: "Failed to create service", variant: "destructive" });
-    },
-  });
+  const handleUseTemplate = (template: ServiceTemplate) => {
+    const params = new URLSearchParams();
+    if (template.title) params.set("tpl_name", template.title);
+    if (template.description) params.set("tpl_desc", template.description);
+    if (template.suggestedPrice) params.set("tpl_price", template.suggestedPrice);
+    if (template.deliveryTimeframe) params.set("tpl_duration", template.deliveryTimeframe);
+    if (template.deliveryMethod) params.set("tpl_delivery", template.deliveryMethod);
+    const included = template.whatIncluded;
+    if (included) {
+      const items = Array.isArray(included)
+        ? (included as string[])
+        : typeof included === "string"
+          ? [included]
+          : [];
+      if (items.length > 0) params.set("tpl_included", JSON.stringify(items));
+    }
+    navigate(`/expert/services/new?${params.toString()}`);
+  };
 
   const getDeliveryIcon = (method: string | null) => {
     switch (method) {
@@ -212,11 +209,10 @@ export default function ServiceTemplates() {
 
                     <Button
                       className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                      onClick={() => createFromTemplateMutation.mutate(template)}
-                      disabled={createFromTemplateMutation.isPending}
+                      onClick={() => handleUseTemplate(template)}
                       data-testid={`button-use-template-${template.id}`}
                     >
-                      {createFromTemplateMutation.isPending ? "Creating..." : "Use This Template"}
+                      Use This Template
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </CardContent>
