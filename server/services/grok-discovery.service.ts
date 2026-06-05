@@ -109,11 +109,27 @@ class GrokDiscoveryService {
           const result = await this.discoverCategoryGems(destination, category, maxGems);
           
           for (const gem of result.gems) {
-            const imageUrl = await this.fetchGemPhoto(
-              gem.name,
-              result.destination,
-              gem.imageSearchTerms ?? []
-            );
+            const existingRows = await db
+              .select({ imageUrl: aiDiscoveredGems.imageUrl })
+              .from(aiDiscoveredGems)
+              .where(
+                and(
+                  eq(aiDiscoveredGems.destination, result.destination),
+                  eq(aiDiscoveredGems.name, gem.name),
+                  eq(aiDiscoveredGems.category, category)
+                )
+              )
+              .limit(1);
+
+            const existingImageUrl = existingRows[0]?.imageUrl;
+            const imageUrl = existingImageUrl
+              ? existingImageUrl
+              : await this.fetchGemPhoto(
+                  gem.name,
+                  result.destination,
+                  gem.imageSearchTerms ?? []
+                );
+
             await this.saveGem({
               destination: result.destination,
               country: result.country,
@@ -316,9 +332,11 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       .limit(1);
 
     if (existing.length > 0) {
+      const preservedImageUrl = (!gem.imageUrl && existing[0].imageUrl) ? existing[0].imageUrl : gem.imageUrl;
       await db.update(aiDiscoveredGems)
         .set({
           ...gem,
+          imageUrl: preservedImageUrl,
           updatedAt: new Date(),
           lastRefreshedAt: new Date(),
         })
