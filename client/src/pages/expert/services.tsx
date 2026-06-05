@@ -42,6 +42,11 @@ interface ServiceTemplate {
   roleBadge: string | null;
 }
 
+interface ExpertRole {
+  role: string | null;
+  roleLabel: string | null;
+}
+
 interface ServiceAnalytics {
   totalServices: number;
   activeServices: number;
@@ -93,8 +98,15 @@ export default function ExpertServices() {
     queryKey: ["/api/expert/service-templates"],
   });
 
+  const { data: expertRoleData } = useQuery<ExpertRole>({
+    queryKey: ["/api/expert/role"],
+  });
+
   const templateCount = templates.length;
-  const expertRoleLabel = templates.find((t) => t.roleBadge)?.roleBadge ?? null;
+  const expertRoleLabel =
+    templates.find((t) => t.roleBadge)?.roleBadge ??
+    expertRoleData?.roleLabel ??
+    null;
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -277,29 +289,54 @@ export default function ExpertServices() {
           </Link>
         </div>
 
-        {expertRoleLabel && templateCount > 0 && (
-          <Link href="/expert/services/templates">
-            <div
-              className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-[#FF385C]/5 px-5 py-4 cursor-pointer hover:bg-[#FF385C]/10 transition-colors"
-              data-testid="banner-role-callout"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF385C]/15">
-                  <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+        {expertRoleLabel && (
+          templateCount > 0 ? (
+            <Link href="/expert/services/templates">
+              <div
+                className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-[#FF385C]/5 px-5 py-4 cursor-pointer hover:bg-[#FF385C]/10 transition-colors"
+                data-testid="banner-role-callout"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF385C]/15">
+                    <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-console-darkest">
+                      You are a{" "}
+                      <span className="text-[#FF385C]">{expertRoleLabel}</span>
+                    </p>
+                    <p className="text-sm text-console-mid">
+                      {templateCount} template{templateCount !== 1 ? "s" : ""} tailored to your role — use one to create a service faster
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-console-darkest">
-                    You are a{" "}
-                    <span className="text-[#FF385C]">{expertRoleLabel}</span>
-                  </p>
-                  <p className="text-sm text-console-mid">
-                    {templateCount} template{templateCount !== 1 ? "s" : ""} tailored to your role — use one to create a service faster
-                  </p>
-                </div>
+                <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
               </div>
-              <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
-            </div>
-          </Link>
+            </Link>
+          ) : (
+            <Link href="/expert/services/new">
+              <div
+                className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-[#FF385C]/5 px-5 py-4 cursor-pointer hover:bg-[#FF385C]/10 transition-colors"
+                data-testid="banner-role-callout"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF385C]/15">
+                    <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-console-darkest">
+                      You are a{" "}
+                      <span className="text-[#FF385C]">{expertRoleLabel}</span>
+                    </p>
+                    <p className="text-sm text-console-mid">
+                      No templates tailored to your role yet — create a service manually to get started
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
+              </div>
+            </Link>
+          )
         )}
 
         {analyticsLoading ? (
