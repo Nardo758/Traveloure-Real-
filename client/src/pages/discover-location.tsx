@@ -607,6 +607,108 @@ interface AddOn {
   badge: string;
   href: string;
   variant: "platform" | "affiliate";
+  isExternal?: boolean;
+  partner?: string;
+}
+
+function trackAddonClick(partner: string, city: string) {
+  fetch("/api/affiliates/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ partner, destination: city }),
+  }).catch(() => {});
+}
+
+function buildAddOns(city: string): AddOn[] {
+  const citySlug = encodeURIComponent(city.toLowerCase().replace(/\s+/g, "-"));
+  const cityParam = encodeURIComponent(city);
+
+  return [
+    {
+      icon: "🚖",
+      label: "Airport transfer",
+      badge: "Book via 12Go",
+      href: `https://12go.asia?aff=13805109&destination=${cityParam}&utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "12go",
+    },
+    {
+      icon: "📱",
+      label: "eSIM for travel",
+      badge: "via Airalo",
+      href: `https://www.airalo.com/?utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "airalo",
+    },
+    {
+      icon: "🛡",
+      label: "Travel insurance",
+      badge: "via SafetyWing",
+      href: `https://safetywing.com/nomad-insurance?referenceID=travelpayouts&utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "safetywing",
+    },
+    {
+      icon: "🧳",
+      label: "Luggage storage",
+      badge: "via Bounce",
+      href: `https://usebounce.com/city/${citySlug}?utm_source=traveloure&utm_medium=addon_strip`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "bounce",
+    },
+  ];
+}
+
+function buildContentAddOn(highlight: string | null | undefined, city: string): AddOn | null {
+  if (!highlight) return null;
+  const h = highlight.toLowerCase();
+  const cityParam = encodeURIComponent(city);
+
+  if (h.includes("blossom") || h.includes("sakura") || h.includes("cherry")) {
+    return {
+      icon: "👘",
+      label: "Kimono rental",
+      badge: "↑ for blossom season",
+      href: `/experiences?city=${cityParam}&q=kimono+rental`,
+      variant: "platform",
+      partner: "platform-kimono",
+    };
+  }
+  if (h.includes("snow") || h.includes("winter") || h.includes("ski")) {
+    return {
+      icon: "🎿",
+      label: "Winter gear rental",
+      badge: "↑ for winter",
+      href: `/experiences?city=${cityParam}&q=winter+gear+rental`,
+      variant: "platform",
+      partner: "platform-winter-gear",
+    };
+  }
+  if (h.includes("festival") || h.includes("matsuri") || h.includes("carnival")) {
+    return {
+      icon: "🎋",
+      label: "Festival guide",
+      badge: "↑ for festival season",
+      href: `/experts?city=${cityParam}&specialty=festivals`,
+      variant: "platform",
+      partner: "platform-festival",
+    };
+  }
+  if (h.includes("autumn") || h.includes("fall") || h.includes("foliage")) {
+    return {
+      icon: "🍂",
+      label: "Foliage photography tour",
+      badge: "↑ peak autumn colour",
+      href: `/experiences?city=${cityParam}&q=foliage+photography+tour`,
+      variant: "platform",
+      partner: "platform-foliage",
+    };
+  }
+  return null;
 }
 
 function TripComplementsStrip({
@@ -616,31 +718,8 @@ function TripComplementsStrip({
   city: string;
   highlight?: string | null;
 }) {
-  const staticAddOns: AddOn[] = [
-    { icon: "🚖", label: "Airport transfer", badge: "Book on Traveloure", href: "/experiences/transport", variant: "platform" },
-    { icon: "📱", label: "eSIM for travel", badge: "via Airalo", href: "/experiences/esim", variant: "affiliate" },
-    { icon: "🛡", label: "Travel insurance", badge: "via SafetyWing", href: "/experiences/insurance", variant: "affiliate" },
-    { icon: "🧳", label: "Luggage storage", badge: "via Bounce", href: "/experiences/luggage", variant: "affiliate" },
-  ];
-
-  const contentAddOn: AddOn | null = (() => {
-    if (!highlight) return null;
-    const h = highlight.toLowerCase();
-    if (h.includes("blossom") || h.includes("sakura") || h.includes("cherry")) {
-      return { icon: "👘", label: "Kimono rental", badge: "↑ for blossom season", href: "/experiences/kimono", variant: "platform" };
-    }
-    if (h.includes("snow") || h.includes("winter") || h.includes("ski")) {
-      return { icon: "🎿", label: "Winter gear rental", badge: "↑ for winter", href: "/experiences/gear", variant: "platform" };
-    }
-    if (h.includes("festival") || h.includes("matsuri") || h.includes("carnival")) {
-      return { icon: "🎋", label: "Festival guide", badge: "↑ for festival season", href: "/local-experts", variant: "platform" };
-    }
-    if (h.includes("autumn") || h.includes("fall") || h.includes("foliage")) {
-      return { icon: "🍂", label: "Foliage photography tour", badge: "↑ peak autumn colour", href: "/experiences/photo", variant: "platform" };
-    }
-    return null;
-  })();
-
+  const staticAddOns = buildAddOns(city);
+  const contentAddOn = buildContentAddOn(highlight, city);
   const addOns: AddOn[] = contentAddOn ? [contentAddOn, ...staticAddOns] : staticAddOns;
 
   return (
@@ -653,6 +732,9 @@ function TripComplementsStrip({
           <a
             key={addon.label}
             href={addon.href}
+            target={addon.isExternal ? "_blank" : undefined}
+            rel={addon.isExternal ? "noopener noreferrer" : undefined}
+            onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
             className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
             data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
