@@ -34,6 +34,7 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
+  accessAuditLogs,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -275,7 +276,22 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
     }
     const status = req.query.status as string | undefined;
     const forms = await storage.getLocalExpertForms(status);
-    res.json(forms);
+    // EXP-OVR.P3: enrich each application with the expert's current commission
+    // override so the admin UI can pre-populate the editor.
+    const userIds = Array.from(new Set(forms.map(f => f.userId).filter(Boolean)));
+    let overrideByUser = new Map<string, string | null>();
+    if (userIds.length > 0) {
+      const overrideRows = await db
+        .select({ id: users.id, override: users.commissionOverrideExpertSharePercent })
+        .from(users)
+        .where(inArray(users.id, userIds));
+      overrideByUser = new Map(overrideRows.map(r => [r.id, r.override ?? null]));
+    }
+    const enriched = forms.map(f => ({
+      ...f,
+      commissionOverrideExpertSharePercent: overrideByUser.get(f.userId) ?? null,
+    }));
+    res.json(enriched);
   });
 
   // Admin: Update expert application status
@@ -320,6 +336,52 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     }
     
     res.json(updated);
+  });
+
+  // ─── Per-expert commission override (EXP-OVR.P3) ──────────────────────────
+  // Admin sets/clears the override that commission.ts:resolveCommissionRates
+  // reads before falling back to category. Stored value is the expert-share
+  // percent (e.g. 80 → expert keeps 80%, platform takes 20%).
+
+router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
+    const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const targetId = req.params.id;
+    const raw = (req.body as any)?.commissionOverrideExpertSharePercent;
+    let nextValue: string | null;
+    if (raw === null || raw === undefined || raw === "") {
+      nextValue = null;
+    } else {
+      const pct = Number(raw);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        return res.status(400).json({ message: "commissionOverrideExpertSharePercent must be a number in [0, 100] or null" });
+      }
+      nextValue = pct.toFixed(2);
+    }
+    const [before] = await db
+      .select({ id: users.id, prev: users.commissionOverrideExpertSharePercent })
+      .from(users)
+      .where(eq(users.id, targetId))
+      .limit(1);
+    if (!before) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    await db
+      .update(users)
+      .set({ commissionOverrideExpertSharePercent: nextValue })
+      .where(eq(users.id, targetId));
+    await db.insert(accessAuditLogs).values({
+      actorId: admin.id,
+      actorRole: "admin",
+      action: "update_commission_override",
+      resourceType: "user",
+      resourceId: targetId,
+      targetUserId: targetId,
+      metadata: { previous: before.prev ?? null, next: nextValue },
+    });
+    res.json({ id: targetId, commissionOverrideExpertSharePercent: nextValue });
   });
 
   // === Provider Application Routes ===
