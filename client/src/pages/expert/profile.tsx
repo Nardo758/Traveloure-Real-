@@ -60,6 +60,7 @@ export default function ExpertProfile() {
   const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
   const [newNeighborhood, setNewNeighborhood] = useState("");
   const [localityProof, setLocalityProof] = useState("");
+  const [selectedRole, setSelectedRole] = useState("");
 
   const { data: expertProfile, isLoading: profileLoading } = useQuery({
     queryKey: ["/api/experts", user?.id],
@@ -103,6 +104,13 @@ export default function ExpertProfile() {
     }
   }, [expertProfile]);
 
+  // Sync selectedRole from loaded profile
+  React.useEffect(() => {
+    const roleFromForm = (expertProfile as any)?.expertForm?.expertType;
+    const roleFromUser = user?.role;
+    setSelectedRole(roleFromForm ?? roleFromUser ?? "travel_expert");
+  }, [expertProfile, user?.role]);
+
   // Sync neighborhoods + localityProof from loaded data
   React.useEffect(() => {
     if (neighborhoodsData) {
@@ -110,6 +118,19 @@ export default function ExpertProfile() {
       setLocalityProof((neighborhoodsData as any).localityProof || "");
     }
   }, [neighborhoodsData]);
+
+  const saveRoleMutation = useMutation({
+    mutationFn: (expertType: string) =>
+      apiRequest("PATCH", "/api/expert/role", { expertType }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Role updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update role", variant: "destructive" });
+    },
+  });
 
   const saveNotesMutation = useMutation({
     mutationFn: (notesStyle: string) =>
@@ -238,14 +259,34 @@ export default function ExpertProfile() {
               {profileLoading ? (
                 <Skeleton className="h-10 rounded" />
               ) : (
-                <div
-                  className="flex items-center gap-2 h-10 px-3 rounded-md border border-input bg-muted/50"
-                  data-testid="text-expert-role"
-                >
-                  <span className="text-sm font-medium text-[#FF385C]">
-                    {EXPERT_ROLE_LABELS[(expertProfile as any)?.expertForm?.expertType ?? user?.role ?? ""] ?? "Expert"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">(your account role — contact support to change)</span>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={selectedRole}
+                    onValueChange={setSelectedRole}
+                    data-testid="select-expert-role"
+                  >
+                    <SelectTrigger className="flex-1" data-testid="trigger-expert-role">
+                      <SelectValue placeholder="Select your role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="travel_expert">Travel Advisor</SelectItem>
+                      <SelectItem value="local_expert">Local Expert</SelectItem>
+                      <SelectItem value="event_planner">Event Planner</SelectItem>
+                      <SelectItem value="executive_assistant">Executive Assistant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="bg-[#FF385C] shrink-0"
+                    onClick={() => saveRoleMutation.mutate(selectedRole)}
+                    disabled={
+                      saveRoleMutation.isPending ||
+                      selectedRole === ((expertProfile as any)?.expertForm?.expertType ?? user?.role ?? "travel_expert")
+                    }
+                    data-testid="button-save-role"
+                  >
+                    {saveRoleMutation.isPending ? "Saving…" : "Save"}
+                  </Button>
                 </div>
               )}
             </div>

@@ -687,6 +687,34 @@ router.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     }
   });
 
+  // PATCH /api/expert/role — Self-service role change for approved experts only
+router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      // Verify caller is an approved expert — non-experts cannot self-promote
+      const form = await storage.getLocalExpertForm(userId);
+      if (!form) {
+        return res.status(403).json({ message: "No expert application found" });
+      }
+      if (form.status !== "approved") {
+        return res.status(403).json({ message: "Only approved experts can change their role" });
+      }
+
+      const { expertType } = req.body;
+      const validTypes = ["travel_expert", "local_expert", "event_planner", "executive_assistant"];
+      if (!expertType || !validTypes.includes(expertType)) {
+        return res.status(400).json({ message: "Invalid expert type" });
+      }
+
+      await storage.updateLocalExpertFormType(userId, expertType);
+      res.json({ success: true, expertType });
+    } catch (err) {
+      console.error("Error updating expert role:", err);
+      res.status(500).json({ message: "Failed to update role" });
+    }
+  });
+
   // PATCH /api/expert/profile-notes — Save expert's notes style description
 
 router.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
