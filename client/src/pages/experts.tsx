@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -115,12 +115,19 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function ExpertsPage() {
+  const [location, navigate] = useLocation();
+  const searchString = useSearch();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDestination, setSelectedDestination] = useState("All Destinations");
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
   const [selectedLanguage, setSelectedLanguage] = useState("All Languages");
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("local_expert");
+  const [selectedRole, setSelectedRole] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const role = params.get("role");
+    return role && role in roleLabels ? role : "local_expert";
+  });
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
   const [sortBy, setSortBy] = useState("recommended");
@@ -143,29 +150,19 @@ export default function ExpertsPage() {
     if (role !== "local_expert") {
       setNeighbourhoodQuery("");
     }
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchString);
     if (params.get("role") === role) return;
     params.set("role", role);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState(null, "", newUrl);
-  }, []);
+    navigate(`${location}?${params.toString()}`);
+  }, [searchString, location, navigate]);
 
   const [favorites, setFavorites] = useState<string[]>([]);
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
   const [aiDestination, setAiDestination] = useState("");
 
-  const syncRoleFromUrl = useCallback(() => {
-    const roleParam = new URLSearchParams(window.location.search).get("role");
-    const resolved = roleParam && roleParam in roleLabels ? roleParam : "local_expert";
-    setSelectedRole(resolved);
-    if (resolved !== "local_expert") {
-      setNeighbourhoodQuery("");
-    }
-  }, []);
-
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchString);
     const destParam = params.get("destination");
     const topicParam = params.get("topic");
     const roleParam = params.get("role");
@@ -192,13 +189,12 @@ export default function ExpertsPage() {
       const specialty = topicToSpecialty[topicParam];
       if (specialty) setSelectedSpecialty(specialty);
     }
-    if (roleParam && roleParam in roleLabels) {
-      setSelectedRole(roleParam);
+    const resolved = roleParam && roleParam in roleLabels ? roleParam : "local_expert";
+    setSelectedRole(resolved);
+    if (resolved !== "local_expert") {
+      setNeighbourhoodQuery("");
     }
-
-    window.addEventListener("popstate", syncRoleFromUrl);
-    return () => window.removeEventListener("popstate", syncRoleFromUrl);
-  }, [syncRoleFromUrl]);
+  }, [searchString]);
   const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
   const [aiEndDate, setAiEndDate] = useState<Date | undefined>(undefined);
   const [aiAdults, setAiAdults] = useState("2");
@@ -234,8 +230,23 @@ export default function ExpertsPage() {
     queryKey: ["/api/experience-types"],
   });
 
-  // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
+  // Fetch role counts (updates when destination or neighbourhood changes)
   const debouncedNeighbourhoodQuery = useDebounce(neighbourhoodQuery, 300);
+  const { data: roleCounts, isLoading: isLoadingCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/experts/counts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
+      if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
+      if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
+      const url = params.toString() ? `/api/experts/counts?${params.toString()}` : "/api/experts/counts";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch expert counts");
+      return res.json();
+    },
+  });
+
+  // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
     queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole],
     queryFn: async () => {
@@ -332,23 +343,47 @@ export default function ExpertsPage() {
                 { role: "local_expert", label: "Local Experts" },
                 { role: "travel_expert", label: "Travel Advisors" },
                 { role: "event_planner", label: "Event Planners" },
-              ].map(({ role, label }) => (
-                <button
-                  key={role}
-                  role="tab"
-                  aria-selected={selectedRole === role}
-                  onClick={() => handleRoleChange(role)}
-                  className={cn(
-                    "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
-                    selectedRole === role
-                      ? "bg-[#FF385C] text-white shadow-md"
-                      : "text-white/80 hover:text-white hover:bg-white/15"
-                  )}
-                  data-testid={`tab-role-${role}`}
-                >
-                  {label}
-                </button>
-              ))}
+              ].map(({ role, label }) => {
+                const count = roleCounts?.[role];
+                return (
+                  <button
+                    key={role}
+                    role="tab"
+                    aria-selected={selectedRole === role}
+                    onClick={() => handleRoleChange(role)}
+                    className={cn(
+                      "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap flex items-center gap-1.5",
+                      selectedRole === role
+                        ? "bg-[#FF385C] text-white shadow-md"
+                        : "text-white/80 hover:text-white hover:bg-white/15"
+                    )}
+                    data-testid={`tab-role-${role}`}
+                  >
+                    {label}
+                    {isLoadingCounts ? (
+                      <span
+                        className={cn(
+                          "inline-block w-5 h-4 rounded-full animate-pulse",
+                          selectedRole === role ? "bg-white/30" : "bg-white/20"
+                        )}
+                        data-testid={`skeleton-count-${role}`}
+                      />
+                    ) : count !== undefined ? (
+                      <span
+                        className={cn(
+                          "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold leading-none",
+                          selectedRole === role
+                            ? "bg-white/25 text-white"
+                            : "bg-white/20 text-white/90"
+                        )}
+                        data-testid={`count-${role}`}
+                      >
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </motion.div>
 
