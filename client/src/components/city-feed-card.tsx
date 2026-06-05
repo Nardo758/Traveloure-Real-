@@ -491,7 +491,7 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
           </div>
         )}
         <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookingBadge level={bookability} />
+          <BookingBadge level={computeBookability({ externalUrl })} />
         </span>
         {service.isFeatured && (
           <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
