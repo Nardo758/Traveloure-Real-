@@ -693,7 +693,7 @@ function buildContentAddOn(highlight: string | null | undefined, city: string): 
       icon: "🎋",
       label: "Festival guide",
       badge: "↑ for festival season",
-      href: `/local-experts?city=${cityParam}&specialty=festivals`,
+      href: `/experts?city=${cityParam}&specialty=festivals`,
       variant: "platform",
       partner: "platform-festival",
     };
