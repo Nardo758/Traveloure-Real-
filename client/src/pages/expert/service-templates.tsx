@@ -67,10 +67,14 @@ export default function ServiceTemplates() {
     mutationFn: async (template: ServiceTemplate) => {
       return apiRequest("POST", `/api/expert/services/from-template/${template.id}`, {});
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
       toast({ title: "Service created from template. You can now customize it." });
-      navigate("/expert/services");
+      if (data?.id) {
+        navigate(`/expert/services/${data.id}/edit`);
+      } else {
+        navigate("/expert/services");
+      }
     },
     onError: () => {
       toast({ title: "Failed to create service", variant: "destructive" });
