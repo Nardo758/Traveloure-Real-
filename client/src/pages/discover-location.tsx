@@ -88,6 +88,7 @@ function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
   );
 }
 
+
 function HeroSection({
   city,
   heroData,
@@ -185,6 +186,7 @@ function HeroSection({
       );
     }
 
+
     return (
       <div
         className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
@@ -277,6 +279,7 @@ function HeroSection({
       </div>
     );
   }
+
 
   return (
     <div
@@ -1128,7 +1131,6 @@ export default function DiscoverLocationPage() {
                 cityIntel={data.hero?.data?.city}
               />
             )}
-
 
             {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
