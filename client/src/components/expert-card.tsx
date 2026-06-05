@@ -7,9 +7,16 @@ import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 
+const ROLE_BADGE: Record<string, { label: string; className: string }> = {
+  local_expert:  { label: "Local Expert",   className: "bg-emerald-500 text-white" },
+  travel_expert: { label: "Travel Advisor", className: "bg-blue-500 text-white" },
+  event_planner: { label: "Event Planner",  className: "bg-purple-500 text-white" },
+};
+
 interface ExpertCardProps {
   expert: {
     id: string;
+    role?: string;
     firstName?: string;
     lastName?: string;
     profileImageUrl?: string;
@@ -82,8 +89,18 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
   const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
   const showNeighbourhoods = neighbourhoods.length > 0;
 
+  const roleBadge = expert.role ? ROLE_BADGE[expert.role] : null;
+
   return (
-    <Card className="hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
+    <Card className="relative hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
+      {roleBadge && (
+        <span
+          className={cn("absolute -top-2.5 left-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm", roleBadge.className)}
+          data-testid="badge-expert-role"
+        >
+          {roleBadge.label}
+        </span>
+      )}
       <CardContent className="p-3">
         <div className="flex gap-3">
           <div className="relative shrink-0">
