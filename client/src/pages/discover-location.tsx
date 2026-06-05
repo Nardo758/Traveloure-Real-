@@ -482,7 +482,7 @@ function FeedRenderer({
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty">
-        No items to show yet for {city}. Check back soon!
+        No items to show yet for {toTitleCase(city)}. Check back soon!
       </p>
     );
   }
@@ -588,7 +588,7 @@ function FlatFilteredFeed({
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
-        No {activeFilter.replace("_", " ")} found in {city}.
+        No {activeFilter.replace("_", " ")} found in {toTitleCase(city)}.
       </p>
     );
   }
