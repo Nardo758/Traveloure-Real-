@@ -960,73 +960,67 @@ function resolveSlug(slug: string): string {
   return slugAliases[slug] || slug;
 }
 
-interface OptimizationResult {
-  overallScore: number;
-  summary: string;
-  recommendations: Array<{
-    type: string;
-    title: string;
-    description: string;
-    impact: string;
-    potentialSavings: number | null;
-  }>;
-  optimizedSchedule: Array<{
-    time: string;
-    activity: string;
-    location: string;
-    notes: string;
-  }>;
-  estimatedTotal: {
-    original: number;
-    optimized: number;
-    savings: number;
+interface OptimizationPreview {
+  estimatedSavingsPct: number;
+  estimatedCostDelta: number;
+  estimatedScheduleTighteningPct: number;
+  currentScore: number;
+  complexityTier: "simple" | "standard" | "complex";
+  feeCents: number;
+  currency: string;
+  freeRerun: boolean;
+  metrics: {
+    balanceScore: number;
+    wellnessScore: number;
+    paceScore: number;
+    diversityScore: number;
   };
-  warnings: string[];
 }
 
-function AIOptimizationTab({ 
-  experienceType, 
-  destination, 
-  date, 
-  cart 
-}: { 
-  experienceType: ExperienceType; 
-  destination: string; 
-  date?: Date; 
+function AIOptimizationTab({
+  experienceType,
+  destination,
+  date,
+  cart
+}: {
+  experienceType: ExperienceType;
+  destination: string;
+  date?: Date;
   cart: CartItem[];
 }) {
   const [optimizing, setOptimizing] = useState(false);
-  const [result, setResult] = useState<OptimizationResult | null>(null);
+  const [result, setResult] = useState<OptimizationPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runOptimization = async () => {
     setOptimizing(true);
     setError(null);
-    
+
+    // CON-A.P1: free preview path. Full LLM optimization lives behind the paid
+    // /api/optimization-payments gate, surfaced via the Concierge UI (Phase 6).
+    const items = cart.map((item, i) => ({
+      serviceType: item.type || "activity",
+      price: item.price,
+      duration: 90,
+      dayNumber: Math.floor(i / 3) + 1,
+    }));
+
     try {
-      const response = await fetch("/api/ai/optimize-experience", {
+      const response = await fetch("/api/optimization-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          experienceType: experienceType.name,
-          destination,
-          date: date?.toISOString(),
-          selectedServices: cart.map(item => ({
-            name: item.name,
-            provider: item.provider,
-            price: item.price,
-            category: item.type
-          })),
-          preferences: {}
-        })
+          items,
+          eventType: experienceType.name,
+        }),
       });
 
       if (!response.ok) {
         throw new Error("Failed to optimize");
       }
 
-      const data = await response.json();
+      const data: OptimizationPreview = await response.json();
       setResult(data);
     } catch (err) {
       setError("Unable to run optimization. Please try again.");
@@ -1036,6 +1030,7 @@ function AIOptimizationTab({
   };
 
   if (result) {
+    const savingsDollars = Math.abs(result.estimatedCostDelta);
     return (
       <div className="space-y-6">
         <Card className="p-6">
@@ -1043,14 +1038,16 @@ function AIOptimizationTab({
             <div className="flex items-center gap-3">
               <div className={cn(
                 "w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white",
-                result.overallScore >= 80 ? "bg-green-500" : 
-                result.overallScore >= 60 ? "bg-amber-500" : "bg-red-500"
+                result.currentScore >= 80 ? "bg-green-500" :
+                result.currentScore >= 60 ? "bg-amber-500" : "bg-red-500"
               )}>
-                {result.overallScore}
+                {result.currentScore}
               </div>
               <div>
-                <h3 className="text-xl font-semibold">Optimization Score</h3>
-                <p className="text-sm text-muted-foreground">{result.summary}</p>
+                <h3 className="text-xl font-semibold">Optimization Preview</h3>
+                <p className="text-sm text-muted-foreground">
+                  Heuristic estimate of how much we could improve your plan.
+                </p>
               </div>
             </div>
             <Button variant="outline" onClick={() => setResult(null)} data-testid="button-reoptimize">
@@ -1058,83 +1055,47 @@ function AIOptimizationTab({
             </Button>
           </div>
 
-          {result.estimatedTotal.savings > 0 && (
-            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-4 mb-4">
+          {savingsDollars > 0 && (
+            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-4 mb-2">
               <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                 <Sparkles className="w-5 h-5" />
-                <span className="font-semibold">Potential Savings: ${result.estimatedTotal.savings}</span>
+                <span className="font-semibold">
+                  Potential savings: ${savingsDollars} ({result.estimatedSavingsPct}%)
+                </span>
+              </div>
+            </div>
+          )}
+          {result.estimatedScheduleTighteningPct > 0 && (
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md p-4">
+              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                <Clock className="w-5 h-5" />
+                <span className="font-semibold">
+                  Schedule could be {result.estimatedScheduleTighteningPct}% tighter
+                </span>
               </div>
             </div>
           )}
         </Card>
 
-        {result.recommendations.length > 0 && (
-          <Card className="p-6">
-            <h4 className="font-semibold mb-4 flex items-center gap-2">
-              <Wand2 className="w-5 h-5 text-[#FF385C]" />
-              Recommendations
-            </h4>
-            <div className="space-y-3">
-              {result.recommendations.map((rec, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-md bg-muted/50">
-                  <div className={cn(
-                    "w-2 h-2 rounded-full mt-2 flex-shrink-0",
-                    rec.impact === "high" ? "bg-red-500" :
-                    rec.impact === "medium" ? "bg-amber-500" : "bg-blue-500"
-                  )} />
-                  <div>
-                    <div className="font-medium">{rec.title}</div>
-                    <p className="text-sm text-muted-foreground">{rec.description}</p>
-                    {rec.potentialSavings && (
-                      <Badge variant="secondary" className="mt-1">
-                        Save ${rec.potentialSavings}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {result.optimizedSchedule.length > 0 && (
-          <Card className="p-6">
-            <h4 className="font-semibold mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-[#FF385C]" />
-              Optimized Schedule
-            </h4>
-            <div className="space-y-2">
-              {result.optimizedSchedule.map((item, i) => (
-                <div key={i} className="flex items-start gap-4 p-3 rounded-md bg-muted/50">
-                  <span className="text-sm font-medium text-muted-foreground w-20 flex-shrink-0">
-                    {item.time}
-                  </span>
-                  <div>
-                    <div className="font-medium">{item.activity}</div>
-                    <p className="text-sm text-muted-foreground">{item.location}</p>
-                    {item.notes && (
-                      <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {result.warnings.length > 0 && (
-          <Card className="p-6 border-amber-200 dark:border-amber-800">
-            <h4 className="font-semibold mb-3 text-amber-600 dark:text-amber-400">Warnings</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              {result.warnings.map((warning, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-amber-500">!</span>
-                  {warning}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4 flex items-center gap-2">
+            <Wand2 className="w-5 h-5 text-[#FF385C]" />
+            Score breakdown
+          </h4>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Balance", value: result.metrics.balanceScore },
+              { label: "Wellness", value: result.metrics.wellnessScore },
+              { label: "Pace", value: result.metrics.paceScore },
+              { label: "Diversity", value: result.metrics.diversityScore },
+            ].map(m => (
+              <div key={m.label} className="p-3 rounded-md bg-muted/50">
+                <div className="text-xs text-muted-foreground">{m.label}</div>
+                <div className="text-lg font-semibold">{m.value}/100</div>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     );
   }
@@ -1706,24 +1667,32 @@ export default function ExperienceTemplatePage() {
     };
     sessionStorage.setItem("experienceContext", JSON.stringify(experienceContext));
     
+    // CON-A.P1: free preview path. Full LLM lives behind /api/optimization-payments
+    // (Concierge surface, Phase 6) — this surface ships the heuristic preview only.
+    const items = cart.map((item, i) => ({
+      serviceType: item.type || "activity",
+      price: item.price,
+      duration: 90,
+      dayNumber: Math.floor(i / 3) + 1,
+    }));
+
     try {
-      const response = await fetch("/api/ai/optimize-experience", {
+      const response = await fetch("/api/optimization-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          ...experienceContext,
-          preferences: {}
-        })
+          items,
+          eventType: experienceType?.name,
+        }),
       });
       if (response.ok) {
-        const result = await response.json();
-        // Store optimization result for cart page to pick up
-        sessionStorage.setItem("optimizationResult", JSON.stringify(result));
-        // Navigate to cart with itinerary step
-        setLocation("/cart?step=itinerary");
+        const preview = await response.json();
+        // Hand preview off to cart's existing "optimize" step (which already renders preview shape).
+        sessionStorage.setItem("optimizationPreview", JSON.stringify(preview));
+        setLocation("/cart?step=optimize");
       } else {
-        // Go to cart without optimization
+        // Go to cart without preview
         setLocation("/cart");
       }
     } catch (error) {
