@@ -30,6 +30,7 @@ const MIGRATION_FILES = [
   "018_concierge_requests.sql",
   "019_event_packages.sql",
   "020_commission_override.sql",
+  "021_password_reset_tokens.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
