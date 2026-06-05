@@ -44,16 +44,37 @@ interface CityMediaResponse {
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+/**
+ * Curated hero images for popular cities — used when no gem photo is available.
+ * Keys are lowercase city names.
+ */
+const CURATED_HERO_IMAGES: Record<string, string> = {
+  tokyo: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80",
+  kyoto: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80",
+  paris: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1200&q=80",
+  london: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+  "new york": "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&w=1200&q=80",
+  barcelona: "https://images.unsplash.com/photo-1583422409516-2895a77efded?auto=format&fit=crop&w=1200&q=80",
+  rome: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=1200&q=80",
+  amsterdam: "https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80",
+  bali: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=1200&q=80",
+  bangkok: "https://images.unsplash.com/photo-1508009603885-50cf7c8dd0d5?auto=format&fit=crop&w=1200&q=80",
+  singapore: "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&w=1200&q=80",
+  dubai: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1200&q=80",
+};
+
 function HeroSection({
   city,
   heroData,
   scheduledDate,
   onDismissDate,
+  coverPhotoUrl,
 }: {
   city: string;
   heroData: any;
   scheduledDate: string | null;
   onDismissDate: () => void;
+  coverPhotoUrl?: string | null;
 }) {
   const cityIntel = heroData?.city;
   const pulse = cityIntel?.pulseScore;
@@ -82,6 +103,58 @@ function HeroSection({
     : null;
 
   if (dateMode) {
+    if (coverPhotoUrl) {
+      return (
+        <div
+          className="relative rounded-xl overflow-hidden px-5 py-4 flex justify-between items-start gap-3 min-h-[96px]"
+          style={{
+            backgroundImage: `url(${coverPhotoUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+          data-testid="section-hero"
+        >
+          {/* Dark overlay */}
+          <div className="absolute inset-0 rounded-xl" style={{ background: "linear-gradient(135deg, rgba(4,52,44,0.82) 0%, rgba(4,52,44,0.55) 100%)" }} />
+          <div className="relative z-10">
+            <h1
+              className="text-[22px] font-medium leading-tight text-white"
+              data-testid="text-city-name"
+            >
+              {city}
+            </h1>
+            {seasonLine && (
+              <div className="text-[13px] mt-1 text-green-200">
+                🌸 {seasonLine}
+              </div>
+            )}
+            {datePillLabel && (
+              <div
+                className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
+                style={{ background: "rgba(255,255,255,0.2)", color: "#A7F3D0" }}
+              >
+                📅 {datePillLabel}
+                <button
+                  onClick={onDismissDate}
+                  className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
+                  data-testid="button-dismiss-date"
+                  aria-label="Clear date"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+          {pulse !== undefined && (
+            <div className="relative z-10 text-center flex-shrink-0" data-testid="pulse-badge">
+              <b className="block text-[20px] font-medium leading-tight text-green-300">{pulse}</b>
+              <span className="text-[11px] text-green-400">pulse</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div
         className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
@@ -122,6 +195,52 @@ function HeroSection({
           <div className="text-center flex-shrink-0" data-testid="pulse-badge">
             <b className="block text-[20px] font-medium leading-tight" style={{ color: "#0F6E56" }}>{pulse}</b>
             <span className="text-[11px]" style={{ color: "#0F6E56" }}>pulse</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (coverPhotoUrl) {
+    return (
+      <div
+        className="relative rounded-xl overflow-hidden px-6 py-8 min-h-[160px] flex flex-col justify-end"
+        style={{
+          backgroundImage: `url(${coverPhotoUrl})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+        data-testid="section-hero"
+      >
+        {/* Dark gradient overlay — bottom-heavy so text is legible */}
+        <div
+          className="absolute inset-0 rounded-xl"
+          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.10) 100%)" }}
+        />
+        <div className="relative z-10">
+          <h1
+            className="text-[34px] font-bold tracking-tight text-white leading-tight drop-shadow"
+            data-testid="text-city-name"
+          >
+            {city}
+          </h1>
+          {highlight ? (
+            <div className="text-sm mt-1 text-white/80">
+              {highlightEmoji} {highlight}
+            </div>
+          ) : null}
+        </div>
+        {pulse !== undefined && (
+          <div
+            className="absolute top-5 right-5 z-10 rounded-xl px-3.5 py-2 text-center"
+            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
+          >
+            <b className="block text-lg font-bold leading-tight text-green-300">
+              {pulse}
+            </b>
+            <span className="text-[10px] uppercase tracking-widest text-green-400">
+              pulse
+            </span>
           </div>
         )}
       </div>
@@ -869,6 +988,17 @@ export default function DiscoverLocationPage() {
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
+  // ── Cover photo: highest-scored gem imageUrl → curated map → null ───────
+  const coverPhotoUrl: string | null = (() => {
+    if (allGems.length > 0) {
+      const sorted = [...allGems]
+        .filter((g: any) => !!g.imageUrl)
+        .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
+      if (sorted.length > 0) return sorted[0].imageUrl as string;
+    }
+    return CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
+  })();
+
   if (!city) {
     return (
       <Layout>
@@ -929,12 +1059,13 @@ export default function DiscoverLocationPage() {
 
         {data && (
           <div className="space-y-5">
-            {/* ── Hero (teal gradient or mint date mode) ─────────────── */}
+            {/* ── Hero (cover photo or teal gradient fallback) ────────── */}
             <HeroSection
               city={city}
               heroData={data.hero?.data}
               scheduledDate={scheduledDate}
               onDismissDate={handleDismissDate}
+              coverPhotoUrl={coverPhotoUrl}
             />
 
             {/* ── Stats row ─────────────────────────────────────────── */}
