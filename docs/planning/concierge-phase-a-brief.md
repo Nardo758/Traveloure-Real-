@@ -1,389 +1,290 @@
-# Concierge Phase A Execution Brief
+# Concierge — Phase A Execution Brief
 
-**Source:** Concierge Implementation Plan (revised, 2026-06-05). Phase A only — pay-per-use AI Concierge + Expert escalation, à la carte. Phase B ($9 tier) and Phase C (Full/DFY transactional) are out of scope here.
-**Target agent:** Claude Code, working in the repo working tree.
+**Goal:** Ship the gate-free, pay-per-use Concierge loop for the first market: guest → free AI preview → sign up → pay → AI plan → one-tap "have an expert polish this" → request lands in the routing queue → admin confirms → workspace opens. All prices resolve from config, never constants.
 
----
-
-## DEPENDENCIES — DO NOT START WITHOUT THESE
-
-1. **Launch-Blocker Phase 3 is merged.** `optimization.routes.ts` is mounted, `/api/optimization-preview` returns JSON (not the SPA), `/api/optimization-payments` is reachable, the ungated free public path to full LLM optimization is closed. If P3 isn't in, this brief does not start.
-2. **Per-expert commission override is a HARD GATE on beta outreach, not on this brief.** No real beta-expert outreach with the §6.9 "20% vs 25%" language has gone out. Phase A may ship before that override exists. **However:** the override (one nullable `commissionRateOverride` column on the expert + one branch in `commission.ts:resolveCommissionRates:41-93` before the category fallback + admin field in the expert approval form) **must land before the first beta DM with the reduced-commission language is sent.** Track it as a known follow-up; do not roll it into Phase A; do not let beta recruitment kick off until it's in.
+**Source:** Concierge Implementation Plan (revised) + Gap Audit (2026-06-05). **Target:** Claude Code, repo working tree.
 
 ---
 
-## HOW TO USE THIS BRIEF — READ BEFORE WRITING ANY CODE
+## HOW TO USE THIS BRIEF — READ FULLY BEFORE WRITING CODE
 
-1. **Read this entire document first.** Phases share context (the fee resolver, the concierge router, the new `concierge.routes.ts` module). The order is deliberate.
-2. **Work strictly in phase order.** P1 → P2 → P3 → P4 → P5 → P6 → P7. Do not jump ahead or batch.
-3. **Stop at each verification gate.** Every phase ends with a grep + `tsc --noEmit` check and a commit. If a gate fails, fix before moving on.
-4. **File:line references are starting points, not gospel.** Confirm by reading the file before editing.
-5. **One commit per phase**, message prefix `feat(CON-A.Pn): …`.
+1. Read every phase before starting. Phases share context (the fee resolver, the expert_requests rail).
+2. Work in strict phase order: 0 → 8.
+3. Each phase ends with a grep + typecheck gate and a commit (`feat(CON-A.Pn): …`). Do not proceed past a failing gate.
+4. **Typecheck floor = 12 pre-existing errors** (server/storage.ts, server/vite.ts, shared/schema.ts:558). Every phase must return `tsc --noEmit` at **≤12 errors**. Anything above the floor is yours to fix before moving on.
+5. **Phases that edit `shared/schema.ts` (2, 3, 8) must run SINGLE-SESSION.** Do not run them concurrently with other Claude Code sessions on the same DB/schema file — that's the documented concurrency-conflict surface.
+6. File:line refs are from the audit/plan and may have drifted; confirm by reading before editing.
 
 ---
 
-## OPEN DECISIONS — RESOLVED
+## PREREQ STATUS (verified — do not re-do)
 
-| # | Decision | Resolution |
-|---|---|---|
-| D1 | Intent capture | Free-text + 4 chips: `intent`, `eventType` (optional), `destination` (optional), `dates` (optional) |
-| D2 | Escalation CTA | Always visible, soft (not red/urgent), top of PlanCard + once per day-section |
-| D3 | Concierge spend rail | Card-first; credits accepted on user toggle (Phase A: card only — credits toggle deferred to a follow-up) |
-| D4 | Expert availability fallback | Queued with est. price + ETA when no in-market expert available |
-| D5 | AI Concierge fee shape | Per-event-type mapping (FEE-A in P1); §4.8 defaults `$9.99 standard / $49.99 event / 5 credits / $0=off`. Event slugs that map to $49.99: `wedding`, `proposal`, `corporate` |
-| D6 | Free preview | Guest, no auth (already true after LB-P3) |
-| D7 | "One AI plan" unit | Per trip; free re-runs within 24h on the same trip (matches `optimization.routes.ts:91-105`) |
-| D8 | Concierge entry placement | Primary header CTA + slot on every PlanCard |
-| D9 | Old `/optimize` URL | 301 redirect `/optimize` → `/concierge?tier=ai` |
+LB-P3 functional dependencies are **IN**: optimization router mounted (`server/routes.ts:86` import, `:573` `app.use`), free preview reachable unauthenticated (`optimization.routes.ts:59`), paid endpoints gated (`:162`, `:261`). Phase A rides on these.
+
+- **LB-P3 step 3 (fee defaults → §4.8):** NOT done standalone — **absorbed into Phase 2 (FEE-A)**, which rewrites the same rows. Do not do it separately.
+- **LB-P3 step 4 (ungated `/api/ai/optimize-experience`):** open — **closed in Phase 1 of this brief** (it's the revenue back-door; the concierge paywall is theater while it's open).
+- **LB-P2 (`itinerary.tsx` 12/70 literals):** P0 but orthogonal to the concierge surface — **run it in a parallel session; gate it on go-live, not on this brief.** Out of scope here.
+
+---
+
+## DECIDED DEFAULTS (do not ask — these are settled)
+
+- **D1 Intent capture:** free-text field + 3–4 chips (intent, eventType, dates, party size).
+- **D2 Escalation CTA:** always visible, soft (not a blocking interstitial).
+- **D3 Payment rail:** card-first. Credits as a payment path is **deferred from Phase A.**
+- **D4 Expert unavailable:** queued, showing estimated price + ETA ("request expert review").
+- **D5 AI fee table shape:** keep tier-keyed; add `event_type → tier` mapping (this is FEE-A).
+- **D6 Free preview:** guest, no auth.
+- **D7 "One AI plan" against future $9 tier:** per trip, with free re-runs within 24h. (Phase A only needs the per-task charge; the allowance counter is Phase B — but model the charge so B can layer on it.)
+- **D8 Concierge entry placement:** header CTA + a slot on every PlanCard.
+- **D9 Old `/optimize` URL:** 301 redirect to `/concierge?tier=ai`.
 
 ---
 
 ## GLOBAL "WHAT NOT TO DO"
 
-- **Do not** introduce any hard-coded fee/rate/price literal. Every rate resolves from `optimization_fees`, `booking_fee_configs`, or the §4.8 defaults table as fallback. Per-event-type AI Concierge defaults live in the config table, not in code.
-- **Do not** add new routes to `server/routes.ts`. All Concierge endpoints go in `server/routes/concierge.routes.ts` (new module).
-- **Do not** repurpose `expertAiTasks` (`shared/schema.ts:2057`) — that's Expert Content Studio tooling. New table for traveler intent log.
-- **Do not** auth-gate `/api/concierge/quote` (the price-quote endpoint) or any `/api/optimization-preview` path. The free heuristic + free quote is the guest hook.
-- **Do not** build the $9 tier, subscription rail, allowance counter, overage logic, priority routing, or Full/DFY transactional flow. Those are Phase B/C.
-- **Do not** add a per-expert commission override in this brief — it is sequenced separately (see Dependencies).
-- **Do not** wire credits-as-payment in Phase A. Card-first per D3.
-- **Do not** touch `commission.ts`'s hard-coded `EXPERT_SHARE_RATE`, `PLATFORM_FEE_RATE`, `AI_PLATFORM_FEE`, `AFFILIATE_PLATFORM_FEE` constants — those are the cross-cutting FEE workstream's problem.
-- **Do not** refactor unrelated code "while you're in there."
+- **No fee/price/rate constants.** Every charge resolves through the `optimization_fees` config (AI) or `commission.ts:resolveCommissionRates` reading `booking_fee_configs` (expert split). Never a literal.
+- **No new routes in `server/routes.ts`.** All Concierge endpoints go in `server/routes/concierge.routes.ts`.
+- **Do not rebuild what exists.** The reuse map below lists rails to consume as-is; do not fork `expert_requests`, expert matching, `commission.ts`, `messages.ts`, or PlanCard.
+- **Do not build the $9 tier, the allowance counter, overage, member priority routing, or the Full/DFY transactional flow** — Phase B/C.
+- **Do not implement the per-expert commission override here** — it's a tracked recruitment gate, not Phase A (see Known Follow-ups).
+- **Do not touch `/api/ai/optimize-experience`'s billing beyond Phase 1's access restriction.**
+- Do not exceed the 12-error typecheck floor.
 
 ---
 
-## PHASE 0 — Orientation & Baseline (no code changes)
+## REUSE MAP (consume as-is unless noted)
 
-**Objective:** Confirm dependencies are met and capture a clean baseline.
+| Need | Use | Evidence |
+|---|---|---|
+| AI Concierge engine | `/api/ai/optimize-experience` (called via the gated paid path) | `server/routes.ts:1268` |
+| Free AI preview | `/api/optimization-preview` | `optimization.routes.ts:59` |
+| Paid AI + save-card | `/api/optimization-payments` + `/confirm` (`setup_future_usage: off_session` already wired) | `optimization.routes.ts:162,261` |
+| Per-task fee config + resolver | `optimization_fees` + `getFeeForTier` | `shared/schema.ts:876-885`; `optimization.routes.ts:42-52` |
+| Expert delivery rail | `expert_requests` (+ `optimizationContext` jsonb) + `lead-routing.service` + `expertCityQueues` + `POST /api/expert-requests` | `shared/schema.ts:5212-5237` (`:5225`); `server/routes/booking-actions.ts:21,60,100,182` |
+| Expert matching | `/api/grok/match-experts` + `expertMatchScores` | `server/routes.ts:8379`; `shared/schema.ts:1986` |
+| Expert commission split | `commission.ts:resolveCommissionRates` (category fallback OK for Phase A) | `server/services/commission.ts:41-93` |
+| Chat | `server/routes/messages.ts` | `:34-323` |
+| AI deliverable surface | PlanCard | `client/src/components/plancard/*` |
+| Revenue ledger | `platform_revenue` + `revenue-tracking.service.ts` | `:13` |
 
-**Steps**
-1. Confirm working tree is clean and on a fresh branch off the main line.
-2. Capture baseline typecheck: `npm run check` (or `tsc --noEmit`). Save the output — you need to know which errors pre-exist so you don't get blamed for them.
-3. Verify LB-P3 prereqs are merged:
+**Replace, don't reuse:** `client/src/pages/optimize.tsx` (static Paris mock). **Not a queue:** `expertAiTasks` (`schema:2057`, expert Content Studio).
+
+---
+
+## PHASE 0 — Pre-flight discovery (no code)
+
+**Objective:** close the remaining unknowns before touching code.
+
+1. **Step-4 caller grep.** Find every caller of `/api/ai/optimize-experience`:
    ```
-   grep -rn "optimization.routes\|optimizationRouter" server/         # expect a single registration
-   grep -n "499\|999\|1999" server/routes/optimization.routes.ts      # expect §4.8 values, not the old defaults
+   grep -rn "optimize-experience" client/ server/ shared/
    ```
-4. Verify the old `/optimize` page still exists at `client/src/pages/optimize.tsx` (we will redirect it in P5, not delete it).
-5. Confirm `expert_requests` table is present at `shared/schema.ts:5212` and `POST /api/expert-requests` is live at `server/routes/booking-actions.ts:104`.
+   List who hits it (frontend flows, internal services). This determines what Phase 1 may safely restrict.
+2. **Namespace check.** Confirm these are free / not partially built:
+   ```
+   grep -rn "/api/concierge\|\"/concierge\"\|concierge_requests\|event_packages\|concierge_memberships" client/ server/ shared/
+   ```
+   Note any `subscription` usage near `revenueSourceTypes` (`schema:3988`) — confirm no half-built subscription code.
+3. **Env + seed.** Confirm (names only) Stripe keys present in Replit Secrets; confirm ≥1 **verified** expert exists in a launch market (Kyoto or Mumbai) among the test accounts, so the escalation loop is testable end to end.
 
-**Verify / Gate:** Baseline captured; LB-P3 confirmed live; no code changed.
+**Gate:** caller list, namespace-clear confirmation, and seed/env confirmation written down. No code changed.
 
 ---
 
-## PHASE 1 — FEE-A: Per-event-type AI Concierge fee config
+## PHASE 1 — Close the legacy LLM back-door (LB-P3 step 4)
 
-**Objective:** §4.8 prescribes the AI Concierge fee as **per-experience-type** ($9.99 standard / $49.99 event / 5 credits / $0=off). The current `optimization_fees` table is keyed by complexity tier (`simple/standard/complex`), with the event-type-to-tier mapping hard-coded at `server/services/smart-sequencing.service.ts:915-921`. Make the mapping admin-editable and add the `$0=off` semantic.
+**Objective:** no free public path to full LLM optimization. The concierge paywall is meaningless while this is open.
 
-**Files**
-- `shared/schema.ts:876-885` (`optimization_fees` table — extend)
-- `server/services/smart-sequencing.service.ts:915-921` (`complexityTier()` — read from DB, not hard-code)
-- `server/routes/optimization.routes.ts:42-52` (`getFeeForTier` — respect `$0=off`)
-- `client/src/pages/admin/fee-config.tsx:471-499` (admin UI — add event-type rows)
-- `server/routes/admin.routes.ts:4208-4254` (admin endpoints — accept event-type field)
-- Migration in `server/migrations/` (per CLAUDE.md)
+**Files:** `server/routes.ts:1268` (the endpoint), plus any caller found in Phase 0.
 
 **Steps**
-1. **Schema:** add an `event_type` column to `optimization_fees` (nullable; null = the existing tier-level default). Keep `complexity_tier` for backwards-compat. Add an `is_disabled` boolean (the "$0=off" semantic — clearer than overloading a $0 price, which could legitimately mean a promo).
-2. **Migration (per CLAUDE.md, `server/migrations/`)** — add the columns and seed §4.8 defaults: `$9.99` for the `standard` tier (no event-type), `$49.99` rows for event_types `wedding`, `proposal`, `corporate`. Existing `simple/standard/complex` rows stay.
-3. **Resolver:** in `getFeeForTier` (`optimization.routes.ts:42-52`), accept an optional `eventType` arg. Prefer the row matching `(event_type = eventType AND is_active AND NOT is_disabled)`. Fall back to the tier match. If `is_disabled`, return a discriminated result and the caller refuses the charge (do NOT silently bill).
-4. **Caller:** in the `POST /api/optimization-payments` handler, pass `eventType` from the trip/comparison context.
-5. **`complexityTier()` mapping** (`smart-sequencing.service.ts:915-921`): replace the hard-coded switch with a DB read of an `experience_type_tier_map` (or reuse `experience_types` if a column exists — check first). If the mapping table doesn't exist yet, add a small one keyed by event-type slug. Default mapping mirrors current behavior: wedding/corporate → complex; proposal/anniversary/honeymoon/multi_city → standard; else simple.
-6. **Admin UI:** in `fee-config.tsx:471-499`, render event-type rows beneath the tier rows, with a "Disable" toggle (sets `is_disabled`). The `499/999/1999` cent fallback constants at `fee-config.tsx:373-377` should now match §4.8 values from LB-P3.
-7. **"5 credits" option:** §4.8 allows credits as an alternative. **Defer the actual credit-pay flow** (see global rules), but add an `accepts_credits` boolean to the config so the admin UI captures intent. Phase A only enforces the card path.
+1. Using the Phase 0 caller list: restrict `/api/ai/optimize-experience` to **internal/expert use only** (e.g., role check for expert/admin, or an internal-service guard). If Phase 0 shows no legitimate external caller, prefer removing the public route entirely.
+2. The traveler-facing AI Concierge must go through the **gated paid path** (`/api/optimization-payments` → `/confirm` → optimize), never this endpoint.
+3. If a frontend flow currently calls it, repoint that flow to the gated path (do not leave it calling a now-restricted endpoint and 403-ing).
 
-**Acceptance criteria**
-- New `optimization_fees` rows for `wedding`, `proposal`, `corporate` event types exist and resolve at $49.99.
-- A row marked `is_disabled` causes `getFeeForTier` to refuse — no $0 charge silently created.
-- `complexityTier()` reads the mapping from the DB, not a switch.
-- No new hard-coded fee literal exists. The `499/999/1999` cents now live in the config row's `priceCents`, not in code.
-- Admin UI shows the event-type rows alongside the tier rows.
+**Acceptance:** an unauthenticated or plain-authenticated traveler cannot obtain full LLM optimization without payment; no live caller is left broken.
 
 **Verify / Gate**
 ```
-grep -rn "wedding.*complex\|corporate.*complex" server/services/smart-sequencing.service.ts   # expect 0 (DB-driven now)
-grep -rn "499\|999\|1999\|9\\.99\|49\\.99" server/routes/optimization.routes.ts                # expect 0 hard-coded prices
-grep -rn "is_disabled\|event_type" shared/schema.ts                                            # expect new columns
-npm run check
+grep -rn "optimize-experience" client/ server/        # confirm callers repointed/guarded
+tsc --noEmit                                           # ≤12
 ```
-Commit: `feat(CON-A.P1): per-event-type AI Concierge fee config + $0=off semantic`
+Commit: `fix(CON-A.P1): restrict legacy optimize-experience endpoint (close revenue back-door)`
 
 ---
 
-## PHASE 2 — N5: `concierge_requests` intent log
+## PHASE 2 — FEE-A: per-event-type AI Concierge fee config (absorbs LB-P3 step 3)
 
-**Objective:** Persist intent + selected tier + quoted price so we can attribute revenue to the Concierge funnel and resume abandoned requests. Lightweight log, not a workflow engine.
+**Objective:** the AI Concierge fee resolves per event type from admin config, with §4.8 defaults and a `$0=off` semantic. SINGLE-SESSION (touches schema).
 
-**Files**
-- `shared/schema.ts`
-- Migration in `server/migrations/`
+**Files:** `shared/schema.ts:876-885` (`optimization_fees`), `server/routes/optimization.routes.ts:36-52`, `server/services/smart-sequencing.service.ts:915-921` (event→tier map), `client/src/pages/admin/fee-config.tsx:471-499`.
 
 **Steps**
-1. New table `concierge_requests`:
-   - `id` (uuid, pk)
-   - `userId` (nullable — guests can request before sign-up)
-   - `guestSessionId` (nullable — pairs with cart's guest-session pattern from G2)
-   - `intent` (text — free-form prompt)
-   - `eventType` (text, nullable)
-   - `destination` (text, nullable)
-   - `dates` (jsonb, nullable — `{from, to}`)
-   - `tripId` (varchar, FK to `trips`, nullable)
-   - `cartId` (varchar, nullable)
-   - `quotedAiPriceCents`, `quotedExpertPriceCents`, `quotedFullPriceCents` (nullable ints)
-   - `expertAvailable` (boolean — captured at quote time)
-   - `selectedTier` (text enum: `ai` | `expert` | `full` | `none`, default `none`)
-   - `status` (text enum: `draft` | `quoted` | `selected` | `paid` | `delivered` | `abandoned`, default `draft`)
-   - `optimizationPaymentId` (text, nullable — links to Stripe PI for AI tier)
-   - `expertRequestId` (uuid, nullable — links to `expert_requests.id` for Expert tier)
-   - `createdAt`, `updatedAt`
-   - Indexes on `userId`, `guestSessionId`, `status`
-2. Migration registered in `server/migrations/run-migrations.ts` per CLAUDE.md.
-3. No endpoints in this phase. Routes are added in P4.
+1. Add an `event_type` dimension to the fee config — either an `event_type` column on `optimization_fees` or a sibling mapping table — so an admin can set a distinct fee per event type (standard / wedding / proposal / corporate / …). Generate the Drizzle migration.
+2. Set defaults to §4.8: **$9.99 standard, $49.99 event types**; support **`$0` = disabled** for any type. Replace `DEFAULT_FEE_CENTS = {simple:499, standard:999, complex:1999}` accordingly — these remain config fallbacks, not hard-coded charge values.
+3. `getFeeForTier` (`:42-52`) resolves by `(event_type → tier → price)`, reading the config; never a literal at charge time.
+4. Surface the per-event-type rows + `$0=off` in the admin fee UI.
 
-**Acceptance criteria**
-- Table exists and migrates cleanly on a fresh DB.
-- Migration is registered in `MIGRATION_FILES`.
-- No code reads/writes the table yet — that lands in P4.
+**Acceptance:** changing an event-type fee in admin changes the charged amount; default standard = $9.99, event = $49.99; `$0` disables the charge; no literal charge value remains in the charge path.
 
 **Verify / Gate**
 ```
-grep -rn "concierge_requests" shared/schema.ts server/migrations/    # expect schema + migration
-npm run check
+grep -n "499\|999\|1999" server/routes/optimization.routes.ts        # expect replaced by config-resolved §4.8 values
+grep -rn "event_type" shared/schema.ts server/routes/optimization.routes.ts
+tsc --noEmit                                                          # ≤12
 ```
-Commit: `feat(CON-A.P2): concierge_requests intent log table`
+Commit: `feat(CON-A.P2): per-event-type AI Concierge fee config + §4.8 defaults`
 
 ---
 
-## PHASE 3 — N4: Expert-availability service
+## PHASE 3 — N5: `concierge_requests` intent log
 
-**Objective:** A cheap "is there an expert available for `{destination, eventType}`?" lookup. Phase A consumers (P4, P6) need it to flip the expert option between "book now" and "request expert review (queued)".
+**Objective:** persist every concierge request for funnel metrics + resume. SINGLE-SESSION (schema).
 
-**Files**
-- `server/services/expert-availability.service.ts` (new)
-- Reads existing: `expert_city_queues` (`shared/schema.ts:5231`), `provider_services` (`shared/schema.ts:486`), `users`
+**Files:** `shared/schema.ts`, `server/routes/concierge.routes.ts` (new module — create it here).
 
 **Steps**
-1. Export `checkExpertAvailability({ destination, eventType }) → { available: boolean, queueDepth: number, etaDays: number | null, sampleExpertIds: string[] }`.
-2. Resolution order:
-   - Look up `expert_city_queues` row for the destination's city. If `activeRequests` is meaningfully below the cohort size, `available = true`.
-   - Otherwise, count distinct expert `userId`s with at least one approved `provider_services` row in that city/event-type and `last_active_at` within 7 days. If ≥1, `available = true`.
-   - If neither, `available = false`, `etaDays` = derived from queue depth (queue empty → 1 day; deep → N).
-3. Single DB call ideally; max two. Cache for 60s in-memory per `(city, eventType)` key.
-4. No write side. Pure read service.
+1. Add `concierge_requests`: `id`, `userId` (nullable for guest preview), `intent` (text), `eventType`, `tripId?`, `cartId?`, `chosenTier` (ai/expert/full, nullable until chosen), `status`, `createdAt`. Migration via Drizzle.
+2. Create `server/routes/concierge.routes.ts` and register it at the existing router-registration site (NOT in `routes.ts`). Add a write path for new requests.
 
-**Acceptance criteria**
-- Function returns a result for any `destination` string without throwing.
-- Returns `available=false, etaDays=null` cleanly for cities with no queue + no active experts (don't pretend there's an ETA).
-- No new DB tables.
+**Acceptance:** a concierge request row is created on intent submission; module registered once, no `routes.ts` addition.
 
 **Verify / Gate**
 ```
-grep -rn "checkExpertAvailability\|expert-availability.service" server/   # expect service exists and is exported
-npm run check
+grep -rn "concierge_requests\|concierge.routes" shared/ server/
+tsc --noEmit                                                          # ≤12
 ```
-Commit: `feat(CON-A.P3): expert-availability service`
+Commit: `feat(CON-A.P3): concierge_requests table + concierge.routes module`
 
 ---
 
-## PHASE 4 — N2: Concierge router service + `concierge.routes.ts`
+## PHASE 4 — N4: expert-availability service
 
-**Objective:** A single price-quote endpoint that takes intent + context and returns prices for all three tiers, sourced through the existing resolvers — no constants. This is the server-side answer to "show price before commit."
+**Objective:** decide, per `{city, eventType}`, whether expert delivery is bookable-now or queued (D4).
 
-**Files**
-- `server/routes/concierge.routes.ts` (new — register via the existing router-registration site, **not** `server/routes.ts`)
-- `server/services/concierge-router.service.ts` (new)
-- Reads: `getFeeForTier` (`optimization.routes.ts:42`), `checkExpertAvailability` (P3), `resolveCommissionRates` (`commission.ts:41`), `provider_services`
-- Writes: `concierge_requests` (P2)
+**Files:** `server/services/expert-availability.service.ts` (new), reading `expertCityQueues`, `provider_services`, `users`.
 
 **Steps**
-1. `POST /api/concierge/quote` — body `{ intent: string, eventType?: string, destination?: string, dates?: {from,to}, tripId?: string, cartId?: string }`:
-   - Resolve `eventType` from explicit input → trip → cart (best-effort).
-   - Persist a `concierge_requests` row in `status=draft`.
-   - **AI price:** call `getFeeForTier` with the resolved event-type. If `is_disabled`, return `aiPrice: null` with `aiAvailable: false`.
-   - **Expert price:** if `eventType` and `destination` resolve, call `checkExpertAvailability`. If available, look up the median `price` from approved `provider_services` matching the event-type in that city; that becomes the indicative `expertPriceCents`. Mark `expertAvailable: true`. Otherwise `expertAvailable: false`, `expertPriceCents: null`, with a `queuedEtaDays` field.
-   - **Full price:** look up matching rows in `event_packages` (P7) by event-type + destination. If any exist, return their `basePriceCents` range or `quoteOnly: true`. If none, `fullAvailable: false`. (P7 adds the table; until then, return `fullAvailable: false`.)
-   - Persist quoted prices on the `concierge_requests` row, set `status=quoted`.
-   - Response: `{ requestId, ai: {priceCents, available, isPreview: boolean}, expert: {priceCents, available, queuedEtaDays}, full: {available, priceRange, quoteOnly}, recommended: 'ai' | 'expert' | 'full' }`.
-   - **No auth required** — Concierge is à la carte for guests too.
-2. `POST /api/concierge/select` — body `{ requestId, tier: 'ai' | 'expert' | 'full' }`:
-   - Update `selectedTier`, `status=selected`.
-   - For `tier=ai`: response includes the `/api/optimization-payments` payload shape so the client can immediately move to checkout.
-   - For `tier=expert`: server creates the `expert_requests` row via the same code path as `POST /api/expert-requests` (or calls it internally), pre-filling `optimizationContext` with the intent + dates + any cart snapshot. Set `concierge_requests.expertRequestId`. Response includes the queue position.
-   - For `tier=full`: response returns `{ quoteOnly: true }` and the request is left in `status=selected` for admin pickup. (P7 wires the UI; Phase C wires the transactional flow.)
-3. `GET /api/concierge/requests/:id` — owner or guest-session match required; returns the row.
-4. Recommendation logic (`recommended`): if event-type ∈ {wedding, proposal, corporate} → `full` if available else `expert`; else → `ai` if AI-available else `expert`.
+1. Implement `getExpertAvailability({ city, eventType }) → { bookableNow: boolean, estPrice?, etaHours? }` from existing supply tables.
+2. No new storage — read-only over existing tables.
 
-**Acceptance criteria**
-- All three endpoints exist in `concierge.routes.ts`, mounted via the existing registration site (not in `server/routes.ts`).
-- `/api/concierge/quote` is reachable without auth.
-- Every price in the response originates from `optimization_fees`, `provider_services`, or `event_packages` — no constant anywhere in `concierge-router.service.ts`.
-- Selecting `tier=expert` creates a real `expert_requests` row with `optimizationContext` populated.
+**Acceptance:** returns bookable-now when a matching verified expert has capacity in-market; otherwise queued with est price + ETA.
 
 **Verify / Gate**
 ```
-grep -rn "/api/concierge" server/                                 # expect mounted in concierge.routes.ts only
-grep -rn "concierge.routes\|conciergeRouter" server/              # expect a single app.use
-grep -rn "[0-9]\\.99\\|priceCents.*=.*[0-9]" server/services/concierge-router.service.ts   # expect 0 literals
-npm run check
+grep -rn "expert-availability" server/
+tsc --noEmit                                                          # ≤12
 ```
-Commit: `feat(CON-A.P4): concierge router service + /api/concierge/{quote,select,requests}`
+Commit: `feat(CON-A.P4): expert-availability service`
 
 ---
 
-## PHASE 5 — N1: Concierge entry page (`/concierge`) + `/optimize` redirect
+## PHASE 5 — N2: Concierge router service + endpoint
 
-**Objective:** The single user-facing surface. Replaces the static `/optimize` Paris mock with a real Concierge entry: intent capture, live price-quote, three delivery options. **All prices come from `/api/concierge/quote` — no client-side fee constants.**
+**Objective:** one call routes intent to delivery options with upfront prices.
 
-**Files**
-- `client/src/pages/concierge/index.tsx` (new)
-- `client/src/components/concierge/IntentForm.tsx` (new)
-- `client/src/components/concierge/DeliveryOptions.tsx` (new)
-- `client/src/App.tsx` — register `/concierge` route; redirect `/optimize` → `/concierge?tier=ai`
-- `client/src/pages/optimize.tsx` — replace body with `<Redirect to="/concierge?tier=ai" />` (do not delete the file — preserves inbound links)
-- `client/src/components/layout/Header.tsx` (or wherever the primary nav lives) — add Concierge CTA per D8
+**Files:** `server/services/concierge-router.service.ts` (new), `server/routes/concierge.routes.ts` (extend).
 
 **Steps**
-1. **`/concierge` page layout** (per v4 wireframe lines 540–685, adapted for one surface):
-   - Hero: "What do you want to plan?"
-   - **IntentForm** — free-text intent + 4 chips: `eventType` (dropdown of slugs), `destination` (typeahead), `dates` (date range), `partySize` (number). All optional except intent.
-   - On submit (or on chip change with debounce 500ms): POST `/api/concierge/quote`, render results.
-   - **DeliveryOptions** — three cards: AI Concierge / Expert Concierge / Full Service:
-     - AI card: price from response.ai.priceCents, "Free preview" link (calls `/api/optimization-preview` with the cart/intent context), CTA "Get plan — $X.XX".
-     - Expert card: if `expertAvailable`, price + CTA "Request expert — $X.XX". If not, secondary CTA "Join queue (~N days)".
-     - Full card: if `fullAvailable`, price range + CTA "Request quote". If not, hidden with a small "Available for weddings, proposals, corporate" footnote.
-   - "Recommended" badge driven by `response.recommended`.
-2. **Header CTA:** add a primary-style "Concierge" link/button in the main nav.
-3. **`/optimize` redirect:** keep the file present, replace body with `<Redirect to="/concierge?tier=ai" />` (wouter). When the page mounts with `?tier=ai`, the Concierge page can pre-highlight the AI card.
-4. **Free preview wiring:** the IntentForm's "See free preview" calls `/api/optimization-preview` directly (already mounted by LB-P3). Render the % + cost delta only — do not render the rearranged itinerary (matches `UNIFIED_PLANNING_FLOW_SPEC §5`).
-5. **No fee constants in client code.** All `$X.XX` text reads from the API response.
+1. `routeConcierge({ intent, tripId?, cartId?, eventType? }) → { aiPrice, expertPrice?, fullPrice?, expertAvailability, recommended }`.
+   - `aiPrice` from the FEE-A config (Phase 2).
+   - `expertPrice` from expert matching + `commission.ts` (category fallback) + availability (Phase 4).
+   - `fullPrice` = "quote on request" stub (catalog only this phase).
+2. Expose via `concierge.routes.ts`. Persist the chosen tier back to `concierge_requests`.
 
-**Acceptance criteria**
-- Visiting `/optimize` redirects to `/concierge?tier=ai`.
-- The page loads for a guest (no auth required for the quote).
-- Intent + chips → three priced options. Changing the eventType chip changes the AI price (cheap → $9.99 standard, wedding/proposal/corporate → $49.99) — confirms the FEE-A pipeline is end-to-end.
-- No price literal in client files; everything sourced from the response.
-- The static Paris mock at `client/src/pages/optimize.tsx` is gone (file remains, body is the redirect).
+**Acceptance:** endpoint returns all tier prices + availability + a recommended tier; AI price matches the FEE-A config; no constants.
 
 **Verify / Gate**
 ```
-grep -rn "9\\.99\\|49\\.99\\|19\\.99\\|199" client/src/pages/concierge/ client/src/components/concierge/   # expect 0 literals
-grep -n "Paris\\|paris" client/src/pages/optimize.tsx                                                       # expect 0 (mock content gone)
-grep -rn "/concierge" client/src/App.tsx                                                                    # expect route registered
-npm run check
+grep -rn "concierge-router\|routeConcierge" server/
+tsc --noEmit                                                          # ≤12
 ```
-Commit: `feat(CON-A.P5): /concierge entry page + intent capture + /optimize redirect`
+Commit: `feat(CON-A.P5): concierge router service + endpoint`
 
 ---
 
-## PHASE 6 — N3: PlanCard escalation CTA ("Have an expert polish this")
+## PHASE 6 — N1: `/concierge` entry page + `/optimize` redirect
 
-**Objective:** Weave the Expert Concierge into every AI deliverable. Per D2, the CTA is always visible (soft style), placed at the top of the PlanCard and once per day-section. It pre-fills an `expert_request` with the AI output snapshot via the existing `POST /api/expert-requests` endpoint, with `optimizationContext` populated from the trip.
+**Objective:** the unified request surface (D1, D8) replacing the static mock (D9).
 
-**Files**
-- `client/src/components/plancard/EscalationCTA.tsx` (new)
-- `client/src/components/plancard/PlanCard.tsx` (wire in)
-- `client/src/components/plancard/ActivitiesSection.tsx` (per-day insertion)
-- Existing API: `POST /api/expert-requests` (`server/routes/booking-actions.ts:104`) — no server changes
+**Files:** `client/src/pages/concierge/index.tsx` (new), `client/src/components/concierge/{IntentForm,DeliveryOptions}.tsx` (new), `client/src/App.tsx` (route + 301), header CTA component, PlanCard slot.
 
 **Steps**
-1. **EscalationCTA component:** soft-styled card ("Have an expert polish this — from $X.XX") with a CTA button. Reads price live from `/api/concierge/quote` (or a thin helper that calls it with `{tripId, intent: 'polish_plan'}`).
-2. **Availability check:** if `/api/concierge/quote` returns `expertAvailable: false`, show "Request expert review (queued, ETA ~N days)" instead — both states bookable per D4.
-3. **On click:**
-   - Confirm modal showing the price + a free-text "Anything specific you want them to look at?" field.
-   - Submit: `POST /api/expert-requests` with body matching the existing schema (`tripId`, `requestType: 'review'`, `notes`, `optimizationContext: { source: 'plancard_escalation', planSnapshot: {…} }`).
-   - On success, surface a success state and link to the user's `concierge_requests` (or `expert_requests` list).
-4. **Placement:**
-   - Top of PlanCard, below Hero/StatsRow, before SectionTabs.
-   - Once per day inside ActivitiesSection (per `EscalationCTA` placement notes), styled smaller/inline.
-5. **Stages:** show on `stage=full` PlanCard. Hide on `stage=summary` (no AI plan yet) and `stage=viewer` (read-only share).
-6. **No PlanCard mutation logic.** The CTA is a sibling element; do not refactor PlanCard internals.
+1. Build `/concierge`: intent capture = free-text + 3–4 chips (D1); on submit, call the Phase 5 endpoint; render delivery options with upfront prices (D2 always-visible soft escalation).
+2. Free preview path for guests (D6) hitting `/api/optimization-preview`.
+3. Add header CTA + a Concierge slot on every PlanCard (D8).
+4. `App.tsx`: 301 `/optimize` → `/concierge?tier=ai` (D9); remove the static mock page from routing.
 
-**Acceptance criteria**
-- CTA is visible on every full-stage PlanCard.
-- Clicking it submits to the existing `POST /api/expert-requests` and creates a row.
-- Price text is driven by `/api/concierge/quote`, never a constant.
-- Available vs queued state is reflected in the CTA copy.
+**Acceptance:** guest can preview free; authed user gets priced options; `/optimize` redirects; mock no longer rendered.
 
 **Verify / Gate**
 ```
-grep -rn "EscalationCTA" client/src/components/plancard/   # expect imported + used in PlanCard.tsx
-grep -rn "expert-requests" client/src/components/plancard/EscalationCTA.tsx
-grep -rn "[0-9]+\\.[0-9]{2}" client/src/components/plancard/EscalationCTA.tsx   # expect 0 price literals
-npm run check
+grep -rn "/concierge" client/src/App.tsx
+grep -rn "optimize" client/src/App.tsx                  # expect redirect, not the mock page
+tsc --noEmit                                            # ≤12
 ```
-Commit: `feat(CON-A.P6): PlanCard escalation CTA → /api/expert-requests`
+Commit: `feat(CON-A.P6): /concierge request surface + /optimize redirect`
 
 ---
 
-## PHASE 7 — N6: `event_packages` catalog (quote-on-request listings only)
+## PHASE 7 — N3: PlanCard escalation CTA
 
-**Objective:** Stand up the catalog for Full/Done-for-You event packages so the Concierge entry page can list "wedding / proposal / corporate" options as quote-on-request, even though the transactional flow (C1) is Phase C. Catalog + admin CRUD only.
+**Objective:** one-tap "have an expert polish this" on every AI deliverable, pre-filling an `expert_request` with the AI snapshot.
 
-**Files**
-- `shared/schema.ts` (new table)
-- Migration in `server/migrations/`
-- `server/routes/admin.routes.ts` — add admin CRUD endpoints for `event_packages`
-- `client/src/pages/admin/event-packages.tsx` (new) — admin CRUD UI
+**Files:** `client/src/components/plancard/EscalationCTA.tsx` (new), wire into `PlanCard.tsx`.
 
 **Steps**
-1. New table `event_packages`:
-   - `id` (uuid, pk)
-   - `expertId` (varchar, FK to `users.id`, nullable — admin-curated packages can have no expert until matched)
-   - `eventType` (text — slug: `wedding` / `proposal` / `corporate` / etc.)
-   - `destination` (text — city)
-   - `title` (text)
-   - `description` (text)
-   - `priceModel` (text enum: `quote` | `fixed`, default `quote`)
-   - `basePriceCents` (int, nullable — required if `priceModel = fixed`)
-   - `inclusionsJson` (jsonb — array of `{title, description}` items)
-   - `isActive` (boolean, default true)
-   - `createdAt`, `updatedAt`
-   - Indexes on `(eventType, destination, isActive)`
-2. Admin endpoints: `GET/POST/PATCH/DELETE /api/admin/event-packages` in `admin.routes.ts`.
-3. Admin UI page: list + create/edit form. Add to admin nav.
-4. **Wire P4 reader:** in `concierge-router.service.ts`, replace the P4 placeholder `fullAvailable: false` with a real lookup on `(eventType, destination, isActive)`. Return the lowest `basePriceCents` (or null for quote-only) and `quoteOnly: true` when none have a fixed price.
-5. **Wire P5 display:** the Full card on `/concierge` now shows price-range or "Request quote" based on the response. Clicking it calls `POST /api/concierge/select` with `tier=full` — no Stripe path in Phase A (per the brief), the request lands in `concierge_requests` with `status=selected` and admin handles offline. The success UI says "An admin will follow up with a quote."
+1. CTA POSTs to the existing `POST /api/expert-requests`, passing the PlanCard's AI output into `expert_requests.optimizationContext` (`schema:5225`).
+2. Availability-aware (Phase 4): bookable-now vs queued "request expert review" (D4). Always visible, soft (D2).
 
-**Acceptance criteria**
-- Table + admin CRUD + admin nav entry exist.
-- `/api/concierge/quote` returns real Full results when matching `event_packages` rows exist.
-- `/concierge` Full card renders price-range or quote-only based on the response.
-- Selecting `tier=full` writes to `concierge_requests` and renders the "we'll follow up" UI — no payment attempt.
+**Acceptance:** tapping it creates an `expert_request` carrying the AI snapshot; lands in the routing queue; respects availability.
 
 **Verify / Gate**
 ```
-grep -rn "event_packages\\|eventPackages" shared/schema.ts server/migrations/   # expect schema + migration
-grep -rn "/api/admin/event-packages" server/routes/admin.routes.ts             # expect 4 endpoints
-grep -rn "/admin/event-packages" client/src/                                    # expect route + nav entry
-npm run check
+grep -rn "EscalationCTA\|expert-requests" client/src/components/plancard/
+tsc --noEmit                                            # ≤12
 ```
-Commit: `feat(CON-A.P7): event_packages catalog + admin CRUD + Concierge Full card`
+Commit: `feat(CON-A.P7): PlanCard expert-escalation CTA`
 
 ---
 
-## FINAL VERIFICATION CHECKLIST (run before declaring done)
+## PHASE 8 — N6: `event_packages` catalog (catalog only)
 
-- [ ] **P0** — LB-P3 confirmed live; baseline typecheck captured.
-- [ ] **P1** — `optimization_fees` has event-type rows; `complexityTier()` reads from DB; `is_disabled` honored; no hard-coded prices in `optimization.routes.ts`.
-- [ ] **P2** — `concierge_requests` table + migration registered.
-- [ ] **P3** — `checkExpertAvailability` returns a result for any destination without throwing.
-- [ ] **P4** — `/api/concierge/{quote,select,requests/:id}` mounted via `concierge.routes.ts`; quote is guest-reachable; no fee literals in the router service.
-- [ ] **P5** — `/concierge` page live; `/optimize` 301s to it; intent + chips drive real prices end-to-end; no client-side price literals; header CTA in place.
-- [ ] **P6** — Escalation CTA on every full-stage PlanCard; creates `expert_requests` row with `optimizationContext`; available/queued state reflected.
-- [ ] **P7** — `event_packages` table + admin CRUD live; Full card on `/concierge` driven by real catalog; `tier=full` selection lands in `concierge_requests` with no payment attempt.
-- [ ] `npm run check` shows **no new errors** vs P0 baseline.
-- [ ] No new hard-coded fee/rate/price literal introduced.
-- [ ] No new route added to `server/routes.ts`.
-- [ ] All Concierge endpoints live in `server/routes/concierge.routes.ts`.
+**Objective:** Full/DFY listings as "request a quote" stubs. No transactional flow (that's C1). SINGLE-SESSION (schema).
+
+**Files:** `shared/schema.ts`, `server/routes/concierge.routes.ts`, minimal admin create-listing UI.
+
+**Steps**
+1. Add `event_packages`: `id`, `eventType`, `market`, `title`, `description`, `priceFrom?`, `status`. Migration.
+2. Catalog read endpoint + an admin create/list UI. The Full tier in the router (Phase 5) points here as "quote on request."
+
+**Acceptance:** admin can create an event package; it surfaces as a quote-request stub; no checkout flow built.
+
+**Verify / Gate**
+```
+grep -rn "event_packages" shared/ server/
+tsc --noEmit                                            # ≤12
+```
+Commit: `feat(CON-A.P8): event_packages catalog (quote-on-request)`
 
 ---
 
-## KNOWN FOLLOW-UPS (NOT IN THIS BRIEF)
+## FINAL VERIFICATION CHECKLIST
 
-- **Per-expert commission override** — nullable `commissionRateOverride` column on the expert + one branch in `commission.ts:resolveCommissionRates:41-93` reading it before the category fallback + admin field in the expert approval form. **Must land before beta outreach with the §6.9 "20% vs 25%" language is sent.** Hard gate on recruitment, not on this brief. Owner: CON workstream.
-- **Premium feature fee row in §4.8** — restored as Deferred-P2 in the latest plan; tracker bookkeeping, not engineering.
-- **Credits as Concierge payment rail** — toggleable second path alongside card. Deferred from Phase A per D3.
+- [ ] No free public path to full LLM optimization (P1).
+- [ ] AI Concierge fee resolves per event type from config; $9.99/$49.99 defaults; `$0=off`; no charge literals (P2).
+- [ ] Concierge loop works end-to-end for a verified-expert market: guest preview → pay → AI plan → escalate → expert_request in queue → admin confirm → workspace.
+- [ ] Expert split rides `commission.ts` category fallback (per-expert override NOT implemented here).
+- [ ] All concierge endpoints in `concierge.routes.ts`; nothing added to `server/routes.ts`.
+- [ ] `/optimize` 301s to `/concierge?tier=ai`; static mock not rendered.
+- [ ] `tsc --noEmit` ≤ 12 (the floor) after every phase.
+
+## KNOWN FOLLOW-UPS (not in this brief)
+- **Per-expert commission override** (nullable `commissionRateOverride` + branch in `commission.ts:41-93` before category fallback + admin field). **BLOCKS BETA OUTREACH** — must land before any §6.9 "20% vs 25%" recruitment message is sent. Hard gate on recruitment, not on this brief.
+- **Premium feature fee** — re-added to §4.8 as Deferred-P2 (bookkeeping).
+- **Credits as a Concierge payment rail** — deferred from Phase A per D3.
+- **LB-P2** (`itinerary.tsx` 12/70 literals) — parallel-session P0; gate on go-live.
 
 ## OUT OF SCOPE (Phase B / Phase C briefs)
-
-$9 concierge tier (subscription rail, included-allowance counter, overage logic, priority-routing for members, admin tier config) · Full/DFY transactional flow (quote → approve → PI → workspace + provider bundle) · per-expert/`expertTier` system · provider insurance-tier capture + tier-based commission · fee override hierarchy (global→market→tier→entity) · effective-dating · fee-change audit trail · affiliate `behaviorMode` (retain/markup/rebate) · native-first browse sort · KYC/AML hooks · background-check + appeals · email-verification send/confirm · cart multi-currency + sharing · review-specific moderation queue · `server/routes.ts` defragmentation.
+$9 concierge tier (subscription rail, allowance counter, overage, member priority routing, admin tier config) · Full/DFY transactional flow (quote → approve → PI → workspace + provider bundle) · per-expert/`expertTier` system · provider insurance-tier capture + tier-based commission · fee override hierarchy (global→market→tier→entity) · effective-dating · fee-change audit trail · affiliate `behaviorMode` · native-first browse sort · KYC/AML hooks · background-check + appeals · email-verification send/confirm · cart multi-currency + sharing · review-specific moderation · `server/routes.ts` defragmentation.
