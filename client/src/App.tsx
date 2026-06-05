@@ -86,7 +86,7 @@ import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
 import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import AdminGemPhotoBackfill from "@/pages/admin/gem-photo-backfill";
-import OptimizePage from "@/pages/optimize";
+import ConciergePage from "@/pages/concierge";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
@@ -218,8 +218,11 @@ function Router() {
       <Route path="/architecture">
         <ArchitectureDiagram />
       </Route>
+      <Route path="/concierge">
+        <ConciergePage />
+      </Route>
       <Route path="/optimize">
-        <OptimizePage />
+        <Redirect to="/concierge?tier=ai" />
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
