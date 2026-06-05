@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -115,12 +115,19 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function ExpertsPage() {
+  const [location, navigate] = useLocation();
+  const searchString = useSearch();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDestination, setSelectedDestination] = useState("All Destinations");
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
   const [selectedLanguage, setSelectedLanguage] = useState("All Languages");
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("local_expert");
+  const [selectedRole, setSelectedRole] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const role = params.get("role");
+    return role && role in roleLabels ? role : "local_expert";
+  });
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
   const [sortBy, setSortBy] = useState("recommended");
@@ -143,29 +150,19 @@ export default function ExpertsPage() {
     if (role !== "local_expert") {
       setNeighbourhoodQuery("");
     }
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchString);
     if (params.get("role") === role) return;
     params.set("role", role);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState(null, "", newUrl);
-  }, []);
+    navigate(`${location}?${params.toString()}`);
+  }, [searchString, location, navigate]);
 
   const [favorites, setFavorites] = useState<string[]>([]);
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
   const [aiDestination, setAiDestination] = useState("");
 
-  const syncRoleFromUrl = useCallback(() => {
-    const roleParam = new URLSearchParams(window.location.search).get("role");
-    const resolved = roleParam && roleParam in roleLabels ? roleParam : "local_expert";
-    setSelectedRole(resolved);
-    if (resolved !== "local_expert") {
-      setNeighbourhoodQuery("");
-    }
-  }, []);
-
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchString);
     const destParam = params.get("destination");
     const topicParam = params.get("topic");
     const roleParam = params.get("role");
@@ -192,13 +189,12 @@ export default function ExpertsPage() {
       const specialty = topicToSpecialty[topicParam];
       if (specialty) setSelectedSpecialty(specialty);
     }
-    if (roleParam && roleParam in roleLabels) {
-      setSelectedRole(roleParam);
+    const resolved = roleParam && roleParam in roleLabels ? roleParam : "local_expert";
+    setSelectedRole(resolved);
+    if (resolved !== "local_expert") {
+      setNeighbourhoodQuery("");
     }
-
-    window.addEventListener("popstate", syncRoleFromUrl);
-    return () => window.removeEventListener("popstate", syncRoleFromUrl);
-  }, [syncRoleFromUrl]);
+  }, [searchString]);
   const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
   const [aiEndDate, setAiEndDate] = useState<Date | undefined>(undefined);
   const [aiAdults, setAiAdults] = useState("2");
