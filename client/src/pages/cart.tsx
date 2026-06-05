@@ -4,7 +4,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
 import { Link, useLocation, useSearch } from "wouter";
-import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -935,18 +934,16 @@ export default function CartPage() {
 
   if (authLoading) {
     return (
-      <DashboardLayout>
-        <div className="container py-8 max-w-4xl mx-auto">
-          <Skeleton className="h-10 w-48 mb-6" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </DashboardLayout>
+      <div className="container py-8 max-w-4xl mx-auto">
+        <Skeleton className="h-10 w-48 mb-6" />
+        <Skeleton className="h-64 w-full" />
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="container py-8 max-w-5xl mx-auto">
+    <>
+    <div className="container py-8 max-w-5xl mx-auto">
         {/* Flow Steps Indicator */}
         <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "cart" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
@@ -2184,6 +2181,6 @@ export default function CartPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
 }
