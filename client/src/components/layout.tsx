@@ -159,7 +159,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   };
 
   const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+    timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
   };
 
   useEffect(() => {
@@ -209,8 +209,10 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             className={cn(
-              "absolute top-full mt-1 bg-card border border-border rounded-lg shadow-xl z-50",
+              "absolute top-full mt-0 pt-1 bg-card border border-border rounded-lg shadow-xl z-50",
               item.sections.length > 2 
                 ? "left-1/2 -translate-x-1/2 w-[800px]" 
                 : "left-0 w-72"
