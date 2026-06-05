@@ -873,12 +873,17 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
 });
 
 // === Optimization Fee Tiers ===
+// CON-A.P2 (FEE-A): keyed by (complexity_tier, event_type). event_type IS NULL = tier-level
+// default. Non-null event_type = admin override for that experience type (e.g. wedding $49.99).
+// is_disabled = "$0=off" semantic per §4.8 — explicit disable, distinct from a $0 price.
 export const optimizationFees = pgTable("optimization_fees", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  complexityTier: varchar("complexity_tier", { length: 20 }).notNull().unique(), // simple | standard | complex
+  complexityTier: varchar("complexity_tier", { length: 20 }).notNull(), // simple | standard | complex
+  eventType: varchar("event_type", { length: 50 }), // null = tier-level default; non-null = per-event-type override
   priceCents: integer("price_cents").notNull(),
   currency: varchar("currency", { length: 3 }).notNull().default("USD"),
   isActive: boolean("is_active").notNull().default(true),
+  isDisabled: boolean("is_disabled").notNull().default(false), // $0=off per §4.8
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -5234,6 +5239,57 @@ export const expertRequests = pgTable("expert_requests", {
   assignedAt: timestamp("assigned_at"),
   completedAt: timestamp("completed_at"),
 });
+
+// === Concierge Requests (CON-A.P3 / N5) ===
+// Intent log for the pay-per-use Concierge layer. Persists every concierge request
+// — including guest previews — for funnel metrics and resume-after-abandonment.
+// userId is nullable so the guest hook (D6) is captured the same way as authed flows.
+// chosenTier is null until the user picks a delivery tier (Phase 5 router writes it).
+export const conciergeRequestStatuses = ["draft", "quoted", "selected", "paid", "delivered", "abandoned"] as const;
+export type ConciergeRequestStatus = (typeof conciergeRequestStatuses)[number];
+
+export const conciergeTiers = ["ai", "expert", "full"] as const;
+export type ConciergeTier = (typeof conciergeTiers)[number];
+
+export const conciergeRequests = pgTable("concierge_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id"), // nullable: guests can submit intent before sign-up
+  intent: text("intent").notNull(),
+  eventType: text("event_type"),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  cartId: text("cart_id"),
+  chosenTier: text("chosen_tier"), // ai | expert | full — null until the user picks
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertConciergeRequestSchema = createInsertSchema(conciergeRequests).omit({ id: true, createdAt: true });
+export type ConciergeRequest = typeof conciergeRequests.$inferSelect;
+export type InsertConciergeRequest = z.infer<typeof insertConciergeRequestSchema>;
+
+// === Event Packages (CON-A.P8 / N6) ===
+// Full / Done-for-You catalog. Admin-curated listings the Concierge surface
+// presents as "quote on request" for high-stakes events (weddings, proposals,
+// corporate, etc.). Phase A is catalog-only; the transactional flow (quote
+// → approve → PI → workspace + provider bundle) is Phase C / C1.
+export const eventPackageStatuses = ["active", "paused", "archived"] as const;
+export type EventPackageStatus = (typeof eventPackageStatuses)[number];
+
+export const eventPackages = pgTable("event_packages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventType: text("event_type").notNull(),
+  market: text("market").notNull(), // city / region name (matched ilike against destination)
+  title: text("title").notNull(),
+  description: text("description"),
+  priceFromCents: integer("price_from_cents"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEventPackageSchema = createInsertSchema(eventPackages).omit({ id: true, createdAt: true, updatedAt: true });
+export type EventPackage = typeof eventPackages.$inferSelect;
+export type InsertEventPackage = z.infer<typeof insertEventPackageSchema>;
 
 export const expertCityQueues = pgTable("expert_city_queues", {
   id: uuid("id").primaryKey().defaultRandom(),

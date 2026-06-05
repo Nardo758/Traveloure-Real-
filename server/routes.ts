@@ -84,6 +84,7 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
+import conciergeRoutes from "./routes/concierge.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -571,6 +572,9 @@ export async function registerRoutes(
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);
+
+  // Concierge routes - pay-per-use Concierge layer (intent log; Phase 5 adds router + quote)
+  app.use(conciergeRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
@@ -6382,7 +6386,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      const rates = await resolveCommissionRates(feeCategory);
+      const rates = await resolveCommissionRates({
+        category: feeCategory,
+        expertId: item.service?.userId ?? null, // EXP-OVR.P2: honor per-expert override
+      });
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare);
@@ -6537,7 +6544,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        const itemCategoryRates = await resolveCommissionRates({
+          category: feeCategory,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -6558,7 +6568,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        const itemCategoryRates2 = await resolveCommissionRates({
+          category: feeCategory2,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;

@@ -86,7 +86,7 @@ import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
 import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import AdminGemPhotoBackfill from "@/pages/admin/gem-photo-backfill";
-import OptimizePage from "@/pages/optimize";
+import ConciergePage from "@/pages/concierge";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
@@ -109,6 +109,7 @@ import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
 import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
+import AdminEventPackages from "@/pages/admin/event-packages";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
 import AdminCrossSellAnalytics from "@/pages/admin/cross-sell-analytics";
@@ -218,8 +219,11 @@ function Router() {
       <Route path="/architecture">
         <ArchitectureDiagram />
       </Route>
+      <Route path="/concierge">
+        <ConciergePage />
+      </Route>
       <Route path="/optimize">
-        <OptimizePage />
+        <Redirect to="/concierge?tier=ai" />
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
@@ -654,6 +658,9 @@ function Router() {
       </Route>
       <Route path="/admin/fee-config">
         {() => <ProtectedRoute component={AdminFeeConfig} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/event-packages">
+        {() => <ProtectedRoute component={AdminEventPackages} requiredRole="admin" />}
       </Route>
       <Route path="/admin/platform-providers">
         {() => <ProtectedRoute component={AdminPlatformProviders} requiredRole="admin" />}

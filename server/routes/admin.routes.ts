@@ -34,6 +34,7 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
+  accessAuditLogs,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -275,7 +276,22 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
     }
     const status = req.query.status as string | undefined;
     const forms = await storage.getLocalExpertForms(status);
-    res.json(forms);
+    // EXP-OVR.P3: enrich each application with the expert's current commission
+    // override so the admin UI can pre-populate the editor.
+    const userIds = Array.from(new Set(forms.map(f => f.userId).filter(Boolean)));
+    let overrideByUser = new Map<string, string | null>();
+    if (userIds.length > 0) {
+      const overrideRows = await db
+        .select({ id: users.id, override: users.commissionOverrideExpertSharePercent })
+        .from(users)
+        .where(inArray(users.id, userIds));
+      overrideByUser = new Map(overrideRows.map(r => [r.id, r.override ?? null]));
+    }
+    const enriched = forms.map(f => ({
+      ...f,
+      commissionOverrideExpertSharePercent: overrideByUser.get(f.userId) ?? null,
+    }));
+    res.json(enriched);
   });
 
   // Admin: Update expert application status
@@ -320,6 +336,52 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     }
     
     res.json(updated);
+  });
+
+  // ─── Per-expert commission override (EXP-OVR.P3) ──────────────────────────
+  // Admin sets/clears the override that commission.ts:resolveCommissionRates
+  // reads before falling back to category. Stored value is the expert-share
+  // percent (e.g. 80 → expert keeps 80%, platform takes 20%).
+
+router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
+    const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const targetId = req.params.id;
+    const raw = (req.body as any)?.commissionOverrideExpertSharePercent;
+    let nextValue: string | null;
+    if (raw === null || raw === undefined || raw === "") {
+      nextValue = null;
+    } else {
+      const pct = Number(raw);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        return res.status(400).json({ message: "commissionOverrideExpertSharePercent must be a number in [0, 100] or null" });
+      }
+      nextValue = pct.toFixed(2);
+    }
+    const [before] = await db
+      .select({ id: users.id, prev: users.commissionOverrideExpertSharePercent })
+      .from(users)
+      .where(eq(users.id, targetId))
+      .limit(1);
+    if (!before) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    await db
+      .update(users)
+      .set({ commissionOverrideExpertSharePercent: nextValue })
+      .where(eq(users.id, targetId));
+    await db.insert(accessAuditLogs).values({
+      actorId: admin.id,
+      actorRole: "admin",
+      action: "update_commission_override",
+      resourceType: "user",
+      resourceId: targetId,
+      targetUserId: targetId,
+      metadata: { previous: before.prev ?? null, next: nextValue },
+    });
+    res.json({ id: targetId, commissionOverrideExpertSharePercent: nextValue });
   });
 
   // === Provider Application Routes ===
@@ -4309,16 +4371,20 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
 
 router.get("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
+    // CON-A.P2: include event_type + is_disabled. Tier-level defaults first (event_type IS NULL),
+    // then per-event-type overrides alphabetically.
     const result = await db.execute(sql`
-      SELECT id, complexity_tier, price_cents, currency, is_active, updated_by, updated_at
+      SELECT id, complexity_tier, event_type, price_cents, currency, is_active, is_disabled, updated_by, updated_at
       FROM optimization_fees
       ORDER BY
+        CASE WHEN event_type IS NULL THEN 0 ELSE 1 END,
         CASE complexity_tier
           WHEN 'simple'   THEN 1
           WHEN 'standard' THEN 2
           WHEN 'complex'  THEN 3
           ELSE 4
-        END
+        END,
+        event_type
     `);
     res.json(result.rows);
   } catch (error: any) {
@@ -4329,7 +4395,7 @@ router.get("/api/admin/optimization-fees", requireAdminLocal, async (req, res) =
 router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const { complexityTier, priceCents, currency = "USD", isActive = true } = req.body;
+    const { complexityTier, eventType = null, priceCents, currency = "USD", isActive = true, isDisabled = false } = req.body;
 
     if (!complexityTier || !["simple", "standard", "complex"].includes(complexityTier)) {
       return res.status(400).json({ error: "complexityTier must be simple | standard | complex" });
@@ -4338,17 +4404,113 @@ router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) 
       return res.status(400).json({ error: "priceCents must be a non-negative integer" });
     }
 
-    await db.execute(sql`
-      INSERT INTO optimization_fees (id, complexity_tier, price_cents, currency, is_active, updated_by, created_at, updated_at)
-      VALUES (gen_random_uuid(), ${complexityTier}, ${priceCents}, ${currency}, ${isActive}, ${userId}, NOW(), NOW())
-      ON CONFLICT (complexity_tier) DO UPDATE SET
-        price_cents = EXCLUDED.price_cents,
-        currency    = EXCLUDED.currency,
-        is_active   = EXCLUDED.is_active,
-        updated_by  = EXCLUDED.updated_by,
-        updated_at  = NOW()
+    // CON-A.P2: upsert keyed by (complexity_tier, event_type). Composite unique not
+    // enforced at DB level (NULL semantics) — update-then-insert preserves single-row
+    // invariant per (tier, event_type|NULL).
+    const existing = await db.execute(sql`
+      SELECT id FROM optimization_fees
+      WHERE complexity_tier = ${complexityTier}
+        AND ((${eventType}::text IS NULL AND event_type IS NULL) OR event_type = ${eventType})
+      LIMIT 1
     `);
 
+    if (existing.rows.length > 0) {
+      await db.execute(sql`
+        UPDATE optimization_fees
+        SET price_cents = ${priceCents},
+            currency    = ${currency},
+            is_active   = ${isActive},
+            is_disabled = ${isDisabled},
+            updated_by  = ${userId},
+            updated_at  = NOW()
+        WHERE id = ${(existing.rows[0] as any).id}
+      `);
+    } else {
+      await db.execute(sql`
+        INSERT INTO optimization_fees (id, complexity_tier, event_type, price_cents, currency, is_active, is_disabled, updated_by, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${complexityTier}, ${eventType}, ${priceCents}, ${currency}, ${isActive}, ${isDisabled}, ${userId}, NOW(), NOW())
+      `);
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Event Packages Admin (CON-A.P8 / N6) ────────────────────────────────────
+// Minimal CRUD for the Full/DFY catalog. Phase A is catalog-only; Phase C/C1
+// will add the transactional flow (quote → approve → PI → workspace bundle).
+
+router.get("/api/admin/event-packages", requireAdminLocal, async (req, res) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id, event_type, market, title, description, price_from_cents, status, created_at, updated_at
+      FROM event_packages
+      ORDER BY status ASC, created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/admin/event-packages", requireAdminLocal, async (req, res) => {
+  try {
+    const { eventType, market, title, description = null, priceFromCents = null, status = "active" } = req.body;
+    if (!eventType || !market || !title) {
+      return res.status(400).json({ error: "eventType, market, and title are required" });
+    }
+    if (priceFromCents !== null && (typeof priceFromCents !== "number" || priceFromCents < 0)) {
+      return res.status(400).json({ error: "priceFromCents must be null or a non-negative integer" });
+    }
+    if (!["active", "paused", "archived"].includes(status)) {
+      return res.status(400).json({ error: "status must be active | paused | archived" });
+    }
+    await db.execute(sql`
+      INSERT INTO event_packages (id, event_type, market, title, description, price_from_cents, status, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${eventType}, ${market}, ${title}, ${description}, ${priceFromCents}, ${status}, NOW(), NOW())
+    `);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch("/api/admin/event-packages/:id", requireAdminLocal, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { eventType, market, title, description, priceFromCents, status } = req.body;
+    if (status !== undefined && !["active", "paused", "archived"].includes(status)) {
+      return res.status(400).json({ error: "status must be active | paused | archived" });
+    }
+    if (priceFromCents !== undefined && priceFromCents !== null && (typeof priceFromCents !== "number" || priceFromCents < 0)) {
+      return res.status(400).json({ error: "priceFromCents must be null or a non-negative integer" });
+    }
+    await db.execute(sql`
+      UPDATE event_packages SET
+        event_type        = COALESCE(${eventType ?? null}::text, event_type),
+        market            = COALESCE(${market ?? null}::text, market),
+        title             = COALESCE(${title ?? null}::text, title),
+        description       = ${description !== undefined ? description : sql`description`},
+        price_from_cents  = ${priceFromCents !== undefined ? priceFromCents : sql`price_from_cents`},
+        status            = COALESCE(${status ?? null}::text, status),
+        updated_at        = NOW()
+      WHERE id = ${id}::uuid
+    `);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete("/api/admin/event-packages/:id", requireAdminLocal, async (req, res) => {
+  // Soft delete: status='archived' so historical references survive.
+  try {
+    const { id } = req.params;
+    await db.execute(sql`
+      UPDATE event_packages SET status = 'archived', updated_at = NOW() WHERE id = ${id}::uuid
+    `);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

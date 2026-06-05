@@ -73,12 +73,23 @@
    - Mark the token `usedAt`, and invalidate the user's existing sessions.
 4. **Delete** the old tokenless reset path so it can't be called.
 
-**Email dependency — surface, don't invent.** The audit shows email verification has no send/confirm endpoints, which suggests **no transactional email provider is wired**. Before assuming one exists:
+**Email provider — DECIDED: Resend.** Per launch-owner confirmation, Resend is the transactional email provider. The forgot-password endpoint sends the reset link via Resend; the reset-password endpoint validates the token server-side. No "no-provider escape hatch" — build the complete flow.
+
+**Setup dependencies to confirm BEFORE the staging E2E** (flag if not satisfied — the flow ships either way, but mail won't deliver until both are true):
+1. `RESEND_API_KEY` set in Replit Secrets (and any prod environment that runs this code path).
+2. **Verified sending domain** in Resend. Resend will accept calls and send from a test address without a verified domain, but real user inboxes will silently bounce or filter without one. Confirm a `noreply@traveloure.com` (or equivalent) sender is verified.
+
+Implementation notes:
+- Use `resend` npm package (`import { Resend } from "resend"`); install if absent. Initialize as `new Resend(process.env.RESEND_API_KEY)`.
+- Reset-link URL pattern: `${APP_BASE_URL}/reset-password?token=<raw>` — frontend reads the token from the query string and posts it to `POST /api/auth/reset-password` with the new password.
+- On the server side, never log the raw token (just the hash, on error paths).
+- Template: minimal text + HTML — subject "Reset your Traveloure password", body explains the link expires in 60 min and was requested from this IP / device if available.
+
+Existing-sender check (defensive — confirms no prior wiring to avoid duplicating):
 ```
 grep -rni "sendgrid\|postmark\|resend\|nodemailer\|ses\|mailgun\|smtp" server/ package.json
 ```
-- If a sender exists, use it.
-- If none exists, **stop and flag it.** Do not fabricate an email integration. The secure interim that still ships: implement the full token flow and the two endpoints, remove the vulnerable handler, and report "reset email requires a transactional email provider — none configured" as a blocker for the launch owner to resolve. Closing the hole is the non-negotiable part; the delivery channel is the decision to escalate.
+If a prior partial integration exists, replace it with the Resend client — do not maintain two senders.
 
 **Acceptance criteria**
 - The tokenless `{email, newPassword}` reset path no longer exists anywhere.

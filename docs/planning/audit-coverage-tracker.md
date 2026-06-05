@@ -28,24 +28,25 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | 3 conflicting credit-package definitions | LB-P5a | Specced |
 | Expert workspace Map "coming soon" | LB-P5b | Specced |
 
-## Plan pending (Concierge)
+## Concierge Phase A — SHIPPED (branch `claude/laughing-bardeen-KyTUY`)
 
 | Gap | Owner | Status |
 |---|---|---|
-| `/optimize` static Paris mock → real request surface | CON-A | **Specced** (plan, step A6) |
-| AI Concierge pay-per-use surface | CON-A | Specced (plan) |
-| Expert Concierge escalation UX + availability gating | CON-A | Specced (plan) |
-| AI Concierge fee per-event-type mapping (`$0=off`, $9.99/$49.99) — **FEE-A** | CON-A | Specced (plan) |
-| `concierge_requests` intent log (N5) | CON-A | Specced (plan) |
-| `event_packages` catalog (N6) | CON-A | Specced (plan) |
-| $9 concierge tier (subscription, allowance, overage) — **FEE-B** | CON-B | Plan pending |
-| Full / Done-for-You event coordination | CON-C | Plan pending |
+| `/optimize` static mock → real request surface | CON-A | ✅ Shipped (P6 `2c4e5e7`) |
+| AI Concierge pay-per-use surface | CON-A | ✅ Shipped (P5/P6) |
+| Expert Concierge escalation UX + availability gating | CON-A | ✅ Shipped (P4 `61739ef`, P7 `c36984a`) |
+| AI Concierge fee per-event-type mapping (`$0=off`, $9.99/$49.99) — FEE-A | CON-A | ✅ Shipped (P2 `bba24fd`) |
+| `concierge_requests` intent log (N5) | CON-A | ✅ Shipped (P3 `db1f3e1`) |
+| `event_packages` catalog (N6) | CON-A | ✅ Shipped (P8 `74c481f`) |
+| Legacy `/api/ai/optimize-experience` free LLM leak | CON-A | ✅ Shipped (P1 `e6da614`) |
+| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | Plan pending |
+| Full / Done-for-You transactional flow | CON-C | Plan pending |
 
 ## Fee Architecture (needs planning — dependency of Concierge)
 
 | Gap | Owner | Status |
 |---|---|---|
-| **Per-expert commission override** (nullable `commissionRateOverride` + branch in `commission.ts:41-93` before category fallback + admin field) | **CON / owned** | **BLOCKS BETA OUTREACH** — must land before any §6.9 "20% vs 25%" recruitment message is sent. Not in the Phase A brief, but a hard gate; do not let it orphan. |
+| **Per-expert commission override** (`users.commission_override_expert_share_percent` + Tier-3 branch in `resolveCommissionRates` before category fallback + admin editor, audit-logged) | **CON / ✅ Shipped** (P1 `7d1c250`, P2 `5b13915`, P3 `79b335f`) | **Recruitment gate clears once tested E2E in staging.** Then §6.9 "20% vs 25%" outreach can ship; admin sets new beta experts to 80 before first booking settles. (Stored as expert-share %, not platform rate — same math, self-documenting name.) |
 | Single fee resolver every charge path reads from | FEE | **Partial** — LB-P2 wires checkout to `/api/booking-fee-config`; LB-P3 mounts the optimization-fee resolver. Remaining work is *unification*, not greenfield. |
 | 6 of 9 §4.8 fees hard-coded or missing | FEE | Needs planning |
 | Override granularity (global→market→tier→entity) | FEE | Needs planning |
