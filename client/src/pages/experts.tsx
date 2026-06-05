@@ -234,8 +234,23 @@ export default function ExpertsPage() {
     queryKey: ["/api/experience-types"],
   });
 
-  // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
+  // Fetch role counts (updates when destination or neighbourhood changes)
   const debouncedNeighbourhoodQuery = useDebounce(neighbourhoodQuery, 300);
+  const { data: roleCounts, isLoading: isLoadingCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/experts/counts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
+      if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
+      if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
+      const url = params.toString() ? `/api/experts/counts?${params.toString()}` : "/api/experts/counts";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch expert counts");
+      return res.json();
+    },
+  });
+
+  // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
     queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole],
     queryFn: async () => {
@@ -332,23 +347,47 @@ export default function ExpertsPage() {
                 { role: "local_expert", label: "Local Experts" },
                 { role: "travel_expert", label: "Travel Advisors" },
                 { role: "event_planner", label: "Event Planners" },
-              ].map(({ role, label }) => (
-                <button
-                  key={role}
-                  role="tab"
-                  aria-selected={selectedRole === role}
-                  onClick={() => handleRoleChange(role)}
-                  className={cn(
-                    "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
-                    selectedRole === role
-                      ? "bg-[#FF385C] text-white shadow-md"
-                      : "text-white/80 hover:text-white hover:bg-white/15"
-                  )}
-                  data-testid={`tab-role-${role}`}
-                >
-                  {label}
-                </button>
-              ))}
+              ].map(({ role, label }) => {
+                const count = roleCounts?.[role];
+                return (
+                  <button
+                    key={role}
+                    role="tab"
+                    aria-selected={selectedRole === role}
+                    onClick={() => handleRoleChange(role)}
+                    className={cn(
+                      "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap flex items-center gap-1.5",
+                      selectedRole === role
+                        ? "bg-[#FF385C] text-white shadow-md"
+                        : "text-white/80 hover:text-white hover:bg-white/15"
+                    )}
+                    data-testid={`tab-role-${role}`}
+                  >
+                    {label}
+                    {isLoadingCounts ? (
+                      <span
+                        className={cn(
+                          "inline-block w-5 h-4 rounded-full animate-pulse",
+                          selectedRole === role ? "bg-white/30" : "bg-white/20"
+                        )}
+                        data-testid={`skeleton-count-${role}`}
+                      />
+                    ) : count !== undefined ? (
+                      <span
+                        className={cn(
+                          "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold leading-none",
+                          selectedRole === role
+                            ? "bg-white/25 text-white"
+                            : "bg-white/20 text-white/90"
+                        )}
+                        data-testid={`count-${role}`}
+                      >
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </motion.div>
 
