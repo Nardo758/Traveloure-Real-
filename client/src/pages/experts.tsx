@@ -136,6 +136,18 @@ export default function ExpertsPage() {
       el.select();
     }, 50);
   }, []);
+
+  const handleRoleChange = useCallback((role: string) => {
+    setSelectedRole(role);
+    if (role !== "local_expert") {
+      setNeighbourhoodQuery("");
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.set("role", role);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, "", newUrl);
+  }, []);
+
   const [favorites, setFavorites] = useState<string[]>([]);
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
@@ -287,6 +299,43 @@ export default function ExpertsPage() {
                 ? "Specialist event planners for weddings, proposals, and group celebrations. Let an expert make it unforgettable."
                 : "Connect with verified local experts who know their destinations inside out. Get personalized recommendations and insider access."}
             </p>
+          </motion.div>
+
+          {/* Role Switcher */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="flex justify-center mb-6"
+          >
+            <div
+              className="inline-flex bg-white/10 backdrop-blur-sm rounded-full p-1 gap-1"
+              role="tablist"
+              aria-label="Expert type"
+              data-testid="role-switcher"
+            >
+              {[
+                { role: "local_expert", label: "Local Experts" },
+                { role: "travel_expert", label: "Travel Advisors" },
+                { role: "event_planner", label: "Event Planners" },
+              ].map(({ role, label }) => (
+                <button
+                  key={role}
+                  role="tab"
+                  aria-selected={selectedRole === role}
+                  onClick={() => handleRoleChange(role)}
+                  className={cn(
+                    "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
+                    selectedRole === role
+                      ? "bg-[#FF385C] text-white shadow-md"
+                      : "text-white/80 hover:text-white hover:bg-white/15"
+                  )}
+                  data-testid={`tab-role-${role}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </motion.div>
 
           {/* Search Bar */}
