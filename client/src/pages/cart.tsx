@@ -4,7 +4,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
 import { Link, useLocation, useSearch } from "wouter";
-import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -263,34 +262,32 @@ export default function CartPage() {
     }
   }, [externalItems, experienceSlug]);
 
-  // Check for step query param and stored optimization result on mount
+  // Check for step query param and stored optimization preview on mount
+  // CON-A.P1: experience-template now hands off an OptimizationPreview (free heuristic).
   useEffect(() => {
     const params = new URLSearchParams(searchString);
     const step = params.get("step");
-    
-    if (step === "itinerary" || step === "payment") {
-      // Try to load optimization result from session storage
-      const stored = sessionStorage.getItem("optimizationResult");
+
+    if (step === "optimize" || step === "payment") {
+      const stored = sessionStorage.getItem("optimizationPreview");
       if (stored) {
         try {
-          const result = JSON.parse(stored);
-          setOptimizationResult(result);
-          sessionStorage.removeItem("optimizationResult");
+          const preview: OptimizationPreview = JSON.parse(stored);
+          setOptimizationPreview(preview);
+          sessionStorage.removeItem("optimizationPreview");
           setFlowStep(step as FlowStep);
         } catch (e) {
-          console.error("Failed to parse stored optimization result");
-          // Fallback to cart step if parsing fails
+          console.error("Failed to parse stored optimization preview");
           setFlowStep("cart");
-          toast({ 
-            variant: "destructive", 
-            title: "Unable to load optimization results",
-            description: "Please generate itinerary again"
+          toast({
+            variant: "destructive",
+            title: "Unable to load optimization preview",
+            description: "Please generate itinerary again",
           });
         }
       } else {
-        // No optimization result stored, fall back to cart step
         setFlowStep("cart");
-        toast({ 
+        toast({
           title: "Optimization required",
           description: "Please click 'Generate Itinerary' to see your optimized plan"
         });
@@ -897,27 +894,38 @@ export default function CartPage() {
       return "Your destination";
     };
     
-    // Build request payload with context or fallback values
-    const payload = {
-      experienceType: experienceContext?.experienceType || "General",
-      destination: getDestination(),
-      startDate: experienceContext?.startDate,
-      endDate: experienceContext?.endDate,
-      selectedServices: [...platformServices, ...externalServices],
-      preferences: {}
-    };
-    
+    // CON-A.P1: free preview path. Full LLM optimization is delivered via the gated
+    // paid path (/api/optimization-payments → /confirm) surfaced from the Concierge UI.
+    const previewItems = [
+      ...platformServices.map(s => ({
+        serviceType: s.category || "sightseeing",
+        price: s.price,
+        duration: 90,
+        dayNumber: 1,
+      })),
+      ...externalServices.map((s, i) => ({
+        serviceType: s.category || "activity",
+        price: s.price,
+        duration: 120,
+        dayNumber: Math.floor(i / 3) + 1,
+      })),
+    ];
+
     try {
-      const response = await fetch("/api/ai/optimize-experience", {
+      const response = await fetch("/api/optimization-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          items: previewItems,
+          eventType: experienceContext?.experienceType,
+        }),
       });
       if (response.ok) {
-        const result = await response.json();
-        setOptimizationResult(result);
-        setFlowStep("itinerary");
+        const preview: OptimizationPreview = await response.json();
+        setOptimizationPreview(preview);
+        setOptimizationPayment(null);
+        setFlowStep("optimize");
       } else {
         toast({ variant: "destructive", title: "Failed to generate itinerary" });
       }
@@ -935,18 +943,16 @@ export default function CartPage() {
 
   if (authLoading) {
     return (
-      <DashboardLayout>
-        <div className="container py-8 max-w-4xl mx-auto">
-          <Skeleton className="h-10 w-48 mb-6" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </DashboardLayout>
+      <div className="container py-8 max-w-4xl mx-auto">
+        <Skeleton className="h-10 w-48 mb-6" />
+        <Skeleton className="h-64 w-full" />
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="container py-8 max-w-5xl mx-auto">
+    <>
+    <div className="container py-8 max-w-5xl mx-auto">
         {/* Flow Steps Indicator */}
         <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "cart" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
@@ -2184,6 +2190,6 @@ export default function CartPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
 }

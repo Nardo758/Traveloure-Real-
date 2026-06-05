@@ -84,6 +84,8 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
+import conciergeRoutes from "./routes/concierge.routes";
+import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -571,6 +573,9 @@ export async function registerRoutes(
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);
+
+  // Concierge routes - pay-per-use Concierge layer (intent log; Phase 5 adds router + quote)
+  app.use(conciergeRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
@@ -1265,8 +1270,14 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
   });
 
   // Experience AI Optimization endpoint
+  // Restricted to admin/expert only (CON-A.P1): full LLM optimization is delivered to
+  // travelers via the gated paid path (/api/optimization-payments → /confirm), not here.
   app.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || (user.role !== "admin" && user.role !== "expert")) {
+        return res.status(403).json({ message: "Admin or expert access required" });
+      }
       const { experienceType, destination, date, selectedServices, preferences } = req.body;
 
       const servicesContext = selectedServices?.map((s: any) => ({
@@ -3112,14 +3123,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
-  // Purchase credits via Stripe Checkout
-  const CREDIT_PACKAGES = [
-    { id: 1, credits: 50, price: 49 },
-    { id: 2, credits: 100, price: 89 },
-    { id: 3, credits: 250, price: 199 },
-    { id: 4, credits: 500, price: 349 },
-  ];
-
+  // Purchase credits via Stripe Checkout. LB-P5a: packages come from the
+  // single canonical source in shared/credit-packages.ts (imported at top of file).
   app.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -6376,7 +6381,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      const rates = await resolveCommissionRates(feeCategory);
+      const rates = await resolveCommissionRates({
+        category: feeCategory,
+        expertId: item.service?.userId ?? null, // EXP-OVR.P2: honor per-expert override
+      });
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare);
@@ -6531,7 +6539,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        const itemCategoryRates = await resolveCommissionRates({
+          category: feeCategory,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -6552,7 +6563,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        const itemCategoryRates2 = await resolveCommissionRates({
+          category: feeCategory2,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;

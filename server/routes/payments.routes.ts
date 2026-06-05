@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
+import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
@@ -192,13 +193,8 @@ router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
     }
   });
 
-  // Purchase credits via Stripe Checkout
-  const CREDIT_PACKAGES = [
-    { id: 1, credits: 50, price: 49 },
-    { id: 2, credits: 100, price: 89 },
-    { id: 3, credits: 250, price: 199 },
-    { id: 4, credits: 500, price: 349 },
-  ];
+  // Purchase credits via Stripe Checkout. LB-P5a: packages come from the
+  // single canonical source in shared/credit-packages.ts.
 
 
 router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
@@ -321,7 +317,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        const itemCategoryRates = await resolveCommissionRates({
+          category: feeCategory,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -342,7 +341,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        const itemCategoryRates2 = await resolveCommissionRates({
+          category: feeCategory2,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;
