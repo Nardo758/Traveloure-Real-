@@ -23,6 +23,8 @@ import {
   Sparkles,
   LayoutDashboard,
   CalendarDays,
+  Star,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -595,6 +597,57 @@ export default function ItineraryPage() {
               </div>
             )}
 
+            {/* Expert help callout — shown when no expert is involved yet */}
+            {!shareData?.expertStatus && (
+              <div
+                className="rounded-xl border border-[#FECDD3] bg-gradient-to-r from-[#FFF1F3] to-white dark:from-[#FF385C]/10 dark:to-transparent dark:border-[#FF385C]/30 p-4"
+                data-testid="expert-help-callout"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-full bg-[#FF385C]/10 shrink-0">
+                    <UserCheck className="w-4 h-4 text-[#FF385C]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#111827] dark:text-white">
+                      Want a local expert to plan this for you?
+                    </p>
+                    <p className="text-xs text-[#6B7280] mt-0.5">
+                      Browse verified experts for{" "}
+                      <span className="font-medium text-[#374151] dark:text-gray-300">
+                        {itinerary?.destination?.split(",")[0] ?? "your destination"}
+                      </span>{" "}
+                      — from hidden-gem guides to full trip planners.
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <Link
+                        href={`/experts?role=local_expert${itinerary?.destination ? `&destination=${encodeURIComponent(itinerary.destination)}` : ""}`}
+                      >
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs bg-[#FF385C] hover:bg-[#E23350] gap-1.5"
+                          data-testid="button-find-local-expert"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          Find Local Experts
+                        </Button>
+                      </Link>
+                      <Link href="/experts?role=travel_expert">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs border-[#FECDD3] text-[#FF385C] hover:bg-[#FFF1F3] gap-1.5"
+                          data-testid="button-find-trip-planner"
+                        >
+                          <Star className="w-3 h-3" />
+                          Trip Planners
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <PlanCard
               role="owner"
               stage="full"
@@ -742,30 +795,62 @@ export default function ItineraryPage() {
               );
             })()}
 
-            <Card className="bg-white dark:bg-gray-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
-                      <MessageSquare className="w-5 h-5 text-[#FF385C]" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm text-[#111827] dark:text-white">Need help?</h4>
-                      <p className="text-xs text-[#6B7280]">AI or expert support</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Button variant="outline" size="sm" className="w-full" data-testid="button-ai-help">
-                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      AI Assistant
-                    </Button>
-                    <Button size="sm" className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
-                      Talk to Expert
-                    </Button>
-                  </div>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white dark:bg-gray-800 p-4 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20 shrink-0">
+                  <UserCheck className="w-4 h-4 text-[#FF385C]" />
                 </div>
-              </CardContent>
-            </Card>
+                <div>
+                  <h4 className="font-semibold text-sm text-[#111827] dark:text-white">Get Expert Help</h4>
+                  <p className="text-[11px] text-[#6B7280] leading-tight">Local guides · Trip planners · Event experts</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Link
+                  href={`/experts?role=local_expert${itinerary?.destination ? `&destination=${encodeURIComponent(itinerary.destination)}` : ""}`}
+                >
+                  <Button
+                    size="sm"
+                    className="w-full h-8 text-xs bg-[#FF385C] hover:bg-[#E23350] justify-between"
+                    data-testid="button-expert-help"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3" />
+                      Find Local Experts
+                    </span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+                <Link href="/experts?role=travel_expert">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs justify-between"
+                    data-testid="button-trip-planner-help"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Star className="w-3 h-3" />
+                      Browse Trip Planners
+                    </span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+                <Link href="/experts?role=event_planner">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs justify-between"
+                    data-testid="button-event-planner-help"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3" />
+                      Event Planners
+                    </span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
           </div>
         </div>
