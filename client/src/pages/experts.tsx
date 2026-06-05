@@ -145,13 +145,23 @@ export default function ExpertsPage() {
     const params = new URLSearchParams(window.location.search);
     params.set("role", role);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState(null, "", newUrl);
+    window.history.pushState(null, "", newUrl);
   }, []);
 
   const [favorites, setFavorites] = useState<string[]>([]);
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
   const [aiDestination, setAiDestination] = useState("");
+
+  const syncRoleFromUrl = useCallback(() => {
+    const roleParam = new URLSearchParams(window.location.search).get("role");
+    if (roleParam && roleParam in roleLabels) {
+      setSelectedRole(roleParam);
+      if (roleParam !== "local_expert") {
+        setNeighbourhoodQuery("");
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -184,7 +194,10 @@ export default function ExpertsPage() {
     if (roleParam && roleParam in roleLabels) {
       setSelectedRole(roleParam);
     }
-  }, []);
+
+    window.addEventListener("popstate", syncRoleFromUrl);
+    return () => window.removeEventListener("popstate", syncRoleFromUrl);
+  }, [syncRoleFromUrl]);
   const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
   const [aiEndDate, setAiEndDate] = useState<Date | undefined>(undefined);
   const [aiAdults, setAiAdults] = useState("2");
