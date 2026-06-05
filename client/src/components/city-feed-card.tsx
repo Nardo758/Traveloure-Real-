@@ -194,7 +194,7 @@ export function CityFeedCardGem({
         "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
         typeMeta.phBg,
         typeMeta.phText,
-        isRow ? "w-24 self-stretch" : "h-[104px] w-full",
+        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
       )}
     >
       {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
