@@ -645,7 +645,7 @@ export default function ItineraryPage() {
                     const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                    const pendingTotal = plancardData?.metrics?.totalCost ?? (inAppTotal + partnerTotal);
+                    const pendingTotal = inAppTotal + partnerTotal;
                     const platformFeePercent = 12;
                     const expertSharePercent = 70;
                     const feeAI = Math.round(pendingTotal * (platformFeePercent / 100) * 100) / 100;

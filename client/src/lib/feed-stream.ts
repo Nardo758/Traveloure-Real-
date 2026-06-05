@@ -18,7 +18,7 @@ export type FeedItemKind =
   | "expert"
   | "supply-hotel"
   | "supply-activity"
-  | "vendor-service"
+  | "date-highlights"
   | "city-separator";
 
 export interface FeedItem {
@@ -39,54 +39,25 @@ export function gemCategory(placeType: string | null | undefined): string {
   return "do";
 }
 
-export interface MatchSuggestion {
-  icon: string;
-  matchText: string;
-  actionLabel: string;
-  actionVariant: "platform" | "affiliate";
-  href: string;
-}
-
 /**
- * Map a placeType to a matched-service suggestion (spec: photo spot→photographer,
+ * Map a placeType to a matched-service suggestion label (spec: photo spot→photographer,
  * stay→transport, attraction→guide, eat→reservation).
- * Returns enriched data including price range, action label, and badge variant.
  */
-export function matchedServiceSuggestion(placeType: string | null | undefined): MatchSuggestion | null {
+export function matchedServiceSuggestion(placeType: string | null | undefined): {
+  label: string;
+  icon: string;
+  href: string;
+} | null {
   const cat = gemCategory(placeType);
   switch (cat) {
     case "photo_spots":
-      return {
-        icon: "📷",
-        matchText: "photographer here · ¥14,000",
-        actionLabel: "Book shoot",
-        actionVariant: "platform",
-        href: "/experiences/photo",
-      };
+      return { label: "Book a photographer", icon: "📷", href: "/experiences/photo" };
     case "stay":
-      return {
-        icon: "🚗",
-        matchText: "private car from city centre · ¥9,000",
-        actionLabel: "Book both",
-        actionVariant: "platform",
-        href: "/experiences/transport",
-      };
+      return { label: "Book airport transfer", icon: "🚖", href: "/experiences/transport" };
     case "eat":
-      return {
-        icon: "🍽",
-        matchText: "reservation via OpenTable",
-        actionLabel: "Reserve",
-        actionVariant: "affiliate",
-        href: "/experiences/dining",
-      };
+      return { label: "Reserve a table", icon: "🍽", href: "/experiences/dining" };
     case "do":
-      return {
-        icon: "🧭",
-        matchText: "local guide · ¥6,000",
-        actionLabel: "Book guide",
-        actionVariant: "platform",
-        href: "/local-experts",
-      };
+      return { label: "Get a local guide", icon: "🏅", href: "/local-experts" };
     default:
       return null;
   }
@@ -106,7 +77,6 @@ export function buildFeedStream(
   events: any[],
   supplyHotels: any[],
   supplyActivities: any[],
-  platformServices: any[] = [],
   cityName?: string,
 ): FeedItem[] {
   // ── 1. Group gems by neighborhood slug ──────────────────────────────────
@@ -125,30 +95,16 @@ export function buildFeedStream(
   }
 
   // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
-  //
-  // Gems can arrive in two forms:
-  //   a) Nested inside each neighborhood object (n.gems) — primary source
-  //   b) At the top level in allGems, keyed by slug — fallback source
-  //
-  // We merge both: use n.gems when present, otherwise fall back to
-  // gemsByNeighborhood. The merged gemCount is updated to match the actual
-  // gems array so the header ("N things to do") is always accurate.
   const neighborhoodItems: FeedItem[] = neighborhoods
     .filter((n) => (n.gems?.length ?? 0) > 0 || (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
-    .map((n) => {
-      const mergedGems: any[] = (n.gems?.length ? n.gems : null)
-        ?? gemsByNeighborhood.get(n.slug)
-        ?? [];
-      return {
-        kind: "neighborhood" as FeedItemKind,
-        id: `neighborhood-${n.id}`,
-        data: {
-          ...n,
-          gems: mergedGems,
-          gemCount: Math.max(n.gemCount ?? 0, mergedGems.length),
-        },
-      };
-    });
+    .map((n) => ({
+      kind: "neighborhood" as FeedItemKind,
+      id: `neighborhood-${n.id}`,
+      data: {
+        ...n,
+        gems: n.gems?.length ? n.gems : (gemsByNeighborhood.get(n.slug) ?? []),
+      },
+    }));
 
   // ── 3. Build filler pool ─────────────────────────────────────────────────
   const fillerPool: FeedItem[] = [
@@ -165,108 +121,122 @@ export function buildFeedStream(
     })),
     ...(supplyHotels ?? []).slice(0, 3).map((h) => ({
       kind: "supply-hotel" as FeedItemKind,
-      id: `hotel-${h.id ?? Math.random()}`,
+      id: `hotel-${h.id}`,
       data: h,
     })),
     ...(supplyActivities ?? []).slice(0, 3).map((a) => ({
       kind: "supply-activity" as FeedItemKind,
-      id: `activity-${a.id ?? Math.random()}`,
+      id: `activity-${a.id}`,
       data: a,
-    })),
-    ...(platformServices ?? []).slice(0, 4).map((s) => ({
-      kind: "vendor-service" as FeedItemKind,
-      id: `vsvc-${s.id}`,
-      data: s,
     })),
   ];
 
-  // ── 4. Interleave neighborhoods with filler ──────────────────────────────
+  // ── 4. Edge cases ────────────────────────────────────────────────────────
   if (neighborhoodItems.length === 0) return fillerPool;
-
-  const result: FeedItem[] = [];
-  const filler = [...fillerPool];
-
-  // Minimum filler items to place between each pair of neighborhoods
-  const MIN_FILLER_BETWEEN = 1;
-
-  for (let i = 0; i < neighborhoodItems.length; i++) {
-    // Insert filler before this neighborhood (except before the very first if pool is small)
-    if (i === 0 && filler.length > neighborhoodItems.length * MIN_FILLER_BETWEEN) {
-      // Distribute some filler before the first neighborhood
-      const pre = Math.min(2, filler.length - neighborhoodItems.length * MIN_FILLER_BETWEEN);
-      result.push(...filler.splice(0, pre));
-    }
-
-    result.push(neighborhoodItems[i]);
-
-    // Always place at least MIN_FILLER_BETWEEN items after this neighborhood
-    if (i < neighborhoodItems.length - 1) {
-      if (filler.length > 0) {
-        result.push(...filler.splice(0, Math.max(MIN_FILLER_BETWEEN, Math.floor(filler.length / (neighborhoodItems.length - i)))));
-      } else {
-        // No real filler left — insert a city-separator as guaranteed spacer
-        result.push({
-          kind: "city-separator" as FeedItemKind,
-          id: `sep-${i}`,
-          data: { cityName: cityName ?? "this city" },
-        });
-      }
-    }
+  if (fillerPool.length === 0) {
+    // No real filler — interleave with synthetic separators to guarantee non-adjacency
+    return interleaveSynthetic(neighborhoodItems, cityName);
   }
 
-  // Remaining filler after the last neighborhood
-  result.push(...filler);
+  // ── 5. Distribute fillers evenly into N+1 slots ──────────────────────────
+  // Slots: [before_n0, between_n0_n1, ..., after_nLast]
+  const numSlots = neighborhoodItems.length + 1;
+  const baseCount = Math.floor(fillerPool.length / numSlots);
+  let remainder = fillerPool.length % numSlots;
+  let fi = 0;
+
+  const result: FeedItem[] = [];
+
+  for (let slot = 0; slot < numSlots; slot++) {
+    const count = baseCount + (remainder > 0 ? (remainder--, 1) : 0);
+    for (let k = 0; k < count; k++) {
+      result.push(fillerPool[fi++]);
+    }
+    if (slot < neighborhoodItems.length) {
+      // Check: would last emitted item be a neighborhood? If so and we have NO
+      // filler in this slot, insert a synthetic separator.
+      const lastKind = result[result.length - 1]?.kind;
+      if (lastKind === "neighborhood") {
+        result.push(makeSeparator(slot, cityName));
+      }
+      result.push(neighborhoodItems[slot]);
+    }
+  }
 
   return result;
 }
 
+/** Build a stream by interleaving neighborhoods with synthetic separators. */
+function interleaveSynthetic(neighborhoods: FeedItem[], cityName?: string): FeedItem[] {
+  const result: FeedItem[] = [];
+  for (let i = 0; i < neighborhoods.length; i++) {
+    result.push(neighborhoods[i]);
+    if (i < neighborhoods.length - 1) {
+      result.push(makeSeparator(i, cityName));
+    }
+  }
+  return result;
+}
+
+function makeSeparator(index: number, cityName?: string): FeedItem {
+  return {
+    kind: "city-separator",
+    id: `city-separator-${index}`,
+    data: { cityName: cityName ?? "this city" },
+  };
+}
+
 /**
- * Filter a feed stream by a spine chip category.
- * When filtering, neighborhood containers are dissolved — their gems are extracted
- * and filtered individually.
+ * Filter a FeedItem[] by spine chip type.
+ * When a type filter is active, NeighborhoodContainers are dissolved and their
+ * gems rendered as flat matching items. date-highlights always passes through.
  */
-export function filterFeedStream(items: FeedItem[], category: string): FeedItem[] {
-  const dissolved: FeedItem[] = [];
+export function filterFeedStream(items: FeedItem[], activeFilter: string): FeedItem[] {
+  if (activeFilter === "all") return items;
+
+  const result: FeedItem[] = [];
+
   for (const item of items) {
+    if (item.kind === "date-highlights") {
+      result.push(item);
+      continue;
+    }
+    if (item.kind === "city-separator") continue; // hide separators in filtered view
     if (item.kind === "neighborhood") {
-      const gems: any[] = item.data.gems ?? [];
-      gems.forEach((g) =>
-        dissolved.push({ kind: "loose-gem", id: `gem-${g.id}`, data: g }),
-      );
-    } else {
-      dissolved.push(item);
+      // Dissolve — emit only matching gems as loose items
+      for (const gem of item.data.gems ?? []) {
+        if (matchesFilter(gem, "loose-gem", activeFilter)) {
+          result.push({ kind: "loose-gem", id: `gem-${gem.id}`, data: gem });
+        }
+      }
+    } else if (matchesFilter(item.data, item.kind, activeFilter)) {
+      result.push(item);
     }
   }
 
-  return dissolved.filter((item) => {
-    switch (category) {
-      case "eat":
-        if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "eat";
-        if (item.kind === "supply-activity") return false;
-        if (item.kind === "supply-hotel") return false;
-        return false;
-      case "stay":
-        if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "stay";
-        if (item.kind === "supply-hotel") return true;
-        return false;
-      case "do":
-        if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "do";
-        if (item.kind === "supply-activity") return true;
-        return false;
-      case "photo_spots":
-        if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "photo_spots";
-        return false;
-      case "events":
-        return item.kind === "event";
-      case "experts":
-        return item.kind === "expert";
-      case "services":
-        return item.kind === "vendor-service";
-      case "vibe":
-        if (item.kind === "loose-gem") return !!item.data.vibeTag || !!item.data.isSecret;
-        return false;
-      default:
-        return true;
-    }
-  });
+  return result;
+}
+
+function matchesFilter(data: any, kind: FeedItemKind, filter: string): boolean {
+  switch (filter) {
+    case "eat":
+      return gemCategory(data.placeType) === "eat";
+    case "do":
+      return (
+        kind === "supply-activity" ||
+        (kind === "loose-gem" && gemCategory(data.placeType) === "do")
+      );
+    case "stay":
+      return kind === "supply-hotel" || gemCategory(data.placeType) === "stay";
+    case "events":
+      return kind === "event";
+    case "photo_spots":
+      return gemCategory(data.placeType) === "photo_spots";
+    case "experts":
+      return kind === "expert";
+    case "vibe":
+      return kind === "event" || gemCategory(data.placeType) === "photo_spots";
+    default:
+      return true;
+  }
 }

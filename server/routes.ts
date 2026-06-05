@@ -83,6 +83,7 @@ import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
+import optimizationRoutes from "./routes/optimization.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -567,6 +568,9 @@ export async function registerRoutes(
 
   // PlanCard routes - change tracking, comments, structured day data
   app.use(plancardRoutes);
+
+  // Optimization routes - heuristic preview + payment-gated AI optimization
+  app.use(optimizationRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
@@ -3510,46 +3514,6 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/expert-service-categories/:categoryId/offerings", async (req, res) => {
     const offerings = await storage.getExpertServiceOfferings(req.params.categoryId);
     res.json(offerings);
-  });
-
-  // Get expert counts grouped by role (public) — used for role tab badges
-  app.get("/api/experts/counts", async (req, res) => {
-    const experienceTypeId = req.query.experienceTypeId as string | undefined;
-    const location = req.query.location as string | undefined;
-    const neighbourhood = req.query.neighbourhood as string | undefined;
-
-    const experts = await storage.getExpertsWithProfiles(experienceTypeId);
-    let filtered = experts as any[];
-
-    if (location) {
-      const loc = location.toLowerCase();
-      filtered = filtered.filter((expert: any) => {
-        const form = expert.expertForm;
-        if (!form) return false;
-        const destinations = (form.destinations || []).map((d: string) => d.toLowerCase());
-        const city = (form.city || "").toLowerCase();
-        const country = (form.country || "").toLowerCase();
-        return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
-          city.includes(loc) || loc.includes(city) ||
-          country.includes(loc) || loc.includes(country);
-      });
-    }
-
-    if (neighbourhood) {
-      const nbh = neighbourhood.toLowerCase().trim();
-      filtered = filtered.filter((expert: any) => {
-        if (nbh.length < 3) return false;
-        const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
-        return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
-      });
-    }
-
-    const counts: Record<string, number> = { local_expert: 0, travel_expert: 0, event_planner: 0 };
-    for (const expert of filtered) {
-      const r = expert.role as string;
-      if (r in counts) counts[r]++;
-    }
-    res.json(counts);
   });
 
   // Get all experts with their full profiles (public)
@@ -10197,52 +10161,32 @@ Respond with this exact JSON structure:
           )
         );
       
-      // Build season map: city-level key (city-country) AND country-level key (-country).
-      // Seed data is stored with city=NULL (country-level), so we need a two-tier lookup.
+      // Create a map of city+country to seasonal data
       const seasonMap = new Map<string, typeof seasonsData[0]>();
-      const countrySeasonMap = new Map<string, typeof seasonsData[0]>();
       for (const season of seasonsData) {
-        if (season.city) {
-          // City-specific season — highest priority
-          const key = `${season.city}-${season.country}`.toLowerCase();
-          seasonMap.set(key, season);
-        } else {
-          // Country-level season — fallback
-          const key = season.country.toLowerCase();
-          if (!countrySeasonMap.has(key)) countrySeasonMap.set(key, season);
-        }
+        const key = `${season.city || ""}-${season.country}`.toLowerCase();
+        seasonMap.set(key, season);
       }
-
-      // Build event map: by city+country AND by country alone (events with city=NULL)
+      
+      // Create a map of city to events
       const eventMap = new Map<string, typeof eventsData>();
-      const countryEventMap = new Map<string, typeof eventsData>();
       for (const event of eventsData) {
-        if (event.city) {
-          const key = `${event.city}-${event.country}`.toLowerCase();
-          if (!eventMap.has(key)) eventMap.set(key, []);
-          eventMap.get(key)!.push(event);
-        } else {
-          const key = event.country.toLowerCase();
-          if (!countryEventMap.has(key)) countryEventMap.set(key, []);
-          countryEventMap.get(key)!.push(event);
+        const key = `${event.city || ""}-${event.country}`.toLowerCase();
+        if (!eventMap.has(key)) {
+          eventMap.set(key, []);
         }
+        eventMap.get(key)!.push(event);
       }
-
-      // Combine cities with seasonal data.
-      // Include a city if it has a season (city-level OR country-level) OR has events.
+      
+      // Combine cities with seasonal data - ONLY include cities that have seasonal data for this month
       const citiesWithSeasons = cities
         .map(city => {
-          const cityKey = `${city.cityName}-${city.country}`.toLowerCase();
-          const countryKey = city.country.toLowerCase();
-          // Two-tier season lookup: city-level preferred, country-level fallback
-          const season = seasonMap.get(cityKey) ?? countrySeasonMap.get(countryKey) ?? null;
-          // Two-tier event lookup
-          const cityEvents = eventMap.get(cityKey) || [];
-          const countryEvents = countryEventMap.get(countryKey) || [];
-          const events = [...cityEvents, ...countryEvents];
-
-          // Gate: include if has season OR has events (not AND)
-          if (!season && events.length === 0) return null;
+          const key = `${city.cityName}-${city.country}`.toLowerCase();
+          const season = seasonMap.get(key);
+          const events = eventMap.get(key) || [];
+          
+          // Skip cities without seasonal data for this month
+          if (!season) return null;
           
           return {
             id: city.id,

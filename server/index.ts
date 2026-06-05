@@ -12,7 +12,6 @@ import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.see
 import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
-import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -217,18 +216,6 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed popular cities content");
-  }
-
-  try {
-    const phaseDResult = await seedPhaseDKyotoVendors();
-    if (phaseDResult.vendorsInserted > 0 || phaseDResult.servicesInserted > 0) {
-      logger.info(
-        { vendors: phaseDResult.vendorsInserted, services: phaseDResult.servicesInserted },
-        "Seeded Phase D Kyoto wedding & corporate vendors",
-      );
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
   }
 
   seedingDurationMs = Date.now() - seedingStartTime;

@@ -703,14 +703,14 @@ function PlanCardSummary({
                       >
                         <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
                         {isStale ? "Re-optimize?" : "AI Optimized"}
-                        {!isStale && optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
+                        {!isStale && optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
                           <span style={{ color: "#2C7A44", fontWeight: 600 }}>
-                            · ${Math.round(optimizationDeltaFromData.savings as number)} saved
+                            · ${Math.round(optimizationDelta.savings)} saved
                           </span>
                         )}
-                        {!isStale && optimizationDeltaFromData?.starRatingDelta != null && (optimizationDeltaFromData.starRatingDelta as number) > 0 && (
+                        {!isStale && optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
                           <span style={{ color: "#B07C00", fontWeight: 600 }}>
-                            · +{(optimizationDeltaFromData.starRatingDelta as number).toFixed(1)}★
+                            · +{optimizationDelta.starRatingDelta.toFixed(1)}★
                           </span>
                         )}
                         <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
@@ -847,7 +847,7 @@ function PlanCardSummary({
         onClose={() => setShowPolishDialog(false)}
         trip={trip}
         optimizationScore={optimizationScore}
-        optimizationDelta={optimizationDeltaFromData}
+        optimizationDelta={optimizationDelta}
       />
     </>
   );

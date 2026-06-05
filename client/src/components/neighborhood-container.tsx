@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { MapPin, Plus, ArrowRight } from "lucide-react";
 import { CityFeedCardGem, computeBookability } from "@/components/city-feed-card";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +20,9 @@ interface NeighborhoodContainerProps {
 }
 
 /**
- * Full .nb neighborhood container matching the gem feed reference design.
- * Large header with icon block, name, trend line, description, CTA buttons,
- * then an inner bento grid with span-2 marquee first gem.
+ * Slim-header grouped bento container for a neighborhood.
+ * Shows a 2-3 column mini-bento of the neighborhood's top gems using CityFeedCard.
+ * Light visual grouping — not a full-bleed divider.
  */
 export function NeighborhoodContainer({
   neighborhood,
@@ -30,95 +31,73 @@ export function NeighborhoodContainer({
   onAdd,
   className,
 }: NeighborhoodContainerProps) {
-  // Gems may arrive nested (neighborhood.gems) or via the top-level feed
-  // merge. Use whichever gives the higher count so the header is always accurate.
-  const gems = neighborhood.gems ?? [];
-  const total = Math.max(neighborhood.gemCount ?? 0, gems.length);
-  const topGems = gems.slice(0, 4);
+  const total = neighborhood.gemCount;
+  // Pass all gems to CityFeedCardGem — the card's useGemPhoto hook resolves
+  // photos via the fallback pipeline (DB imageUrl → Google Places → Unsplash)
+  // and returns null only when all sources fail, at which point the card hides
+  // itself. We do not pre-filter here so the fallback chain runs for every gem.
+  const topGems = neighborhood.gems.slice(0, 3);
 
   if (total === 0 && topGems.length === 0) return null;
 
   return (
     <div
-      className={cn("rounded-xl border bg-card overflow-hidden", className)}
+      className={cn("rounded-xl border bg-muted/30 overflow-hidden", className)}
       data-testid={`neighborhood-container-${neighborhood.slug}`}
     >
-      {/* Header */}
-      <div className="p-4 flex gap-3.5">
-        <div className="w-[60px] h-[60px] rounded-xl bg-teal-50 flex items-center justify-center text-2xl flex-shrink-0">
-          🗺
+      {/* Slim header band */}
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-muted/50 border-b">
+        <div className="flex items-center gap-2 min-w-0">
+          <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+          <span className="font-semibold text-sm truncate">{neighborhood.name}</span>
+          <span className="text-xs text-muted-foreground flex-shrink-0">
+            {total} {total === 1 ? "place" : "places"}
+          </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-[19px] font-bold tracking-tight">{neighborhood.name}</h2>
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-gray-100 text-gray-500">
-              Neighborhood
-            </span>
-          </div>
-          <div className="text-[12px] text-teal-700 mt-0.5">
-            trending · {total} {total === 1 ? "thing" : "things"} to do
-          </div>
-          {neighborhood.description && (
-            <div className="text-[13px] text-muted-foreground mt-0.5 line-clamp-2">
-              {neighborhood.description}
-            </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {onAdd && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2"
+              onClick={() =>
+                onAdd({
+                  title: `A day in ${neighborhood.name}`,
+                  description: neighborhood.description,
+                  city,
+                  type: "neighborhood",
+                  scheduledDate,
+                })
+              }
+              data-testid={`btn-add-day-${neighborhood.slug}`}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Add a day
+            </Button>
           )}
+          <Button size="sm" variant="ghost" className="h-7 text-xs px-2" asChild>
+            <a href={`/discover/location/${encodeURIComponent(city)}/${neighborhood.slug}`}>
+              Explore
+              <ArrowRight className="w-3 h-3 ml-1" />
+            </a>
+          </Button>
         </div>
       </div>
 
-      {/* CTA buttons */}
-      <div className="flex gap-2 px-4 pb-4">
-        <Button
-          size="sm"
-          className="h-8 text-xs px-4"
-          asChild
-          data-testid={`btn-explore-${neighborhood.slug}`}
-        >
-          <a href={`/discover/location/${encodeURIComponent(city)}/${neighborhood.slug}`}>
-            Explore {neighborhood.name}
-          </a>
-        </Button>
-        {onAdd && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs px-4"
-            onClick={() =>
-              onAdd({
-                title: `A day in ${neighborhood.name}`,
-                description: neighborhood.description,
-                city,
-                type: "neighborhood",
-                scheduledDate,
-              })
-            }
-            data-testid={`btn-add-day-${neighborhood.slug}`}
-          >
-            + Add a {neighborhood.name} day
-          </Button>
-        )}
-      </div>
-
-      {/* Inner bento */}
+      {/* Mini bento of top gems (only when photos are available) */}
       {topGems.length > 0 && (
-        <div className="bg-muted/40 border-t px-4 pt-3.5 pb-4">
-          <div className="text-[11px] text-muted-foreground font-semibold uppercase tracking-widest mb-2.5">
-            IN {neighborhood.name.toUpperCase()}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {topGems.map((gem: any, idx: number) => (
-              <div key={gem.id} className={idx === 0 ? "col-span-2" : ""}>
-                <CityFeedCardGem
-                  gem={gem}
-                  city={city}
-                  scheduledDate={scheduledDate}
-                  bookability={computeBookability(gem)}
-                  onAdd={onAdd}
-                  layout={idx === 0 ? "row" : "column"}
-                />
-              </div>
-            ))}
-          </div>
+        <div className="p-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+          {topGems.map((gem: any) => (
+            <CityFeedCardGem
+              key={gem.id}
+              gem={gem}
+              city={city}
+              compact
+              scheduledDate={scheduledDate}
+              bookability={computeBookability(gem)}
+              onAdd={onAdd}
+            />
+          ))}
         </div>
       )}
     </div>

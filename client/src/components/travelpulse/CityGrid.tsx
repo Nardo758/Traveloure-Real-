@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -515,6 +515,20 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
   });
+
+  // Phase B: auto-navigate when selectedCityName prop is set and data loads
+  useEffect(() => {
+    if (selectedCityName && data?.cities) {
+      const matchedCity = data.cities.find(
+        (city) => city.cityName.toLowerCase() === selectedCityName.toLowerCase()
+      );
+      if (matchedCity) {
+        navigate(
+          `/discover/location/${encodeURIComponent(matchedCity.cityName)}?country=${encodeURIComponent(matchedCity.country || "")}`
+        );
+      }
+    }
+  }, [selectedCityName, data?.cities, navigate]);
 
   const handleCityClick = (city: TravelPulseCity) => {
     onCitySelect?.(city);
