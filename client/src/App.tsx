@@ -7,6 +7,7 @@ import { Layout } from "@/components/layout";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { EALayout } from "@/components/ea-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
@@ -185,12 +186,17 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
 function ChatWithRoleLayout() {
   const { user } = useAuth();
   const role = user?.role ?? "user";
+  // Expert roles — local_expert, travel_expert, event_planner, executive_assistant
   if (["local_expert", "travel_expert", "event_planner", "expert"].includes(role)) {
     return <ExpertLayout title="Messages"><Chat /></ExpertLayout>;
+  }
+  if (role === "executive_assistant") {
+    return <EALayout title="Messages"><Chat /></EALayout>;
   }
   if (role === "service_provider") {
     return <ProviderLayout title="Messages"><Chat /></ProviderLayout>;
   }
+  // Default: traveler / user console
   return <DashboardLayout><Chat /></DashboardLayout>;
 }
 
