@@ -252,6 +252,7 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
       case "do":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "do";
         if (item.kind === "supply-activity") return true;
+        if (item.kind === "vendor-service") return true;
         return false;
       case "photo_spots":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "photo_spots";
