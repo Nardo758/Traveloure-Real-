@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -85,8 +86,12 @@ const vendorFormSchema = z.object({
 
 type VendorFormValues = z.infer<typeof vendorFormSchema>;
 
+const PLANNER_ROLES = new Set(["admin", "provider", "local_expert", "travel_expert", "event_planner"]);
+
 export default function Vendors() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const isPlanner = !!user && PLANNER_ROLES.has(user.role ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -160,13 +165,14 @@ export default function Vendors() {
               </div>
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-                  Vendor Directory
+                  {isPlanner ? "Vendor Directory" : "Service Providers"}
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Find and manage trusted service providers
+                  {isPlanner ? "Find and manage trusted service providers" : "Browse trusted service providers"}
                 </p>
               </div>
             </div>
+            {isPlanner && (
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-vendor">
@@ -329,6 +335,7 @@ export default function Vendors() {
                 </Form>
               </DialogContent>
             </Dialog>
+            )}
           </div>
         </div>
 
