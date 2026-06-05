@@ -20,6 +20,7 @@ import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
+import { EscalationCTA } from "./EscalationCTA";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -1059,6 +1060,27 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               totalCost={totalCostDisplay}
               perPerson={perPersonDisplay}
             />
+
+            {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
+                Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
+            {!isViewer && stage === "full" && (
+              <div className="px-5">
+                <EscalationCTA
+                  tripId={trip.id}
+                  destination={trip.destination}
+                  eventType={(trip as any).eventType}
+                  planSnapshot={{
+                    days: days.map(d => ({
+                      day: d.day,
+                      date: d.date,
+                      activityCount: d.activities?.length ?? 0,
+                    })),
+                    totalActivities,
+                    totalCost: totalCostDisplay,
+                  }}
+                />
+              </div>
+            )}
 
             <DaySelector
               tripId={trip.id}
