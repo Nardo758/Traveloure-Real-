@@ -35,7 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 
 const EXPERT_ROLE_LABELS: Record<string, string> = {
-  travel_expert: "Trip Planner",
+  travel_expert: "Travel Advisor",
   local_expert: "Local Expert",
   event_planner: "Event Planner",
   executive_assistant: "Executive Assistant",
@@ -235,15 +235,19 @@ export default function ExpertProfile() {
                 <BadgeCheck className="w-4 h-4 text-[#FF385C]" />
                 Expert Role
               </Label>
-              <div
-                className="flex items-center gap-2 h-10 px-3 rounded-md border border-input bg-muted/50"
-                data-testid="text-expert-role"
-              >
-                <span className="text-sm font-medium text-[#FF385C]">
-                  {EXPERT_ROLE_LABELS[user?.role ?? ""] ?? "Expert"}
-                </span>
-                <span className="text-xs text-muted-foreground">(your account role — contact support to change)</span>
-              </div>
+              {profileLoading ? (
+                <Skeleton className="h-10 rounded" />
+              ) : (
+                <div
+                  className="flex items-center gap-2 h-10 px-3 rounded-md border border-input bg-muted/50"
+                  data-testid="text-expert-role"
+                >
+                  <span className="text-sm font-medium text-[#FF385C]">
+                    {EXPERT_ROLE_LABELS[(expertProfile as any)?.expertForm?.expertType ?? user?.role ?? ""] ?? "Expert"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">(your account role — contact support to change)</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
