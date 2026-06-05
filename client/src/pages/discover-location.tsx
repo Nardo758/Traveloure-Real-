@@ -1076,7 +1076,7 @@ export default function DiscoverLocationPage() {
           data-testid="btn-back"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back
+          Back to Discover
         </button>
 
         {/* Loading state */}
