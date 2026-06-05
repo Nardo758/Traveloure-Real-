@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe } from "lucide-react";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { matchedServiceSuggestion, gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
