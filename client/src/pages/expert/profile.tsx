@@ -24,7 +24,8 @@ import {
   Save,
   StickyNote,
   Lock,
-  Home
+  Home,
+  BadgeCheck
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,6 +33,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+
+const EXPERT_ROLE_LABELS: Record<string, string> = {
+  travel_expert: "Trip Planner",
+  local_expert: "Local Expert",
+  event_planner: "Event Planner",
+  executive_assistant: "Executive Assistant",
+  expert: "Expert",
+};
 
 const LOCALITY_PROOF_OPTIONS = [
   { value: "born_raised", label: "Born & raised here" },
@@ -218,6 +227,22 @@ export default function ExpertProfile() {
                   defaultValue={user?.lastName || ""}
                   data-testid="input-last-name"
                 />
+              </div>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label className="flex items-center gap-1.5">
+                <BadgeCheck className="w-4 h-4 text-[#FF385C]" />
+                Expert Role
+              </Label>
+              <div
+                className="flex items-center gap-2 h-10 px-3 rounded-md border border-input bg-muted/50"
+                data-testid="text-expert-role"
+              >
+                <span className="text-sm font-medium text-[#FF385C]">
+                  {EXPERT_ROLE_LABELS[user?.role ?? ""] ?? "Expert"}
+                </span>
+                <span className="text-xs text-muted-foreground">(your account role — contact support to change)</span>
               </div>
             </div>
 
