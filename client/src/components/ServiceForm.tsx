@@ -178,6 +178,47 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const categoryPreSelected = useRef(false);
 
+  const templatePreFilled = useRef(false);
+
+  // Pre-fill from ?tpl_* URL params (set by "Use This Template" on service-templates page)
+  useEffect(() => {
+    if (!isEditMode && !templatePreFilled.current) {
+      const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+      const tplName = sp.get("tpl_name");
+      if (!tplName) return;
+      templatePreFilled.current = true;
+
+      const deliveryRaw = sp.get("tpl_delivery") || "";
+      const deliveryMap: Record<string, ServiceFormData["deliveryMethod"]> = {
+        "video": "video-call",
+        "video-call": "video-call",
+        "in-person": "in-person",
+        "hybrid": "hybrid",
+        "document": "in-person",
+      };
+      const deliveryMethod: ServiceFormData["deliveryMethod"] =
+        deliveryMap[deliveryRaw] ?? "in-person";
+
+      let whatIncluded: string[] = [];
+      try {
+        const raw = sp.get("tpl_included");
+        if (raw) whatIncluded = JSON.parse(raw);
+      } catch {
+        whatIncluded = [];
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        name: tplName,
+        description: sp.get("tpl_desc") || prev.description,
+        basePrice: parseFloat(sp.get("tpl_price") || "0") || prev.basePrice,
+        duration: sp.get("tpl_duration") || prev.duration,
+        deliveryMethod,
+        whatIncluded: whatIncluded.length > 0 ? whatIncluded : prev.whatIncluded,
+      }));
+    }
+  }, [isEditMode]);
+
   // Pre-select category from ?category= URL param
   useEffect(() => {
     if (!isEditMode && categories.length > 0 && !categoryPreSelected.current) {
@@ -282,6 +323,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
+      } else if (role === "expert") {
+        toast({ title: "Service submitted for review!" });
+        queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+        navigate("/expert/services");
       } else {
         setCreationSuccess(true);
         if (onSuccess) onSuccess(data.id);
