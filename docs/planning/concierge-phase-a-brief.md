@@ -121,21 +121,28 @@ Commit: `fix(CON-A.P1): guard both optimize-experience defs, repoint 3 callers t
 
 **Objective:** the AI Concierge fee resolves per event type from admin config, with §4.8 defaults and a `$0=off` semantic. SINGLE-SESSION (touches schema).
 
-**Files:** `shared/schema.ts:876-885` (`optimization_fees`), `server/routes/optimization.routes.ts:36-52`, `server/services/smart-sequencing.service.ts:915-921` (event→tier map), `client/src/pages/admin/fee-config.tsx:471-499`.
+**Files:** `shared/schema.ts:876-885` (`optimization_fees`), `server/routes/optimization.routes.ts:36-52`, `server/services/smart-sequencing.service.ts:915-921` (event→tier map), `client/src/pages/admin/fee-config.tsx:471-499`, **`server/routes/trips.routes.ts`** (payment-amount validator — rejects the new $49.99 event tier unless fixed).
 
 **Steps**
 0. **Pre-check (carryover from Phase 1).** Confirm the paid path `/api/optimization-payments` → `/confirm` reaches optimization at the **service layer** (`server/itinerary-optimizer.ts`), NOT by internally calling the now admin/expert-guarded `/api/ai/optimize-experience` HTTP route. If it proxies the guarded route, repoint it to the service call first — otherwise the Phase 1 guard blocks paying travelers (they 403 after payment). If it already calls the service directly, note it and proceed.
+0b. **Amount-validator sweep.** The new $49.99 event tier will be rejected by any payment-amount guard that whitelists/caps amounts. Find them all before patching one:
+   ```
+   grep -rn "amount\|expectedAmount\|allowedAmount\|max.*cents\|validateAmount" server/routes/trips.routes.ts server/routes/payments.routes.ts server/routes/optimization.routes.ts server/services/
+   ```
+   The known one is `server/routes/trips.routes.ts`; treat any sibling the same way in step 5.
 1. Add an `event_type` dimension to the fee config — either an `event_type` column on `optimization_fees` or a sibling mapping table — so an admin can set a distinct fee per event type (standard / wedding / proposal / corporate / …). Generate the Drizzle migration.
 2. Set defaults to §4.8: **$9.99 standard, $49.99 event types**; support **`$0` = disabled** for any type. Replace `DEFAULT_FEE_CENTS = {simple:499, standard:999, complex:1999}` accordingly — these remain config fallbacks, not hard-coded charge values.
 3. `getFeeForTier` (`:42-52`) resolves by `(event_type → tier → price)`, reading the config; never a literal at charge time.
 4. Surface the per-event-type rows + `$0=off` in the admin fee UI.
+5. **Fix the payment-amount validator(s)** (trips.routes.ts + any sibling from step 0b): the expected amount must be **resolved from the same fee resolver** (`getFeeForTier`/config), then compared to the submitted amount — anti-tampering by server-side recompute. Do NOT add $49.99 (or any amount) to a hardcoded allow-list; that just reintroduces a fee literal and breaks again the next time a fee changes.
 
-**Acceptance:** changing an event-type fee in admin changes the charged amount; default standard = $9.99, event = $49.99; `$0` disables the charge; no literal charge value remains in the charge path.
+**Acceptance:** changing an event-type fee in admin changes the charged amount; default standard = $9.99, event = $49.99; `$0` disables the charge; no literal charge value remains in the charge path; **a $49.99 event-tier payment passes the trips.routes.ts validator (and any sibling), with the expected amount resolved from the fee config, not a hardcoded list.**
 
 **Verify / Gate**
 ```
 grep -n "499\|999\|1999" server/routes/optimization.routes.ts        # expect replaced by config-resolved §4.8 values
 grep -rn "event_type" shared/schema.ts server/routes/optimization.routes.ts
+grep -rn "4999\|49.99\|allowedAmount\|expectedAmount" server/routes/trips.routes.ts   # validator resolves from config, no literal allow-list
 tsc --noEmit                                                          # ≤140
 ```
 Commit: `feat(CON-A.P2): per-event-type AI Concierge fee config + §4.8 defaults`
