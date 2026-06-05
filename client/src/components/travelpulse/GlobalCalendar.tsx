@@ -262,9 +262,27 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [, navigate] = useLocation();
 
   const handleCityClick = (cityName: string, country: string) => {
+    // Build a date string to activate the date-aware feed on the location page
+    let dateParam = "";
+    if (filterMode === "day" && selectedDay) {
+      // User selected a specific day — use it exactly
+      const mm = String(selectedMonth).padStart(2, "0");
+      const dd = String(selectedDay).padStart(2, "0");
+      dateParam = `${currentYear}-${mm}-${dd}`;
+    } else if (selectedDate) {
+      // Date was clicked on the month-grid calendar view
+      const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
+      const dd = String(selectedDate.getDate()).padStart(2, "0");
+      dateParam = `${selectedDate.getFullYear()}-${mm}-${dd}`;
+    } else {
+      // Month view — use the 1st of the selected month as a "this month" signal
+      const mm = String(selectedMonth).padStart(2, "0");
+      dateParam = `${currentYear}-${mm}-01`;
+    }
+
     onCityClick?.(cityName, country);
     navigate(
-      `/discover/location/${encodeURIComponent(cityName)}?country=${encodeURIComponent(country)}`
+      `/discover/location/${encodeURIComponent(cityName)}?country=${encodeURIComponent(country)}&date=${dateParam}`
     );
   };
 
