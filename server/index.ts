@@ -13,6 +13,7 @@ import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
+import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -229,6 +230,15 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
+  }
+
+  try {
+    const roleTplResult = await seedRoleScopedTemplates();
+    if (roleTplResult.inserted > 0) {
+      logger.info({ count: roleTplResult.inserted }, "Seeded role-scoped expert service templates");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed role-scoped templates");
   }
 
   seedingDurationMs = Date.now() - seedingStartTime;
