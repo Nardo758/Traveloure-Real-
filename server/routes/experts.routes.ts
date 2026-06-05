@@ -1738,14 +1738,24 @@ router.post("/api/expert/services/from-template/:templateId", isAuthenticated, a
       const userId = (req.user as any).claims.sub;
       const templateId = req.params.templateId;
 
-      // expert_service_offerings is the primary catalog; service_templates is legacy fallback
+      // expert_service_offerings is the primary catalog; service_templates is legacy fallback.
+      // Only platform templates (expertId IS NULL) may be cloned — reject requests for
+      // expert-owned offerings to prevent cross-expert data access.
       const esoRow = await db.select().from(expertServiceOfferings)
-        .where(eq(expertServiceOfferings.id, templateId)).then(r => r[0]);
+        .where(and(
+          eq(expertServiceOfferings.id, templateId),
+          isNull(expertServiceOfferings.expertId),
+        )).then(r => r[0]);
 
       let serviceData: Record<string, any>;
 
       if (esoRow) {
-        // Primary: expert_service_offerings — copy all available fields
+        // Primary: expert_service_offerings platform template — copy all available fields.
+        // We write into provider_services (not expert_service_offerings) because the full
+        // expert services edit/list/status/duplicate flow (ServiceForm, /api/expert/services,
+        // PATCH /api/provider/services/:id) operates on provider_services rows.
+        // The ServiceForm fetches from /api/provider/services/:id, so the created row must
+        // exist there for /expert/services/:id/edit to load correctly.
         serviceData = {
           userId,
           serviceName:      esoRow.name,

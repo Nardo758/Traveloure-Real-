@@ -65,7 +65,8 @@ export default function ServiceTemplates() {
 
   const createFromTemplateMutation = useMutation({
     mutationFn: async (template: ServiceTemplate) => {
-      return apiRequest("POST", `/api/expert/services/from-template/${template.id}`, {});
+      const res = await apiRequest("POST", `/api/expert/services/from-template/${template.id}`, {});
+      return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
