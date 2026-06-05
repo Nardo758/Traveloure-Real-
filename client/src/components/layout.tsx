@@ -75,7 +75,20 @@ const navItems = [
       },
     ],
   },
-  { name: "Local Experts", href: "/experts?role=local_expert" },
+  {
+    name: "Experts & Services",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "FIND HELP",
+        items: [
+          { name: "Local Experts", href: "/experts?role=local_expert", icon: MapPin, description: "City guides & neighbourhood specialists" },
+          { name: "Travel Advisors", href: "/experts?role=travel_expert", icon: User, description: "Trip planners who handle every detail" },
+          { name: "Service Providers", href: "/discover?tab=services", icon: Building2, description: "Book tours, photography, transport & more" },
+        ],
+      },
+    ],
+  },
   {
     name: "Experiences",
     icon: ChevronDown,
@@ -122,11 +135,9 @@ const navItems = [
     icon: ChevronDown,
     sections: [
       {
-        title: "AI & EXPERTS",
+        title: "TOOLS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Travel Advisor", href: "/experts?role=travel_expert", icon: User, description: "Browse human trip-planning experts" },
-          { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
           { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },

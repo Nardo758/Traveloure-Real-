@@ -122,6 +122,7 @@ export default function ExpertsPage() {
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
   const [selectedRole, setSelectedRole] = useState<string>("local_expert");
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(12);
   const [sortBy, setSortBy] = useState("recommended");
   const neighbourhoodInputRef = useRef<HTMLInputElement>(null);
 
@@ -582,17 +583,19 @@ export default function ExpertsPage() {
                 </SelectContent>
               </Select>
 
-              <div className="relative">
-                <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  ref={neighbourhoodInputRef}
-                  placeholder="Neighbourhood (e.g. Shimokitazawa)"
-                  value={neighbourhoodQuery}
-                  onChange={(e) => setNeighbourhoodQuery(e.target.value)}
-                  className="pl-9 h-10 border-[#E5E7EB] bg-white w-56 text-sm"
-                  data-testid="input-neighbourhood-filter"
-                />
-              </div>
+              {selectedRole === "local_expert" && (
+                <div className="relative">
+                  <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    ref={neighbourhoodInputRef}
+                    placeholder="Neighbourhood (e.g. Shimokitazawa)"
+                    value={neighbourhoodQuery}
+                    onChange={(e) => setNeighbourhoodQuery(e.target.value)}
+                    className="pl-9 h-10 border-[#E5E7EB] bg-white w-56 text-sm"
+                    data-testid="input-neighbourhood-filter"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -671,7 +674,7 @@ export default function ExpertsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {sortedExperts.map((expert: any, idx: number) => (
+              {sortedExperts.slice(0, visibleCount).map((expert: any, idx: number) => (
                 <motion.div
                   key={expert.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -718,12 +721,13 @@ export default function ExpertsPage() {
           )}
 
           {/* Load More */}
-          {sortedExperts.length > 0 && (
+          {sortedExperts.length > visibleCount && (
             <div className="text-center mt-8">
               <Button
                 variant="outline"
                 size="lg"
                 className="border-[#E5E7EB]"
+                onClick={() => setVisibleCount(c => c + 12)}
                 data-testid="button-load-more"
               >
                 Load More Experts
@@ -735,38 +739,62 @@ export default function ExpertsPage() {
       </section>
 
       {/* Become an Expert CTA */}
-      <section className="py-16 bg-white border-t border-[#E5E7EB]">
-        <div className="container mx-auto px-4 max-w-4xl text-center">
-          <h2 className="text-3xl font-bold text-[#111827] mb-4">
-            Are You a Local Expert?
-          </h2>
-          <p className="text-lg text-[#6B7280] mb-8 max-w-2xl mx-auto">
-            Share your knowledge, earn money, and help travelers discover the best
-            of your destination. Join our growing community of local experts and trip planners.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/become-expert">
-              <Button
-                size="lg"
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
-                data-testid="button-become-expert"
-              >
-                Become an Expert
-              </Button>
-            </Link>
-            <Link href="/partner-with-us">
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-[#E5E7EB] px-8"
-                data-testid="button-learn-more"
-              >
-                Learn More
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      {(() => {
+        const ctaConfig: Record<string, { heading: string; body: string; cta: string; href: string }> = {
+          travel_expert: {
+            heading: "Are You a Trip Planner?",
+            body: "Help travellers design itineraries and craft unforgettable journeys. Earn money sharing your expertise on the Traveloure platform.",
+            cta: "Become a Trip Planner",
+            href: "/become-expert?type=travel_expert",
+          },
+          event_planner: {
+            heading: "Are You an Event Planner?",
+            body: "Plan weddings, proposals, and group celebrations. Join our network of specialist event planners and reach clients worldwide.",
+            cta: "Become an Event Planner",
+            href: "/become-expert?type=event_planner",
+          },
+          local_expert: {
+            heading: "Are You a Local Expert?",
+            body: "Share your city knowledge, earn money, and help travelers discover the best of your destination. Join our growing community of local guides.",
+            cta: "Become a Local Expert",
+            href: "/become-expert?type=local_expert",
+          },
+        };
+        const config = ctaConfig[selectedRole] ?? ctaConfig.local_expert;
+        return (
+          <section className="py-16 bg-white border-t border-[#E5E7EB]">
+            <div className="container mx-auto px-4 max-w-4xl text-center">
+              <h2 className="text-3xl font-bold text-[#111827] mb-4">
+                {config.heading}
+              </h2>
+              <p className="text-lg text-[#6B7280] mb-8 max-w-2xl mx-auto">
+                {config.body}
+              </p>
+              <div className="flex flex-wrap justify-center gap-4">
+                <Link href={config.href}>
+                  <Button
+                    size="lg"
+                    className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                    data-testid="button-become-expert"
+                  >
+                    {config.cta}
+                  </Button>
+                </Link>
+                <Link href="/partner-with-us">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-[#E5E7EB] px-8"
+                    data-testid="button-learn-more"
+                  >
+                    Learn More
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
     </div>
   );
 }
