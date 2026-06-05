@@ -42,31 +42,32 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | **Specced** — `docs/planning/concierge-phase-b-brief.md` (`1d032dc`); execution gated on ≥4 weeks of `ai_cost_tracking` data to set included-plan cap per §4.7 |
 | Full / Done-for-You transactional flow | CON-C | **Specced** — `docs/planning/concierge-phase-c-brief.md` (`87c4aec`); execution gated on ≥1 active `event_package` per launch market + ≥1 assignable expert |
 
-## Fee Architecture (needs planning — dependency of Concierge)
+## Fee Architecture (triage applied — see `docs/planning/fee-workstream-scoping.md`)
 
 | Gap | Owner | Status |
 |---|---|---|
 | **Per-expert commission override** (`users.commission_override_expert_share_percent` + Tier-3 branch in `resolveCommissionRates` before category fallback + admin editor, audit-logged) | **CON / ✅ Shipped** (P1 `7d1c250`, P2 `5b13915`, P3 `79b335f`) | **Recruitment gate clears once tested E2E in staging.** Then §6.9 "20% vs 25%" outreach can ship; admin sets new beta experts to 80 before first booking settles. (Stored as expert-share %, not platform rate — same math, self-documenting name.) |
-| Single fee resolver every charge path reads from | FEE | **Partial** — LB-P2 wires checkout to `/api/booking-fee-config`; LB-P3 mounts the optimization-fee resolver. Remaining work is *unification*, not greenfield. |
-| 6 of 9 §4.8 fees hard-coded or missing | FEE | Needs planning |
-| Override granularity (global→market→tier→entity) | FEE | Needs planning |
-| Effective-dating on fee configs | FEE | Needs planning |
-| Fee-change audit trail / history table | FEE | Needs planning |
-| Reset-to-approved-default per fee | FEE | Needs planning |
-| Expert `expertTier` new/established split (85/15→75/25) | FEE | Needs planning |
-| Provider insurance-tier → tier commission (12/8/6/4) | FEE | Needs planning |
-| Hard-coded literals — `itinerary.tsx` → **LB-P2**; `affiliate.service.ts` → **LB-P4a**; `commission.ts` AI/AFFILIATE constants → **CON-A (FEE-A)**; `pricing.service.ts` deposit + tier markups → **FEE** | split | per reconciliation — different files, different owners |
-| Affiliate `behaviorMode` (retain/markup/rebate) | FEE | Needs planning |
-| Credit-package bonus logic (no `credit_packages` table) | FEE | Needs planning |
+| **Provider insurance-tier → tier commission (12/8/6/4)** | **FEE-2** | **Launch-blocking. Brief pending** — small (~one session): insurance-fields on `serviceProviderForms` + `insuranceTier` column + resolver branch sibling to per-expert. Open decision: admin-validated or self-attested? (see scoping doc Q2). |
+| **`pricing.service.ts` deposit + tier markups** | **FEE-3** | **Launch-blocking pending P0 alive-check.** If `pricing.service.ts:20,119-122` is actually called, half-session fix (extract to `booking_fee_configs`). If dead, delete-pass. |
+| Single fee resolver every charge path reads from | FEE / Deferred-P2 | Works as two resolvers (`commission.ts` + `optimization-fee.service.ts`) in parallel. Unification is structural cleanup, not launch-blocking. |
+| 6 of 9 §4.8 fees hard-coded or missing | FEE | Down to **3 of 9 remaining** after CON-A + EXP-OVR + LB-P5a. Remaining three: provider commission tiers (FEE-2), affiliate handling (Deferred-P2), expert new-vs-established split (Deferred-P2). |
+| Override granularity (global→market→tier→entity) | FEE / Deferred-P2 | Phase-2 batch brief. Only matters at multi-market scale; first market doesn't need it. |
+| Effective-dating on fee configs | FEE / Deferred-P2 | Phase-2 batch brief. Only matters when scheduling future rate changes. |
+| Fee-change audit trail / history table | FEE / Deferred-P2 | Phase-2 batch brief. `accessAuditLogs` partially covers via EXP-OVR pattern. |
+| Reset-to-approved-default per fee | FEE / Deferred-P2 | Phase-2 batch brief. Admin UX polish. |
+| Expert `expertTier` new/established split (85/15→75/25) | FEE / Deferred-P2 | EXP-OVR's manual override covers the beta-recruitment case until launch + GMV data signals the auto-flip trigger. Open decision: GMV / time / admin manual (scoping doc Q1). |
+| Affiliate `behaviorMode` (retain/markup/rebate) | FEE / Deferred-P2 | Launch markets (Mumbai/Kyoto) use plain pass-through with all current affiliate partners — defer until a partner needs markup/rebate. Open decision: markup formula (scoping doc Q3). |
+| Hard-coded literals — `itinerary.tsx` → **LB-P2**; `affiliate.service.ts` → **LB-P4a**; `commission.ts` AI/AFFILIATE constants → **CON-A (FEE-A)**; `pricing.service.ts` deposit + tier markups → **FEE-3** | split | per reconciliation — different files, different owners |
+| Credit-package bonus logic (no `credit_packages` table) | FEE / Deferred-P2 | `shared/credit-packages.ts` constants file (LB-P5a) works for beta admin-set-once. Phase-2 batch when bonus logic + admin editing without redeploy becomes a real ask. |
 
 ## Unowned (needs assignment)
 
 | Gap | Owner | Status |
 |---|---|---|
-| Email verification — no send/confirm endpoints (+ no email provider wired) | LB-P1 (dep) | Dependency of an Specced item — LB-P1 surfaces the email-provider blocker; not orphaned |
-| Expert workspace affiliate-integrations panel "coming soon" | — | Unowned |
+| Email verification — no send/confirm endpoints | LB-P1 (dep) | Resend wired + RESEND_API_KEY set + sending domain verified. The password-reset channel is live; a separate email-verification-on-signup flow is still missing. Small follow-up — same Resend client + a new `email_verifications` table. |
+| Expert workspace affiliate-integrations panel "coming soon" | CON | ✅ Shipped (`2a5c89d`) — workspace reads admin `affiliate_partners` via `GET /api/affiliate/partners?isActive=true`; hardcoded list + "Coming soon" toast removed. |
 | Review-specific moderation (only generic queue) | — | Unowned |
-| Route fragmentation — `server/routes.ts` duplicates `routes/*.routes.ts` (mapped in LB-P0, not resolved) | — | Unowned |
+| Route fragmentation — `server/routes.ts` duplicates `routes/*.routes.ts` | post-launch | Surveyed: 628 of 642 endpoints in `routes.ts` are duplicated in 6 unmounted modules (admin, content, experts, trips, bookings-domain, payments). Active billing leak from this fragmentation was patched in `d886791` (LB-P3.5 — payment gate ported into the LIVE handler). Structural extraction is a multi-session brief; **post-launch**. |
 | Executive Assistant role — RBAC granularity unclear | — | Unowned |
 | Cart multi-currency + sharing | — | Unowned |
 
