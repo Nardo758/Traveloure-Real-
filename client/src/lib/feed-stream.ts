@@ -125,16 +125,30 @@ export function buildFeedStream(
   }
 
   // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
+  //
+  // Gems can arrive in two forms:
+  //   a) Nested inside each neighborhood object (n.gems) — primary source
+  //   b) At the top level in allGems, keyed by slug — fallback source
+  //
+  // We merge both: use n.gems when present, otherwise fall back to
+  // gemsByNeighborhood. The merged gemCount is updated to match the actual
+  // gems array so the header ("N things to do") is always accurate.
   const neighborhoodItems: FeedItem[] = neighborhoods
     .filter((n) => (n.gems?.length ?? 0) > 0 || (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
-    .map((n) => ({
-      kind: "neighborhood" as FeedItemKind,
-      id: `neighborhood-${n.id}`,
-      data: {
-        ...n,
-        gems: n.gems?.length ? n.gems : (gemsByNeighborhood.get(n.slug) ?? []),
-      },
-    }));
+    .map((n) => {
+      const mergedGems: any[] = (n.gems?.length ? n.gems : null)
+        ?? gemsByNeighborhood.get(n.slug)
+        ?? [];
+      return {
+        kind: "neighborhood" as FeedItemKind,
+        id: `neighborhood-${n.id}`,
+        data: {
+          ...n,
+          gems: mergedGems,
+          gemCount: Math.max(n.gemCount ?? 0, mergedGems.length),
+        },
+      };
+    });
 
   // ── 3. Build filler pool ─────────────────────────────────────────────────
   const fillerPool: FeedItem[] = [
@@ -238,6 +252,7 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
       case "do":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "do";
         if (item.kind === "supply-activity") return true;
+        if (item.kind === "vendor-service") return true;
         return false;
       case "photo_spots":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "photo_spots";

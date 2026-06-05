@@ -6,7 +6,7 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
@@ -44,17 +44,67 @@ interface CityMediaResponse {
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+/**
+ * Curated hero images for popular cities — used when no gem photo is available.
+ * Keys are lowercase city names.
+ */
+const CURATED_HERO_IMAGES: Record<string, string> = {
+  tokyo: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80",
+  kyoto: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80",
+  paris: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1200&q=80",
+  london: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+  "new york": "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&w=1200&q=80",
+  barcelona: "https://images.unsplash.com/photo-1583422409516-2895a77efded?auto=format&fit=crop&w=1200&q=80",
+  rome: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=1200&q=80",
+  amsterdam: "https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80",
+  bali: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=1200&q=80",
+  bangkok: "https://images.unsplash.com/photo-1508009603885-50cf7c8dd0d5?auto=format&fit=crop&w=1200&q=80",
+  singapore: "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&w=1200&q=80",
+  dubai: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1200&q=80",
+};
+
+function toTitleCase(str: string): string {
+  return str
+    .split(/[\s-]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+type CoverPhotoCredit = { name: string; url: string } | null;
+
+function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
+  if (!credit) return null;
+  return (
+    <a
+      href={credit.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="absolute bottom-2 right-2 z-20 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-white/80 hover:text-white transition-colors"
+      style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)" }}
+      data-testid="photo-credit-badge"
+    >
+      📷 {credit.name}
+    </a>
+  );
+}
+
+
 function HeroSection({
   city,
   heroData,
   scheduledDate,
   onDismissDate,
+  coverPhotoUrl,
+  coverPhotoCredit,
 }: {
   city: string;
   heroData: any;
   scheduledDate: string | null;
   onDismissDate: () => void;
+  coverPhotoUrl?: string | null;
+  coverPhotoCredit?: CoverPhotoCredit;
 }) {
+  const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
   const pulse = cityIntel?.pulseScore;
   const highlight = cityIntel?.currentHighlight;
@@ -81,7 +131,62 @@ function HeroSection({
     ? `Planning ${monthName} ${dayOfMonth}`
     : null;
 
+
   if (dateMode) {
+    if (coverPhotoUrl) {
+      return (
+        <div
+          className="relative rounded-xl overflow-hidden px-5 py-4 flex justify-between items-start gap-3 min-h-[96px]"
+          style={{
+            backgroundImage: `url(${coverPhotoUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+          data-testid="section-hero"
+        >
+          {/* Dark overlay */}
+          <div className="absolute inset-0 rounded-xl" style={{ background: "linear-gradient(135deg, rgba(4,52,44,0.82) 0%, rgba(4,52,44,0.55) 100%)" }} />
+          <div className="relative z-10">
+            <h1
+              className="text-[22px] font-medium leading-tight text-white"
+              data-testid="text-city-name"
+            >
+              {displayCity}
+            </h1>
+            {seasonLine && (
+              <div className="text-[13px] mt-1 text-green-200">
+                🌸 {seasonLine}
+              </div>
+            )}
+            {datePillLabel && (
+              <div
+                className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
+                style={{ background: "rgba(255,255,255,0.2)", color: "#A7F3D0" }}
+              >
+                📅 {datePillLabel}
+                <button
+                  onClick={onDismissDate}
+                  className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
+                  data-testid="button-dismiss-date"
+                  aria-label="Clear date"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+          {pulse !== undefined && (
+            <div className="relative z-10 text-center flex-shrink-0" data-testid="pulse-badge">
+              <b className="block text-[20px] font-medium leading-tight text-green-300">{pulse}</b>
+              <span className="text-[11px] text-green-400">pulse</span>
+            </div>
+          )}
+          <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
+        </div>
+      );
+    }
+
+
     return (
       <div
         className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
@@ -94,7 +199,7 @@ function HeroSection({
             style={{ color: "#04342C" }}
             data-testid="text-city-name"
           >
-            {city}
+            {displayCity}
           </h1>
           {seasonLine && (
             <div className="text-[13px] mt-1" style={{ color: "#0F6E56" }}>
@@ -128,6 +233,54 @@ function HeroSection({
     );
   }
 
+  if (coverPhotoUrl) {
+    return (
+      <div
+        className="relative rounded-xl overflow-hidden px-6 py-8 min-h-[160px] flex flex-col justify-end"
+        style={{
+          backgroundImage: `url(${coverPhotoUrl})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+        data-testid="section-hero"
+      >
+        {/* Dark gradient overlay — bottom-heavy so text is legible */}
+        <div
+          className="absolute inset-0 rounded-xl"
+          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.10) 100%)" }}
+        />
+        <div className="relative z-10">
+          <h1
+            className="text-[34px] font-bold tracking-tight text-white leading-tight drop-shadow"
+            data-testid="text-city-name"
+          >
+            {displayCity}
+          </h1>
+          {highlight ? (
+            <div className="text-sm mt-1 text-white/80">
+              {highlightEmoji} {highlight}
+            </div>
+          ) : null}
+        </div>
+        {pulse !== undefined && (
+          <div
+            className="absolute top-5 right-5 z-10 rounded-xl px-3.5 py-2 text-center"
+            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
+          >
+            <b className="block text-lg font-bold leading-tight text-green-300">
+              {pulse}
+            </b>
+            <span className="text-[10px] uppercase tracking-widest text-green-400">
+              pulse
+            </span>
+          </div>
+        )}
+        <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
+      </div>
+    );
+  }
+
+
   return (
     <div
       className="relative rounded-xl overflow-hidden px-6 py-6"
@@ -138,7 +291,7 @@ function HeroSection({
         className="text-[30px] font-bold tracking-tight text-white leading-tight"
         data-testid="text-city-name"
       >
-        {city}
+        {displayCity}
       </h1>
       {highlight ? (
         <div className="text-sm mt-1" style={{ color: "#5DCAA5" }}>
@@ -599,6 +752,7 @@ function DateHighlightStrip({
   );
 }
 
+
 // ─── Trip-level complements strip ─────────────────────────────────────────────
 
 interface AddOn {
@@ -607,6 +761,108 @@ interface AddOn {
   badge: string;
   href: string;
   variant: "platform" | "affiliate";
+  isExternal?: boolean;
+  partner?: string;
+}
+
+function trackAddonClick(partner: string, city: string) {
+  fetch("/api/affiliates/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ partner, destination: city }),
+  }).catch(() => {});
+}
+
+function buildAddOns(city: string): AddOn[] {
+  const citySlug = encodeURIComponent(city.toLowerCase().replace(/\s+/g, "-"));
+  const cityParam = encodeURIComponent(city);
+
+  return [
+    {
+      icon: "🚖",
+      label: "Airport transfer",
+      badge: "Book via 12Go",
+      href: `https://12go.asia?aff=13805109&destination=${cityParam}&utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "12go",
+    },
+    {
+      icon: "📱",
+      label: "eSIM for travel",
+      badge: "via Airalo",
+      href: `https://www.airalo.com/?utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "airalo",
+    },
+    {
+      icon: "🛡",
+      label: "Travel insurance",
+      badge: "via SafetyWing",
+      href: `https://safetywing.com/nomad-insurance?referenceID=travelpayouts&utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "safetywing",
+    },
+    {
+      icon: "🧳",
+      label: "Luggage storage",
+      badge: "via Bounce",
+      href: `https://usebounce.com/city/${citySlug}?utm_source=traveloure&utm_medium=addon_strip`,
+      variant: "affiliate",
+      isExternal: true,
+      partner: "bounce",
+    },
+  ];
+}
+
+function buildContentAddOn(highlight: string | null | undefined, city: string): AddOn | null {
+  if (!highlight) return null;
+  const h = highlight.toLowerCase();
+  const cityParam = encodeURIComponent(city);
+
+  if (h.includes("blossom") || h.includes("sakura") || h.includes("cherry")) {
+    return {
+      icon: "👘",
+      label: "Kimono rental",
+      badge: "↑ for blossom season",
+      href: `/experiences?city=${cityParam}&q=kimono+rental`,
+      variant: "platform",
+      partner: "platform-kimono",
+    };
+  }
+  if (h.includes("snow") || h.includes("winter") || h.includes("ski")) {
+    return {
+      icon: "🎿",
+      label: "Winter gear rental",
+      badge: "↑ for winter",
+      href: `/experiences?city=${cityParam}&q=winter+gear+rental`,
+      variant: "platform",
+      partner: "platform-winter-gear",
+    };
+  }
+  if (h.includes("festival") || h.includes("matsuri") || h.includes("carnival")) {
+    return {
+      icon: "🎋",
+      label: "Festival guide",
+      badge: "↑ for festival season",
+      href: `/experts?city=${cityParam}&specialty=festivals`,
+      variant: "platform",
+      partner: "platform-festival",
+    };
+  }
+  if (h.includes("autumn") || h.includes("fall") || h.includes("foliage")) {
+    return {
+      icon: "🍂",
+      label: "Foliage photography tour",
+      badge: "↑ peak autumn colour",
+      href: `/experiences?city=${cityParam}&q=foliage+photography+tour`,
+      variant: "platform",
+      partner: "platform-foliage",
+    };
+  }
+  return null;
 }
 
 function TripComplementsStrip({
@@ -616,31 +872,8 @@ function TripComplementsStrip({
   city: string;
   highlight?: string | null;
 }) {
-  const staticAddOns: AddOn[] = [
-    { icon: "🚖", label: "Airport transfer", badge: "Book on Traveloure", href: "/experiences/transport", variant: "platform" },
-    { icon: "📱", label: "eSIM for travel", badge: "via Airalo", href: "/experiences/esim", variant: "affiliate" },
-    { icon: "🛡", label: "Travel insurance", badge: "via SafetyWing", href: "/experiences/insurance", variant: "affiliate" },
-    { icon: "🧳", label: "Luggage storage", badge: "via Bounce", href: "/experiences/luggage", variant: "affiliate" },
-  ];
-
-  const contentAddOn: AddOn | null = (() => {
-    if (!highlight) return null;
-    const h = highlight.toLowerCase();
-    if (h.includes("blossom") || h.includes("sakura") || h.includes("cherry")) {
-      return { icon: "👘", label: "Kimono rental", badge: "↑ for blossom season", href: "/experiences/kimono", variant: "platform" };
-    }
-    if (h.includes("snow") || h.includes("winter") || h.includes("ski")) {
-      return { icon: "🎿", label: "Winter gear rental", badge: "↑ for winter", href: "/experiences/gear", variant: "platform" };
-    }
-    if (h.includes("festival") || h.includes("matsuri") || h.includes("carnival")) {
-      return { icon: "🎋", label: "Festival guide", badge: "↑ for festival season", href: "/local-experts", variant: "platform" };
-    }
-    if (h.includes("autumn") || h.includes("fall") || h.includes("foliage")) {
-      return { icon: "🍂", label: "Foliage photography tour", badge: "↑ peak autumn colour", href: "/experiences/photo", variant: "platform" };
-    }
-    return null;
-  })();
-
+  const staticAddOns = buildAddOns(city);
+  const contentAddOn = buildContentAddOn(highlight, city);
   const addOns: AddOn[] = contentAddOn ? [contentAddOn, ...staticAddOns] : staticAddOns;
 
   return (
@@ -653,6 +886,9 @@ function TripComplementsStrip({
           <a
             key={addon.label}
             href={addon.href}
+            target={addon.isExternal ? "_blank" : undefined}
+            rel={addon.isExternal ? "noopener noreferrer" : undefined}
+            onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
             className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
             data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
@@ -787,6 +1023,33 @@ export default function DiscoverLocationPage() {
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
+  // ── Cover photo: highest-scored gem imageUrl → curated map → null ───────
+  const coverPhotoUrl: string | null = (() => {
+    if (allGems.length > 0) {
+      const sorted = [...allGems]
+        .filter((g: any) => !!g.imageUrl)
+        .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
+      if (sorted.length > 0) {
+        return sorted[0].imageUrl as string;
+      }
+    }
+    return CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
+  })();
+
+  const coverPhotoCredit: CoverPhotoCredit = (() => {
+    if (allGems.length > 0) {
+      const sorted = [...allGems]
+        .filter((g: any) => !!g.imageUrl)
+        .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
+      if (sorted.length > 0) {
+        const gem = sorted[0];
+        if (gem.imageAttribution) return { name: gem.imageAttribution as string, url: gem.imageUrl as string };
+      }
+    }
+    return null;
+  })();
+
+
   if (!city) {
     return (
       <Layout>
@@ -803,6 +1066,22 @@ export default function DiscoverLocationPage() {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-6 max-w-5xl">
+        {/* Back navigation */}
+        <button
+          onClick={() => {
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              navigate("/discover?tab=events");
+            }
+          }}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+          data-testid="btn-back"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-4">
@@ -831,12 +1110,14 @@ export default function DiscoverLocationPage() {
 
         {data && (
           <div className="space-y-5">
-            {/* ── Hero (teal gradient or mint date mode) ─────────────── */}
+            {/* ── Hero (cover photo or teal gradient fallback) ────────── */}
             <HeroSection
               city={city}
               heroData={data.hero?.data}
               scheduledDate={scheduledDate}
               onDismissDate={handleDismissDate}
+              coverPhotoUrl={coverPhotoUrl}
+              coverPhotoCredit={coverPhotoCredit}
             />
 
             {/* ── Stats row ─────────────────────────────────────────── */}

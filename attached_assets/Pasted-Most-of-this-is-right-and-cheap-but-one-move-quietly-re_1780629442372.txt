@@ -1,0 +1,16 @@
+Most of this is right and cheap — but one move quietly reverses what you set out to do last turn, and I want to flag it before you ship.
+Agreed and clean, no notes:
+
+Role-gating "Add Vendor" + manage language to logged-in planners/providers is exactly the right presentation fix. Public sees browse/book, planners see the toolbar. Same surface, gated controls.
+Retitling "Vendor Directory" → "Service Providers" for public visitors — yes.
+All three Experts fixes (role-aware CTA, dead Load More handler, hiding the neighbourhood filter on the advisor view) are straightforward. Ship them.
+
+The one I'd stop on: you've now got two consumer service surfaces, and you're dressing up the wrong one for the public. Per your own audit, /vendors has an "Add Vendor" button and event-coordination categories — but no add-to-cart, no price/rating filters, no checkout. The Discover → Browse Services tab is the one with the actual booking machinery (cart on each card, filters, pagination, CuratedContent, /api/discover). Repainting the /vendors title to "Service Providers" makes it look consumer-ready, but it doesn't give it a checkout. So the one-off booker you described last turn lands on a directory that can't take their booking, while the page that can is still buried behind a tab.
+That's the structural thing the presentation framing hides. It resolves with one verification: does /vendors actually have the cart/booking flow, or only the Discover tab?
+
+If only Discover has it → these two pages are redundant on the consumer side, and the original consolidation call stands: make the Discover catalog the public front door, retire /vendors's public face, keep it as the planner-mode coordination view.
+If they're genuinely different jobs (provider-first directory vs service-first catalog) → fine to keep both, but then /vendors needs the booking flow added to serve the one-off booker, and the two need cross-linking so users aren't stranded between them.
+
+Either way, "rebrand the title + gate the button" isn't sufficient on its own — it's necessary, but it doesn't close the booking gap.
+Minor, carried over: the ?tab=services deep-link only works if the Discover tab reads its initial state from the URL param. Grep that before relying on it, or the link silently lands on the default tab.
+So: ship the Experts fixes and the role-gating now, but answer the cart-flow question on /vendors before you commit to it as the public booking page. Which is it — does /vendors book, or just list?

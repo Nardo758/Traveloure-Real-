@@ -2,14 +2,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home } from "lucide-react";
+import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home, Plane, PartyPopper } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 
+const ROLE_BADGE: Record<string, { label: string; className: string; Icon: React.ElementType }> = {
+  local_expert:  { label: "Local Expert",   className: "bg-emerald-500 text-white", Icon: MapPin },
+  travel_expert: { label: "Travel Advisor", className: "bg-blue-500 text-white",    Icon: Plane },
+  event_planner: { label: "Event Planner",  className: "bg-purple-500 text-white",  Icon: PartyPopper },
+};
+
 interface ExpertCardProps {
   expert: {
     id: string;
+    role?: string;
     firstName?: string;
     lastName?: string;
     profileImageUrl?: string;
@@ -82,8 +89,19 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
   const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
   const showNeighbourhoods = neighbourhoods.length > 0;
 
+  const roleBadge = expert.role ? ROLE_BADGE[expert.role] : null;
+
   return (
-    <Card className="hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
+    <Card className="relative hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
+      {roleBadge && (
+        <span
+          className={cn("absolute -top-2.5 left-3 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm", roleBadge.className)}
+          data-testid="badge-expert-role"
+        >
+          <roleBadge.Icon className="w-2.5 h-2.5 shrink-0" />
+          {roleBadge.label}
+        </span>
+      )}
       <CardContent className="p-3">
         <div className="flex gap-3">
           <div className="relative shrink-0">

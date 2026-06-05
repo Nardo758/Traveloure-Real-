@@ -83,6 +83,7 @@ import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
+import optimizationRoutes from "./routes/optimization.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -567,6 +568,9 @@ export async function registerRoutes(
 
   // PlanCard routes - change tracking, comments, structured day data
   app.use(plancardRoutes);
+
+  // Optimization routes - heuristic preview + payment-gated AI optimization
+  app.use(optimizationRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
@@ -1261,8 +1265,14 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
   });
 
   // Experience AI Optimization endpoint
+  // Restricted to admin/expert only (CON-A.P1): full LLM optimization is delivered to
+  // travelers via the gated paid path (/api/optimization-payments → /confirm), not here.
   app.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || (user.role !== "admin" && user.role !== "expert")) {
+        return res.status(403).json({ message: "Admin or expert access required" });
+      }
       const { experienceType, destination, date, selectedServices, preferences } = req.body;
 
       const servicesContext = selectedServices?.map((s: any) => ({
@@ -3510,6 +3520,46 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/expert-service-categories/:categoryId/offerings", async (req, res) => {
     const offerings = await storage.getExpertServiceOfferings(req.params.categoryId);
     res.json(offerings);
+  });
+
+  // Get expert counts grouped by role (public) — used for role tab badges
+  app.get("/api/experts/counts", async (req, res) => {
+    const experienceTypeId = req.query.experienceTypeId as string | undefined;
+    const location = req.query.location as string | undefined;
+    const neighbourhood = req.query.neighbourhood as string | undefined;
+
+    const experts = await storage.getExpertsWithProfiles(experienceTypeId);
+    let filtered = experts as any[];
+
+    if (location) {
+      const loc = location.toLowerCase();
+      filtered = filtered.filter((expert: any) => {
+        const form = expert.expertForm;
+        if (!form) return false;
+        const destinations = (form.destinations || []).map((d: string) => d.toLowerCase());
+        const city = (form.city || "").toLowerCase();
+        const country = (form.country || "").toLowerCase();
+        return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
+          city.includes(loc) || loc.includes(city) ||
+          country.includes(loc) || loc.includes(country);
+      });
+    }
+
+    if (neighbourhood) {
+      const nbh = neighbourhood.toLowerCase().trim();
+      filtered = filtered.filter((expert: any) => {
+        if (nbh.length < 3) return false;
+        const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+        return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
+      });
+    }
+
+    const counts: Record<string, number> = { local_expert: 0, travel_expert: 0, event_planner: 0 };
+    for (const expert of filtered) {
+      const r = expert.role as string;
+      if (r in counts) counts[r]++;
+    }
+    res.json(counts);
   });
 
   // Get all experts with their full profiles (public)
@@ -12420,6 +12470,18 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (error: any) {
       console.error("Get jobs error:", error);
       res.status(500).json({ message: "Failed to get jobs", error: error.message });
+    }
+  });
+
+  // Backfill photos for existing gems that have no image_url (admin only)
+  app.post("/api/admin/gems/backfill-photos", requireAdmin, async (_req, res) => {
+    try {
+      const { grokDiscoveryService: svc } = await import("./services/grok-discovery.service");
+      const result = await svc.backfillGemPhotos();
+      res.json({ message: "Backfill complete", ...result });
+    } catch (error: any) {
+      console.error("Gem photo backfill error:", error);
+      res.status(500).json({ message: "Backfill failed", error: error.message });
     }
   });
 

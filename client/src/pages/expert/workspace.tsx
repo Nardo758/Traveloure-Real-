@@ -845,7 +845,7 @@ export default function ExpertWorkspace() {
                       title: trip.trip_title,
                       startDate: trip.start_date,
                       endDate: trip.end_date,
-                      numberOfTravelers: 1,
+                      numberOfTravelers: trip.number_of_travelers ?? 1,
                     }}
                     role="expert"
                     stage="full"
