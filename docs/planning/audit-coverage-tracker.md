@@ -13,20 +13,20 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 
 ---
 
-## Owned & execution-ready (Launch Blocker)
+## Launch Blocker sweep — SHIPPED (branch `claude/laughing-bardeen-KyTUY`)
 
 | Gap | Owner | Status |
 |---|---|---|
-| Password reset accepts no token (P0 account takeover) | LB-P1 | Specced |
-| Checkout fee literals `itinerary.tsx` 12%/70% (P0 billing) | LB-P2 | Specced |
-| Booking footer shows raw rate % (design) | LB-P2 | Specced |
-| AI optimization router unmounted / no paywall | LB-P3 | Specced |
-| Free AI Savings preview unreachable (guest hook) | LB-P3 | Specced |
-| Ungated free LLM optimization | LB-P3 | Specced |
-| Affiliate `commissionRate` column ignored by service | LB-P4a | Specced |
-| Expert verification badge not rendered traveler-side | LB-P4b | Specced |
-| 3 conflicting credit-package definitions | LB-P5a | Specced |
-| Expert workspace Map "coming soon" | LB-P5b | Specced |
+| Password reset accepts no token (P0 account takeover) | LB-P1 | ✅ Shipped (`ca26a73`) — token flow via Resend; gated on RESEND_API_KEY (set) + verified sending domain (in progress) for E2E delivery |
+| Checkout fee literals `itinerary.tsx` 12%/70% (P0 billing) | LB-P2 | ✅ Shipped (`622c955`) — reads `/api/booking-fee-config` |
+| Booking footer shows raw rate % (design) | LB-P2 | ✅ Shipped (`622c955`) — collapsed to Subtotal/Fees/Total per v4 wireframe |
+| AI optimization router unmounted / no paywall | LB-P3 | ✅ Shipped (verified IN as Phase A prereq) |
+| Free AI Savings preview unreachable (guest hook) | LB-P3 | ✅ Shipped (verified IN as Phase A prereq; `/api/optimization-preview` guest-reachable) |
+| Ungated free LLM optimization | LB-P3 | ✅ Shipped — absorbed into CON-A.P1 (`e6da614`), both `/api/ai/optimize-experience` defs restricted to admin/expert |
+| Affiliate `commissionRate` column ignored by service | LB-P4a | ✅ Shipped (`250f0e9`) — `affiliate.service.ts` resolves rate from DB |
+| Expert verification badge not rendered traveler-side | LB-P4b | ✅ Shipped (`250f0e9`) — `expert-card.tsx` reads `identityVerificationStatus` |
+| 3 conflicting credit-package definitions | LB-P5a | ✅ Shipped (`e96e159`) — canonical `shared/credit-packages.ts`, 5 duplicates removed |
+| Expert workspace Map "coming soon" | LB-P5b | ✅ Shipped (`e96e159`) — `MapControlCenter` wired into workspace |
 
 ## Concierge Phase A — SHIPPED (branch `claude/laughing-bardeen-KyTUY`)
 
@@ -39,8 +39,8 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | `concierge_requests` intent log (N5) | CON-A | ✅ Shipped (P3 `db1f3e1`) |
 | `event_packages` catalog (N6) | CON-A | ✅ Shipped (P8 `74c481f`) |
 | Legacy `/api/ai/optimize-experience` free LLM leak | CON-A | ✅ Shipped (P1 `e6da614`) |
-| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | Plan pending |
-| Full / Done-for-You transactional flow | CON-C | Plan pending |
+| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | **Specced** — `docs/planning/concierge-phase-b-brief.md` (`1d032dc`); execution gated on ≥4 weeks of `ai_cost_tracking` data to set included-plan cap per §4.7 |
+| Full / Done-for-You transactional flow | CON-C | **Specced** — `docs/planning/concierge-phase-c-brief.md` (`87c4aec`); execution gated on ≥1 active `event_package` per launch market + ≥1 assignable expert |
 
 ## Fee Architecture (needs planning — dependency of Concierge)
 

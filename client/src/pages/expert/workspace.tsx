@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import type { PlanCardDay, PlanCardActivity } from "@/components/plancard/plancard-types";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -286,6 +288,7 @@ export default function ExpertWorkspace() {
   const [rightTab, setRightTab] = useState("gaps");
   const [cat, setCat] = useState("all");
   const [cTab, setCTab] = useState("itinerary");
+  const [mapSelectedDay, setMapSelectedDay] = useState(1); // LB-P5b: MapControlCenter day picker
   const [collapsed, setCollapsed] = useState(false);
   const [identityRevealed, setIdentityRevealed] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -803,14 +806,48 @@ export default function ExpertWorkspace() {
 
           <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
             {cTab === "map" ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
-                <MapPin style={{ width: 40, height: 40, color: G[300] }} />
-                <div style={{ fontSize: 15, fontWeight: 600, color: G[600] }}>Map view coming soon</div>
-                <div style={{ fontSize: 13, color: G[400] }}>Open the full itinerary to see the map view</div>
-                <a href={`/trip/${tripId}?tab=transport`} target="_blank" rel="noopener noreferrer">
-                  <button data-testid="button-open-map-itinerary" style={{ padding: "8px 16px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Open Full Itinerary</button>
-                </a>
-              </div>
+              days.length === 0 ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
+                  <MapPin style={{ width: 40, height: 40, color: G[300] }} />
+                  <div style={{ fontSize: 15, fontWeight: 600, color: G[600] }}>No itinerary items yet</div>
+                  <div style={{ fontSize: 13, color: G[400] }}>Add activities, dining, or hotels for at least one day to see the map.</div>
+                </div>
+              ) : (
+                // LB-P5b: reuse PlanCard's MapControlCenter (711 LOC, already built).
+                // Adapt the workspace's day/item shape to the PlanCard shape it expects.
+                (() => {
+                  const startDateMs = trip?.start_date ? new Date(trip.start_date).getTime() : Date.now();
+                  const planCardDays: PlanCardDay[] = days.map(d => {
+                    const date = new Date(startDateMs + (d.dayNumber - 1) * 86400000).toISOString().slice(0, 10);
+                    const activities: PlanCardActivity[] = d.items.map(item => ({
+                      id: item.id,
+                      name: item.title,
+                      type: item.itemType,
+                      status: item.status || "pending",
+                      time: item.startTime || "",
+                      location: item.locationName || "",
+                      cost: item.estimatedCost ? parseFloat(item.estimatedCost) : 0,
+                      comments: 0,
+                    }));
+                    return {
+                      dayNum: d.dayNumber,
+                      date,
+                      label: `Day ${d.dayNumber}`,
+                      activities,
+                      transports: [],
+                    };
+                  });
+                  return (
+                    <MapControlCenter
+                      tripId={tripId!}
+                      tripDestination={trip?.destination || ""}
+                      days={planCardDays}
+                      selectedDay={mapSelectedDay}
+                      onSelectDay={setMapSelectedDay}
+                    />
+                  );
+                })()
+              )
             ) : itemsLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {[1, 2, 3].map(i => <div key={i} style={{ background: "white", borderRadius: 12, border: `1px solid ${G[200]}`, padding: 16, height: 100 }}><Skeleton className="h-full w-full" /></div>)}
