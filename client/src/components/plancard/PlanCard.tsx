@@ -1141,6 +1141,20 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
+            {/* CON-A.P6 / D8: Concierge entry slot on every PlanCard. Soft, always visible. */}
+            <Link
+              href={`/concierge?intent=${encodeURIComponent(`Help me with my ${trip.destination} trip`)}`}
+              className="flex-shrink-0"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-concierge-${trip.id}`}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                Concierge
+              </Button>
+            </Link>
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"
