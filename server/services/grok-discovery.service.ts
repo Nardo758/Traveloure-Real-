@@ -9,6 +9,8 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../infrastructure/logger";
+import { unsplashService } from "./unsplash.service";
+import { pexelsService } from "./pexels.service";
 
 const GROK_MODEL = "grok-3";
 
@@ -107,6 +109,11 @@ class GrokDiscoveryService {
           const result = await this.discoverCategoryGems(destination, category, maxGems);
           
           for (const gem of result.gems) {
+            const imageUrl = await this.fetchGemPhoto(
+              gem.name,
+              result.destination,
+              gem.imageSearchTerms ?? []
+            );
             await this.saveGem({
               destination: result.destination,
               country: result.country,
@@ -121,6 +128,7 @@ class GrokDiscoveryService {
               priceRange: gem.priceRange,
               difficultyLevel: gem.difficultyLevel,
               tags: gem.tags,
+              imageUrl: imageUrl ?? undefined,
               imageSearchTerms: gem.imageSearchTerms,
               relatedExperiences: [],
               sourceModel: "grok",
@@ -258,6 +266,41 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       }, "Failed to parse Grok response");
       throw new Error(`Failed to parse discovery response: ${parseError}`);
     }
+  }
+
+  /**
+   * Fetches a photo URL for a gem using imageSearchTerms.
+   * Tries Unsplash first, then Pexels as a fallback. Returns null if neither is available.
+   */
+  private async fetchGemPhoto(
+    name: string,
+    destination: string,
+    imageSearchTerms: string[]
+  ): Promise<string | null> {
+    const searchQuery = imageSearchTerms.length > 0
+      ? `${imageSearchTerms[0]} ${destination}`
+      : `${name} ${destination}`;
+
+    try {
+      const unsplashResults = await unsplashService.searchPhotos(searchQuery, { perPage: 1, orientation: "landscape" });
+      if (unsplashResults[0]?.url) {
+        return unsplashResults[0].url;
+      }
+    } catch {
+      // fall through to Pexels
+    }
+
+    try {
+      const pexelsResults = await pexelsService.searchPhotos(searchQuery, { perPage: 1 });
+      const photo = pexelsResults.find((r) => r.mediaType === "photo");
+      if (photo?.url) {
+        return photo.url;
+      }
+    } catch {
+      // no photo available
+    }
+
+    return null;
   }
 
   private async saveGem(gem: InsertAiDiscoveredGem): Promise<void> {
