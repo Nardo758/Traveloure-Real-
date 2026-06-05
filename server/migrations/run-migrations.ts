@@ -27,6 +27,7 @@ const MIGRATION_FILES = [
   "015_gem_image_url.sql",
   "016_eso_target_roles.sql",
   "017_optimization_fees_event_type.sql",
+  "018_concierge_requests.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
