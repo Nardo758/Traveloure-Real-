@@ -909,7 +909,7 @@ export default function DiscoverPage() {
             data-testid="btn-back"
           >
             <ChevronLeft className="w-4 h-4" />
-            Back to Home
+            Back
           </button>
         </div>
 
