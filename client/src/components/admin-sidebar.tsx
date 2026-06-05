@@ -37,6 +37,8 @@ import {
   Package,
   Layers,
   GitBranch,
+  LayoutTemplate,
+  ImageIcon,
 } from "lucide-react";
 
 const menuGroups = [
@@ -63,6 +65,7 @@ const menuGroups = [
     items: [
       { title: "Services", href: "/admin/services", icon: Package },
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
+      { title: "Expert Templates", href: "/admin/expert-templates", icon: LayoutTemplate },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
       { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
@@ -83,6 +86,7 @@ const menuGroups = [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
       { title: "Neighborhoods", href: "/admin/neighborhood-backfill", icon: MapPin },
+      { title: "Gem Photos", href: "/admin/gem-photo-backfill", icon: ImageIcon },
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },

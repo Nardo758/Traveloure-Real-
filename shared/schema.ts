@@ -1039,6 +1039,9 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isActive: boolean("is_active").default(true),
   categoryName: varchar("category_name", { length: 100 }),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // Migration 016: role-scoped templates
+  // NULL = shown to all expert roles; array = scoped to listed role(s)
+  targetRoles: text("target_roles").array(),
 });
 
 // Link experts to their selected service offerings
@@ -3449,6 +3452,7 @@ export const aiDiscoveredGems = pgTable("ai_discovered_gems", {
   priceRange: varchar("price_range", { length: 50 }),
   difficultyLevel: varchar("difficulty_level", { length: 50 }),
   tags: jsonb("tags").$type<string[]>().default([]),
+  imageUrl: text("image_url"),
   imageSearchTerms: jsonb("image_search_terms").$type<string[]>().default([]),
   relatedExperiences: jsonb("related_experiences").$type<string[]>().default([]),
   sourceModel: varchar("source_model", { length: 50 }).default("grok"),

@@ -30,8 +30,11 @@ export function NeighborhoodContainer({
   onAdd,
   className,
 }: NeighborhoodContainerProps) {
-  const total = neighborhood.gemCount;
-  const topGems = neighborhood.gems.slice(0, 4);
+  // Gems may arrive nested (neighborhood.gems) or via the top-level feed
+  // merge. Use whichever gives the higher count so the header is always accurate.
+  const gems = neighborhood.gems ?? [];
+  const total = Math.max(neighborhood.gemCount ?? 0, gems.length);
+  const topGems = gems.slice(0, 4);
 
   if (total === 0 && topGems.length === 0) return null;
 

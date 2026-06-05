@@ -24,6 +24,8 @@ const MIGRATION_FILES = [
   "012_migrate_expert_custom_services.sql",
   "013_drop_deprecated_service_tables.sql",
   "014_itinerary_item_scheduled_date.sql",
+  "015_gem_image_url.sql",
+  "016_eso_target_roles.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
