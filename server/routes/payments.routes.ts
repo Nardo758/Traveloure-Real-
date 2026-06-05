@@ -321,7 +321,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        const itemCategoryRates = await resolveCommissionRates({
+          category: feeCategory,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -342,7 +345,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        const itemCategoryRates2 = await resolveCommissionRates({
+          category: feeCategory2,
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+        });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const expertEarningsAmt = price * expertShareRate;
