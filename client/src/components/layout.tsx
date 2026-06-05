@@ -75,7 +75,20 @@ const navItems = [
       },
     ],
   },
-  { name: "Local Experts", href: "/experts?role=local_expert" },
+  {
+    name: "Experts & Services",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "FIND HELP",
+        items: [
+          { name: "Local Experts", href: "/experts?role=local_expert", icon: MapPin, description: "City guides & neighbourhood specialists" },
+          { name: "Travel Advisors", href: "/experts?role=travel_expert", icon: User, description: "Trip planners who handle every detail" },
+          { name: "Service Providers", href: "/discover?tab=services", icon: Building2, description: "Book tours, photography, transport & more" },
+        ],
+      },
+    ],
+  },
   {
     name: "Experiences",
     icon: ChevronDown,
@@ -122,11 +135,9 @@ const navItems = [
     icon: ChevronDown,
     sections: [
       {
-        title: "AI & EXPERTS",
+        title: "TOOLS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Travel Advisor", href: "/experts?role=travel_expert", icon: User, description: "Browse human trip-planning experts" },
-          { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
           { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },
@@ -159,7 +170,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   };
 
   const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+    timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
   };
 
   useEffect(() => {
@@ -209,8 +220,10 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             className={cn(
-              "absolute top-full mt-1 bg-card border border-border rounded-lg shadow-xl z-50",
+              "absolute top-full mt-0 pt-1 bg-card border border-border rounded-lg shadow-xl z-50",
               item.sections.length > 2 
                 ? "left-1/2 -translate-x-1/2 w-[800px]" 
                 : "left-0 w-72"

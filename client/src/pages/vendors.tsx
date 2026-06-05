@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -85,8 +86,12 @@ const vendorFormSchema = z.object({
 
 type VendorFormValues = z.infer<typeof vendorFormSchema>;
 
+const PLANNER_ROLES = new Set(["admin", "service_provider", "provider", "local_expert", "travel_expert", "event_planner"]);
+
 export default function Vendors() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const isPlanner = !!user && PLANNER_ROLES.has(user.role ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -160,13 +165,14 @@ export default function Vendors() {
               </div>
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-                  Vendor Directory
+                  {isPlanner ? "Vendor Directory" : "Service Providers"}
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Find and manage trusted service providers
+                  {isPlanner ? "Find and manage trusted service providers" : "Browse trusted service providers"}
                 </p>
               </div>
             </div>
+            {isPlanner && (
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-vendor">
@@ -329,6 +335,7 @@ export default function Vendors() {
                 </Form>
               </DialogContent>
             </Dialog>
+            )}
           </div>
         </div>
 
@@ -379,6 +386,17 @@ export default function Vendors() {
           </div>
         </div>
 
+        {!isPlanner && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+            <span className="text-gray-700 dark:text-gray-300">
+              Looking for tours, transport, or photography?
+            </span>
+            <a href="/discover?tab=services" className="ml-auto shrink-0 font-medium text-primary underline-offset-2 hover:underline" data-testid="link-browse-services-banner">
+              Browse Service Catalog →
+            </a>
+          </div>
+        )}
+
         <ScrollArea className="flex-1 px-1">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -389,17 +407,27 @@ export default function Vendors() {
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <Building2 className="w-16 h-16 text-gray-600 dark:text-gray-400 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  No vendors found
+                  No service providers found
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-6">
                   {searchQuery || selectedCategory !== "all"
                     ? "Try adjusting your search or filters"
-                    : "Add your first vendor to get started"}
+                    : isPlanner
+                    ? "Add your first vendor to get started"
+                    : "Browse the full service catalog to find tours, photography, transport, and more."}
                 </p>
-                <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-vendor-empty">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Vendor
-                </Button>
+                {isPlanner ? (
+                  <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-vendor-empty">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Vendor
+                  </Button>
+                ) : (
+                  <a href="/discover?tab=services">
+                    <Button data-testid="button-browse-services-empty">
+                      Browse Service Catalog
+                    </Button>
+                  </a>
+                )}
               </CardContent>
             </Card>
           ) : viewMode === "grid" ? (
