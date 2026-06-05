@@ -11,7 +11,7 @@
 1. Read every phase before starting. Phases share context (the fee resolver, the expert_requests rail).
 2. Work in strict phase order: 0 → 8.
 3. Each phase ends with a grep + typecheck gate and a commit (`feat(CON-A.Pn): …`). Do not proceed past a failing gate.
-4. **Typecheck floor = 12 pre-existing errors** (server/storage.ts, server/vite.ts, shared/schema.ts:558). Every phase must return `tsc --noEmit` at **≤12 errors**. Anything above the floor is yours to fix before moving on.
+4. **Typecheck floor = 140 pre-existing errors** across 25 files (mostly `server/storage.ts`). Every phase must return `tsc --noEmit` / `npm run check` at **≤140 errors**. Better still: no *net-new* errors in the files a phase touches. Anything above the floor is yours to fix before moving on.
 5. **Phases that edit `shared/schema.ts` (2, 3, 8) must run SINGLE-SESSION.** Do not run them concurrently with other Claude Code sessions on the same DB/schema file — that's the documented concurrency-conflict surface.
 6. File:line refs are from the audit/plan and may have drifted; confirm by reading before editing.
 
@@ -94,23 +94,26 @@ LB-P3 functional dependencies are **IN**: optimization router mounted (`server/r
 
 ## PHASE 1 — Close the legacy LLM back-door (LB-P3 step 4)
 
-**Objective:** no free public path to full LLM optimization. The concierge paywall is meaningless while this is open.
+**Objective:** no free public path to full LLM optimization. The concierge paywall is meaningless while this is open. Phase 0 found **two** route definitions of the same path and **three** real frontend callers — all must be handled or the leak survives.
 
-**Files:** `server/routes.ts:1268` (the endpoint), plus any caller found in Phase 0.
+**Files:**
+- `server/routes.ts:1268` AND `server/routes/content.routes.ts:475` — BOTH define `/api/ai/optimize-experience`, both `isAuthenticated` only. Whichever registers last wins; restrict both.
+- Frontend callers: `client/src/pages/experience-template.tsx:1007`, `:1710`, `client/src/pages/cart.tsx:910`.
 
 **Steps**
-1. Using the Phase 0 caller list: restrict `/api/ai/optimize-experience` to **internal/expert use only** (e.g., role check for expert/admin, or an internal-service guard). If Phase 0 shows no legitimate external caller, prefer removing the public route entirely.
-2. The traveler-facing AI Concierge must go through the **gated paid path** (`/api/optimization-payments` → `/confirm` → optimize), never this endpoint.
-3. If a frontend flow currently calls it, repoint that flow to the gated path (do not leave it calling a now-restricted endpoint and 403-ing).
+1. Restrict **both** server definitions to internal/expert/admin (role guard or internal-service guard). Confirm registration order so you know which currently wins, but lock both — do not leave the loser reachable. If no legitimate external caller needs the raw endpoint, prefer collapsing to one guarded definition.
+2. Repoint all **three** frontend callers to the **free preview path** `/api/optimization-preview`. DECIDED: preview now, not the paid path — keeps these currently-free surfaces working without a surprise paywall. This is a **shape-aware** change: preview returns the heuristic result, not full-LLM output, so adjust each call site's response handling/render — it is NOT a URL swap.
+3. The traveler-facing **paid** full optimization is delivered only through the gated path (`/api/optimization-payments` → `/confirm`) on the concierge surface (Phase 6). Do NOT wire a paid charge into these three legacy surfaces in this phase.
 
-**Acceptance:** an unauthenticated or plain-authenticated traveler cannot obtain full LLM optimization without payment; no live caller is left broken.
+**Acceptance:** no unauthenticated/plain-authenticated traveler can obtain full LLM optimization; both route definitions are guarded; all three frontend flows still function (on preview output), none left to 403.
 
 **Verify / Gate**
 ```
-grep -rn "optimize-experience" client/ server/        # confirm callers repointed/guarded
-tsc --noEmit                                           # ≤12
+grep -rn "optimize-experience" client/ server/        # both defs guarded; 3 callers no longer hit it
+grep -rn "optimization-preview" client/src/pages/experience-template.tsx client/src/pages/cart.tsx
+tsc --noEmit                                           # ≤140
 ```
-Commit: `fix(CON-A.P1): restrict legacy optimize-experience endpoint (close revenue back-door)`
+Commit: `fix(CON-A.P1): guard both optimize-experience defs, repoint 3 callers to preview`
 
 ---
 
@@ -132,7 +135,7 @@ Commit: `fix(CON-A.P1): restrict legacy optimize-experience endpoint (close reve
 ```
 grep -n "499\|999\|1999" server/routes/optimization.routes.ts        # expect replaced by config-resolved §4.8 values
 grep -rn "event_type" shared/schema.ts server/routes/optimization.routes.ts
-tsc --noEmit                                                          # ≤12
+tsc --noEmit                                                          # ≤140
 ```
 Commit: `feat(CON-A.P2): per-event-type AI Concierge fee config + §4.8 defaults`
 
@@ -153,7 +156,7 @@ Commit: `feat(CON-A.P2): per-event-type AI Concierge fee config + §4.8 defaults
 **Verify / Gate**
 ```
 grep -rn "concierge_requests\|concierge.routes" shared/ server/
-tsc --noEmit                                                          # ≤12
+tsc --noEmit                                                          # ≤140
 ```
 Commit: `feat(CON-A.P3): concierge_requests table + concierge.routes module`
 
@@ -174,7 +177,7 @@ Commit: `feat(CON-A.P3): concierge_requests table + concierge.routes module`
 **Verify / Gate**
 ```
 grep -rn "expert-availability" server/
-tsc --noEmit                                                          # ≤12
+tsc --noEmit                                                          # ≤140
 ```
 Commit: `feat(CON-A.P4): expert-availability service`
 
@@ -198,7 +201,7 @@ Commit: `feat(CON-A.P4): expert-availability service`
 **Verify / Gate**
 ```
 grep -rn "concierge-router\|routeConcierge" server/
-tsc --noEmit                                                          # ≤12
+tsc --noEmit                                                          # ≤140
 ```
 Commit: `feat(CON-A.P5): concierge router service + endpoint`
 
@@ -214,7 +217,8 @@ Commit: `feat(CON-A.P5): concierge router service + endpoint`
 1. Build `/concierge`: intent capture = free-text + 3–4 chips (D1); on submit, call the Phase 5 endpoint; render delivery options with upfront prices (D2 always-visible soft escalation).
 2. Free preview path for guests (D6) hitting `/api/optimization-preview`.
 3. Add header CTA + a Concierge slot on every PlanCard (D8).
-4. `App.tsx`: 301 `/optimize` → `/concierge?tier=ai` (D9); remove the static mock page from routing.
+4. **Paid-upgrade CTA on the three legacy surfaces** repointed to preview in Phase 1 (`experience-template.tsx` ×2, `cart.tsx`): alongside the free preview result, surface an "unlock full AI plan ($9.99)" CTA that routes to the gated paid path (`/api/optimization-payments` → `/confirm`). This is where those surfaces convert from free preview to paid — the deliberate paywall the Phase 1 repoint intentionally deferred.
+5. `App.tsx`: 301 `/optimize` → `/concierge?tier=ai` (D9); remove the static mock page from routing.
 
 **Acceptance:** guest can preview free; authed user gets priced options; `/optimize` redirects; mock no longer rendered.
 
@@ -222,7 +226,7 @@ Commit: `feat(CON-A.P5): concierge router service + endpoint`
 ```
 grep -rn "/concierge" client/src/App.tsx
 grep -rn "optimize" client/src/App.tsx                  # expect redirect, not the mock page
-tsc --noEmit                                            # ≤12
+tsc --noEmit                                            # ≤140
 ```
 Commit: `feat(CON-A.P6): /concierge request surface + /optimize redirect`
 
@@ -243,7 +247,7 @@ Commit: `feat(CON-A.P6): /concierge request surface + /optimize redirect`
 **Verify / Gate**
 ```
 grep -rn "EscalationCTA\|expert-requests" client/src/components/plancard/
-tsc --noEmit                                            # ≤12
+tsc --noEmit                                            # ≤140
 ```
 Commit: `feat(CON-A.P7): PlanCard expert-escalation CTA`
 
@@ -264,7 +268,7 @@ Commit: `feat(CON-A.P7): PlanCard expert-escalation CTA`
 **Verify / Gate**
 ```
 grep -rn "event_packages" shared/ server/
-tsc --noEmit                                            # ≤12
+tsc --noEmit                                            # ≤140
 ```
 Commit: `feat(CON-A.P8): event_packages catalog (quote-on-request)`
 
@@ -278,7 +282,7 @@ Commit: `feat(CON-A.P8): event_packages catalog (quote-on-request)`
 - [ ] Expert split rides `commission.ts` category fallback (per-expert override NOT implemented here).
 - [ ] All concierge endpoints in `concierge.routes.ts`; nothing added to `server/routes.ts`.
 - [ ] `/optimize` 301s to `/concierge?tier=ai`; static mock not rendered.
-- [ ] `tsc --noEmit` ≤ 12 (the floor) after every phase.
+- [ ] `tsc --noEmit` ≤ 140 (the floor) after every phase.
 
 ## KNOWN FOLLOW-UPS (not in this brief)
 - **Per-expert commission override** (nullable `commissionRateOverride` + branch in `commission.ts:41-93` before category fallback + admin field). **BLOCKS BETA OUTREACH** — must land before any §6.9 "20% vs 25%" recruitment message is sent. Hard gate on recruitment, not on this brief.
