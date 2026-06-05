@@ -4,7 +4,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -505,6 +505,108 @@ router.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, r
     }
     await storage.deleteServiceTemplate(req.params.id);
     res.status(204).send();
+  });
+
+  // === Role-Scoped Expert Templates (ESO platform rows) ===
+
+  // GET /api/admin/expert-templates
+  // Returns all platform templates (expertId IS NULL) from expert_service_offerings.
+  // Accepts optional ?role= filter to scope to a specific expert role.
+
+router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const roleFilter = req.query.role as string | undefined;
+
+      const rows = await db
+        .select()
+        .from(expertServiceOfferings)
+        .where(
+          and(
+            isNull(expertServiceOfferings.expertId),
+            eq(expertServiceOfferings.isActive, true)
+          )
+        )
+        .orderBy(expertServiceOfferings.sortOrder);
+
+      // Apply role filter in JS (simpler than Postgres array operator for admin use)
+      const filtered = roleFilter
+        ? rows.filter((r) =>
+            r.targetRoles == null ||
+            (r.targetRoles as string[]).includes(roleFilter)
+          )
+        : rows;
+
+      const templates = filtered.map((o) => ({
+        id: o.id,
+        title: o.name,
+        description: o.description,
+        price: o.price,
+        sortOrder: o.sortOrder,
+        createdAt: o.createdAt,
+        targetRoles: (o.targetRoles as string[] | null) ?? [],
+      }));
+
+      res.json(templates);
+    } catch (err) {
+      console.error("Error fetching admin expert templates:", err);
+      res.status(500).json({ message: "Failed to fetch templates" });
+    }
+  });
+
+  // PATCH /api/admin/expert-templates/:id/roles
+  // Update the targetRoles array on a platform template.
+  // Pass { targetRoles: ["local_expert", "travel_expert"] } — empty array = all roles.
+
+router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { targetRoles } = req.body;
+      if (!Array.isArray(targetRoles)) {
+        return res.status(400).json({ message: "targetRoles must be an array" });
+      }
+
+      const VALID_ROLES = ["local_expert", "travel_expert", "event_planner", "executive_assistant"];
+      const invalid = (targetRoles as string[]).filter((r) => !VALID_ROLES.includes(r));
+      if (invalid.length > 0) {
+        return res.status(400).json({ message: `Invalid roles: ${invalid.join(", ")}` });
+      }
+
+      const [updated] = await db
+        .update(expertServiceOfferings)
+        .set({
+          targetRoles: targetRoles.length > 0 ? targetRoles : null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(expertServiceOfferings.id, req.params.id),
+            isNull(expertServiceOfferings.expertId)
+          )
+        )
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+
+      res.json({
+        id: updated.id,
+        title: updated.name,
+        targetRoles: (updated.targetRoles as string[] | null) ?? [],
+      });
+    } catch (err) {
+      console.error("Error updating expert template roles:", err);
+      res.status(500).json({ message: "Failed to update template roles" });
+    }
   });
 
   // === Admin Service Category Management ===

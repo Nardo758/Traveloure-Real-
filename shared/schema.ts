@@ -1039,6 +1039,9 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isActive: boolean("is_active").default(true),
   categoryName: varchar("category_name", { length: 100 }),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // Migration 016: role-scoped templates
+  // NULL = shown to all expert roles; array = scoped to listed role(s)
+  targetRoles: text("target_roles").array(),
 });
 
 // Link experts to their selected service offerings

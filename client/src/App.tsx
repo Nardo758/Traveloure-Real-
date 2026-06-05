@@ -69,6 +69,7 @@ import AdminPlans from "@/pages/admin/plans";
 import AdminRevenue from "@/pages/admin/revenue";
 import AdminAnalytics from "@/pages/admin/analytics";
 import AdminCategories from "@/pages/admin/categories";
+import AdminExpertTemplates from "@/pages/admin/expert-templates";
 import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
@@ -617,6 +618,9 @@ function Router() {
       </Route>
       <Route path="/admin/categories">
         {() => <ProtectedRoute component={AdminCategories} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/expert-templates">
+        {() => <ProtectedRoute component={AdminExpertTemplates} requiredRole="admin" />}
       </Route>
       <Route path="/admin/search">
         {() => <ProtectedRoute component={AdminSearch} requiredRole="admin" />}
