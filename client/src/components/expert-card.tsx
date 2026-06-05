@@ -54,6 +54,9 @@ interface ExpertCardProps {
       country?: string;
       neighborhoods?: string[];
       localityProof?: string;
+      // LB-P4b: identity verification status. Badge renders only when explicitly
+      // 'verified' — no negative badge for unverified/pending per spec.
+      identityVerificationStatus?: string | null;
     };
   };
   showServices?: boolean;
@@ -81,7 +84,13 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
   const reviewsCount = expert.reviewsCount || null;
   const tripsCount = expert.tripsCount || null;
   const rating = 4.9; // Default rating when not available
-  const verified = expert.verified !== false;
+  // LB-P4b: badge resolves from identityVerificationStatus (set by Stripe Identity /
+  // Persona KYB flow). No fallback default — only render the checkmark when the
+  // expert has actually completed verification. Legacy expert.verified retained as
+  // a transition fallback for seeded data, but new card consumers should populate
+  // expertForm.identityVerificationStatus.
+  const verified = expert.expertForm?.identityVerificationStatus === "verified"
+    || expert.verified === true;
   const superExpert = expert.superExpert || false;
   const hasMetrics = reviewsCount !== null || tripsCount !== null;
   
