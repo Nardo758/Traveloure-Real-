@@ -66,6 +66,7 @@ import { emergencyService } from "./services/emergency.service";
 import { experienceCatalogService } from "./services/experience-catalog.service";
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
+import { getSequencingRulesForTemplate } from "./services/smart-sequencing.service";
 import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
@@ -1263,7 +1264,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
   app.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
       const { experienceType, destination, date, selectedServices, preferences } = req.body;
-      
+
       const servicesContext = selectedServices?.map((s: any) => ({
         name: s.name,
         provider: s.provider,
@@ -1271,13 +1272,25 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
         category: s.category
       })) || [];
 
-      const systemPrompt = `You are an expert experience planning optimizer for Traveloure. 
+      // Fetch template-specific sequencing rules
+      const sequencingRules = getSequencingRulesForTemplate(experienceType);
+      const rulesContext = sequencingRules.slice(0, 5).map(rule => ({
+        name: rule.name,
+        description: rule.description,
+        methodology: rule.methodology,
+        category: rule.category
+      }));
+
+      const systemPrompt = `You are an expert experience planning optimizer for Traveloure.
 Analyze the user's selected services and provide optimization recommendations.
 Experience Type: ${experienceType}
 Destination: ${destination || "Not specified"}
 Date: ${date || "Flexible"}
 Selected Services: ${JSON.stringify(servicesContext)}
 Preferences: ${JSON.stringify(preferences || {})}
+
+Apply these smart sequencing principles to the itinerary:
+${rulesContext.map(r => `- ${r.name}: ${r.description} (${r.methodology})`).join('\n')}
 
 Provide a comprehensive optimization analysis in JSON format with this structure:
 {
