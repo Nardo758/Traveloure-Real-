@@ -323,6 +323,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
+      } else if (role === "expert") {
+        toast({ title: "Service submitted for review!" });
+        queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+        navigate("/expert/services");
       } else {
         setCreationSuccess(true);
         if (onSuccess) onSuccess(data.id);
