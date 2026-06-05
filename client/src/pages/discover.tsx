@@ -1211,39 +1211,6 @@ export default function DiscoverPage() {
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
-                {/* Cart Summary Bar */}
-                {cart && cart.items.length > 0 && (
-                  <div className="mb-6 p-4 bg-card border rounded-lg flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <ShoppingCart className="w-5 h-5 text-primary" />
-                      <span className="font-medium">
-                        {cart.itemCount} items in cart
-                      </span>
-                      <span className="text-muted-foreground">
-                        Total: ${cart.total}
-                      </span>
-                    </div>
-                    <div className="flex gap-3">
-                      <Link href="/cart">
-                        <Button variant="outline" data-testid="button-view-cart">
-                          View Cart
-                        </Button>
-                      </Link>
-                      <Button
-                        onClick={createComparison}
-                        disabled={creatingComparison}
-                        data-testid="button-compare-ai"
-                      >
-                        {creatingComparison ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <GitCompare className="w-4 h-4 mr-2" />
-                        )}
-                        Compare AI Alternatives
-                      </Button>
-                    </div>
-                  </div>
-                )}
 
                 {/* AI Recommendations Panel */}
                 {showRecommendations && recommendations && (
