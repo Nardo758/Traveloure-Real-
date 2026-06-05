@@ -85,6 +85,7 @@ import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
+import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -3122,14 +3123,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
-  // Purchase credits via Stripe Checkout
-  const CREDIT_PACKAGES = [
-    { id: 1, credits: 50, price: 49 },
-    { id: 2, credits: 100, price: 89 },
-    { id: 3, credits: 250, price: 199 },
-    { id: 4, credits: 500, price: 349 },
-  ];
-
+  // Purchase credits via Stripe Checkout. LB-P5a: packages come from the
+  // single canonical source in shared/credit-packages.ts (imported at top of file).
   app.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
