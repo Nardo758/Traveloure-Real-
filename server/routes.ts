@@ -12463,6 +12463,18 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Backfill photos for existing gems that have no image_url (admin only)
+  app.post("/api/admin/gems/backfill-photos", requireAdmin, async (_req, res) => {
+    try {
+      const { grokDiscoveryService: svc } = await import("./services/grok-discovery.service");
+      const result = await svc.backfillGemPhotos();
+      res.json({ message: "Backfill complete", ...result });
+    } catch (error: any) {
+      console.error("Gem photo backfill error:", error);
+      res.status(500).json({ message: "Backfill failed", error: error.message });
+    }
+  });
+
   // ==================== AFFILIATE PARTNER MANAGEMENT ====================
   
   const { affiliateScraperService } = await import("./services/affiliate-scraper.service");
