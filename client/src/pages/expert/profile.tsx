@@ -25,7 +25,9 @@ import {
   StickyNote,
   Lock,
   Home,
-  BadgeCheck
+  BadgeCheck,
+  AlertCircle,
+  Info,
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -127,8 +129,17 @@ export default function ExpertProfile() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Role updated successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to update role", variant: "destructive" });
+    onError: (error: any) => {
+      let message = "Failed to update role";
+      try {
+        const raw: string = error?.message ?? "";
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart !== -1) {
+          const body = JSON.parse(raw.slice(jsonStart));
+          if (body?.message) message = body.message;
+        }
+      } catch {}
+      toast({ title: message, variant: "destructive" });
     },
   });
 
@@ -258,37 +269,58 @@ export default function ExpertProfile() {
               </Label>
               {profileLoading ? (
                 <Skeleton className="h-10 rounded" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={selectedRole}
-                    onValueChange={setSelectedRole}
-                    data-testid="select-expert-role"
-                  >
-                    <SelectTrigger className="flex-1" data-testid="trigger-expert-role">
-                      <SelectValue placeholder="Select your role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="travel_expert">Travel Advisor</SelectItem>
-                      <SelectItem value="local_expert">Local Expert</SelectItem>
-                      <SelectItem value="event_planner">Event Planner</SelectItem>
-                      <SelectItem value="executive_assistant">Executive Assistant</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="sm"
-                    className="bg-[#FF385C] shrink-0"
-                    onClick={() => saveRoleMutation.mutate(selectedRole)}
-                    disabled={
-                      saveRoleMutation.isPending ||
-                      selectedRole === ((expertProfile as any)?.expertForm?.expertType ?? user?.role ?? "travel_expert")
-                    }
-                    data-testid="button-save-role"
-                  >
-                    {saveRoleMutation.isPending ? "Saving…" : "Save"}
-                  </Button>
-                </div>
-              )}
+              ) : (() => {
+                const currentExpertType = (expertProfile as any)?.expertForm?.expertType ?? user?.role ?? "travel_expert";
+                const isRoleUnchanged = selectedRole === currentExpertType;
+                const requiresReview = selectedRole === "local_expert" && currentExpertType !== "local_expert";
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={selectedRole}
+                        onValueChange={setSelectedRole}
+                        data-testid="select-expert-role"
+                      >
+                        <SelectTrigger className="flex-1" data-testid="trigger-expert-role">
+                          <SelectValue placeholder="Select your role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="travel_expert">Travel Advisor</SelectItem>
+                          <SelectItem value="local_expert">
+                            Local Expert{currentExpertType !== "local_expert" ? " (requires review)" : ""}
+                          </SelectItem>
+                          <SelectItem value="event_planner">Event Planner</SelectItem>
+                          <SelectItem value="executive_assistant">Executive Assistant</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        className="bg-[#FF385C] shrink-0"
+                        onClick={() => saveRoleMutation.mutate(selectedRole)}
+                        disabled={
+                          saveRoleMutation.isPending ||
+                          isRoleUnchanged ||
+                          requiresReview
+                        }
+                        data-testid="button-save-role"
+                      >
+                        {saveRoleMutation.isPending ? "Saving…" : "Save"}
+                      </Button>
+                    </div>
+                    {requiresReview && (
+                      <div
+                        className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                        data-testid="alert-role-requires-review"
+                      >
+                        <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>
+                          Switching to <strong>Local Expert</strong> requires admin review. Your current role was vetted for a different category. Please contact support to have your application re-evaluated.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="space-y-2">
