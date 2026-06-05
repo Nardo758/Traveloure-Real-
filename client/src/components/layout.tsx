@@ -157,6 +157,7 @@ const navItems = [
 const authNavItems = [
   { href: "/dashboard", label: "My Trips", icon: Map },
   { href: "/discover", label: "Discover", icon: Compass },
+  { href: "/concierge", label: "Concierge", icon: Sparkles },
   { href: "/chat", label: "Expert Chat", icon: MessageSquare },
 ];
 

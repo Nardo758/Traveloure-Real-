@@ -1096,6 +1096,32 @@ function AIOptimizationTab({
             ))}
           </div>
         </Card>
+
+        {/* CON-A.P6 / step 4: paid-upgrade CTA on the legacy preview surface.
+            Routes to the Concierge entry, where the AI tier card converts to the
+            gated paid path (/api/optimization-payments → /confirm). */}
+        <Card className="p-5 border-primary/40 bg-primary/5">
+          <div className="flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <div>
+                <p className="font-semibold text-sm">Want the full AI-optimized plan?</p>
+                <p className="text-xs text-muted-foreground">
+                  Heuristic preview shown above. The full AI Concierge plan rearranges your
+                  itinerary, adds recommendations, and is delivered through the Concierge surface.
+                </p>
+              </div>
+              <Link
+                href={`/concierge?tier=ai&eventType=${encodeURIComponent(experienceType.name)}&intent=${encodeURIComponent(`Optimize my ${experienceType.name.toLowerCase()} in ${destination}`)}`}
+              >
+                <Button size="sm" className="w-full sm:w-auto" data-testid="button-concierge-upgrade-from-preview">
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Get the full plan via Concierge
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
       </div>
     );
   }

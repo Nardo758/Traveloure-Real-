@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { decimal, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -53,6 +53,10 @@ export const users = pgTable("users", {
   instagramUserId: varchar("instagram_user_id"),
   instagramAccessToken: varchar("instagram_access_token", { length: 512 }),
   authProvider: varchar("auth_provider", { length: 20 }).default("email"), // email, replit, google, etc.
+  // Per-expert commission override (EXP-OVR.P1) — expert keeps this %; platform takes 100-x%.
+  // NULL = use booking_fee_configs category default. Honors §6.9 beta-recruitment terms.
+  // Resolved server-side in commission.ts:resolveCommissionRates before the category lookup.
+  commissionOverrideExpertSharePercent: decimal("commission_override_expert_share_percent", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

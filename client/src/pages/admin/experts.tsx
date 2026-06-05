@@ -37,12 +37,82 @@ interface ExpertApplication {
   languages?: string[];
   bio?: string;
   status: string;
+  // EXP-OVR.P3: admin-editable per-expert commission override (expert-share %).
+  // null = use category default. Honors §6.9 beta-recruitment terms.
+  commissionOverrideExpertSharePercent?: string | null;
   createdAt: string;
   // Local Expert fields
   neighborhoods?: string[];
   localityProof?: string;
   knowledgeProofAnswers?: Array<{ question: string; answer: string }>;
   localSpecialties?: string[];
+}
+
+// EXP-OVR.P3: inline editor for the per-expert commission override.
+// Empty input = clear override (uses category default). Value is the expert's
+// share % (e.g. 80 = expert keeps 80%, platform takes 20%).
+function CommissionOverrideEditor({
+  userId,
+  currentValue,
+  onSave,
+  isSaving,
+}: {
+  userId: string;
+  currentValue: string | null;
+  onSave: (value: number | null) => void;
+  isSaving: boolean;
+}) {
+  const initial = currentValue === null || currentValue === undefined ? "" : String(parseFloat(currentValue));
+  const [draft, setDraft] = useState(initial);
+  const trimmed = draft.trim();
+  const parsed = trimmed === "" ? null : Number(trimmed);
+  const valid = trimmed === "" || (Number.isFinite(parsed!) && parsed! >= 0 && parsed! <= 100);
+  const dirty = trimmed !== initial;
+  const handleSave = () => {
+    if (!valid) return;
+    onSave(parsed);
+  };
+  const handleClear = () => {
+    setDraft("");
+    onSave(null);
+  };
+  return (
+    <div className="flex items-center gap-1.5" data-testid={`override-editor-${userId}`}>
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step={0.01}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        placeholder="—"
+        className={`w-16 h-7 px-2 text-xs border rounded ${valid ? "border-gray-300" : "border-red-500"}`}
+        data-testid={`input-override-${userId}`}
+      />
+      <span className="text-xs text-gray-400">% expert</span>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={!valid || !dirty || isSaving}
+        className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:bg-gray-200 disabled:text-gray-400"
+        data-testid={`button-save-override-${userId}`}
+      >
+        Save
+      </button>
+      {currentValue !== null && currentValue !== undefined && (
+        <button
+          type="button"
+          onClick={handleClear}
+          disabled={isSaving}
+          className="text-xs px-1.5 py-1 rounded text-gray-500 hover:text-red-600"
+          data-testid={`button-clear-override-${userId}`}
+          title="Clear override (use category default)"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function AdminExperts() {
@@ -61,6 +131,23 @@ export default function AdminExperts() {
 
   const pendingApps = applications.filter(a => a.status === "pending");
   const approvedApps = applications.filter(a => a.status === "approved");
+
+  // EXP-OVR.P3: per-expert commission override mutation. Honors §6.9
+  // beta-recruitment terms ("reduced commissions (20% vs 25%)").
+  const overrideMutation = useMutation({
+    mutationFn: async ({ userId, value }: { userId: string; value: number | null }) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}/commission-override`, {
+        commissionOverrideExpertSharePercent: value,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/expert-applications"] });
+      toast({ title: "Commission override saved" });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Save failed", description: error?.message ?? "Try again." });
+    },
+  });
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, rejectionMessage }: { id: string; status: string; rejectionMessage?: string }) => {
@@ -354,6 +441,7 @@ export default function AdminExperts() {
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Location</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Destinations</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Knowledge Nuggets</th>
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Commission Override</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Approved</th>
                       </tr>
                     </thead>
@@ -402,6 +490,14 @@ export default function AdminExperts() {
                             ) : (
                               <span className="text-gray-300 text-xs">—</span>
                             )}
+                          </td>
+                          <td className="py-3 px-2" data-testid={`cell-override-${expert.id}`}>
+                            <CommissionOverrideEditor
+                              userId={expert.userId}
+                              currentValue={expert.commissionOverrideExpertSharePercent ?? null}
+                              onSave={(v) => overrideMutation.mutate({ userId: expert.userId, value: v })}
+                              isSaving={overrideMutation.isPending}
+                            />
                           </td>
                           <td className="py-3 px-2 text-sm text-gray-500">
                             {new Date(expert.createdAt).toLocaleDateString()}

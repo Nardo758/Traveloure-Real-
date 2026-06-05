@@ -20,6 +20,7 @@ import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
+import { EscalationCTA } from "./EscalationCTA";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -1060,6 +1061,27 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               perPerson={perPersonDisplay}
             />
 
+            {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
+                Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
+            {!isViewer && stage === "full" && (
+              <div className="px-5">
+                <EscalationCTA
+                  tripId={trip.id}
+                  destination={trip.destination}
+                  eventType={(trip as any).eventType}
+                  planSnapshot={{
+                    days: days.map(d => ({
+                      day: d.day,
+                      date: d.date,
+                      activityCount: d.activities?.length ?? 0,
+                    })),
+                    totalActivities,
+                    totalCost: totalCostDisplay,
+                  }}
+                />
+              </div>
+            )}
+
             <DaySelector
               tripId={trip.id}
               days={days}
@@ -1141,6 +1163,20 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
+            {/* CON-A.P6 / D8: Concierge entry slot on every PlanCard. Soft, always visible. */}
+            <Link
+              href={`/concierge?intent=${encodeURIComponent(`Help me with my ${trip.destination} trip`)}`}
+              className="flex-shrink-0"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-concierge-${trip.id}`}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                Concierge
+              </Button>
+            </Link>
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"
