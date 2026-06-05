@@ -1731,6 +1731,38 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
     }
   });
 
+  // GET /api/expert/role — returns the expert's role type and a human-readable label
+  // Used by the UI to show the role callout even when no role-specific templates exist yet.
+
+router.get("/api/expert/role", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const formRow = await db
+        .select({ expertType: localExpertForms.expertType })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.userId, userId))
+        .then((r) => r[0]);
+
+      const expertRole = formRow?.expertType ?? null;
+
+      const ROLE_LABELS: Record<string, string> = {
+        local_expert:        "Local Expert",
+        travel_expert:       "Travel Advisor",
+        event_planner:       "Event Planner",
+        executive_assistant: "Executive Assistant",
+      };
+
+      res.json({
+        role:      expertRole,
+        roleLabel: expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
+      });
+    } catch (err) {
+      console.error("Error fetching expert role:", err);
+      res.status(500).json({ message: "Failed to fetch expert role" });
+    }
+  });
+
   // Create service from template
 
 router.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
