@@ -873,12 +873,17 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
 });
 
 // === Optimization Fee Tiers ===
+// CON-A.P2 (FEE-A): keyed by (complexity_tier, event_type). event_type IS NULL = tier-level
+// default. Non-null event_type = admin override for that experience type (e.g. wedding $49.99).
+// is_disabled = "$0=off" semantic per §4.8 — explicit disable, distinct from a $0 price.
 export const optimizationFees = pgTable("optimization_fees", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  complexityTier: varchar("complexity_tier", { length: 20 }).notNull().unique(), // simple | standard | complex
+  complexityTier: varchar("complexity_tier", { length: 20 }).notNull(), // simple | standard | complex
+  eventType: varchar("event_type", { length: 50 }), // null = tier-level default; non-null = per-event-type override
   priceCents: integer("price_cents").notNull(),
   currency: varchar("currency", { length: 3 }).notNull().default("USD"),
   isActive: boolean("is_active").notNull().default(true),
+  isDisabled: boolean("is_disabled").notNull().default(false), // $0=off per §4.8
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

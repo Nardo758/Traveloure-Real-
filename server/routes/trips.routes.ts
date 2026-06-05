@@ -48,6 +48,7 @@ import {
 } from "@shared/content-surface-map";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
+import { getFee } from "../services/optimization-fee.service";
 import Stripe from "stripe";
 
 const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -539,8 +540,10 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           if (piTargetExp && piTargetExp !== userExperienceId) {
             return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different experience." });
           }
-          // Re-derive expected tier from the actual comparison resource (not PI metadata)
-          const defaultFeeCents: Record<string, number> = { simple: 499, standard: 999, complex: 1999 };
+          // Re-derive expected fee from the actual comparison resource (not PI metadata).
+          // CON-A.P2 (FEE-A): resolve through the single fee resolver so admin event-type
+          // overrides (e.g. wedding $49.99) pass validation. Anti-tampering by server-side
+          // recompute — no hardcoded allow-list of amounts.
           let actualEventType: string | undefined;
           if (tripId) {
             const [tRow] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
@@ -555,16 +558,17 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
             actualEventType = eRow?.slug ?? undefined;
           }
           const actualTier = complexityTier(actualEventType);
-          const [actualFeeRow] = await db
-            .select({ priceCents: optimizationFees.priceCents })
-            .from(optimizationFees)
-            .where(and(eq(optimizationFees.complexityTier, actualTier), eq(optimizationFees.isActive, true)))
-            .limit(1);
-          const requiredCents = actualFeeRow?.priceCents ?? defaultFeeCents[actualTier] ?? 999;
+          const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
+          if (feeDisabled) {
+            return res.status(402).json({
+              error: "ai_concierge_disabled",
+              message: "AI Concierge is currently disabled for this experience type.",
+            });
+          }
           if (pi.amount !== requiredCents) {
             return res.status(402).json({
               error: "payment_amount_mismatch",
-              message: `Payment amount does not match the required ${actualTier} tier fee for this resource.`,
+              message: `Payment amount does not match the required fee for this resource.`,
             });
           }
           canRunOptimizer = true;
