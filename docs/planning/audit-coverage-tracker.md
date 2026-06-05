@@ -28,18 +28,19 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | 3 conflicting credit-package definitions | LB-P5a | Specced |
 | Expert workspace Map "coming soon" | LB-P5b | Specced |
 
-## Plan pending (Concierge)
+## Concierge Phase A — SHIPPED (branch `claude/laughing-bardeen-KyTUY`)
 
 | Gap | Owner | Status |
 |---|---|---|
-| `/optimize` static Paris mock → real request surface | CON-A | **Specced** (plan, step A6) |
-| AI Concierge pay-per-use surface | CON-A | Specced (plan) |
-| Expert Concierge escalation UX + availability gating | CON-A | Specced (plan) |
-| AI Concierge fee per-event-type mapping (`$0=off`, $9.99/$49.99) — **FEE-A** | CON-A | Specced (plan) |
-| `concierge_requests` intent log (N5) | CON-A | Specced (plan) |
-| `event_packages` catalog (N6) | CON-A | Specced (plan) |
-| $9 concierge tier (subscription, allowance, overage) — **FEE-B** | CON-B | Plan pending |
-| Full / Done-for-You event coordination | CON-C | Plan pending |
+| `/optimize` static mock → real request surface | CON-A | ✅ Shipped (P6 `2c4e5e7`) |
+| AI Concierge pay-per-use surface | CON-A | ✅ Shipped (P5/P6) |
+| Expert Concierge escalation UX + availability gating | CON-A | ✅ Shipped (P4 `61739ef`, P7 `c36984a`) |
+| AI Concierge fee per-event-type mapping (`$0=off`, $9.99/$49.99) — FEE-A | CON-A | ✅ Shipped (P2 `bba24fd`) |
+| `concierge_requests` intent log (N5) | CON-A | ✅ Shipped (P3 `db1f3e1`) |
+| `event_packages` catalog (N6) | CON-A | ✅ Shipped (P8 `74c481f`) |
+| Legacy `/api/ai/optimize-experience` free LLM leak | CON-A | ✅ Shipped (P1 `e6da614`) |
+| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | Plan pending |
+| Full / Done-for-You transactional flow | CON-C | Plan pending |
 
 ## Fee Architecture (needs planning — dependency of Concierge)
 
