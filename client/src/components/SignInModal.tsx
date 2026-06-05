@@ -30,6 +30,7 @@ export function SignInModal({
 }: SignInModalProps) {
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [formData, setFormData] = useState({
@@ -38,7 +39,6 @@ export function SignInModal({
     firstName: "",
     lastName: "",
   });
-  const [newPassword, setNewPassword] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -122,27 +122,21 @@ export function SignInModal({
     }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email || !newPassword) return;
-    if (newPassword.length < 8) {
-      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
-      return;
-    }
+    if (!formData.email) return;
     setIsLoading(true);
     try {
-      const response = await fetch("/api/auth/reset-password", {
+      await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: formData.email, newPassword }),
+        body: JSON.stringify({ email: formData.email }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Reset failed");
-      toast({ title: "Password Reset", description: data.message });
-      setNewPassword("");
-      setMode("signin");
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Something went wrong", variant: "destructive" });
+      // Always show the same message — server never reveals if email exists
+      setResetSent(true);
+    } catch {
+      // Still show confirmation to avoid enumeration
+      setResetSent(true);
     } finally {
       setIsLoading(false);
     }
@@ -163,11 +157,30 @@ export function SignInModal({
             {mode === "reset" ? "Reset your password" : mode === "signin" ? title : "Create your account"}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {mode === "reset" ? "Enter your email and a new password." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
+            {mode === "reset" ? "Enter your email and we'll send you a reset link." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={mode === "reset" ? handleResetPassword : handleSubmit} className="space-y-4 py-4">
+        {mode === "reset" && resetSent ? (
+          <div className="py-6 text-center space-y-3">
+            <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+              <Mail className="h-6 w-6 text-green-600" />
+            </div>
+            <p className="font-medium text-gray-900">Check your inbox</p>
+            <p className="text-sm text-muted-foreground">
+              If that email is registered, we've sent a reset link. It expires in 60 minutes.
+            </p>
+            <button
+              type="button"
+              className="text-sm text-primary hover:underline"
+              onClick={() => { setResetSent(false); setMode("signin"); }}
+              data-testid="link-back-signin-sent"
+            >
+              Back to Sign In
+            </button>
+          </div>
+        ) : (
+        <form onSubmit={mode === "reset" ? handleForgotPassword : handleSubmit} className="space-y-4 py-4">
           {mode === "signup" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -220,25 +233,7 @@ export function SignInModal({
             </div>
           </div>
 
-          {mode === "reset" ? (
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">New Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder="Min 8 characters"
-                  className="pl-9"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  data-testid="input-new-password"
-                />
-              </div>
-            </div>
-          ) : (
+          {mode !== "reset" && (
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -311,12 +306,12 @@ export function SignInModal({
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {mode === "reset" ? "Resetting..." : mode === "signin" ? "Signing in..." : "Creating account..."}
+                {mode === "reset" ? "Sending..." : mode === "signin" ? "Signing in..." : "Creating account..."}
               </>
             ) : (
               <>
                 <LogIn className="mr-2 h-4 w-4" />
-                {mode === "reset" ? "Reset Password" : mode === "signin" ? "Sign In" : "Create Account"}
+                {mode === "reset" ? "Send reset link" : mode === "signin" ? "Sign In" : "Create Account"}
               </>
             )}
           </Button>
@@ -380,6 +375,7 @@ export function SignInModal({
             )}
           </p>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );
