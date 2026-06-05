@@ -1024,14 +1024,25 @@ export default function DiscoverLocationPage() {
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
   // ── Cover photo: highest-scored gem imageUrl → curated map → null ───────
-  const coverPhotoUrl: string | null = (() => {
+  const { coverPhotoUrl, coverPhotoCredit } = (() => {
     if (allGems.length > 0) {
       const sorted = [...allGems]
         .filter((g: any) => !!g.imageUrl)
         .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
-      if (sorted.length > 0) return sorted[0].imageUrl as string;
+      if (sorted.length > 0) {
+        return {
+          coverPhotoUrl: sorted[0].imageUrl as string,
+          coverPhotoCredit: { type: "gem" as const, placeName: sorted[0].placeName as string },
+        };
+      }
     }
-    return CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
+    const curatedUrl = CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
+    let credit: CoverPhotoCredit = null;
+    if (curatedUrl) {
+      const match = curatedUrl.match(/photo-([\w-]+)\?/);
+      credit = match ? { type: "unsplash", photoId: match[1] } : { type: "unsplash", photoId: "" };
+    }
+    return { coverPhotoUrl: curatedUrl, coverPhotoCredit: credit };
   })();
 
   const coverPhotoCredit: CoverPhotoCredit = (() => {
