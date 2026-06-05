@@ -4,7 +4,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -1654,6 +1654,80 @@ router.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, r
       res.status(201).json(duplicated);
     } catch (err) {
       res.status(500).json({ message: "Failed to duplicate service" });
+    }
+  });
+
+  // GET /api/expert/service-templates — role-filtered platform template catalog
+  // Returns platform templates (expertId IS NULL) whose targetRoles is NULL (all roles)
+  // OR contains the requesting expert's role. Includes a `roleBadge` field so the UI
+  // can display why each template appears.
+
+router.get("/api/expert/service-templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      // Resolve the expert's role from their application form
+      const formRow = await db
+        .select({ expertType: localExpertForms.expertType })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.userId, userId))
+        .then((r) => r[0]);
+
+      const expertRole = formRow?.expertType ?? null; // null = no form submitted yet
+
+      // Fetch platform templates matching this role (or global ones)
+      const rows = await db
+        .select()
+        .from(expertServiceOfferings)
+        .where(
+          and(
+            isNull(expertServiceOfferings.expertId),
+            eq(expertServiceOfferings.isActive, true),
+            or(
+              isNull(expertServiceOfferings.targetRoles),
+              expertRole
+                ? sql`${expertRole} = ANY(${expertServiceOfferings.targetRoles})`
+                : sql`false`
+            )
+          )
+        )
+        .orderBy(expertServiceOfferings.sortOrder);
+
+      const ROLE_LABELS: Record<string, string> = {
+        local_expert:  "Local Expert",
+        travel_expert: "Travel Advisor",
+        event_planner: "Event Planner",
+        executive_assistant: "Executive Assistant",
+      };
+
+      const templates = rows.map((o) => {
+        const isRoleSpecific =
+          Array.isArray(o.targetRoles) && o.targetRoles.length > 0;
+        return {
+          id: o.id,
+          title: o.name,
+          description: o.description,
+          categoryId: null,
+          serviceType: null,
+          deliveryMethod: null,
+          deliveryTimeframe: null,
+          suggestedPrice: o.price,
+          requirements: null,
+          whatIncluded: null,
+          isActive: o.isDefault ?? true,
+          sortOrder: o.sortOrder,
+          createdAt: o.createdAt,
+          targetRoles: o.targetRoles ?? [],
+          roleBadge: isRoleSpecific && expertRole
+            ? ROLE_LABELS[expertRole] ?? expertRole
+            : null,
+        };
+      });
+
+      res.json(templates);
+    } catch (err) {
+      console.error("Error fetching expert service templates:", err);
+      res.status(500).json({ message: "Failed to fetch service templates" });
     }
   });
 

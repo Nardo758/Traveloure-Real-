@@ -37,6 +37,7 @@ import {
   Package,
   Layers,
   GitBranch,
+  LayoutTemplate,
 } from "lucide-react";
 
 const menuGroups = [
@@ -63,6 +64,7 @@ const menuGroups = [
     items: [
       { title: "Services", href: "/admin/services", icon: Package },
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
+      { title: "Expert Templates", href: "/admin/expert-templates", icon: LayoutTemplate },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
       { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
