@@ -43,6 +43,8 @@ export interface Neighborhood {
   updatedAt: Date | null;
   gemCount: number;
   serviceCount: number;
+  /** Top gems (up to 6) pre-fetched for the city feed bento grid. */
+  gems: any[];
 }
 
 export interface LocationViewPayload {
