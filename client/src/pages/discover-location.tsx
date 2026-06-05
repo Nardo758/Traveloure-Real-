@@ -1047,6 +1047,7 @@ export default function DiscoverLocationPage() {
     return null;
   })();
 
+
   if (!city) {
     return (
       <Layout>
