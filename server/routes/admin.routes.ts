@@ -4309,16 +4309,20 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
 
 router.get("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
+    // CON-A.P2: include event_type + is_disabled. Tier-level defaults first (event_type IS NULL),
+    // then per-event-type overrides alphabetically.
     const result = await db.execute(sql`
-      SELECT id, complexity_tier, price_cents, currency, is_active, updated_by, updated_at
+      SELECT id, complexity_tier, event_type, price_cents, currency, is_active, is_disabled, updated_by, updated_at
       FROM optimization_fees
       ORDER BY
+        CASE WHEN event_type IS NULL THEN 0 ELSE 1 END,
         CASE complexity_tier
           WHEN 'simple'   THEN 1
           WHEN 'standard' THEN 2
           WHEN 'complex'  THEN 3
           ELSE 4
-        END
+        END,
+        event_type
     `);
     res.json(result.rows);
   } catch (error: any) {
@@ -4329,7 +4333,7 @@ router.get("/api/admin/optimization-fees", requireAdminLocal, async (req, res) =
 router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const { complexityTier, priceCents, currency = "USD", isActive = true } = req.body;
+    const { complexityTier, eventType = null, priceCents, currency = "USD", isActive = true, isDisabled = false } = req.body;
 
     if (!complexityTier || !["simple", "standard", "complex"].includes(complexityTier)) {
       return res.status(400).json({ error: "complexityTier must be simple | standard | complex" });
@@ -4338,16 +4342,33 @@ router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) 
       return res.status(400).json({ error: "priceCents must be a non-negative integer" });
     }
 
-    await db.execute(sql`
-      INSERT INTO optimization_fees (id, complexity_tier, price_cents, currency, is_active, updated_by, created_at, updated_at)
-      VALUES (gen_random_uuid(), ${complexityTier}, ${priceCents}, ${currency}, ${isActive}, ${userId}, NOW(), NOW())
-      ON CONFLICT (complexity_tier) DO UPDATE SET
-        price_cents = EXCLUDED.price_cents,
-        currency    = EXCLUDED.currency,
-        is_active   = EXCLUDED.is_active,
-        updated_by  = EXCLUDED.updated_by,
-        updated_at  = NOW()
+    // CON-A.P2: upsert keyed by (complexity_tier, event_type). Composite unique not
+    // enforced at DB level (NULL semantics) — update-then-insert preserves single-row
+    // invariant per (tier, event_type|NULL).
+    const existing = await db.execute(sql`
+      SELECT id FROM optimization_fees
+      WHERE complexity_tier = ${complexityTier}
+        AND ((${eventType}::text IS NULL AND event_type IS NULL) OR event_type = ${eventType})
+      LIMIT 1
     `);
+
+    if (existing.rows.length > 0) {
+      await db.execute(sql`
+        UPDATE optimization_fees
+        SET price_cents = ${priceCents},
+            currency    = ${currency},
+            is_active   = ${isActive},
+            is_disabled = ${isDisabled},
+            updated_by  = ${userId},
+            updated_at  = NOW()
+        WHERE id = ${(existing.rows[0] as any).id}
+      `);
+    } else {
+      await db.execute(sql`
+        INSERT INTO optimization_fees (id, complexity_tier, event_type, price_cents, currency, is_active, is_disabled, updated_by, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${complexityTier}, ${eventType}, ${priceCents}, ${currency}, ${isActive}, ${isDisabled}, ${userId}, NOW(), NOW())
+      `);
+    }
 
     res.json({ success: true });
   } catch (error: any) {

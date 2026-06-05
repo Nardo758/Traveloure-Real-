@@ -16,13 +16,14 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { optimizationFees, itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue } from "@shared/schema";
+import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
   calculateItineraryMetrics,
   complexityTier,
 } from "../services/smart-sequencing.service";
+import { getFee } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import Stripe from "stripe";
 
@@ -31,25 +32,6 @@ const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
-
-// ── Default fee fallbacks if DB rows are missing ─────────────────────────────
-const DEFAULT_FEE_CENTS: Record<string, number> = {
-  simple: 499,
-  standard: 999,
-  complex: 1999,
-};
-
-async function getFeeForTier(tier: string): Promise<{ priceCents: number; currency: string }> {
-  const [row] = await db
-    .select({ priceCents: optimizationFees.priceCents, currency: optimizationFees.currency })
-    .from(optimizationFees)
-    .where(and(eq(optimizationFees.complexityTier, tier), eq(optimizationFees.isActive, true)));
-
-  return {
-    priceCents: row?.priceCents ?? DEFAULT_FEE_CENTS[tier] ?? 499,
-    currency: row?.currency ?? "USD",
-  };
-}
 
 /**
  * POST /api/optimization-preview
@@ -73,7 +55,7 @@ router.post("/api/optimization-preview", async (req, res) => {
 
     const metrics = calculateItineraryMetrics(normalizedItems, Number(travelers) || 1, eventType);
     const tier = complexityTier(eventType);
-    const { priceCents, currency } = await getFeeForTier(tier);
+    const { priceCents, currency, isDisabled } = await getFee(eventType, tier);
 
     // Estimate improvement potential:
     // overallScore is 0–100; lower score means more room to improve.
@@ -111,9 +93,10 @@ router.post("/api/optimization-preview", async (req, res) => {
       estimatedScheduleTighteningPct,
       currentScore: Math.round(metrics.overallScore),
       complexityTier: tier,
-      feeCents: priceCents,
+      feeCents: isDisabled ? 0 : priceCents,
       currency,
       freeRerun,
+      aiDisabled: isDisabled,
       metrics: {
         balanceScore: Math.round(metrics.balanceScore),
         wellnessScore: Math.round(metrics.wellnessScore),
@@ -182,7 +165,14 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     }
 
     const tier = complexityTier(dbEventType);
-    const { priceCents, currency } = await getFeeForTier(tier);
+    const { priceCents, currency, isDisabled } = await getFee(dbEventType, tier);
+
+    if (isDisabled) {
+      return res.status(400).json({
+        error: "ai_concierge_disabled",
+        message: "AI Concierge is currently disabled for this experience type.",
+      });
+    }
 
     // 24-hour free re-run check
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
