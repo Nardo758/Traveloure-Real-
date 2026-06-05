@@ -4376,4 +4376,83 @@ router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) 
   }
 });
 
+// ─── Event Packages Admin (CON-A.P8 / N6) ────────────────────────────────────
+// Minimal CRUD for the Full/DFY catalog. Phase A is catalog-only; Phase C/C1
+// will add the transactional flow (quote → approve → PI → workspace bundle).
+
+router.get("/api/admin/event-packages", requireAdminLocal, async (req, res) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id, event_type, market, title, description, price_from_cents, status, created_at, updated_at
+      FROM event_packages
+      ORDER BY status ASC, created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/admin/event-packages", requireAdminLocal, async (req, res) => {
+  try {
+    const { eventType, market, title, description = null, priceFromCents = null, status = "active" } = req.body;
+    if (!eventType || !market || !title) {
+      return res.status(400).json({ error: "eventType, market, and title are required" });
+    }
+    if (priceFromCents !== null && (typeof priceFromCents !== "number" || priceFromCents < 0)) {
+      return res.status(400).json({ error: "priceFromCents must be null or a non-negative integer" });
+    }
+    if (!["active", "paused", "archived"].includes(status)) {
+      return res.status(400).json({ error: "status must be active | paused | archived" });
+    }
+    await db.execute(sql`
+      INSERT INTO event_packages (id, event_type, market, title, description, price_from_cents, status, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${eventType}, ${market}, ${title}, ${description}, ${priceFromCents}, ${status}, NOW(), NOW())
+    `);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch("/api/admin/event-packages/:id", requireAdminLocal, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { eventType, market, title, description, priceFromCents, status } = req.body;
+    if (status !== undefined && !["active", "paused", "archived"].includes(status)) {
+      return res.status(400).json({ error: "status must be active | paused | archived" });
+    }
+    if (priceFromCents !== undefined && priceFromCents !== null && (typeof priceFromCents !== "number" || priceFromCents < 0)) {
+      return res.status(400).json({ error: "priceFromCents must be null or a non-negative integer" });
+    }
+    await db.execute(sql`
+      UPDATE event_packages SET
+        event_type        = COALESCE(${eventType ?? null}::text, event_type),
+        market            = COALESCE(${market ?? null}::text, market),
+        title             = COALESCE(${title ?? null}::text, title),
+        description       = ${description !== undefined ? description : sql`description`},
+        price_from_cents  = ${priceFromCents !== undefined ? priceFromCents : sql`price_from_cents`},
+        status            = COALESCE(${status ?? null}::text, status),
+        updated_at        = NOW()
+      WHERE id = ${id}::uuid
+    `);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete("/api/admin/event-packages/:id", requireAdminLocal, async (req, res) => {
+  // Soft delete: status='archived' so historical references survive.
+  try {
+    const { id } = req.params;
+    await db.execute(sql`
+      UPDATE event_packages SET status = 'archived', updated_at = NOW() WHERE id = ${id}::uuid
+    `);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

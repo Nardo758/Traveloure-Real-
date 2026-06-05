@@ -33,6 +33,7 @@ import {
   MapPin,
   Banknote,
   Percent,
+  Crown,
   PlugZap,
   Package,
   Layers,
@@ -78,6 +79,7 @@ const menuGroups = [
       { title: "Revenue", href: "/admin/revenue", icon: DollarSign },
       { title: "Payouts", href: "/admin/payouts", icon: Banknote },
       { title: "Fee Config", href: "/admin/fee-config", icon: Percent },
+      { title: "Event Packages", href: "/admin/event-packages", icon: Crown },
     ],
   },
   {

@@ -5267,6 +5267,30 @@ export const insertConciergeRequestSchema = createInsertSchema(conciergeRequests
 export type ConciergeRequest = typeof conciergeRequests.$inferSelect;
 export type InsertConciergeRequest = z.infer<typeof insertConciergeRequestSchema>;
 
+// === Event Packages (CON-A.P8 / N6) ===
+// Full / Done-for-You catalog. Admin-curated listings the Concierge surface
+// presents as "quote on request" for high-stakes events (weddings, proposals,
+// corporate, etc.). Phase A is catalog-only; the transactional flow (quote
+// → approve → PI → workspace + provider bundle) is Phase C / C1.
+export const eventPackageStatuses = ["active", "paused", "archived"] as const;
+export type EventPackageStatus = (typeof eventPackageStatuses)[number];
+
+export const eventPackages = pgTable("event_packages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventType: text("event_type").notNull(),
+  market: text("market").notNull(), // city / region name (matched ilike against destination)
+  title: text("title").notNull(),
+  description: text("description"),
+  priceFromCents: integer("price_from_cents"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEventPackageSchema = createInsertSchema(eventPackages).omit({ id: true, createdAt: true, updatedAt: true });
+export type EventPackage = typeof eventPackages.$inferSelect;
+export type InsertEventPackage = z.infer<typeof insertEventPackageSchema>;
+
 export const expertCityQueues = pgTable("expert_city_queues", {
   id: uuid("id").primaryKey().defaultRandom(),
   city: text("city"),
