@@ -83,6 +83,7 @@ import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
+import optimizationRoutes from "./routes/optimization.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -567,6 +568,9 @@ export async function registerRoutes(
 
   // PlanCard routes - change tracking, comments, structured day data
   app.use(plancardRoutes);
+
+  // Optimization routes - heuristic preview + payment-gated AI optimization
+  app.use(optimizationRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
