@@ -1738,53 +1738,59 @@ router.post("/api/expert/services/from-template/:templateId", isAuthenticated, a
       const userId = (req.user as any).claims.sub;
       const templateId = req.params.templateId;
 
-      // expert_service_offerings is the primary catalog; service_templates is legacy fallback
-      let serviceName: string;
-      let description: string | undefined;
-      let price: string;
-      let serviceType: string | undefined;
-      let deliveryMethod: string | undefined;
-      let deliveryTimeframe: string | undefined;
-      let requirements: string | undefined;
-      let whatIncluded: string | undefined;
-
+      // expert_service_offerings is the primary catalog; service_templates is legacy fallback.
+      // Only platform templates (expertId IS NULL) may be cloned — reject requests for
+      // expert-owned offerings to prevent cross-expert data access.
       const esoRow = await db.select().from(expertServiceOfferings)
-        .where(eq(expertServiceOfferings.id, templateId)).then(r => r[0]);
+        .where(and(
+          eq(expertServiceOfferings.id, templateId),
+          isNull(expertServiceOfferings.expertId),
+        )).then(r => r[0]);
+
+      let serviceData: Record<string, any>;
 
       if (esoRow) {
-        // Primary: expert_service_offerings
-        serviceName     = esoRow.name;
-        description     = esoRow.description ?? undefined;
-        price           = esoRow.price;
+        // Primary: expert_service_offerings platform template — copy all available fields.
+        // We write into provider_services (not expert_service_offerings) because the full
+        // expert services edit/list/status/duplicate flow (ServiceForm, /api/expert/services,
+        // PATCH /api/provider/services/:id) operates on provider_services rows.
+        // The ServiceForm fetches from /api/provider/services/:id, so the created row must
+        // exist there for /expert/services/:id/edit to load correctly.
+        serviceData = {
+          userId,
+          serviceName:      esoRow.name,
+          description:      esoRow.description ?? undefined,
+          price:            esoRow.price || "0",
+          deliveryTimeframe: esoRow.duration ?? undefined,
+          cancellationPolicy: esoRow.cancellationPolicy ?? undefined,
+          leadTime:         esoRow.leadTime ?? undefined,
+          deliverables:     esoRow.deliverables ?? [],
+          experienceTypes:  esoRow.experienceTypes ?? [],
+          galleryImages:    esoRow.galleryImages ?? [],
+          serviceImage:     esoRow.imageUrl ?? undefined,
+          status:           "draft",
+          approvalStatus:   "draft",
+        };
       } else {
         // Fallback: service_templates (legacy / admin-created)
         const stRow = await storage.getServiceTemplate(templateId);
         if (!stRow) {
           return res.status(404).json({ message: "Template not found" });
         }
-        serviceName     = stRow.title;
-        description     = stRow.description ?? undefined;
-        price           = stRow.suggestedPrice ?? "0";
-        serviceType     = stRow.serviceType ?? undefined;
-        deliveryMethod  = stRow.deliveryMethod ?? undefined;
-        deliveryTimeframe = stRow.deliveryTimeframe ?? undefined;
-        requirements    = stRow.requirements as string | undefined;
-        whatIncluded    = stRow.whatIncluded as string | undefined;
+        serviceData = {
+          userId,
+          serviceName:      stRow.title,
+          description:      stRow.description ?? undefined,
+          price:            stRow.suggestedPrice ?? "0",
+          serviceType:      stRow.serviceType ?? undefined,
+          deliveryMethod:   stRow.deliveryMethod ?? undefined,
+          deliveryTimeframe: stRow.deliveryTimeframe ?? undefined,
+          requirements:     stRow.requirements as string | undefined,
+          whatIncluded:     stRow.whatIncluded as string | undefined,
+          status:           "draft",
+          approvalStatus:   "draft",
+        };
       }
-
-      const serviceData = {
-        userId,
-        serviceName,
-        description,
-        categoryId: null,
-        price: price || "0",
-        serviceType,
-        deliveryMethod,
-        deliveryTimeframe,
-        requirements,
-        whatIncluded,
-        status: "draft",
-      };
 
       const service = await storage.createProviderService(serviceData as any);
       res.status(201).json(service);

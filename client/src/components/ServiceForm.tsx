@@ -16,7 +16,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
-  MapPin, Navigation, Truck, Radius, Info,
+  MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -61,6 +61,12 @@ interface ServiceFormData {
   pickupAvailable: boolean;
   pickupAddress: string;
   serviceRadius: number;
+  // Booking terms
+  cancellationPolicy: string;
+  leadTime: string;
+  // Media
+  serviceImage: string;
+  galleryImages: string[];
 }
 
 interface ServiceFormProps {
@@ -104,6 +110,10 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     pickupAvailable: false,
     pickupAddress: "",
     serviceRadius: 0,
+    cancellationPolicy: "",
+    leadTime: "",
+    serviceImage: "",
+    galleryImages: [],
   };
 }
 
@@ -130,6 +140,10 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
     serviceRadius: Number(s.serviceRadius || 0),
+    cancellationPolicy: s.cancellationPolicy || "",
+    leadTime: s.leadTime || "",
+    serviceImage: s.serviceImage || "",
+    galleryImages: Array.isArray(s.galleryImages) ? s.galleryImages : [],
   };
 }
 
@@ -139,6 +153,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const isEditMode = !!id;
   const [creationSuccess, setCreationSuccess] = useState(false);
   const [newIncluded, setNewIncluded] = useState("");
+  const [newGalleryUrl, setNewGalleryUrl] = useState("");
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -231,6 +246,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
         serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
+        cancellationPolicy: formData.cancellationPolicy || null,
+        leadTime: formData.leadTime || null,
+        serviceImage: formData.serviceImage || null,
+        galleryImages: formData.galleryImages,
       };
 
       // Role-specific fields
@@ -611,6 +630,127 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Booking Terms ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Booking Terms
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="leadTime" className="flex items-center gap-1.5">
+              <Clock className="w-4 h-4" />
+              Lead Time Required
+            </Label>
+            <Input
+              id="leadTime"
+              value={formData.leadTime}
+              onChange={(e) => set("leadTime", e.target.value)}
+              placeholder="e.g., 48 hours, 1 week, 3 days"
+              className="mt-2"
+              data-testid="input-lead-time"
+            />
+            <p className="text-xs text-muted-foreground mt-1">How far in advance must clients book?</p>
+          </div>
+          <div>
+            <Label htmlFor="cancellationPolicy">Cancellation Policy</Label>
+            <Textarea
+              id="cancellationPolicy"
+              value={formData.cancellationPolicy}
+              onChange={(e) => set("cancellationPolicy", e.target.value)}
+              placeholder="e.g., Full refund if cancelled 48 hours before. 50% refund if cancelled 24 hours before. No refund within 12 hours."
+              rows={3}
+              className="mt-2"
+              data-testid="textarea-cancellation-policy"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Photos ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Image className="w-5 h-5" />
+            Photos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="serviceImage">Cover Photo URL</Label>
+            <Input
+              id="serviceImage"
+              value={formData.serviceImage}
+              onChange={(e) => set("serviceImage", e.target.value)}
+              placeholder="https://..."
+              className="mt-2"
+              data-testid="input-service-image"
+            />
+            {formData.serviceImage && (
+              <img
+                src={formData.serviceImage}
+                alt="Cover preview"
+                className="mt-2 w-full h-40 object-cover rounded-lg border"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            )}
+          </div>
+          <div>
+            <Label>Gallery Images</Label>
+            <div className="space-y-2 mt-2">
+              {formData.galleryImages.map((url, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <img
+                    src={url}
+                    alt={`Gallery ${idx + 1}`}
+                    className="w-12 h-12 object-cover rounded border flex-shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).src = ""; }}
+                  />
+                  <span className="flex-1 text-sm text-muted-foreground truncate">{url}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => set("galleryImages", formData.galleryImages.filter((_, i) => i !== idx))}
+                    data-testid={`button-remove-gallery-${idx}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Input
+                value={newGalleryUrl}
+                onChange={(e) => setNewGalleryUrl(e.target.value)}
+                placeholder="https://... (image URL)"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newGalleryUrl.trim()) {
+                    set("galleryImages", [...formData.galleryImages, newGalleryUrl.trim()]);
+                    setNewGalleryUrl("");
+                  }
+                }}
+                data-testid="input-gallery-url"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  if (newGalleryUrl.trim()) {
+                    set("galleryImages", [...formData.galleryImages, newGalleryUrl.trim()]);
+                    setNewGalleryUrl("");
+                  }
+                }}
+                data-testid="button-add-gallery"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Provider-Specific Features ── */}
       {role === "provider" && (

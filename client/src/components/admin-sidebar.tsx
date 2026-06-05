@@ -38,6 +38,7 @@ import {
   Layers,
   GitBranch,
   LayoutTemplate,
+  ImageIcon,
 } from "lucide-react";
 
 const menuGroups = [
@@ -85,6 +86,7 @@ const menuGroups = [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
       { title: "Neighborhoods", href: "/admin/neighborhood-backfill", icon: MapPin },
+      { title: "Gem Photos", href: "/admin/gem-photo-backfill", icon: ImageIcon },
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
