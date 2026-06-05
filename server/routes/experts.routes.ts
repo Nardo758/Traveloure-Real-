@@ -707,6 +707,15 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid expert type" });
       }
 
+      // Local Expert requires specific vetting — only allow if already a local_expert
+      const currentType = form.expertType;
+      if (expertType === "local_expert" && currentType !== "local_expert") {
+        return res.status(403).json({
+          message: "Switching to Local Expert requires admin review. Please contact support to have your application re-evaluated.",
+          requiresReview: true,
+        });
+      }
+
       await storage.updateLocalExpertFormType(userId, expertType);
       res.json({ success: true, expertType });
     } catch (err) {
