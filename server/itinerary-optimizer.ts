@@ -643,7 +643,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       duration: item.duration,
       dayNumber: item.dayNumber || 1
     }));
-    const baselineEnhancedMetrics = calculateItineraryMetrics(baselineForMetrics, travelers || 1);
+    const baselineEnhancedMetrics = calculateItineraryMetrics(baselineForMetrics, travelers || 1, compRecord?.experienceTypeSlug);
 
     if (baselineItems.length > 0) {
       await db.insert(itineraryVariantItems).values(
@@ -1011,7 +1011,8 @@ Respond with valid JSON in this exact format:
           duration: item.duration,
           dayNumber: item.dayNumber
         })),
-        travelers || 1
+        travelers || 1,
+        compRecord?.experienceTypeSlug
       );
 
       // Combine AI optimization score with sequencing score

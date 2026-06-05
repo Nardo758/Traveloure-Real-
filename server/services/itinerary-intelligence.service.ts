@@ -1,21 +1,64 @@
 import { db } from "../db";
-import { 
-  itineraryItems, 
-  type ItineraryItem, 
-  type InsertItineraryItem 
+import {
+  itineraryItems,
+  type ItineraryItem,
+  type InsertItineraryItem
 } from "@shared/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import OpenAI from "openai";
-import { 
-  createCircuitBreaker, 
+import {
+  createCircuitBreaker,
   withCircuitBreaker,
-  retryWithBackoff, 
+  retryWithBackoff,
   aiLogger,
   aiRequestDuration,
   aiTokensUsed,
-  databaseQueryDuration 
+  databaseQueryDuration
 } from "../infrastructure";
 import type { ChatCompletion } from "openai/resources/chat/completions";
+
+// Meal timing realism constants
+export const MEAL_GAP_MINUTES = {
+  breakfast_to_lunch: 240, // 4 hours minimum between breakfast and lunch
+  lunch_to_dinner: 300, // 5 hours minimum between lunch and dinner
+  dinner_to_breakfast: 720, // 12 hours minimum between dinner and next day breakfast
+  snack_to_meal: 120, // 2 hours minimum from snack to main meal
+};
+
+export interface MealConflict {
+  meal1Id: string;
+  meal2Id: string;
+  meal1Name: string;
+  meal2Name: string;
+  timeGapMinutes: number;
+  minimumGapMinutes: number;
+  severity: 'low' | 'medium' | 'high';
+  appetiteConflict: boolean; // e.g., appetizer + dinner too close
+}
+
+// Peak hour heuristics by venue type and day of week
+const PEAK_HOURS_BY_VENUE = {
+  restaurant: {
+    lunch: { start: 12, end: 14 }, // 12 PM - 2 PM
+    dinner: { start: 19, end: 21 }, // 7 PM - 9 PM
+  },
+  museum: {
+    peak: { start: 10, end: 16 }, // 10 AM - 4 PM
+  },
+  shopping: {
+    peak: { start: 11, end: 18 }, // 11 AM - 6 PM (afternoon worst)
+  },
+  attraction: {
+    peak: { start: 11, end: 16 }, // 11 AM - 4 PM
+  },
+};
+
+export interface PeakTimeRecommendation {
+  venueType: string;
+  peakHours: { start: number; end: number };
+  recommendedTimes: Array<{ start: number; end: number; reason: string }>;
+  averageWaitTime: { peak: number; offPeak: number };
+}
 
 export interface TravelSegment {
   from: { name: string; lat: number; lng: number };
@@ -317,6 +360,140 @@ export class ItineraryIntelligenceService {
     });
 
     return sorted.map(i => i.id);
+  }
+
+  getOffPeakRecommendation(venueType: string): PeakTimeRecommendation {
+    const typeKey = venueType.toLowerCase().split(',')[0].trim() as keyof typeof PEAK_HOURS_BY_VENUE;
+    const peakHours = PEAK_HOURS_BY_VENUE[typeKey] || PEAK_HOURS_BY_VENUE.attraction;
+
+    // Flatten peak hours into a single range
+    let peakStart = 10;
+    let peakEnd = 16;
+    if ('peak' in peakHours) {
+      peakStart = peakHours.peak.start;
+      peakEnd = peakHours.peak.end;
+    } else if ('lunch' in peakHours) {
+      peakStart = peakHours.lunch.start;
+      peakEnd = peakHours.dinner.end;
+    }
+
+    // Recommend off-peak times
+    const recommendedTimes = [
+      {
+        start: 8,
+        end: peakStart,
+        reason: `Visit early morning (${8}-${peakStart} AM) before peak hours for shorter waits`,
+      },
+      {
+        start: peakEnd,
+        end: 20,
+        reason: `Visit late afternoon/evening (${peakEnd} PM-8 PM) for fewer crowds`,
+      },
+      {
+        start: 9,
+        end: 11,
+        reason: `Weekday mid-morning (9-11 AM) is generally off-peak for most attractions`,
+      },
+    ];
+
+    return {
+      venueType,
+      peakHours: { start: peakStart, end: peakEnd },
+      recommendedTimes,
+      averageWaitTime: {
+        peak: 30 + Math.random() * 60, // Simulated: 30-90 min during peak
+        offPeak: 5 + Math.random() * 15, // Simulated: 5-20 min off-peak
+      },
+    };
+  }
+
+  async getPeakTimingForItinerary(tripId: string): Promise<Array<{ itemId?: string; recommendation: PeakTimeRecommendation }>> {
+    const items = await this.getItems(tripId);
+    const results: Array<{ itemId?: string; recommendation: PeakTimeRecommendation }> = [];
+
+    for (const item of items) {
+      if (item.serviceType && ['restaurant', 'museum', 'shopping', 'attraction'].some(t => item.serviceType!.toLowerCase().includes(t))) {
+        results.push({
+          itemId: item.id,
+          recommendation: this.getOffPeakRecommendation(item.serviceType),
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async detectMealConflicts(tripId: string): Promise<MealConflict[]> {
+    const items = await this.getItems(tripId);
+    const mealItems = items.filter(i => {
+      const type = i.serviceType?.toLowerCase() || '';
+      return ['meal', 'dining', 'breakfast', 'lunch', 'dinner', 'snack', 'appetizer'].some(m => type.includes(m));
+    });
+
+    const conflicts: MealConflict[] = [];
+
+    // Check all pairs of meals
+    for (let i = 0; i < mealItems.length - 1; i++) {
+      for (let j = i + 1; j < mealItems.length; j++) {
+        const meal1 = mealItems[i];
+        const meal2 = mealItems[j];
+
+        // Only check meals on the same day
+        if (meal1.dayNumber !== meal2.dayNumber) continue;
+
+        // Parse times
+        const time1 = meal1.startTime ? this.parseTimeToMinutes(meal1.startTime) : undefined;
+        const time2 = meal2.startTime ? this.parseTimeToMinutes(meal2.startTime) : undefined;
+
+        if (time1 === undefined || time2 === undefined) continue;
+
+        // Ensure meal1 is before meal2
+        const [earlierTime, earlierMeal, laterTime, laterMeal] = time1 < time2
+          ? [time1, meal1, time2, meal2]
+          : [time2, meal2, time1, meal1];
+
+        const timeGapMinutes = laterTime - earlierTime;
+        const type1 = (earlierMeal.serviceType || '').toLowerCase();
+        const type2 = (laterMeal.serviceType || '').toLowerCase();
+
+        // Detect appetite conflicts
+        let minimumGapMinutes = 300; // Default 5 hours
+        let appetiteConflict = false;
+
+        if (type1.includes('breakfast') && type2.includes('lunch')) {
+          minimumGapMinutes = MEAL_GAP_MINUTES.breakfast_to_lunch;
+        } else if (type1.includes('lunch') && type2.includes('dinner')) {
+          minimumGapMinutes = MEAL_GAP_MINUTES.lunch_to_dinner;
+        } else if (type1.includes('appetizer') || type1.includes('snack')) {
+          minimumGapMinutes = MEAL_GAP_MINUTES.snack_to_meal;
+          appetiteConflict = type2.includes('dinner') || type2.includes('lunch');
+        }
+
+        // Check if gap is insufficient
+        if (timeGapMinutes < minimumGapMinutes) {
+          const severity: 'low' | 'medium' | 'high' =
+            timeGapMinutes < minimumGapMinutes * 0.5 ? 'high' : timeGapMinutes < minimumGapMinutes * 0.75 ? 'medium' : 'low';
+
+          conflicts.push({
+            meal1Id: earlierMeal.id,
+            meal2Id: laterMeal.id,
+            meal1Name: earlierMeal.title || 'Meal 1',
+            meal2Name: laterMeal.title || 'Meal 2',
+            timeGapMinutes,
+            minimumGapMinutes,
+            severity,
+            appetiteConflict,
+          });
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  private parseTimeToMinutes(timeStr: string): number {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + (minutes || 0);
   }
 
   async getAIRecommendations(tripId: string, destination: string): Promise<string[]> {

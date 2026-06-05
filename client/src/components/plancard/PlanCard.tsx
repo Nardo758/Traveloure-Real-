@@ -1019,28 +1019,22 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
-          <button
+          <Button
             onClick={() => setViewMode("card")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
-              viewMode === "card"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
+            variant={viewMode === "card" ? "default" : "secondary"}
+            className="flex-1"
             data-testid={`btn-card-view-${trip.id}`}
           >
-            <LayoutList className="w-4 h-4" /> Card View
-          </button>
-          <button
+            <LayoutList className="w-4 h-4 mr-2" /> Card View
+          </Button>
+          <Button
             onClick={() => setViewMode("map")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
-              viewMode === "map"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
+            variant={viewMode === "map" ? "default" : "secondary"}
+            className="flex-1"
             data-testid={`btn-map-view-${trip.id}`}
           >
-            <MapIcon className="w-4 h-4" /> Map Control Center
-          </button>
+            <MapIcon className="w-4 h-4 mr-2" /> Map Control Center
+          </Button>
         </div>
 
         {viewMode === "card" ? (
