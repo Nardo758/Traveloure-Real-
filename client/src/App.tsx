@@ -12,6 +12,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
+import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
+import { ConsoleAwareLayout } from "@/components/console-aware-layout";
 import { useEffect, useRef } from "react";
 
 import LandingPage from "@/pages/landing";
@@ -184,20 +186,11 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
 }
 
 function ChatWithRoleLayout() {
-  const { user } = useAuth();
-  const role = user?.role ?? "user";
-  // Expert roles — local_expert, travel_expert, event_planner, executive_assistant
-  if (["local_expert", "travel_expert", "event_planner", "expert"].includes(role)) {
-    return <ExpertLayout title="Messages"><Chat /></ExpertLayout>;
-  }
-  if (role === "executive_assistant") {
-    return <EALayout title="Messages"><Chat /></EALayout>;
-  }
-  if (role === "service_provider") {
-    return <ProviderLayout title="Messages"><Chat /></ProviderLayout>;
-  }
-  // Default: traveler / user console
-  return <DashboardLayout><Chat /></DashboardLayout>;
+  return (
+    <ConsoleAwareLayout title="Messages">
+      <Chat />
+    </ConsoleAwareLayout>
+  );
 }
 
 function Router() {
@@ -240,7 +233,7 @@ function Router() {
       
       {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
       <Route path="/discover">
-        <DiscoverPage />
+        <ConsoleAwareLayout title="Discover"><DiscoverPage /></ConsoleAwareLayout>
       </Route>
       {/* Phase 3 LocationView — 9-section city marketplace (Decision #5 = Replace). */}
       <Route path="/discover/location/:city">
@@ -260,7 +253,7 @@ function Router() {
         <ServiceDetailPage />
       </Route>
       <Route path="/cart">
-        <CartPage />
+        <ConsoleAwareLayout title="Cart"><CartPage /></ConsoleAwareLayout>
       </Route>
 
       <Route path="/itinerary-view/:token">
@@ -405,11 +398,11 @@ function Router() {
       
       {/* Consolidated Credits page */}
       <Route path="/credits">
-        {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
+        {() => <ConsoleAwareLayout title="Credits"><ProtectedRoute component={CreditsBillingPage} /></ConsoleAwareLayout>}
       </Route>
       
       <Route path="/notifications">
-        {() => <ProtectedRoute component={Notifications} />}
+        {() => <ConsoleAwareLayout title="Notifications"><ProtectedRoute component={Notifications} /></ConsoleAwareLayout>}
       </Route>
       <Route path="/expert-status">
         {() => <ProtectedRoute component={ExpertStatusPage} />}
@@ -773,11 +766,13 @@ function App() {
       <GuestTripProvider>
         <TripQueueProvider>
           <SignInModalProvider>
-            <TooltipProvider>
-              <Toaster />
-              <GuestCartMigrator />
-              <Router />
-            </TooltipProvider>
+            <ActiveConsoleProvider>
+              <TooltipProvider>
+                <Toaster />
+                <GuestCartMigrator />
+                <Router />
+              </TooltipProvider>
+            </ActiveConsoleProvider>
           </SignInModalProvider>
         </TripQueueProvider>
       </GuestTripProvider>
