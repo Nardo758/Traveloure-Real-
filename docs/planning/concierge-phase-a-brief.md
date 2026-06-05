@@ -124,6 +124,7 @@ Commit: `fix(CON-A.P1): guard both optimize-experience defs, repoint 3 callers t
 **Files:** `shared/schema.ts:876-885` (`optimization_fees`), `server/routes/optimization.routes.ts:36-52`, `server/services/smart-sequencing.service.ts:915-921` (event→tier map), `client/src/pages/admin/fee-config.tsx:471-499`.
 
 **Steps**
+0. **Pre-check (carryover from Phase 1).** Confirm the paid path `/api/optimization-payments` → `/confirm` reaches optimization at the **service layer** (`server/itinerary-optimizer.ts`), NOT by internally calling the now admin/expert-guarded `/api/ai/optimize-experience` HTTP route. If it proxies the guarded route, repoint it to the service call first — otherwise the Phase 1 guard blocks paying travelers (they 403 after payment). If it already calls the service directly, note it and proceed.
 1. Add an `event_type` dimension to the fee config — either an `event_type` column on `optimization_fees` or a sibling mapping table — so an admin can set a distinct fee per event type (standard / wedding / proposal / corporate / …). Generate the Drizzle migration.
 2. Set defaults to §4.8: **$9.99 standard, $49.99 event types**; support **`$0` = disabled** for any type. Replace `DEFAULT_FEE_CENTS = {simple:499, standard:999, complex:1999}` accordingly — these remain config fallbacks, not hard-coded charge values.
 3. `getFeeForTier` (`:42-52`) resolves by `(event_type → tier → price)`, reading the config; never a literal at charge time.
