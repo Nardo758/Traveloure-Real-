@@ -346,9 +346,15 @@ export default function ItineraryPage() {
     );
   }
 
+  const { data: plancardData } = useQuery<any>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: !!tripId,
+    staleTime: 30000,
+  });
+
   const totalBooked = itinerary.days.flatMap((d: any) => d.activities).filter((a: any) => a.booked).length;
   const totalActivities = itinerary.days.flatMap((d: any) => d.activities).length;
-  const totalCost = itinerary.days.flatMap((d: any) => d.activities).reduce((sum: number, a: any) => sum + a.price, 0);
+  const totalCost = plancardData?.metrics?.totalCost ?? itinerary.days.flatMap((d: any) => d.activities).reduce((sum: number, a: any) => sum + a.price, 0);
 
 
   const allTransportLegs = itinerary.days.reduce((total: number, d: any) => {
@@ -639,7 +645,7 @@ export default function ItineraryPage() {
                     const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                    const pendingTotal = inAppTotal + partnerTotal;
+                    const pendingTotal = plancardData?.metrics?.totalCost ?? (inAppTotal + partnerTotal);
                     const platformFeePercent = 12;
                     const expertSharePercent = 70;
                     const feeAI = Math.round(pendingTotal * (platformFeePercent / 100) * 100) / 100;

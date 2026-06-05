@@ -1184,6 +1184,86 @@ router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) =>
     }
   });
 
+// Document upload for vendor contracts
+router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticated, async (req, res) => {
+    try {
+      const { documentType, fileName, fileBase64, mimeType } = req.body;
+
+      if (!fileBase64 || !fileName || !documentType) {
+        return res.status(400).json({ message: "Missing required fields: fileBase64, fileName, documentType" });
+      }
+
+      const fileBuffer = Buffer.from(fileBase64, "base64");
+      const result = await vendorManagementService.uploadContractDocument(
+        req.params.contractId,
+        documentType,
+        fileName,
+        fileBuffer,
+        mimeType || "application/octet-stream"
+      );
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to upload document" });
+    }
+  });
+
+// Bulk email to vendors
+router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req, res) => {
+    try {
+      const { contractIds, subject, body, includeCalendarInvite, eventDate } = req.body;
+
+      if (!contractIds || !Array.isArray(contractIds) || contractIds.length === 0) {
+        return res.status(400).json({ message: "contractIds must be a non-empty array" });
+      }
+
+      if (!subject || !body) {
+        return res.status(400).json({ message: "subject and body are required" });
+      }
+
+      const result = await vendorManagementService.sendBulkVendorEmail(
+        req.params.tripId,
+        contractIds,
+        subject,
+        body,
+        {
+          includeCalendarInvite: includeCalendarInvite || false,
+          eventDate: eventDate ? new Date(eventDate) : undefined,
+        }
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to send bulk email" });
+    }
+  });
+
+// Generate vendor contact sheet
+router.get("/api/trips/:tripId/vendors/contact-sheet", isAuthenticated, async (req, res) => {
+    try {
+      const format = (req.query.format as string) || "json";
+
+      if (!["json", "csv", "pdf"].includes(format)) {
+        return res.status(400).json({ message: "format must be json, csv, or pdf" });
+      }
+
+      const result = await vendorManagementService.generateContactSheet(req.params.tripId, format as any);
+
+      if (format === "pdf") {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="vendor-contacts-${Date.now()}.pdf"`);
+        res.send(result as Buffer);
+      } else if (format === "csv") {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="vendor-contacts-${Date.now()}.csv"`);
+        res.send(result as Buffer);
+      } else {
+        res.json(JSON.parse(result as string));
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to generate contact sheet" });
+    }
+  });
 
 router.get("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
