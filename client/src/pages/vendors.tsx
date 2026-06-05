@@ -86,7 +86,7 @@ const vendorFormSchema = z.object({
 
 type VendorFormValues = z.infer<typeof vendorFormSchema>;
 
-const PLANNER_ROLES = new Set(["admin", "provider", "local_expert", "travel_expert", "event_planner"]);
+const PLANNER_ROLES = new Set(["admin", "service_provider", "provider", "local_expert", "travel_expert", "event_planner"]);
 
 export default function Vendors() {
   const [, setLocation] = useLocation();
