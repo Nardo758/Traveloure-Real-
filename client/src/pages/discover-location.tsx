@@ -42,17 +42,91 @@ interface CityMediaResponse {
 
 // ─── Teal gradient hero ───────────────────────────────────────────────────────
 
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
 function HeroSection({
   city,
   heroData,
+  scheduledDate,
+  onDismissDate,
 }: {
   city: string;
   heroData: any;
+  scheduledDate: string | null;
+  onDismissDate: () => void;
 }) {
   const cityIntel = heroData?.city;
   const pulse = cityIntel?.pulseScore;
   const highlight = cityIntel?.currentHighlight;
   const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
+
+  const dateMode = !!scheduledDate;
+  const parsedDate = scheduledDate ? new Date(scheduledDate + "T12:00:00") : null;
+  const monthIndex = parsedDate ? parsedDate.getMonth() : null;
+  const monthName = monthIndex !== null ? MONTH_NAMES[monthIndex] : null;
+  const dayOfMonth = parsedDate ? parsedDate.getDate() : null;
+
+  const seasonalEntry = monthIndex !== null && cityIntel?.aiSeasonalHighlights
+    ? (cityIntel.aiSeasonalHighlights as Array<{ month: number; rating: string; highlight: string }>)
+        .find((s) => s.month === monthIndex + 1) ?? null
+    : null;
+
+  const seasonLine = seasonalEntry
+    ? `${seasonalEntry.rating}/10 in ${monthName} · ${seasonalEntry.highlight}${cityIntel?.crowdLevel ? ` · ${cityIntel.crowdLevel}` : ""}`
+    : highlight
+    ? `${highlightEmoji} ${highlight}`
+    : null;
+
+  const datePillLabel = parsedDate
+    ? `Planning ${monthName} ${dayOfMonth}`
+    : null;
+
+  if (dateMode) {
+    return (
+      <div
+        className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
+        style={{ background: "#E1F5EE" }}
+        data-testid="section-hero"
+      >
+        <div>
+          <h1
+            className="text-[22px] font-medium leading-tight"
+            style={{ color: "#04342C" }}
+            data-testid="text-city-name"
+          >
+            {city}
+          </h1>
+          {seasonLine && (
+            <div className="text-[13px] mt-1" style={{ color: "#0F6E56" }}>
+              🌸 {seasonLine}
+            </div>
+          )}
+          {datePillLabel && (
+            <div
+              className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
+              style={{ background: "rgba(255,255,255,0.55)", color: "#0F6E56" }}
+            >
+              📅 {datePillLabel}
+              <button
+                onClick={onDismissDate}
+                className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
+                data-testid="button-dismiss-date"
+                aria-label="Clear date"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+        {pulse !== undefined && (
+          <div className="text-center flex-shrink-0" data-testid="pulse-badge">
+            <b className="block text-[20px] font-medium leading-tight" style={{ color: "#0F6E56" }}>{pulse}</b>
+            <span className="text-[11px]" style={{ color: "#0F6E56" }}>pulse</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -409,6 +483,122 @@ function FlatFilteredFeed({
   );
 }
 
+// ─── Date highlight strip ("pulled to top") ───────────────────────────────────
+
+function DateHighlightStrip({
+  scheduledDate,
+  cityIntel,
+}: {
+  scheduledDate: string;
+  cityIntel: any;
+}) {
+  const parsedDate = new Date(scheduledDate + "T12:00:00");
+  const monthIndex = parsedDate.getMonth();
+  const monthName = MONTH_NAMES[monthIndex];
+  const dayOfMonth = parsedDate.getDate();
+  const label = `On ${monthName} ${dayOfMonth} — pulled to the top`;
+
+  const seasonalEntry = cityIntel?.aiSeasonalHighlights
+    ? (cityIntel.aiSeasonalHighlights as Array<{ month: number; rating: string; highlight: string }>)
+        .find((s) => s.month === monthIndex + 1) ?? null
+    : null;
+
+  const highlight: string = (cityIntel?.currentHighlight ?? "").toLowerCase();
+  const eventTitle = seasonalEntry?.highlight ?? cityIntel?.currentHighlight ?? "Seasonal highlight";
+
+  type ServiceAddon = { icon: string; label: string; price: string; href: string };
+  const companionService: ServiceAddon | null = (() => {
+    if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
+      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/experiences/photo" };
+    if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
+      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/experiences/gear" };
+    if (highlight.includes("festival") || highlight.includes("matsuri"))
+      return { icon: "🎋", label: "Festival guide", price: "from ¥8,000", href: "/local-experts" };
+    if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
+      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/experiences/photo" };
+    return null;
+  })();
+
+  return (
+    <div data-testid="date-highlight-strip">
+      <div className="text-[11px] text-muted-foreground mb-2 px-0.5">{label}</div>
+      <div className="flex gap-2.5 flex-wrap">
+        {/* Seasonal event card */}
+        <div
+          className="flex-[2_1_240px] flex rounded-xl overflow-hidden border"
+          style={{ borderColor: "#9FE1CB", background: "var(--card)" }}
+          data-testid="date-seasonal-event-card"
+        >
+          <div
+            className="w-[68px] flex-shrink-0 flex items-center justify-center text-[26px]"
+            style={{ background: "#FBEAF0" }}
+          >
+            🌸
+          </div>
+          <div className="p-3 flex-1 min-w-0">
+            <span
+              className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-md mb-1.5"
+              style={{ background: "#E1F5EE", color: "#085041" }}
+            >
+              📌 Why you're here
+            </span>
+            <div className="text-[14px] font-medium mb-2 leading-snug">{eventTitle}</div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                size="sm"
+                className="h-7 text-[12px] px-3"
+                style={{ background: "#185FA5", color: "#fff", border: "none" }}
+                data-testid="button-date-event-tickets"
+                asChild
+              >
+                <a href="/experiences/events">Tickets</a>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[12px] px-3"
+                data-testid="button-date-event-add"
+              >
+                Add to {monthName} {dayOfMonth}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Companion platform service card */}
+        {companionService && (
+          <div
+            className="flex-[1_1_140px] rounded-xl border p-3"
+            style={{ background: "var(--card)" }}
+            data-testid="date-companion-service-card"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[18px]">{companionService.icon}</span>
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide"
+                style={{ background: "#f0fdf4", color: "#166534" }}
+              >
+                PLATFORM
+              </span>
+            </div>
+            <div className="text-[13px] font-medium mb-0.5">{companionService.label}</div>
+            <div className="text-[11px] text-muted-foreground mb-2">seasonal · {companionService.price}</div>
+            <Button
+              size="sm"
+              className="h-7 text-[12px] px-3"
+              style={{ background: "#0F6E56", color: "#fff", border: "none" }}
+              data-testid="button-date-companion-book"
+              asChild
+            >
+              <a href={companionService.href}>Book</a>
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Trip-level complements strip ─────────────────────────────────────────────
 
 interface AddOn {
@@ -495,8 +685,16 @@ export default function DiscoverLocationPage() {
   const [, navigate] = useLocation();
   const searchParams = new URLSearchParams(searchString);
   const country = searchParams.get("country");
+  const scheduledDate = searchParams.get("date");
   const cityRaw = params?.city ?? "";
   const city = decodeURIComponent(cityRaw);
+
+  const handleDismissDate = () => {
+    const next = new URLSearchParams(searchString);
+    next.delete("date");
+    const qs = next.toString();
+    navigate(`/discover/location/${cityRaw}${qs ? `?${qs}` : ""}`);
+  };
 
   const [activeFilter, setActiveFilter] = useState("all");
 
@@ -633,8 +831,13 @@ export default function DiscoverLocationPage() {
 
         {data && (
           <div className="space-y-5">
-            {/* ── Teal gradient hero ─────────────────────────────────── */}
-            <HeroSection city={city} heroData={data.hero?.data} />
+            {/* ── Hero (teal gradient or mint date mode) ─────────────── */}
+            <HeroSection
+              city={city}
+              heroData={data.hero?.data}
+              scheduledDate={scheduledDate}
+              onDismissDate={handleDismissDate}
+            />
 
             {/* ── Stats row ─────────────────────────────────────────── */}
             <StatsRow
@@ -642,6 +845,14 @@ export default function DiscoverLocationPage() {
               neighborhoodCount={neighborhoods.length}
               serviceCount={platformServices.length}
             />
+
+            {/* ── "Pulled to top" date section (date mode only) ─────── */}
+            {scheduledDate && (
+              <DateHighlightStrip
+                scheduledDate={scheduledDate}
+                cityIntel={data.hero?.data?.city}
+              />
+            )}
 
             {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
@@ -652,7 +863,7 @@ export default function DiscoverLocationPage() {
                 <FeedRenderer
                   items={filteredItems}
                   city={city}
-                  scheduledDate={null}
+                  scheduledDate={scheduledDate}
                   onAdd={handleAdd}
                 />
                 <TripComplementsStrip city={city} highlight={currentHighlight} />
@@ -661,7 +872,7 @@ export default function DiscoverLocationPage() {
               <FlatFilteredFeed
                 items={filteredItems}
                 city={city}
-                scheduledDate={null}
+                scheduledDate={scheduledDate}
                 onAdd={handleAdd}
                 activeFilter={activeFilter}
               />
