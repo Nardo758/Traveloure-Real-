@@ -289,6 +289,25 @@ export default function ExpertWorkspace() {
   const [cat, setCat] = useState("all");
   const [cTab, setCTab] = useState("itinerary");
   const [mapSelectedDay, setMapSelectedDay] = useState(1); // LB-P5b: MapControlCenter day picker
+
+  // Unowned-item fix: pulls active affiliate partners from the admin-editable
+  // affiliate_partners table (LB-P4a made that table the source of truth).
+  // Replaces the previous hardcoded 5-partner list whose "Connect" button
+  // toasted "Coming soon" for any partner not in code.
+  const { data: affiliatePartnersData, isLoading: affiliatePartnersLoading } = useQuery<{
+    partners: Array<{ id: string; name: string; category: string | null; websiteUrl: string; description: string | null; logoUrl: string | null }>;
+  }>({
+    queryKey: ["/api/affiliate/partners", "active"],
+    queryFn: async () => {
+      const res = await fetch("/api/affiliate/partners?isActive=true", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load affiliate partners");
+      const data = await res.json();
+      // Endpoint returns either { partners: [...] } or [...] depending on the underlying service; normalize.
+      return { partners: Array.isArray(data) ? data : (data.partners ?? []) };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const affiliatePartners = affiliatePartnersData?.partners ?? [];
   const [collapsed, setCollapsed] = useState(false);
   const [identityRevealed, setIdentityRevealed] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -1402,31 +1421,49 @@ export default function ExpertWorkspace() {
                 <div style={{ width: 22, height: 22, borderRadius: 7, background: `${P}22`, display: "flex", alignItems: "center", justifyContent: "center" }}><Link2 style={{ width: 11, height: 11, color: P }} /></div>
                 <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Affiliate Networks</span>
               </div>
-              <p style={{ fontSize: 11, color: G[500], marginBottom: 12 }}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client.</p>
-              {[
-                { n: "Booking.com", c: "Hotels", e: "🏨", active: true, url: "https://www.booking.com", note: "Use for hotel reservations — enter client details from Booking Brief" },
-                { n: "Viator", c: "Activities & Experiences", e: "🎭", active: true, url: "https://www.viator.com", note: "Best for tours, tickets & experiences — client name required at checkout" },
-                { n: "12Go Asia", c: "Ground Transport", e: "🚅", active: true, url: "https://12go.asia", note: "Trains, buses, ferries — great for multi-city transport legs" },
-                { n: "SafetyWing", c: "Travel Insurance", e: "🛡️", active: false, url: "", note: "Connect to offer travel insurance add-ons" },
-                { n: "Airalo", c: "eSIM Data", e: "📱", active: false, url: "", note: "Connect to offer destination eSIM before departure" },
-              ].map((aff, i) => (
-                <div key={i} data-testid={`card-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ padding: "10px 11px", border: `1px solid ${aff.active ? G[200] : G[100]}`, borderRadius: 10, marginBottom: 8, background: "white" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: aff.active ? 6 : 0 }}>
-                    <span style={{ fontSize: 20, flexShrink: 0 }}>{aff.e}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>{aff.n}</span>
-                        {aff.active && <Bdg c="green">Active</Bdg>}
-                      </div>
-                      <div style={{ fontSize: 11, color: G[400] }}>{aff.c}</div>
-                    </div>
-                    <button onClick={() => aff.active ? setBookingBrief({ provider: aff.n, bookingUrl: aff.url }) : toast({ title: "Coming soon", description: `${aff.n} integration is in progress.` })} data-testid={`button-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: aff.active ? "white" : P, color: aff.active ? P : "white", border: `1.5px solid ${P}`, cursor: "pointer" }}>
-                      {aff.active ? "Open →" : "Connect →"}
-                    </button>
-                  </div>
-                  {aff.active && <div style={{ fontSize: 11, color: G[500], background: G[50], borderRadius: 6, padding: "5px 8px" }}>{aff.note}</div>}
+              <p style={{ fontSize: 11, color: G[500], marginBottom: 12 }}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client. Managed by admins at /admin/affiliate-partners.</p>
+              {affiliatePartnersLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
                 </div>
-              ))}
+              ) : affiliatePartners.length === 0 ? (
+                <div style={{ padding: "16px 12px", background: G[50], borderRadius: 8, textAlign: "center", color: G[500], fontSize: 12 }}>
+                  No active affiliate networks configured yet.
+                </div>
+              ) : (
+                affiliatePartners.map((aff) => (
+                  <div
+                    key={aff.id}
+                    data-testid={`card-affiliate-${aff.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                    style={{ padding: "10px 11px", border: `1px solid ${G[200]}`, borderRadius: 10, marginBottom: 8, background: "white" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 6 }}>
+                      {aff.logoUrl ? (
+                        <img src={aff.logoUrl} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 22, height: 22, borderRadius: 6, background: G[100], flexShrink: 0 }} />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>{aff.name}</span>
+                          <Bdg c="green">Active</Bdg>
+                        </div>
+                        <div style={{ fontSize: 11, color: G[400] }}>{aff.category || "—"}</div>
+                      </div>
+                      <button
+                        onClick={() => setBookingBrief({ provider: aff.name, bookingUrl: aff.websiteUrl })}
+                        data-testid={`button-affiliate-${aff.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                        style={{ flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "white", color: P, border: `1.5px solid ${P}`, cursor: "pointer" }}
+                      >
+                        Open →
+                      </button>
+                    </div>
+                    {aff.description && (
+                      <div style={{ fontSize: 11, color: G[500], background: G[50], borderRadius: 6, padding: "5px 8px" }}>{aff.description}</div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           )}
         </aside>
