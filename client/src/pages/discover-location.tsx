@@ -805,12 +805,12 @@ export default function DiscoverLocationPage() {
       <div className="container mx-auto px-4 py-6 max-w-5xl">
         {/* Back navigation */}
         <button
-          onClick={() => window.history.back()}
+          onClick={() => navigate("/discover?tab=events")}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
           data-testid="btn-back"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back
+          Back to Discover
         </button>
 
         {/* Loading state */}

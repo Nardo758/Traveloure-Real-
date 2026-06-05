@@ -898,12 +898,12 @@ export default function DiscoverPage() {
         {/* Back navigation */}
         <div className="container mx-auto px-4 max-w-6xl pt-4">
           <button
-            onClick={() => window.history.back()}
+            onClick={() => setLocation("/")}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             data-testid="btn-back"
           >
             <ChevronLeft className="w-4 h-4" />
-            Back
+            Back to Home
           </button>
         </div>
 
