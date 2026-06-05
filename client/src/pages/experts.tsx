@@ -138,11 +138,13 @@ export default function ExpertsPage() {
   }, []);
 
   const handleRoleChange = useCallback((role: string) => {
+    if (!(role in roleLabels)) return;
     setSelectedRole(role);
     if (role !== "local_expert") {
       setNeighbourhoodQuery("");
     }
     const params = new URLSearchParams(window.location.search);
+    if (params.get("role") === role) return;
     params.set("role", role);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.pushState(null, "", newUrl);
@@ -155,11 +157,10 @@ export default function ExpertsPage() {
 
   const syncRoleFromUrl = useCallback(() => {
     const roleParam = new URLSearchParams(window.location.search).get("role");
-    if (roleParam && roleParam in roleLabels) {
-      setSelectedRole(roleParam);
-      if (roleParam !== "local_expert") {
-        setNeighbourhoodQuery("");
-      }
+    const resolved = roleParam && roleParam in roleLabels ? roleParam : "local_expert";
+    setSelectedRole(resolved);
+    if (resolved !== "local_expert") {
+      setNeighbourhoodQuery("");
     }
   }, []);
 
