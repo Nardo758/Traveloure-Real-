@@ -29,6 +29,7 @@ const MIGRATION_FILES = [
   "017_optimization_fees_event_type.sql",
   "018_concierge_requests.sql",
   "019_event_packages.sql",
+  "020_commission_override.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
