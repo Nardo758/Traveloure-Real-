@@ -22,7 +22,7 @@ import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock } from "lucide
 export interface ConciergeRoute {
   ai: { priceCents: number; currency: string; available: boolean; disabled: boolean };
   expert: { priceCents?: number; available: boolean; etaHours?: number };
-  full: { available: boolean; note: string };
+  full: { available: boolean; priceFromCents?: number; packageCount?: number; note: string };
   recommended: "ai" | "expert" | "full";
 }
 
@@ -234,7 +234,11 @@ export function DeliveryOptions({
           <CardDescription className="text-xs">{route.full.note}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="text-2xl font-bold">Quote on request</div>
+          <div className="text-2xl font-bold">
+            {route.full.priceFromCents
+              ? <>from {formatPrice(route.full.priceFromCents)}</>
+              : <>Quote on request</>}
+          </div>
           <Button
             className="w-full"
             variant={route.full.available ? "default" : "outline"}

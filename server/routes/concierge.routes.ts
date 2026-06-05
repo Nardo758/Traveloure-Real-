@@ -12,9 +12,9 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike, desc } from "drizzle-orm";
 import { db } from "../db";
-import { conciergeRequests, conciergeRequestStatuses, conciergeTiers } from "@shared/schema";
+import { conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages } from "@shared/schema";
 import { routeConcierge } from "../services/concierge-router.service";
 
 const router = Router();
@@ -143,6 +143,29 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
       return res.status(400).json({ error: "validation_failed", details: err.errors });
     }
     console.error("[concierge/requests/:id PATCH] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/concierge/event-packages (CON-A.P8 / N6) ─────────────────────
+// Public read of the Full/DFY catalog. Optional eventType + market filters.
+// status defaults to 'active' so the surface only sees live packages.
+
+router.get("/api/concierge/event-packages", async (req, res) => {
+  try {
+    const { eventType, market } = req.query as { eventType?: string; market?: string };
+    const conditions = [eq(eventPackages.status, "active")];
+    if (eventType) conditions.push(eq(eventPackages.eventType, eventType));
+    if (market) conditions.push(ilike(eventPackages.market, `%${market}%`));
+    const rows = await db
+      .select()
+      .from(eventPackages)
+      .where(and(...conditions))
+      .orderBy(desc(eventPackages.createdAt))
+      .limit(50);
+    res.json(rows);
+  } catch (err: any) {
+    console.error("[concierge/event-packages GET] error:", err);
     res.status(500).json({ error: err.message });
   }
 });

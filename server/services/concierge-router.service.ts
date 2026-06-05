@@ -11,6 +11,9 @@
  *
  * No constants — every price flows through an existing resolver.
  */
+import { and, eq, ilike } from "drizzle-orm";
+import { db } from "../db";
+import { eventPackages } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
 import { getFee } from "./optimization-fee.service";
 import { getExpertAvailability } from "./expert-availability.service";
@@ -32,6 +35,8 @@ export interface ConciergeRouteExpert {
 
 export interface ConciergeRouteFull {
   available: boolean;
+  priceFromCents?: number;
+  packageCount?: number;
   note: string;
 }
 
@@ -42,10 +47,32 @@ export interface ConciergeRoute {
   recommended: ConciergeTier;
 }
 
-// Event types that map to Full / Done-for-You per §2.3.
-// Phase 8 reads event_packages for the real catalog; until then, treat these as
-// "available on request" so the surface can offer the quote-on-request CTA.
-const FULL_DFY_EVENT_TYPES = new Set(["wedding", "proposal", "corporate"]);
+async function getFullPackageAvailability(input: {
+  eventType: string | null;
+  destination: string | null;
+}): Promise<{ available: boolean; priceFromCents?: number; packageCount: number }> {
+  if (!input.eventType) {
+    return { available: false, packageCount: 0 };
+  }
+  const conditions = [
+    eq(eventPackages.eventType, input.eventType),
+    eq(eventPackages.status, "active"),
+  ];
+  if (input.destination) {
+    conditions.push(ilike(eventPackages.market, `%${input.destination}%`));
+  }
+  const rows = await db
+    .select({ priceFromCents: eventPackages.priceFromCents })
+    .from(eventPackages)
+    .where(and(...conditions))
+    .limit(20);
+  if (rows.length === 0) {
+    return { available: false, packageCount: 0 };
+  }
+  const priced = rows.map(r => r.priceFromCents).filter((c): c is number => c !== null && c !== undefined && c > 0);
+  const priceFromCents = priced.length > 0 ? Math.min(...priced) : undefined;
+  return { available: true, priceFromCents, packageCount: rows.length };
+}
 
 export async function routeConcierge(input: {
   intent: string;
@@ -55,18 +82,15 @@ export async function routeConcierge(input: {
   cartId?: string | null;
 }): Promise<ConciergeRoute> {
   const eventType = input.eventType?.trim() || null;
+  const destination = input.destination?.trim() || null;
   const tier = complexityTier(eventType);
 
   const aiFee = await getFee(eventType, tier);
-  const availability = await getExpertAvailability({
-    city: input.destination ?? null,
-    eventType,
-  });
-
-  const isFullEventType = !!eventType && FULL_DFY_EVENT_TYPES.has(eventType);
+  const availability = await getExpertAvailability({ city: destination, eventType });
+  const fullPkg = await getFullPackageAvailability({ eventType, destination });
 
   let recommended: ConciergeTier;
-  if (isFullEventType) {
+  if (fullPkg.available) {
     recommended = "full";
   } else if (aiFee.isDisabled) {
     recommended = availability.bookableNow ? "expert" : "ai";
@@ -87,10 +111,12 @@ export async function routeConcierge(input: {
       etaHours: availability.etaHours,
     },
     full: {
-      available: isFullEventType,
-      note: isFullEventType
-        ? "Quote on request — a human will follow up with pricing."
-        : "Available only for wedding, proposal, and corporate events.",
+      available: fullPkg.available,
+      priceFromCents: fullPkg.priceFromCents,
+      packageCount: fullPkg.packageCount || undefined,
+      note: fullPkg.available
+        ? `${fullPkg.packageCount} package${fullPkg.packageCount === 1 ? "" : "s"} match — quote on request.`
+        : "No packages configured for this event type and market yet.",
     },
     recommended,
   };

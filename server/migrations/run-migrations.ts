@@ -28,6 +28,7 @@ const MIGRATION_FILES = [
   "016_eso_target_roles.sql",
   "017_optimization_fees_event_type.sql",
   "018_concierge_requests.sql",
+  "019_event_packages.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
