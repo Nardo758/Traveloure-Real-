@@ -38,7 +38,6 @@ export function SignInModal({
     firstName: "",
     lastName: "",
   });
-  const [newPassword, setNewPassword] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -122,27 +121,33 @@ export function SignInModal({
     }
   };
 
+  // LB-P1: forgot-password posts to the new token-flow endpoint. The server
+  // returns 200 with a generic message regardless of whether the email exists
+  // (anti-enumeration). The actual password change happens on /reset-password
+  // after the user clicks the link in their email.
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email || !newPassword) return;
-    if (newPassword.length < 8) {
-      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
-      return;
-    }
+    if (!formData.email) return;
     setIsLoading(true);
     try {
-      const response = await fetch("/api/auth/reset-password", {
+      await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: formData.email, newPassword }),
+        body: JSON.stringify({ email: formData.email }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Reset failed");
-      toast({ title: "Password Reset", description: data.message });
-      setNewPassword("");
+      // Always show the same generic message — the server gives nothing away.
+      toast({
+        title: "Check your email",
+        description: "If an account exists for that email, we've sent a reset link.",
+      });
       setMode("signin");
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Something went wrong", variant: "destructive" });
+      // Network failure only — the server returns 200 even on validation errors.
+      toast({
+        title: "Couldn't send reset email",
+        description: "Please check your connection and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -163,7 +168,7 @@ export function SignInModal({
             {mode === "reset" ? "Reset your password" : mode === "signin" ? title : "Create your account"}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {mode === "reset" ? "Enter your email and a new password." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
+            {mode === "reset" ? "Enter your email and we'll send you a reset link." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
           </DialogDescription>
         </DialogHeader>
 
@@ -220,25 +225,7 @@ export function SignInModal({
             </div>
           </div>
 
-          {mode === "reset" ? (
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">New Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder="Min 8 characters"
-                  className="pl-9"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  data-testid="input-new-password"
-                />
-              </div>
-            </div>
-          ) : (
+          {mode !== "reset" && (
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -311,12 +298,12 @@ export function SignInModal({
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {mode === "reset" ? "Resetting..." : mode === "signin" ? "Signing in..." : "Creating account..."}
+                {mode === "reset" ? "Sending link..." : mode === "signin" ? "Signing in..." : "Creating account..."}
               </>
             ) : (
               <>
                 <LogIn className="mr-2 h-4 w-4" />
-                {mode === "reset" ? "Reset Password" : mode === "signin" ? "Sign In" : "Create Account"}
+                {mode === "reset" ? "Send reset link" : mode === "signin" ? "Sign In" : "Create Account"}
               </>
             )}
           </Button>
