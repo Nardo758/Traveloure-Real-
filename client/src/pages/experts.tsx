@@ -161,6 +161,15 @@ export default function ExpertsPage() {
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
   const [aiDestination, setAiDestination] = useState("");
 
+  const syncRoleFromUrl = useCallback(() => {
+    const roleParam = new URLSearchParams(window.location.search).get("role");
+    const resolved = roleParam && roleParam in roleLabels ? roleParam : "local_expert";
+    setSelectedRole(resolved);
+    if (resolved !== "local_expert") {
+      setNeighbourhoodQuery("");
+    }
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(searchString);
     const destParam = params.get("destination");
