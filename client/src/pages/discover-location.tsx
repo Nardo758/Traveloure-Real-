@@ -63,6 +63,13 @@ const CURATED_HERO_IMAGES: Record<string, string> = {
   dubai: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1200&q=80",
 };
 
+function toTitleCase(str: string): string {
+  return str
+    .split(/[\s-]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function HeroSection({
   city,
   heroData,
@@ -76,6 +83,7 @@ function HeroSection({
   onDismissDate: () => void;
   coverPhotoUrl?: string | null;
 }) {
+  const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
   const pulse = cityIntel?.pulseScore;
   const highlight = cityIntel?.currentHighlight;
@@ -121,7 +129,7 @@ function HeroSection({
               className="text-[22px] font-medium leading-tight text-white"
               data-testid="text-city-name"
             >
-              {city}
+              {displayCity}
             </h1>
             {seasonLine && (
               <div className="text-[13px] mt-1 text-green-200">
@@ -167,7 +175,7 @@ function HeroSection({
             style={{ color: "#04342C" }}
             data-testid="text-city-name"
           >
-            {city}
+            {displayCity}
           </h1>
           {seasonLine && (
             <div className="text-[13px] mt-1" style={{ color: "#0F6E56" }}>
@@ -222,7 +230,7 @@ function HeroSection({
             className="text-[34px] font-bold tracking-tight text-white leading-tight drop-shadow"
             data-testid="text-city-name"
           >
-            {city}
+            {displayCity}
           </h1>
           {highlight ? (
             <div className="text-sm mt-1 text-white/80">
@@ -257,7 +265,7 @@ function HeroSection({
         className="text-[30px] font-bold tracking-tight text-white leading-tight"
         data-testid="text-city-name"
       >
-        {city}
+        {displayCity}
       </h1>
       {highlight ? (
         <div className="text-sm mt-1" style={{ color: "#5DCAA5" }}>
