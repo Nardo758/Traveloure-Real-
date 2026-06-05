@@ -67,6 +67,10 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { getSequencingRulesForTemplate } from "./services/smart-sequencing.service";
+import { complexityTier } from "./services/smart-sequencing.service";
+import { getFee } from "./services/optimization-fee.service";
+import { experienceTypes as experienceTypesTable } from "@shared/schema";
+import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
@@ -6682,7 +6686,114 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
+
+      // ── Optimization authorization gate (LB-P3 / FEE-A second leak — Path B) ─
+      // The live serving layer for this endpoint was missing the gate that
+      // exists in the (unmounted) trips.routes.ts copy. Until the route
+      // extraction is finished, the gate is duplicated here in the live path.
+      // Comparison records are ALWAYS created (never blocked); the AI optimizer
+      // only runs when payment is verified OR a 24h free rerun applies.
+      let canRunOptimizer = false;
+
+      // Check free 24h rerun eligibility first (no Stripe call needed)
+      const _cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [_recentRun] = await db
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(
+          and(
+            eq(itineraryComparisons.userId, userId),
+            sql`${itineraryComparisons.optimizedAt} >= ${_cutoff.toISOString()}`
+          )
+        )
+        .limit(1);
+
+      if (_recentRun) {
+        canRunOptimizer = true;
+      } else if (optimizationPaymentId) {
+        // Paid run path — verify payment before allowing optimizer.
+        // Reject reuse: PI already tied to another comparison?
+        const [_alreadyUsed] = await db
+          .select({ id: itineraryComparisons.id })
+          .from(itineraryComparisons)
+          .where(eq(itineraryComparisons.optimizationPaymentId, optimizationPaymentId))
+          .limit(1);
+        if (_alreadyUsed) {
+          return res.status(409).json({
+            error: "payment_already_used",
+            message: "This optimization payment has already been used. Please start a new optimization.",
+          });
+        }
+
+        if (!tripId && !userExperienceId) {
+          return res.status(400).json({
+            error: "target_required",
+            message: "Provide tripId or userExperienceId for paid optimization.",
+          });
+        }
+
+        try {
+          const _stripeForGate = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+            apiVersion: "2024-12-18.acacia" as any,
+          });
+          const pi = await _stripeForGate.paymentIntents.retrieve(optimizationPaymentId);
+          if (pi.status !== "succeeded") {
+            return res.status(402).json({ error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." });
+          }
+          if (pi.metadata?.userId && pi.metadata.userId !== userId) {
+            return res.status(403).json({ error: "payment_belongs_to_another_user" });
+          }
+          if (pi.metadata?.type !== "optimization_fee") {
+            return res.status(402).json({ error: "invalid_payment_type" });
+          }
+          const piTargetTrip = pi.metadata?.targetTripId || undefined;
+          const piTargetExp = pi.metadata?.targetExperienceId || undefined;
+          if (piTargetTrip && piTargetTrip !== tripId) {
+            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different trip." });
+          }
+          if (piTargetExp && piTargetExp !== userExperienceId) {
+            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different experience." });
+          }
+          // Re-derive expected fee from the actual comparison resource (not PI metadata).
+          // FEE-A: resolve through getFee — admin event-type overrides pass validation.
+          // Anti-tampering by server-side recompute — no hardcoded allow-list of amounts.
+          let actualEventType: string | undefined;
+          if (tripId) {
+            const [tRow] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
+            actualEventType = tRow?.eventType ?? undefined;
+          } else {
+            const [eRow] = await db
+              .select({ slug: experienceTypesTable.slug })
+              .from(userExperiences)
+              .innerJoin(experienceTypesTable, eq(userExperiences.experienceTypeId, experienceTypesTable.id))
+              .where(eq(userExperiences.id, userExperienceId!))
+              .limit(1);
+            actualEventType = eRow?.slug ?? undefined;
+          }
+          const actualTier = complexityTier(actualEventType);
+          const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
+          if (feeDisabled) {
+            return res.status(402).json({
+              error: "ai_concierge_disabled",
+              message: "AI Concierge is currently disabled for this experience type.",
+            });
+          }
+          if (pi.amount !== requiredCents) {
+            return res.status(402).json({
+              error: "payment_amount_mismatch",
+              message: `Payment amount does not match the required fee for this resource.`,
+            });
+          }
+          canRunOptimizer = true;
+        } catch (stripeErr: any) {
+          if ((stripeErr as any).statusCode || (stripeErr as any).type === "StripeInvalidRequestError") {
+            return res.status(402).json({ error: "payment_verification_failed", message: stripeErr.message });
+          }
+          throw stripeErr;
+        }
+      }
+      // ── End authorization gate ──────────────────────────────────────────────
 
       const [comparison] = await db
         .insert(itineraryComparisons)
@@ -6697,7 +6808,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           budget: budget?.toString(),
           travelers: travelers || 1,
           experienceTypeSlug: experienceTypeSlug || null,
-          status: "generating",
+          status: canRunOptimizer ? "generating" : "pending_payment",
+          ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
         })
         .returning();
 
@@ -6746,8 +6858,9 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         }));
       }
 
-      // Trigger AI optimization in background if we have items
-      if (baselineItems.length > 0) {
+      // Trigger AI optimization in background — only when payment is verified
+      // OR a 24h free rerun applies (Path B authorization gate above).
+      if (canRunOptimizer && baselineItems.length > 0) {
         const availableServices = await db
           .select()
           .from(providerServices)
