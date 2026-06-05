@@ -46,7 +46,7 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 
 | Gap | Owner | Status |
 |---|---|---|
-| **Per-expert commission override** (nullable `commissionRateOverride` + branch in `commission.ts:41-93` before category fallback + admin field) | **CON / owned** | **BLOCKS BETA OUTREACH** — must land before any §6.9 "20% vs 25%" recruitment message is sent. Not in the Phase A brief, but a hard gate; do not let it orphan. |
+| **Per-expert commission override** (`users.commission_override_expert_share_percent` + Tier-3 branch in `resolveCommissionRates` before category fallback + admin editor, audit-logged) | **CON / ✅ Shipped** (P1 `7d1c250`, P2 `5b13915`, P3 `79b335f`) | **Recruitment gate clears once tested E2E in staging.** Then §6.9 "20% vs 25%" outreach can ship; admin sets new beta experts to 80 before first booking settles. (Stored as expert-share %, not platform rate — same math, self-documenting name.) |
 | Single fee resolver every charge path reads from | FEE | **Partial** — LB-P2 wires checkout to `/api/booking-fee-config`; LB-P3 mounts the optimization-fee resolver. Remaining work is *unification*, not greenfield. |
 | 6 of 9 §4.8 fees hard-coded or missing | FEE | Needs planning |
 | Override granularity (global→market→tier→entity) | FEE | Needs planning |
