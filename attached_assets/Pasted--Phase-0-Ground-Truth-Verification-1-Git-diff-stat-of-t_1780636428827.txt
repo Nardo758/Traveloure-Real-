@@ -1,0 +1,65 @@
+## Phase 0: Ground Truth Verification
+
+**1. Git diff --stat of the three commits:**
+
+Commit b96eb96 (Stage 1, Gap 1):
+- Modified: `client/src/pages/itinerary.tsx` (8 insertions, 2 deletions)
+
+Commit 644d5a7 (Stage 1, Gap 3):
+- Modified: `client/src/components/plancard/PlanCard.tsx` (10 insertions, 16 deletions)
+
+Commit 4105eeb (Stage 2):
+- Modified: `server/itinerary-optimizer.ts` (5 insertions, 2 deletions)
+- Modified: `server/routes.ts` (17 insertions, 2 deletions)
+- Modified: `server/routes/my-itinerary.routes.ts` (3 insertions, 1 deletion)
+- Modified: `server/routes/optimization.routes.ts` (2 insertions, 1 deletion)
+- Modified: `server/services/smart-sequencing.service.ts` (19 insertions, 3 deletions)
+
+**Result:** All changes align with claimed deliverables. No incidental edits detected.
+
+---
+
+**2. Ground state findings:**
+
+**Q: Does the booking footer in `itinerary.tsx` read `plancardData?.metrics?.totalCost`?**
+- **YES** — Line 648: `const pendingTotal = plancardData?.metrics?.totalCost ?? (inAppTotal + partnerTotal);`
+- **CRITICAL ISSUE:** This drives the fee calculation at line 651 (`feeAI = pendingTotal * 0.12`). It's reading the whole-trip cost instead of unbooked-only cost. **This is the regression that makes Phase 1 a merge blocker.**
+
+**Q: Is `numberOfTravelers` still hardcoded to `1` in `workspace.tsx`?**
+- **YES — CONFIRMED BUG** — Line 848 in `client/src/pages/expert/workspace.tsx`:
+  ```typescript
+  <PlanCard
+    trip={{
+      ...
+      numberOfTravelers: 1,  // ← HARDCODED
+    }}
+  ```
+  Should read `trip.numberOfTravelers` instead. This is **D4 Gap 4**.
+
+**Q: Is `MapControlCenter` from `components/plancard/` wired into the workspace Map tab, or is it a stub?**
+- **PROPERLY WIRED** — Lines 1123–1130 in `PlanCard.tsx`:
+  ```typescript
+  <MapControlCenter
+    tripId={trip.id}
+    tripDestination={trip.destination}
+    days={days}
+    selectedDay={selectedDay}
+    onSelectDay={setSelectedDay}
+  />
+  ```
+  **D4 Gap 2 is closed.** No action needed for Phase 3.
+
+**Q: Is `server/routes/optimization.routes.ts` imported/mounted anywhere?**
+- **NO** — `grep -rn "optimization\.routes" server/` returns zero results.
+- **Confirmed unmounted/dead code.** Phase 4 must mount it via `registerRoutes`.
+
+---
+
+**Summary for Phase 0:**
+- ✅ Commit scope confirmed
+- ✅ Footer reads plancardData.metrics.totalCost (but bug: uses whole-trip cost for fee calc)
+- ⚠️ numberOfTravelers hardcoded to 1 at workspace.tsx:848 (D4 Gap 4 not fixed)
+- ✅ MapControlCenter properly wired (D4 Gap 2 closed)
+- ✅ optimization.routes.ts is unmounted (dead code confirmed)
+
+**Ready to proceed to Phase 1** (cost over-billing fix).
