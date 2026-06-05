@@ -2000,11 +2000,7 @@ export default function DiscoverPage() {
 
               {/* Events Tab - Global Calendar */}
               <TabsContent value="events">
-                <GlobalCalendar 
-                  onCityClick={(cityName) => {
-                    setLocation(`/discover?tab=travelpulse&city=${encodeURIComponent(cityName)}`);
-                  }}
-                />
+                <GlobalCalendar />
               </TabsContent>
 
               {/* TravelPulse Tab */}
