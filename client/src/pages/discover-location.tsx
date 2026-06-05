@@ -6,7 +6,7 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
@@ -803,6 +803,16 @@ export default function DiscoverLocationPage() {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-6 max-w-5xl">
+        {/* Back navigation */}
+        <button
+          onClick={() => window.history.back()}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+          data-testid="btn-back"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-4">
