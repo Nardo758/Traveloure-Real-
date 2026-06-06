@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { differenceInDays, format } from "date-fns";
+import { differenceInDays, format, isValid } from "date-fns";
 import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { getDestinationPhotoUrl, type PlanCardTrip } from "./plancard-types";
@@ -16,7 +16,7 @@ interface HeroSectionProps {
 
 export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, budget }: HeroSectionProps) {
   const { toast } = useToast();
-  const photoUrl = getDestinationPhotoUrl(trip.destination);
+  const photoUrl = getDestinationPhotoUrl(trip.destination || "travel");
   const daysUntil = differenceInDays(new Date(trip.startDate ?? Date.now()), new Date());
   const statusLabel = daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
@@ -96,7 +96,7 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
           </span>
           <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
             <Calendar className="w-3.5 h-3.5" />
-            {format(new Date(trip.startDate ?? Date.now()), "MMM d")} - {format(new Date(trip.endDate ?? Date.now()), "MMM d, yyyy")}
+            {(() => { const s = new Date(trip.startDate ?? Date.now()); const e = new Date(trip.endDate ?? Date.now()); return isValid(s) && isValid(e) ? `${format(s, "MMM d")} - ${format(e, "MMM d, yyyy")}` : "Dates TBD"; })()}
           </span>
           {displayCost && (
             <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
