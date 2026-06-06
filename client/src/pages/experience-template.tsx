@@ -623,6 +623,7 @@ interface TabConfig {
   label: string;
   icon: any;
   category: string | null;
+  tabType?: string;
 }
 
 interface ExperienceMode {
@@ -966,12 +967,21 @@ const DB_TAB_ICON_MAP: Record<string, any> = {
   Baby, GraduationCap, Flower2, Ticket,
 };
 
+// Derive tabType from slug when the DB field is null/default
+function deriveTabType(slug: string): string {
+  if (slug === "flights") return "flights";
+  if (slug === "hotels" || slug === "accommodations") return "hotels";
+  if (slug === "transportation") return "transport";
+  return "venue-search";
+}
+
 function dbTabsToConfig(tabs: ExperienceTemplateTab[]): TabConfig[] {
   return tabs.map((tab) => ({
     id: tab.slug,
     label: tab.name,
     icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
     category: tab.slug,
+    tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
   }));
 }
 
@@ -1932,7 +1942,11 @@ export default function ExperienceTemplatePage() {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const currentTabCategory = config.tabs.find(t => t.id === activeTab)?.category;
+  // P1/P5: use effectiveTabs (DB-driven) instead of config.tabs
+  const currentTabCategory = effectiveTabs.find(t => t.id === activeTab)?.category;
+  // P2/P5: tabType drives which filter panel / component renders for this tab
+  const currentTabType = effectiveTabs.find(t => t.id === activeTab)?.tabType
+    ?? deriveTabType(activeTab);
 
   const filteredServices = useMemo(() => {
     if (!services) return [];
@@ -2161,28 +2175,7 @@ export default function ExperienceTemplatePage() {
     );
   }
 
-  // P1: experienceType exists in DB but no frontend config yet → "Coming Soon"
-  if (!config) {
-    return (
-      <Layout>
-        <div className="min-h-screen bg-background flex items-center justify-center">
-          <Card className="p-8 max-w-md text-center">
-            <h2 className="text-xl font-semibold mb-2">Coming Soon</h2>
-            <p className="text-muted-foreground mb-6">
-              The <strong>{experienceType.name}</strong> experience template is coming soon.
-              Check back for updates!
-            </p>
-            <Link href="/experiences">
-              <Button data-testid="button-browse-experiences">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Browse Experiences
-              </Button>
-            </Link>
-          </Card>
-        </div>
-      </Layout>
-    );
-  }
+  // config may be null for DB-only templates; all config.X usages below are null-safe
 
   return (
     <Layout>
@@ -2351,8 +2344,23 @@ export default function ExperienceTemplatePage() {
                 </div>
                 )}
 
+                {/* P4: DB contextFields — extra per-template form inputs */}
+                {((experienceType.contextFields as any[]) || []).map((field: any) => (
+                  <div key={field.key}>
+                    <Label htmlFor={`ctx-${field.key}`} className="text-sm font-medium">
+                      {field.label}
+                    </Label>
+                    <Input
+                      id={`ctx-${field.key}`}
+                      placeholder={field.placeholder || ""}
+                      className="mt-1"
+                      data-testid={`input-context-${field.key}`}
+                    />
+                  </div>
+                ))}
+
                 <div>
-                  <Label className="text-sm font-medium">{config.dateLabel}</Label>
+                  <Label className="text-sm font-medium">{config?.dateLabel ?? "Event Dates:"}</Label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <div>
                       <span className="text-sm text-muted-foreground">
@@ -2460,14 +2468,14 @@ export default function ExperienceTemplatePage() {
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
             {/* Wedding Mode Toggle */}
-            {slug === "wedding" && config.modes && (
+            {slug === "wedding" && config?.modes && (
               <div className="flex items-center justify-center gap-2 py-2 border-b border-gray-100 dark:border-gray-700">
                 <Button
                   variant={weddingMode === "planning" ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     setWeddingMode("planning");
-                    setActiveTab(config.modes?.planning?.tabs[0]?.id || "venues");
+                    setActiveTab(config?.modes?.planning?.tabs[0]?.id || "venues");
                   }}
                   className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-planning"
@@ -2479,7 +2487,7 @@ export default function ExperienceTemplatePage() {
                   size="sm"
                   onClick={() => {
                     setWeddingMode("guest");
-                    setActiveTab(config.modes?.guest?.tabs[0]?.id || "activities");
+                    setActiveTab(config?.modes?.guest?.tabs[0]?.id || "activities");
                   }}
                   className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-guest"
@@ -2635,7 +2643,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {(activeTab === "flights" || activeTab === "hotels" || activeTab === "accommodations") && (
+          {/* P3/P5: Collapsible shown only for flight/hotel tabTypes (mutually exclusive with TemplateFiltersPanel below) */}
+          {(currentTabType === "flights" || currentTabType === "hotels") && (
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
@@ -2647,7 +2656,7 @@ export default function ExperienceTemplatePage() {
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
-                  {activeTab === "flights" ? (
+                  {currentTabType === "flights" ? (
                     <>
                       <div className="flex flex-wrap gap-4">
                         <div className="min-w-[200px] flex-1">
@@ -2700,7 +2709,7 @@ export default function ExperienceTemplatePage() {
                         </div>
                       </div>
                     </>
-                  ) : activeTab === "hotels" || activeTab === "accommodations" ? (
+                  ) : currentTabType === "hotels" ? (
                     <>
                       <div className="flex flex-wrap gap-4">
                         <div className="min-w-[200px] flex-1">
@@ -2755,7 +2764,8 @@ export default function ExperienceTemplatePage() {
           </Collapsible>
           )}
 
-          {experienceType?.id && (
+          {/* P3: TemplateFiltersPanel — DB-driven filters; hidden on flight/hotel tabs (those use the Collapsible above) */}
+          {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
             <div className="mb-6">
               <TemplateFiltersPanel
                 experienceTypeId={experienceType.id}
@@ -3523,14 +3533,14 @@ export default function ExperienceTemplatePage() {
           </Card>
 
           {/* Mobile Mode Toggle for Wedding */}
-          {slug === "wedding" && config.modes && !showMobileMap && (
+          {slug === "wedding" && config?.modes && !showMobileMap && (
             <div className="flex items-center justify-center gap-2 py-2 border-b bg-white dark:bg-gray-800">
               <Button
                 variant={weddingMode === "planning" ? "default" : "outline"}
                 size="sm"
                 onClick={() => {
                   setWeddingMode("planning");
-                  setActiveTab(config.modes?.planning?.tabs[0]?.id || "venues");
+                  setActiveTab(config?.modes?.planning?.tabs[0]?.id || "venues");
                 }}
                 className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
               >
@@ -3541,7 +3551,7 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   setWeddingMode("guest");
-                  setActiveTab(config.modes?.guest?.tabs[0]?.id || "activities");
+                  setActiveTab(config?.modes?.guest?.tabs[0]?.id || "activities");
                 }}
                 className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
               >
