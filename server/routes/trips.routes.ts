@@ -98,6 +98,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+import { getTripRole, canMutateTrip } from "../utils/trip-role";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
@@ -1417,13 +1418,14 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
       const userId = (req.user as any).claims.sub;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
-      const owned = await verifyTripOwnership(tripId, userId);
-      const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
-      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      const tripRole = await getTripRole(tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest activities, not add them directly" : "Access denied" });
+      }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
-      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
+      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
@@ -1439,12 +1441,13 @@ router.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
       }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
+      const tripRole = await getTripRole(existing.tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
       }
       const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
       const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
-      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", "owner", req.params.id);
+      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", tripRole!, req.params.id);
       res.json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to update itinerary item" });
@@ -1459,8 +1462,9 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
       }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
+      const tripRole = await getTripRole(existing.tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot set backup plans" : "Access denied" });
       }
       const { backupItemId } = req.body;
       const item = await itineraryIntelligenceService.setBackupPlan(req.params.id, backupItemId);
@@ -1630,11 +1634,12 @@ router.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
       }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
+      const tripRole = await getTripRole(existing.tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
       }
       await itineraryIntelligenceService.deleteItem(req.params.id);
-      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", "owner", req.params.id);
+      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", tripRole!, req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete itinerary item" });
@@ -3454,7 +3459,10 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId, itemId } = req.params;
-      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
+      const tripRole = await getTripRole(tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
+      }
       const existing = await db.select().from(itineraryItems)
         .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
         .limit(1);
@@ -3475,7 +3483,10 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId, itemId } = req.params;
-      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
+      const tripRole = await getTripRole(tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
+      }
       const existing = await db.select({ id: itineraryItems.id }).from(itineraryItems)
         .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
         .limit(1);

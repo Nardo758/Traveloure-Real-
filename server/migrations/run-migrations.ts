@@ -37,6 +37,7 @@ const MIGRATION_FILES = [
   "024_provider_commission.sql",
   "025_tab_control_config.sql",
   "025_ai_cost_tracking.sql",
+  "026_trip_collaborators.sql",
 ];
 
 export async function runMigrations(): Promise<void> {

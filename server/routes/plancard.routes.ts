@@ -19,6 +19,7 @@ import {
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { getTripRole } from "../utils/trip-role";
 
 const router = Router();
 
@@ -146,8 +147,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: "Trip not found" });
     }
 
-    if (trip.userId !== userId) {
-      // Allow assigned experts to read the plancard
+    const tripRole = await getTripRole(tripId, userId);
+
+    if (!tripRole) {
+      // Legacy fallback: check trip_expert_advisors for assigned experts
       const expertCheck = await db.execute(sql`
         SELECT id FROM trip_expert_advisors
         WHERE trip_id = ${tripId}
@@ -368,6 +371,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const lastOptimizedAt = comparison?.optimizedAt ?? null;
 
     res.json({
+      tripRole: tripRole ?? (trip.userId === userId ? "owner" : "expert"),
       trip: {
         id: trip.id,
         title: trip.title,
