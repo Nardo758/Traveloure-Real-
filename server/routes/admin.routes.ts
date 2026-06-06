@@ -637,15 +637,10 @@ router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
 
       const roleFilter = req.query.role as string | undefined;
 
+      // expertId and isActive columns were dropped in migration 013 — all ESO rows are platform templates
       const rows = await db
         .select()
         .from(expertServiceOfferings)
-        .where(
-          and(
-            isNull(expertServiceOfferings.expertId),
-            eq(expertServiceOfferings.isActive, true)
-          )
-        )
         .orderBy(expertServiceOfferings.sortOrder);
 
       // Apply role filter in JS (simpler than Postgres array operator for admin use)
@@ -695,18 +690,13 @@ router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (re
         return res.status(400).json({ message: `Invalid roles: ${invalid.join(", ")}` });
       }
 
+      // updatedAt and expertId columns were dropped in migration 013
       const [updated] = await db
         .update(expertServiceOfferings)
         .set({
           targetRoles: targetRoles.length > 0 ? targetRoles : null,
-          updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(expertServiceOfferings.id, req.params.id),
-            isNull(expertServiceOfferings.expertId)
-          )
-        )
+        .where(eq(expertServiceOfferings.id, req.params.id))
         .returning();
 
       if (!updated) {
@@ -957,41 +947,8 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
 
       const approved = await storage.approveExpertCustomService(req.params.id, adminId);
 
-      // Promote approved service to ESO (canonical catalog) if not already there
-      try {
-        const existing = await db.select({ id: expertServiceOfferings.id })
-          .from(expertServiceOfferings)
-          .where(eq(expertServiceOfferings.externalId, service.id))
-          .then(r => r[0]);
-        if (!existing) {
-          let categoryRow = await db.select({ id: expertServiceCategories.id })
-            .from(expertServiceCategories)
-            .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-            .then(r => r[0]);
-          if (!categoryRow) {
-            const [ins] = await db.insert(expertServiceCategories)
-              .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
-              .returning({ id: expertServiceCategories.id });
-            categoryRow = ins;
-          }
-          const catId = (service as any).existingCategoryId ?? categoryRow.id;
-          await db.insert(expertServiceOfferings).values({
-            categoryId:   catId,
-            name:         service.title,
-            description:  service.description ?? null,
-            price:        service.price,
-            isDefault:    false,
-            sortOrder:    400,
-            expertId:     service.expertId,
-            externalId:   service.id,
-            status:       "approved",
-            reviewedAt:   new Date(),
-            reviewedBy:   adminId,
-          });
-        }
-      } catch (esoErr) {
-        console.warn("[ESO] Failed to promote approved custom service to ESO (non-fatal):", esoErr);
-      }
+      // ESO promotion was using expert_id / external_id columns dropped in migration 013.
+      // Expert-owned services now live in provider_services; no ESO write needed here.
 
       res.json(approved);
     } catch (err) {
