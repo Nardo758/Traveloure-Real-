@@ -3952,4 +3952,114 @@ export async function seedExperienceTemplateTabs() {
   console.log("Sports Event template seeded.");
 
   console.log("Experience template tabs and filters seeding complete.");
+
+  // P4: Seed hero-card config fields (headcountLabel, showKids, showOriginCity, locationLabel)
+  await updateExperienceTypeHeroConfigs();
+  console.log("Experience type hero configs seeded.");
+}
+
+async function updateExperienceTypeHeroConfigs() {
+  type HeroConfig = {
+    headcountLabel?: string;
+    showKids?: boolean;
+    showOriginCity?: string;
+    locationLabel?: string;
+  };
+
+  const configs: Record<string, HeroConfig> = {
+    "bachelor-bachelorette": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    "anniversary-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    "date-night": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "wedding": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "optional",
+      locationLabel: "Venue city",
+    },
+    "birthday-party": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "graduation-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "corporate-events": {
+      headcountLabel: "attendee",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    "sports-event": {
+      headcountLabel: "fan",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    "retirement-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "housewarming-party": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "holiday-party": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "career-achievement-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    "farewell-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+  };
+
+  for (const [slug, cfg] of Object.entries(configs)) {
+    try {
+      await db
+        .update(experienceTypes)
+        .set({
+          headcountLabel: cfg.headcountLabel,
+          showKids: cfg.showKids,
+          showOriginCity: cfg.showOriginCity,
+          locationLabel: cfg.locationLabel,
+        })
+        .where(eq(experienceTypes.slug, slug));
+    } catch {
+      // Row may not exist yet in this environment; skip silently
+    }
+  }
 }
