@@ -1355,7 +1355,7 @@ export default function ExperienceTemplatePage() {
   const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
   const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(initialSettings?.endDate ? new Date(initialSettings.endDate) : undefined);
-  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? config?.tabs[0]?.id ?? "venue");
+  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? "venue");
   const [searchQuery, setSearchQuery] = useState(initialSettings?.searchQuery ?? "");
   const [priceRange, setPriceRange] = useState(initialSettings?.priceRange ?? [0, 500]);
   const [minRating, setMinRating] = useState(initialSettings?.minRating ?? 0);
@@ -1388,24 +1388,18 @@ export default function ExperienceTemplatePage() {
   // Wedding mode state (planning vs guest activities)
   const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
   
-  // P5+P1: effectiveTabs — prefer DB tabs when loaded; fallback to hardcoded config
+  // P5: effectiveTabs — DB is the single source of truth; experienceConfigs no longer drives structure
   const effectiveTabs = useMemo(() => {
-    if (dbTabs && dbTabs.length > 0) {
-      // Wedding dual-mode: still reads planning/guest from hardcoded config
-      if (config?.modes && slug === "wedding") {
-        const modeConfig = weddingMode === "planning" ? config.modes.planning : config.modes.guest;
-        return modeConfig?.tabs || dbTabsToConfig(dbTabs);
-      }
-      return dbTabsToConfig(dbTabs);
+    if (!dbTabs || dbTabs.length === 0) return [];
+    const allTabs = dbTabsToConfig(dbTabs);
+    // Wedding guest-mode: filter to guest-relevant tabTypes only (DB-driven)
+    if (slug === "wedding" && weddingMode === "guest") {
+      const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events", "hotels", "venue-search"]);
+      const filtered = allTabs.filter(t => GUEST_TAB_TYPES.has(t.tabType ?? deriveTabType(t.id)));
+      return filtered.length > 0 ? filtered : allTabs;
     }
-    // Fallback while DB tabs are loading or unavailable
-    if (!config) return [];
-    if (config.modes && slug === "wedding") {
-      const modeConfig = weddingMode === "planning" ? config.modes.planning : config.modes.guest;
-      return modeConfig?.tabs || config.tabs;
-    }
-    return config.tabs;
-  }, [config, dbTabs, slug, weddingMode]);
+    return allTabs;
+  }, [dbTabs, slug, weddingMode]);
 
   // P5: Reset activeTab when dbTabs loads and current tab isn't present
   useEffect(() => {
@@ -2186,7 +2180,30 @@ export default function ExperienceTemplatePage() {
     );
   }
 
-  // config may be null for DB-only templates; all config.X usages below are null-safe
+  // Explicit unavailable-state guard: hide templates not marked as active in DB
+  if (!experienceType.isActive) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <Card className="p-8 max-w-md text-center">
+            <h2 className="text-xl font-semibold mb-2">Coming Soon</h2>
+            <p className="text-muted-foreground mb-6">
+              This experience type is not yet available. Check back soon!
+            </p>
+            <Link href="/">
+              <Button data-testid="button-back-home">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Explore Other Experiences
+              </Button>
+            </Link>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  // config is kept as a read-only aesthetic reference only (hero images from pre-DB era).
+  // All structural behavior (tabs, form fields, filters) is DB-driven via experienceType + dbTabs.
 
   return (
     <Layout>
@@ -2361,19 +2378,36 @@ export default function ExperienceTemplatePage() {
                     <Label htmlFor={`ctx-${field.key}`} className="text-sm font-medium">
                       {field.label}
                     </Label>
-                    <Input
-                      id={`ctx-${field.key}`}
-                      placeholder={field.placeholder || ""}
-                      value={contextValues[field.key] ?? ""}
-                      onChange={(e) => setContextValues(prev => ({ ...prev, [field.key]: e.target.value }))}
-                      className="mt-1"
-                      data-testid={`input-context-${field.key}`}
-                    />
+                    {field.type === "select" && Array.isArray(field.options) ? (
+                      <Select
+                        value={contextValues[field.key] ?? ""}
+                        onValueChange={(v) => setContextValues(prev => ({ ...prev, [field.key]: v }))}
+                      >
+                        <SelectTrigger id={`ctx-${field.key}`} className="mt-1" data-testid={`select-context-${field.key}`}>
+                          <SelectValue placeholder={field.placeholder || `Select ${field.label}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(field.options as string[]).map((opt: string) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id={`ctx-${field.key}`}
+                        type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                        placeholder={field.placeholder || ""}
+                        value={contextValues[field.key] ?? ""}
+                        onChange={(e) => setContextValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        className="mt-1"
+                        data-testid={`input-context-${field.key}`}
+                      />
+                    )}
                   </div>
                 ))}
 
                 <div>
-                  <Label className="text-sm font-medium">{config?.dateLabel ?? "Event Dates:"}</Label>
+                  <Label className="text-sm font-medium">Event Dates:</Label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <div>
                       <span className="text-sm text-muted-foreground">
@@ -2482,15 +2516,15 @@ export default function ExperienceTemplatePage() {
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
-            {/* Wedding Mode Toggle */}
-            {slug === "wedding" && config?.modes && (
+            {/* Wedding Mode Toggle — DB-driven: shown whenever wedding template has DB tabs */}
+            {slug === "wedding" && dbTabs && dbTabs.length > 0 && (
               <div className="flex items-center justify-center gap-2 py-2 border-b border-gray-100 dark:border-gray-700">
                 <Button
                   variant={weddingMode === "planning" ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     setWeddingMode("planning");
-                    setActiveTab(config?.modes?.planning?.tabs[0]?.id || "venues");
+                    setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
                   }}
                   className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-planning"
@@ -2502,7 +2536,9 @@ export default function ExperienceTemplatePage() {
                   size="sm"
                   onClick={() => {
                     setWeddingMode("guest");
-                    setActiveTab(config?.modes?.guest?.tabs[0]?.id || "activities");
+                    const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
+                    const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                    setActiveTab(firstGuest?.id ?? "activities");
                   }}
                   className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-guest"
@@ -2632,7 +2668,8 @@ export default function ExperienceTemplatePage() {
         </div>
 
         <div className="container mx-auto px-4 py-6">
-          {activeTab === "transportation" && (
+          {/* P5: tabType-registry driven — transport tab shows TripTransportPlanner */}
+          {(currentTabType === "transport" || activeTab === "transportation") && (
             <div className="mb-6">
               <TripTransportPlanner
                 cart={cart}
@@ -3107,7 +3144,7 @@ export default function ExperienceTemplatePage() {
           )}
 
           {/* Recommended by Traveloure — content hub items matched to this tab + destination */}
-          {destination && activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
+          {destination && currentTabType !== "flights" && currentTabType !== "hotels" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
             <CuratedContentSection
               destination={destination}
               tab={activeTab}
@@ -3553,15 +3590,15 @@ export default function ExperienceTemplatePage() {
             </CardContent>
           </Card>
 
-          {/* Mobile Mode Toggle for Wedding */}
-          {slug === "wedding" && config?.modes && !showMobileMap && (
+          {/* Mobile Mode Toggle for Wedding — DB-driven */}
+          {slug === "wedding" && dbTabs && dbTabs.length > 0 && !showMobileMap && (
             <div className="flex items-center justify-center gap-2 py-2 border-b bg-white dark:bg-gray-800">
               <Button
                 variant={weddingMode === "planning" ? "default" : "outline"}
                 size="sm"
                 onClick={() => {
                   setWeddingMode("planning");
-                  setActiveTab(config?.modes?.planning?.tabs[0]?.id || "venues");
+                  setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
                 }}
                 className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
               >
@@ -3572,7 +3609,9 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   setWeddingMode("guest");
-                  setActiveTab(config?.modes?.guest?.tabs[0]?.id || "activities");
+                  const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
+                  const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                  setActiveTab(firstGuest?.id ?? "activities");
                 }}
                 className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
               >
