@@ -216,7 +216,9 @@ class AffiliateScraperService {
             })
             .where(eq(affiliateProducts.id, existingProduct[0].id));
           productsUpdated++;
-          // Update registry (creates version if fields changed)
+          // Update registry (creates version if title/price/status changed).
+          // Preserve the product's existing isActive so manual deactivations
+          // are not overridden by a re-scrape.
           storage.registerAffiliateProduct({
             id: existingProduct[0].id,
             name: product.name,
@@ -224,7 +226,7 @@ class AffiliateScraperService {
             partnerId,
             externalId: product.externalId,
             price: product.price?.toString(),
-            isActive: true,
+            isActive: existingProduct[0].isActive ?? true,
             partnerName: partner.name,
           }).catch((err) => console.error("[ContentHub] Failed to update affiliate product registry:", err));
         } else {
@@ -238,17 +240,22 @@ class AffiliateScraperService {
             rating: product.rating?.toString(),
           }).returning();
           productsNew++;
-          // Register new product in content hub
-          storage.registerAffiliateProduct({
-            id: inserted.id,
-            name: product.name,
-            description: product.description,
-            partnerId,
-            externalId: product.externalId,
-            price: product.price?.toString(),
-            isActive: true,
-            partnerName: partner.name,
-          }).catch((err) => console.error("[ContentHub] Failed to register affiliate product:", err));
+          // Await registration for new products so the tracking_number
+          // write-back completes before the scrape job is marked done.
+          try {
+            await storage.registerAffiliateProduct({
+              id: inserted.id,
+              name: product.name,
+              description: product.description,
+              partnerId,
+              externalId: product.externalId,
+              price: product.price?.toString(),
+              isActive: inserted.isActive ?? true,
+              partnerName: partner.name,
+            });
+          } catch (err) {
+            console.error("[ContentHub] Failed to register affiliate product:", err);
+          }
         }
       }
 

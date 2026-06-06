@@ -3281,6 +3281,7 @@ export class DatabaseStorage implements IStorage {
           .set({
             title: product.name,
             description: product.description || existing.description,
+            status: product.isActive === false ? 'archived' : 'published',
             metadata: {
               ...(existing.metadata as object || {}),
               price: product.price,
