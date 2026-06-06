@@ -7,7 +7,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 interface FilterOption {
   label: string;
@@ -3996,7 +3996,7 @@ async function updateExperienceTypeHeroConfigs() {
     "wedding": {
       headcountLabel: "guest",
       showKids: false,
-      showOriginCity: "hide",
+      showOriginCity: "optional",
       locationLabel: "Venue city",
     },
     "birthday-party": {
@@ -4060,12 +4060,6 @@ async function updateExperienceTypeHeroConfigs() {
       showOriginCity: "required",
       locationLabel: "Destination city",
     },
-    "anniversary-trip": {
-      headcountLabel: "traveler",
-      showKids: false,
-      showOriginCity: "required",
-      locationLabel: "Destination city",
-    },
     "boys-trip": {
       headcountLabel: "traveler",
       showKids: false,
@@ -4091,6 +4085,16 @@ async function updateExperienceTypeHeroConfigs() {
       locationLabel: "Retreat destination",
       contextFields: [
         { key: "focus", label: "Retreat focus", placeholder: "e.g. Wellness, Team building, Leadership" },
+      ],
+    },
+    "corporate-retreats": {
+      headcountLabel: "attendee",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Retreat destination",
+      contextFields: [
+        { key: "team_size", label: "Team size", placeholder: "e.g. 20" },
+        { key: "focus", label: "Retreat focus", placeholder: "e.g. Strategy, Team building, Leadership" },
       ],
     },
     // --- Celebration / party templates ---
@@ -4228,5 +4232,46 @@ async function updateExperienceTypeHeroConfigs() {
     } catch {
       // Column may not exist in older environments; skip silently
     }
+  }
+
+  // Backfill controlConfig for flight/hotel tabs — moves filter control descriptors
+  // out of hardcoded JSX into the DB so each tab owns its filter UI definition.
+  const FLIGHT_CONTROL_CONFIG = {
+    priceRange: { min: 100, max: 5000, step: 100, default: 3000, label: "Max Price" },
+    stops: [
+      { value: "any", label: "Any" },
+      { value: "nonstop", label: "Nonstop" },
+      { value: "1stop", label: "1 Stop" },
+    ],
+    sortOptions: [
+      { value: "price", label: "Lowest Price" },
+      { value: "duration", label: "Shortest Duration" },
+      { value: "departure", label: "Earliest Departure" },
+    ],
+  };
+
+  const HOTEL_CONTROL_CONFIG = {
+    priceRange: { min: 50, max: 1000, step: 25, default: 500, label: "Max Price/Night" },
+    starRatings: [0, 3, 4, 5],
+    sortOptions: [
+      { value: "price", label: "Lowest Price" },
+      { value: "rating", label: "Highest Rating" },
+    ],
+  };
+
+  try {
+    await db
+      .update(experienceTemplateTabs)
+      .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
+      .where(inArray(experienceTemplateTabs.slug, ["flights"]));
+
+    await db
+      .update(experienceTemplateTabs)
+      .set({ controlConfig: HOTEL_CONTROL_CONFIG })
+      .where(inArray(experienceTemplateTabs.slug, [
+        "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
+      ]));
+  } catch {
+    // Column may not exist in older environments; skip silently
   }
 }
