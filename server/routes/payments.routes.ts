@@ -85,6 +85,7 @@ import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
+  calcInsuranceFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -369,8 +370,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
-        const expertEarningsAmt = price * expertShareRate;
-        const platformFeeAmt = price - expertEarningsAmt;
+        const baseExpertEarningsAmt = price * expertShareRate;
+        const basePlatformFeeAmt = price - baseExpertEarningsAmt;
+        // Insurance tier (FEE-2 Phase 2): compute per-booking insurance component from category config
+        const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, null);
+        const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt;
+        const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -393,8 +398,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             quantity: item.quantity || 1,
           },
           totalAmount: price.toFixed(2),
-          platformFee: platformFeeAmt.toFixed(2),
-          providerEarnings: expertEarningsAmt.toFixed(2),
+          platformFee: totalPlatformFeeAmt.toFixed(2),
+          insuranceFee: insuranceFeeAmt.toFixed(2),
+          providerEarnings: netExpertEarningsAmt.toFixed(2),
           status: "pending",
         } as any);
         

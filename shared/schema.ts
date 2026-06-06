@@ -627,6 +627,7 @@ export const serviceBookings = pgTable("service_bookings", {
   status: varchar("status", { length: 30 }).default("pending"),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).default("0"),
+  insuranceFee: decimal("insurance_fee", { precision: 10, scale: 2 }).default("0.00"),
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   
