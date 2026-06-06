@@ -192,3 +192,66 @@ export async function sendPasswordResetEmail(params: PasswordResetParams): Promi
 
   console.log(`[email] Password reset link sent to ${params.toEmail}`);
 }
+
+interface EmailVerificationParams {
+  toEmail: string;
+  firstName?: string | null;
+  verifyUrl: string;
+  expiresInHours: number;
+}
+
+export async function sendEmailVerificationEmail(params: EmailVerificationParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.warn("[email] RESEND_API_KEY not set — verification email NOT sent to", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${params.firstName},` : "Hi,";
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">Confirm your email</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thanks for signing up for Traveloure. Click the button below to confirm your email address
+        and finish setting up your account. This link expires in ${params.expiresInHours} hours.
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${params.verifyUrl}"
+           style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                  padding: 12px 24px; border-radius: 6px; font-weight: 600;">
+          Confirm email
+        </a>
+      </p>
+      <p style="color: #6B7280; font-size: 13px;">
+        Or paste this link into your browser:<br>
+        <span style="color: #374151; word-break: break-all;">${params.verifyUrl}</span>
+      </p>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        If you didn't sign up for Traveloure, you can safely ignore this email.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Confirm your email`,
+    ``,
+    greeting,
+    ``,
+    `Thanks for signing up for Traveloure. Use this link to confirm your email address — it expires in ${params.expiresInHours} hours:`,
+    ``,
+    params.verifyUrl,
+    ``,
+    `If you didn't sign up for Traveloure, you can safely ignore this email.`,
+  ].join("\n");
+
+  await client.emails.send({
+    from: getFromAddress(),
+    to: params.toEmail,
+    subject: "Confirm your Traveloure email",
+    text,
+    html,
+  });
+
+  console.log(`[email] Verification link sent to ${params.toEmail}`);
+}
