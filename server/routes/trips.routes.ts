@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
