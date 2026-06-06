@@ -2267,6 +2267,7 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         serviceId: req.params.serviceId,
         travelerId: userId,
         providerId: service.userId,
+        status: "pending",
       });
       
       const review = await storage.createServiceReview(input);
