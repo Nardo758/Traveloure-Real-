@@ -2215,7 +2215,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${experienceType.heroImage ?? config?.heroImage ?? ""}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? ""}')` }}
             />
 
             {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
@@ -2341,7 +2341,7 @@ export default function ExperienceTemplatePage() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="location" className="text-sm font-medium">
-                    {experienceType.locationLabel ?? config?.locationLabel ?? "Destination city"}
+                    {experienceType.locationLabel ?? "Destination city"}
                   </Label>
                   <Input
                     id="location"
@@ -3398,7 +3398,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-48 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${experienceType.heroImage ?? config?.heroImage ?? ""}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? ""}')` }}
             />
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-between z-10">
               {/* Mobile Map/Form Toggle or Trip Planner link */}
@@ -3545,7 +3545,7 @@ export default function ExperienceTemplatePage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? config?.locationLabel ?? "Destination city"}</Label>
+                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? "Destination city"}</Label>
                   <Input
                     placeholder="Eg: Paris, New York"
                     value={destination}
