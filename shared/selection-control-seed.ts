@@ -5,21 +5,24 @@
 // itself, so there are NO category-selection controls here — only refine
 // controls that map onto #462's WORKING keys (priceRange / minRating / tags).
 //
-// Authoring discipline (decision-maker rules):
-//   * Only seed controls that narrow for real. No true-dimension control is
-//     faked as a keyword (intensity/capacity/etc. live in the enrichment brief).
-//   * Every `tags` value is verified to appear in real service NAME/DESCRIPTION
-//     content (the engine matches selectedFilters[] as substrings of name/desc,
-//     NOT contentAffinityTags). Tag values with no / near-zero catalog presence
-//     are omitted and tracked as an inventory gap, not shipped as dead controls.
-//   * priceRange (budget) is only seeded where catalog prices fit #462's
-//     0–500 engine band (per-activity travel). It is intentionally OMITTED on
-//     wedding/corporate, whose vendor prices (thousands) exceed the engine's
-//     500 sentinel — a budget band there would filter everything out.
+// Authoring discipline (decision-maker rules) — every control here is proven by
+// the narrowing/parity test (shared/__tests__/selection-filter.test.ts) to
+// actually narrow real seeded rows; controls that don't were dropped:
+//   * Tag values are verified to appear in real service NAME/DESCRIPTION content
+//     (the engine matches selectedFilters[] as substrings of name/desc, NOT
+//     contentAffinityTags).
+//   * Budget (priceRange) is seeded only on travel — its prices (80–2499) span
+//     the bands. Wedding/corporate vendor prices exceed #462's 0–500 sentinel,
+//     so a budget band there would empty results; omitted.
+//   * Quality bar (minRating) is NOT seeded anywhere: travel ratings are all
+//     4.7–5.0 (a >=4 floor is a no-op) and wedding/corporate rows have no rating
+//     (a floor empties them). Rating population is an inventory gap — when
+//     ratings are seeded, a quality control can be added (seed-only, no resolver
+//     change). See the catalog-enrichment brief.
 //
 // Inventory gaps deliberately NOT seeded (light up when catalog grows / the
-// enrichment brief lands): travel outdoor/nature/nightlife; corporate
-// "team building" tag; musician/videographer/cake/kids categories.
+// enrichment brief lands): travel outdoor/nature/nightlife tags; corporate
+// "team building" tag; musician/videographer/cake/kids categories; ratings.
 
 import type { SelectionControl } from "./selection-controls";
 
@@ -31,22 +34,8 @@ const BUDGET_CONTROL: SelectionControl = {
   label: "Budget?",
   type: "single_select",
   options: [
-    { id: "budget-under-50", label: "Under $50", filterMapping: { price: [0, 50] } },
     { id: "budget-under-150", label: "Under $150", filterMapping: { price: [0, 150] } },
     { id: "budget-premium", label: "Premium ($150+)", filterMapping: { price: [150, 500] } },
-  ],
-};
-
-// Quality bar — minRating. A real working key; narrowing is data-dependent
-// (inventory), not faked. "Any" resolves to a no-op floor.
-const QUALITY_CONTROL: SelectionControl = {
-  id: "quality",
-  label: "Quality bar?",
-  type: "single_select",
-  options: [
-    { id: "quality-any", label: "Any", filterMapping: { rating: 0 } },
-    { id: "quality-high", label: "Highly rated", filterMapping: { rating: 4 } },
-    { id: "quality-exceptional", label: "Exceptional", filterMapping: { rating: 4.5 } },
   ],
 };
 
@@ -80,17 +69,15 @@ export type TabSelectionControls = Record<string /* tabSlug */, SelectionControl
 
 export const SELECTION_CONTROL_SEED: Record<string /* templateSlug */, TabSelectionControls> = {
   travel: {
-    activities: [BUDGET_CONTROL, QUALITY_CONTROL],
-    dining: [BUDGET_CONTROL, QUALITY_CONTROL],
-    services: [BUDGET_CONTROL, QUALITY_CONTROL],
+    activities: [BUDGET_CONTROL],
+    dining: [BUDGET_CONTROL],
+    services: [BUDGET_CONTROL],
   },
   wedding: {
-    vendors: [WEDDING_VENDOR_FOCUS, QUALITY_CONTROL],
-    venues: [QUALITY_CONTROL],
+    vendors: [WEDDING_VENDOR_FOCUS],
   },
   "corporate-events": {
-    "team-activities": [CORPORATE_ACTIVITY_FOCUS, QUALITY_CONTROL],
-    venues: [QUALITY_CONTROL],
+    "team-activities": [CORPORATE_ACTIVITY_FOCUS],
   },
 };
 
