@@ -3980,12 +3980,15 @@ router.get("/api/admin/fee-config", isAuthenticated, async (req, res) => {
       const result = await db.execute(sql`
         SELECT
           id, category,
-          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
-          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
+          CAST(platform_fee_percent   AS FLOAT) AS platform_fee_percent,
+          CAST(expert_share_percent   AS FLOAT) AS expert_share_percent,
           ai_keeps_100,
           CAST(min_fee AS FLOAT) AS min_fee,
           CAST(max_fee AS FLOAT) AS max_fee,
           is_active,
+          insurance_enabled,
+          CAST(insurance_rate_percent AS FLOAT) AS insurance_rate_percent,
+          insurance_applies_to,
           updated_by,
           updated_at
         FROM booking_fee_configs
@@ -4009,28 +4012,40 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
         minFee,
         maxFee,
         isActive,
+        insuranceEnabled,
+        insuranceRatePercent,
+        insuranceAppliesTo,
       } = req.body;
 
       if (!category) return res.status(400).json({ error: "category required" });
 
+      const insuranceRate = typeof insuranceRatePercent === "number" ? insuranceRatePercent : 0;
+      const insuranceApply = Array.isArray(insuranceAppliesTo) ? JSON.stringify(insuranceAppliesTo) : "[]";
+
       await db.execute(sql`
         INSERT INTO booking_fee_configs (
           id, category, platform_fee_percent, expert_share_percent,
-          ai_keeps_100, min_fee, max_fee, is_active, updated_by, created_at, updated_at
+          ai_keeps_100, min_fee, max_fee, is_active,
+          insurance_enabled, insurance_rate_percent, insurance_applies_to,
+          updated_by, created_at, updated_at
         ) VALUES (
           gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 75},
           ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
+          ${insuranceEnabled ?? false}, ${insuranceRate}, ${sql.raw(`'${insuranceApply}'::jsonb`)},
           ${userId}, NOW(), NOW()
         )
         ON CONFLICT (category) DO UPDATE SET
-          platform_fee_percent = EXCLUDED.platform_fee_percent,
-          expert_share_percent  = EXCLUDED.expert_share_percent,
-          ai_keeps_100          = EXCLUDED.ai_keeps_100,
-          min_fee               = EXCLUDED.min_fee,
-          max_fee               = EXCLUDED.max_fee,
-          is_active             = EXCLUDED.is_active,
-          updated_by            = EXCLUDED.updated_by,
-          updated_at            = NOW()
+          platform_fee_percent    = EXCLUDED.platform_fee_percent,
+          expert_share_percent    = EXCLUDED.expert_share_percent,
+          ai_keeps_100            = EXCLUDED.ai_keeps_100,
+          min_fee                 = EXCLUDED.min_fee,
+          max_fee                 = EXCLUDED.max_fee,
+          is_active               = EXCLUDED.is_active,
+          insurance_enabled       = EXCLUDED.insurance_enabled,
+          insurance_rate_percent  = EXCLUDED.insurance_rate_percent,
+          insurance_applies_to    = EXCLUDED.insurance_applies_to,
+          updated_by              = EXCLUDED.updated_by,
+          updated_at              = NOW()
       `);
 
       res.json({ success: true });

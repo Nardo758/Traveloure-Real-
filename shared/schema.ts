@@ -5515,10 +5515,18 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   minFee: decimal("min_fee", { precision: 10, scale: 2 }),
   maxFee: decimal("max_fee", { precision: 10, scale: 2 }),
   isActive: boolean("is_active").default(true),
+  // Insurance tier (FEE-2 Phase 2)
+  insuranceEnabled: boolean("insurance_enabled").default(false),
+  insuranceRatePercent: decimal("insurance_rate_percent", { precision: 5, scale: 2 }).default("0.00"),
+  insuranceAppliesTo: jsonb("insurance_applies_to").default([]),
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export type BookingFeeConfig = typeof bookingFeeConfigs.$inferSelect;
+export const insertBookingFeeConfigSchema = createInsertSchema(bookingFeeConfigs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {
