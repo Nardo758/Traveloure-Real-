@@ -4053,6 +4053,97 @@ async function updateExperienceTypeHeroConfigs() {
       showOriginCity: "hide",
       locationLabel: "City / neighborhood",
     },
+    // --- Trip / travel templates ---
+    "travel": {
+      headcountLabel: "traveler",
+      showKids: true,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    "anniversary-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    "boys-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+      contextFields: [
+        { key: "theme", label: "Trip theme", placeholder: "e.g. Golf, Surf, City Break" },
+      ],
+    },
+    "girls-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+      contextFields: [
+        { key: "theme", label: "Trip theme", placeholder: "e.g. Spa, Beach, City Break" },
+      ],
+    },
+    "retreats": {
+      headcountLabel: "attendee",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Retreat destination",
+      contextFields: [
+        { key: "focus", label: "Retreat focus", placeholder: "e.g. Wellness, Team building, Leadership" },
+      ],
+    },
+    // --- Celebration / party templates ---
+    "birthday": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "reunions": {
+      headcountLabel: "attendee",
+      showKids: true,
+      showOriginCity: "required",
+      locationLabel: "Reunion city",
+      contextFields: [
+        { key: "reunion_type", label: "Reunion type", placeholder: "e.g. Family, High school, College" },
+      ],
+    },
+    "wedding-anniversaries": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "optional",
+      locationLabel: "City / venue",
+    },
+    // --- Milestone celebration templates ---
+    "proposal": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "Proposal location",
+      contextFields: [
+        { key: "partner_name", label: "Partner name", placeholder: "e.g. Jordan" },
+        { key: "style", label: "Proposal style", placeholder: "e.g. Intimate, Grand, Surprise" },
+      ],
+    },
+    "engagement-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / venue",
+      contextFields: [
+        { key: "couple_names", label: "Couple names", placeholder: "e.g. Alex & Jamie" },
+      ],
+    },
+    "baby-shower": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+      contextFields: [
+        { key: "honoree", label: "Mom-to-be name", placeholder: "e.g. Sarah" },
+      ],
+    },
   };
 
   for (const [slug, cfg] of Object.entries(configs)) {
