@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { isEA } from "../middleware/ea-rbac";
 import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -3865,6 +3866,9 @@ router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
   });
 
   // === Trip Commission ===
+
+// ── EA RBAC: every /api/ea/* route requires executive_assistant or admin role ──
+router.use("/api/ea", isEA);
 
 router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
     try {
