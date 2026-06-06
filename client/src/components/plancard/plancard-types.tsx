@@ -72,8 +72,9 @@ export function getTemplateConfig(eventType: string | null | undefined): Templat
   return TEMPLATES.travel;
 }
 
-export function getDestinationPhotoUrl(destination: string): string {
-  const seed = destination
+export function getDestinationPhotoUrl(destination: string | undefined | null): string {
+  const safe = destination || "travel";
+  const seed = safe
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
