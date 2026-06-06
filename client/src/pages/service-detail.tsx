@@ -351,14 +351,6 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
     onError: () => toast({ title: "Failed to report review", variant: "destructive" }),
   });
 
-  if (review.status === "removed") {
-    return (
-      <div className="border-b last:border-0 pb-4 last:pb-0 text-sm text-muted-foreground italic" data-testid={`card-review-${review.id}`}>
-        This review has been removed by a moderator.
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
@@ -382,12 +374,6 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
                 <Badge variant="secondary" className="text-xs">
                   <CheckCircle className="w-3 h-3 mr-1" />
                   Verified
-                </Badge>
-              )}
-              {review.status === "flagged" && (
-                <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
-                  <Flag className="w-3 h-3 mr-1" />
-                  Under review
                 </Badge>
               )}
             </div>
