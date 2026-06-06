@@ -351,6 +351,14 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
     onError: () => toast({ title: "Failed to report review", variant: "destructive" }),
   });
 
+  if (review.status === "removed") {
+    return (
+      <div className="border-b last:border-0 pb-4 last:pb-0 text-sm text-muted-foreground italic" data-testid={`card-review-${review.id}`}>
+        This review has been removed by a moderator.
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
