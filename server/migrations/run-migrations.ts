@@ -31,6 +31,7 @@ const MIGRATION_FILES = [
   "019_event_packages.sql",
   "020_commission_override.sql",
   "021_password_reset_tokens.sql",
+  "022_email_verification_tokens.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
