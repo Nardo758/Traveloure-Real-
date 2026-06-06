@@ -1,0 +1,67 @@
+Three adds. Let me first check whether the deployed app exposes a version/commit endpoint (so I can actually confirm BASE_URL reflects 3f763d2), while I draft the two CI additions.
+
+
+Ran 2 commands
+No endpoint exposes a commit SHA (only npm_package_version), so I can't confirm the deploy by SHA directly. But there's a functional probe: the reconcile's selection controls live in control_config, served by /api/experience-types/:id/tabs. If the deployed API returns selectionControls, then both the code and the seed are live on BASE_URL — making a green DOM run a real signal. Let me probe the deployed API.
+
+
+Browsed the web
+Important: even /health (definitely public — no auth) returns 403 to WebFetch. So the 403 is the Replit edge blocking non-browser clients, not an auth wall — I simply cannot probe the deploy from this sandbox, and it's not evidence the DOM test needs auth. Let me read the current workflow and add the two CI features, then give you an honest deploy-currency answer.
+
+Read
+selection-controls-gate.yml
+Now adding the two CI features — a lockfile-purity guard and a pass/fail PR completion comment (so a green run wakes the subscription via the comment webhook). First, permissions + the guard job:
+
+Edited
+selection-controls-gate.yml
++49
+-0
+Let me validate the workflow YAML before pushing:
+
+Ran
+Validate workflow YAML
+YAML valid, all four jobs present. Committing and pushing:
+
+Pushed
+claude/ci-selection-controls-gate
+Both adds are in and pushed (7a3d2cb); a fresh run is triggering. Status on all three:
+
+1. Lockfile-purity guard ✅
+New lockfile-purity job fails fast if package-lock.json ever contains replit.local again — a root-cause guard so the Replit env can't silently re-pollute the lockfile and break npm ci. Runs with no npm/deps, so it's a fast standalone check.
+
+2. PR completion comment ✅
+New report job (if: always()) posts a pass/fail summary comment on the PR after the gates run. Since GitHub doesn't emit success webhooks but does deliver new PR comments, a green run now wakes me too — no manual ping needed. It also notes a red DOM gate is triaged, never softened.
+
+3. Deploy currency — honest answer
+I cannot confirm it from this sandbox: the Replit edge returns 403 to all my fetches, including the unauthenticated /health — that's bot-blocking, not auth, and there's no commit-SHA endpoint to read anyway.
+
+But it resolves cleanly without extra infra: the DOM spec's own render assertion is the currency proof. It runs in real Chromium (which passes the edge — that's how the existing E2E suite reaches the app), and selection-controls-panel only renders if the reconcile's control_config is live on BASE_URL. So:
+
+Green e2e-selection-controls ⇒ the panel rendered on BASE_URL ⇒ code + seed are live ⇒ that run closes DOM verification on main. (Assuming the deploy tracks main; if you want certainty, the Replit deploy dashboard shows the deployed commit at a glance.)
+Red ⇒ I triage: logic gate green + render failing points to a stale/un-seeded deploy; render passing but narrow/parity/tab-isolation failing is a real bug I report (never soften).
+Standing
+I'm subscribed; the next run's completion comment will wake me on pass or fail, and I'll act (autofix DOM plumbing / report real bugs / confirm green).
+Your one manual item remains: the gh api branch protection (require verify-selection-controls + 1 review now; add the DOM context after it's green and gating the PR's own diff).
+I'll stand by for the run result.
+
+On the first e2e triage: if the narrow/parity assertions fail on count mismatches, make them relational rather than re-numbering — assert filtered < unfiltered + remaining items match the criterion (parity as set-equality, tab-isolation as cleared-on-switch). Don't adjust magic numbers to pass; relational assertions are both robust to deployed-catalog variance and un-softenable. Render-fail with logic green still means stale/un-seeded deploy → report, don't touch assertions.
+
+Understood — banked as the triage policy. Quick confirmation of where the spec already stands against it, so there's no re-numbering temptation when the run lands:
+
+The DOM spec is already relational — no magic catalog numbers:
+
+Narrow: filtered = poll(providerCount) → toBeLessThan(before) (strict, wedding/vendors photography) and toBeGreaterThan(0) — i.e. filtered < unfiltered, non-empty.
+Restore: after Clear, toBe(before) — back to the captured baseline, not a constant.
+Tab-isolation: after switch-away-and-back, the option is not.toHaveClass(/FF385C/) — cleared-on-switch.
+The only thresholds are > 1 (population-exists sanity) and a skip if before < 2 guard — not catalog-specific numbers.
+So on a count-mismatch failure there are no numbers to re-number — I'll keep them relational by construction.
+
+Two clarifications on "parity as set-equality":
+
+The un-softenable parity check already lives in the logic gate (verify-selection-controls): it asserts filterServices(selection) deepEquals filterServices(directFacet) over real fixtures — true set-equality, deterministic, deploy-independent. That's the strong parity guarantee.
+The DOM test currently proves parity relationally (count behavior), not per-card set-equality — because there's no provider-card data-testid to read individual results. If you want DOM-level "remaining items match the criterion," I'd add a data-testid to the provider card (additive) so the spec can assert every remaining card matches the selected criterion. Say the word and I'll add it; otherwise the logic gate carries set-equality and the DOM test carries render/narrow/restore/isolation.
+One honesty note: the dining/budget assertion is toBeLessThanOrEqual(before) (tolerant), because budget-narrowing depends on the deployed price spread; the strict < narrow proof rides on wedding/vendors photography, which is backed by real Kyoto inventory.
+
+And reaffirmed: render-fail while the logic gate is green ⇒ stale/un-seeded deploy ⇒ I report it, touch no assertions.
+
+I won't churn the spec now (it already aligns, and a needless push restarts CI). Standing by for the run's completion comment — I'll triage on arrival per the above.
