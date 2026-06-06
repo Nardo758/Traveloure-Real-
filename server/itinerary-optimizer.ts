@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
-import { trackAICost } from "./services/ai-cost-tracker";
 import {
   itineraryComparisons,
   itineraryVariants,
@@ -40,16 +39,6 @@ import { calculateTransportLegs, type UserTransportPrefs } from "./services/tran
 
 const GROK_MODEL = "grok-2-1212";
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-
-// Anthropic pricing per token (as of 2026-06)
-const ANTHROPIC_PRICING = {
-  input: 3 / 1_000_000,    // $3 per million input tokens
-  output: 15 / 1_000_000,  // $15 per million output tokens
-};
-
-function calculateAnthropicCost(inputTokens: number, outputTokens: number): number {
-  return (inputTokens * ANTHROPIC_PRICING.input) + (outputTokens * ANTHROPIC_PRICING.output);
-}
 
 function getGrokClient(): OpenAI | null {
   const apiKey = process.env.XAI_API_KEY;
@@ -96,17 +85,6 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
         { role: "user", content: userPrompt },
       ],
     });
-    // Track cost for CON-B pricing analysis
-    if (response.usage) {
-      const cost = calculateAnthropicCost(response.usage.input_tokens, response.usage.output_tokens);
-      trackAICost({
-        sourceType: "ai_optimization",
-        modelUsed: CLAUDE_MODEL,
-        costUsd: cost,
-        tokensIn: response.usage.input_tokens,
-        tokensOut: response.usage.output_tokens,
-      }).catch(err => console.error("[cost-tracker] failed to log optimization cost:", err));
-    }
     const textBlock = response.content.find((b: any) => b.type === "text");
     if (textBlock && textBlock.type === "text") return textBlock.text;
   }

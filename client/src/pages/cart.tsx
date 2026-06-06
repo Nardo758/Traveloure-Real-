@@ -48,20 +48,10 @@ import {
   Zap,
   RefreshCw,
   Route,
-  Globe,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-
-const SUPPORTED_CURRENCIES = [
-  { code: "USD", label: "USD – US Dollar" },
-  { code: "EUR", label: "EUR – Euro" },
-  { code: "GBP", label: "GBP – British Pound" },
-  { code: "JPY", label: "JPY – Japanese Yen" },
-  { code: "AUD", label: "AUD – Australian Dollar" },
-  { code: "SGD", label: "SGD – Singapore Dollar" },
-];
 
 interface CartItem {
   id: string;
@@ -319,9 +309,6 @@ export default function CartPage() {
   const [newTripName, setNewTripName] = useState("");
   const [newTripDestination, setNewTripDestination] = useState("");
   const [selectedPlanItemIds, setSelectedPlanItemIds] = useState<Set<string>>(new Set());
-  const [displayCurrency, setDisplayCurrency] = useState<string>(
-    () => localStorage.getItem("traveloure_currency") || "USD"
-  );
 
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
@@ -340,11 +327,6 @@ export default function CartPage() {
   const { data: userTrips = [] } = useQuery<any[]>({
     queryKey: ["/api/trips"],
     enabled: !!user && showPlanningDialog,
-  });
-
-  const { data: exchangeRatesData } = useQuery<{ base: string; rates: Record<string, number>; cachedAt: number }>({
-    queryKey: ["/api/exchange-rates"],
-    staleTime: 60 * 60 * 1000,
   });
 
   const convertToItineraryMutation = useMutation({
@@ -455,24 +437,6 @@ export default function CartPage() {
   const platformFee = parseFloat(cart?.platformFee || "0");
   const combinedTotal = combinedSubtotal + platformFee;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
-
-  const exchangeRates = exchangeRatesData?.rates ?? {};
-  const formatPrice = (usdAmount: number): string => {
-    if (displayCurrency === "USD") return `$${usdAmount.toFixed(2)}`;
-    const rate = exchangeRates[displayCurrency];
-    if (!rate) return `$${usdAmount.toFixed(2)}`;
-    return new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: displayCurrency,
-      maximumFractionDigits: displayCurrency === "JPY" ? 0 : 2,
-      minimumFractionDigits: displayCurrency === "JPY" ? 0 : 2,
-    }).format(usdAmount * rate);
-  };
-
-  const handleCurrencyChange = (code: string) => {
-    setDisplayCurrency(code);
-    localStorage.setItem("traveloure_currency", code);
-  };
 
   // Content items (Discover saves) — eligible for "Start planning"
   // Require both contentId AND contentType to be non-empty; do NOT use
@@ -1220,7 +1184,7 @@ export default function CartPage() {
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(parseFloat(item.service?.price || "0"))}
+                              ${parseFloat(item.service?.price || "0").toFixed(2)}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
                               <Button
@@ -1314,7 +1278,7 @@ export default function CartPage() {
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(item.price)}
+                              ${item.price.toFixed(2)}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
                               <Button
@@ -1362,40 +1326,22 @@ export default function CartPage() {
                 <div className="lg:col-span-1 space-y-4">
                   <Card className="sticky top-4">
                     <CardHeader>
-                      <div className="flex items-center justify-between gap-2">
-                        <CardTitle>Order Summary</CardTitle>
-                        <Select value={displayCurrency} onValueChange={handleCurrencyChange}>
-                          <SelectTrigger className="w-28 h-7 text-xs gap-1" data-testid="select-display-currency">
-                            <Globe className="w-3 h-3 shrink-0" />
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SUPPORTED_CURRENCIES.map(c => (
-                              <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <CardTitle>Order Summary</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span data-testid="text-subtotal">{formatPrice(combinedSubtotal)}</span>
+                        <span data-testid="text-subtotal">${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span data-testid="text-platform-fee">{formatPrice(platformFee)}</span>
+                        <span data-testid="text-platform-fee">${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span data-testid="text-total">{formatPrice(combinedTotal)}</span>
+                        <span data-testid="text-total">${combinedTotal.toFixed(2)}</span>
                       </div>
-                      {displayCurrency !== "USD" && (
-                        <p className="text-xs text-muted-foreground" data-testid="text-currency-disclaimer">
-                          Prices shown in {displayCurrency}. You will be charged in USD.
-                        </p>
-                      )}
                     </CardContent>
                     <CardFooter className="flex flex-col gap-3">
                       {contentItems.length > 0 && (
@@ -1604,7 +1550,7 @@ export default function CartPage() {
                             <p className="text-xs text-muted-foreground">Potential savings</p>
                             {optimizationPreview.estimatedCostDelta < 0 && (
                               <p className="text-xs text-green-600 font-medium mt-0.5">
-                                ~{formatPrice(Math.abs(optimizationPreview.estimatedCostDelta / 100))} less
+                                ~${Math.abs(optimizationPreview.estimatedCostDelta / 100).toFixed(0)} less
                               </p>
                             )}
                           </div>
@@ -1722,9 +1668,9 @@ export default function CartPage() {
                       ) : (
                         <div className="text-center">
                           <p className="text-2xl font-bold text-foreground">
-                            {formatPrice(optimizationPreview.feeCents / 100)}
+                            ${(optimizationPreview.feeCents / 100).toFixed(2)}
                           </p>
-                          <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? " · charged in USD" : ""}</p>
+                          <p className="text-xs text-muted-foreground">one-time fee</p>
                         </div>
                       )}
 
@@ -1876,22 +1822,22 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPrice(combinedSubtotal)}</span>
+                        <span>${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
                           <span>Savings</span>
-                          <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
+                          <span>-${optimizationResult.estimatedTotal.savings}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>{formatPrice(platformFee)}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span>${(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
@@ -1995,7 +1941,7 @@ export default function CartPage() {
                               <div className="text-sm text-muted-foreground">Qty: {item.quantity}</div>
                             </div>
                             <div className="font-medium">
-                              {formatPrice(parseFloat(item.service?.price || "0") * item.quantity)}
+                              ${(parseFloat(item.service?.price || "0") * item.quantity).toFixed(2)}
                             </div>
                           </div>
                         ))}
@@ -2006,7 +1952,7 @@ export default function CartPage() {
                               <div className="text-sm text-muted-foreground">Qty: {item.quantity} | {item.provider}</div>
                             </div>
                             <div className="font-medium">
-                              {formatPrice(item.price * item.quantity)}
+                              ${(item.price * item.quantity).toFixed(2)}
                             </div>
                           </div>
                         ))}
@@ -2023,22 +1969,22 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPrice(combinedSubtotal)}</span>
+                        <span>${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
                           <span>Savings</span>
-                          <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
+                          <span>-${optimizationResult.estimatedTotal.savings}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>{formatPrice(platformFee)}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span>${(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">

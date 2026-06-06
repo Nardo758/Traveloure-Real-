@@ -21,7 +21,6 @@ import {
   TYPE_COLORS, MODE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardTrip,
 } from "@/components/plancard/plancard-types";
-import { TRANSPORT_MODE_IDS } from "@/lib/transport-modes";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { HeroSection } from "@/components/plancard/HeroSection";
 import { StatsRow, CostIcon, type ExtraStat } from "@/components/plancard/StatsRow";
@@ -1112,7 +1111,7 @@ function ExpertActivitiesSection({
   );
 }
 
-const AVAILABLE_MODES = TRANSPORT_MODE_IDS;
+const AVAILABLE_MODES = ["walk", "train", "taxi", "car", "bus", "shuttle", "ferry", "bicycle"];
 
 interface ExpertTransportSectionProps {
   tripId: string;

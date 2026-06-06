@@ -147,13 +147,16 @@ export async function seedRoleScopedTemplates(): Promise<{ inserted: number; ski
   const categoryId = categoryRow.id;
 
   for (const tpl of ROLE_TEMPLATES) {
-    // Check for existing platform row with same name.
-    // expert_id column was dropped in migration 013; dedup on name alone is sufficient
-    // because all ESO rows are now platform templates (no expert-scoped rows).
+    // Check for existing platform row with same name
     const existing = await db
       .select({ id: expertServiceOfferings.id })
       .from(expertServiceOfferings)
-      .where(eq(expertServiceOfferings.name, tpl.name))
+      .where(
+        and(
+          eq(expertServiceOfferings.name, tpl.name),
+          isNull(expertServiceOfferings.expertId)
+        )
+      )
       .then((r) => r[0]);
 
     if (existing) {
@@ -168,7 +171,9 @@ export async function seedRoleScopedTemplates(): Promise<{ inserted: number; ski
       price: tpl.price,
       isDefault: true,
       sortOrder: tpl.sortOrder,
+      expertId: null,
       targetRoles: tpl.targetRoles,
+      isActive: true,
     });
     inserted++;
   }

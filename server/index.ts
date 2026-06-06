@@ -14,7 +14,6 @@ import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
-import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -241,15 +240,6 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed role-scoped templates");
-  }
-
-  try {
-    const ownershipResult = await seedTripOwnership();
-    if (ownershipResult.inserted > 0) {
-      logger.info({ count: ownershipResult.inserted }, "Seeded trip owner collaborator rows");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed trip ownership collaborators");
   }
 
   seedingDurationMs = Date.now() - seedingStartTime;

@@ -1,10 +1,6 @@
 import {
-  Calendar, Star, TrainFront, Clock,
+  Calendar, Star, TrainFront, Clock, Footprints, Car, Bus, Ship, Bike,
 } from "lucide-react";
-import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
-
-// Re-exported for back-compat; the single source is @/lib/transport-modes.
-export { MODE_COLORS, MODE_ICON_MAP };
 
 export const TYPE_COLORS: Record<string, { bg: string; fg: string; dot: string }> = {
   dining:      { bg: "bg-amber-100 dark:bg-amber-900/30",  fg: "text-amber-800 dark:text-amber-300",  dot: "#f59e0b" },
@@ -20,6 +16,11 @@ export const STATUS_STYLES: Record<string, { bg: string; fg: string; label: stri
   suggested: { bg: "bg-indigo-100 dark:bg-indigo-900/30", fg: "text-indigo-800 dark:text-indigo-300", label: "Suggested" },
 };
 
+export const MODE_COLORS: Record<string, string> = {
+  walk: "#22c55e", train: "#3b82f6", taxi: "#f59e0b", car: "#f59e0b",
+  bus: "#8b5cf6", shuttle: "#ec4899", ferry: "#06b6d4", bicycle: "#84cc16",
+};
+
 export const CHANGE_DOT_COLORS: Record<string, string> = {
   expert: "bg-blue-500", friend: "bg-purple-500", ai: "bg-green-500", owner: "bg-amber-500",
 };
@@ -32,6 +33,10 @@ export const ENERGY_COLORS: Record<string, { bg: string; fg: string; label: stri
 
 export const STATS_ICONS = [Calendar, Star, TrainFront, Clock] as const;
 
+export const MODE_ICON_MAP: Record<string, typeof Footprints> = {
+  walk: Footprints, train: TrainFront, taxi: Car, car: Car,
+  bus: Bus, shuttle: Bus, ferry: Ship, bicycle: Bike,
+};
 
 export interface TemplateConfig {
   activityLabel: string;
@@ -67,9 +72,8 @@ export function getTemplateConfig(eventType: string | null | undefined): Templat
   return TEMPLATES.travel;
 }
 
-export function getDestinationPhotoUrl(destination: string | undefined | null): string {
-  const safe = destination || "travel";
-  const seed = safe
+export function getDestinationPhotoUrl(destination: string): string {
+  const seed = destination
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
@@ -88,7 +92,7 @@ export function getEnergyProfile(day: PlanCardDay | undefined | null): string {
 }
 
 export function ModeIcon({ mode, className }: { mode: string; className?: string }) {
-  const Icon = getModeIcon(mode);
+  const Icon = MODE_ICON_MAP[mode] || Footprints;
   return <Icon className={className || "w-4 h-4"} />;
 }
 
@@ -121,24 +125,6 @@ export interface PlanCardTransport {
   suggestedBy?: string;
   partnerName?: string;
   bookingSource?: "platform" | "affiliate";
-  // Per-leg mode-selection fields (feed the TransportConnector picker)
-  legOrder?: number;
-  recommendedMode?: string;
-  userSelectedMode?: string | null;
-  alternativeModes?: Array<{
-    mode: string;
-    durationMinutes: number;
-    costUsd: number | null;
-    energyCost?: number;
-    reason?: string;
-  }>;
-  fromLat?: number | null;
-  fromLng?: number | null;
-  toLat?: number | null;
-  toLng?: number | null;
-  distanceDisplay?: string;
-  estimatedDurationMinutes?: number;
-  estimatedCostUsd?: number | null;
 }
 
 export interface PlanCardDay {
@@ -188,7 +174,6 @@ export interface OptimizationDelta {
 }
 
 export interface PlanCardData {
-  tripRole?: PlanCardRole;
   days: PlanCardDay[];
   changeLog: PlanCardChange[];
   metrics: PlanCardMetrics;
@@ -208,7 +193,7 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
-export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
+export type PlanCardRole = "owner" | "expert" | "viewer";
 export type PlanCardStage = "summary" | "full";
 
 export interface PlanCardProps {

@@ -1,7 +1,4 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import {
   MapPin, History, MessageSquare, Activity,
   CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map,
@@ -111,42 +108,14 @@ function hasValidCoords(lat?: number, lng?: number): boolean {
 }
 
 interface ConnectorProps {
-  tripId: string;
   leg: InlineTransportLegData;
   modeOverride?: string;
   onModeChange: (mode: string) => void;
 }
 
-function TransportConnector({ tripId, leg, modeOverride, onModeChange }: ConnectorProps) {
-  const { toast } = useToast();
+function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps) {
   const [open, setOpen] = useState(false);
   const activeMode = canonicalMode(modeOverride || leg.userSelectedMode || leg.recommendedMode || "walk");
-
-  // Persist the per-leg mode choice. Copies the reference callers
-  // (DayTransportPanel / InlineTransportSelector): PATCH the live route with
-  // { selectedMode }, optimistic-update the displayed mode, roll back on error,
-  // and invalidate the plancard query so the transport tab + map agree.
-  const updateMode = useMutation({
-    mutationFn: async (selectedMode: string) => {
-      return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode });
-    },
-    onMutate: (selectedMode: string) => {
-      const prev = modeOverride ?? leg.userSelectedMode ?? leg.recommendedMode ?? "walk";
-      onModeChange(selectedMode);
-      return { prev };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-    },
-    onError: (_err, _selectedMode, context) => {
-      if (context?.prev) onModeChange(context.prev);
-      toast({
-        title: "Update failed",
-        description: "Could not change transport mode",
-        variant: "destructive",
-      });
-    },
-  });
   const modeIcon = TRANSPORT_MODE_ICONS[activeMode] || "🚶";
   const modeLabel = TRANSPORT_MODE_LABELS[activeMode] || activeMode;
 
@@ -239,7 +208,7 @@ function TransportConnector({ tripId, leg, modeOverride, onModeChange }: Connect
                 <button
                   key={m.mode}
                   onClick={() => {
-                    updateMode.mutate(m.mode);
+                    onModeChange(m.mode);
                     setOpen(false);
                     if (canNavigate) openMapsForMode(m.mode);
                   }}
@@ -568,7 +537,6 @@ export function ActivitiesSection({
 
             {legAfter && (
               <TransportConnector
-                tripId={tripId}
                 leg={legAfter}
                 modeOverride={legModes[legAfter.id]}
                 onModeChange={(mode) =>

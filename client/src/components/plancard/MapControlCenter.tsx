@@ -12,7 +12,6 @@ import {
   TYPE_COLORS, MODE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardActivity, type PlanCardTransport,
 } from "./plancard-types";
-import { getModePolylineStyle } from "@/lib/transport-modes";
 
 interface MapControlCenterProps {
   tripId: string;
@@ -28,6 +27,56 @@ interface GeocodedActivity extends PlanCardActivity {
 }
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+
+function getModePolylineStyle(mode: string) {
+  const dash: google.maps.Symbol = {
+    path: "M 0,-1 0,1",
+    strokeOpacity: 1,
+    scale: 4,
+  };
+
+  switch (mode) {
+    case "walk":
+      return {
+        strokeColor: "#22C55E",
+        strokeOpacity: 0,
+        strokeWeight: 3,
+        icons: [{ icon: dash, offset: "0", repeat: "16px" }],
+      };
+    case "train":
+      return {
+        strokeColor: "#3B82F6",
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+      };
+    case "bus":
+    case "shuttle":
+      return {
+        strokeColor: "#8B5CF6",
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+      };
+    case "taxi":
+    case "car":
+      return {
+        strokeColor: "#F59E0B",
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+      };
+    case "ferry":
+      return {
+        strokeColor: "#06B6D4",
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+      };
+    default:
+      return {
+        strokeColor: "#6B7280",
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+      };
+  }
+}
 
 function MapContent({
   activities,
@@ -155,13 +204,7 @@ function MapContent({
         const fromActivity = geocodedActivities.find((a) => a.location === tr.from || a.name === tr.fromName) || geocodedActivities[i];
         const toActivity = geocodedActivities.find((a) => a.location === tr.to || a.name === tr.toName) || geocodedActivities[i + 1];
         if (!fromActivity || !toActivity) return null;
-        // Derive the leg's mode from the persisted leg record (userSelectedMode ??
-        // recommendedMode), NOT from any local component state. tr.mode is the
-        // server-computed equivalent and stays as a final fallback for legs that
-        // lack the explicit fields (e.g. generated-itinerary fallback legs). After
-        // a mode change + /plancard invalidate, this restyles on its own.
-        const activeMode = tr.userSelectedMode ?? tr.recommendedMode ?? tr.mode;
-        const style = getModePolylineStyle(activeMode);
+        const style = getModePolylineStyle(tr.mode);
         const midLat = (fromActivity.resolvedLat + toActivity.resolvedLat) / 2;
         const midLng = (fromActivity.resolvedLng + toActivity.resolvedLng) / 2;
         return (
@@ -182,8 +225,8 @@ function MapContent({
                   className="px-1.5 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap shadow-md border"
                   style={{
                     backgroundColor: "hsl(var(--card))",
-                    borderColor: style.strokeColor ?? undefined,
-                    color: style.strokeColor ?? undefined,
+                    borderColor: style.strokeColor,
+                    color: style.strokeColor,
                   }}
                   data-testid={`map-route-duration-${tr.id}`}
                 >

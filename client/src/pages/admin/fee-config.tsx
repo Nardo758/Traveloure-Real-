@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +21,6 @@ import {
   Zap,
   Star,
   Trophy,
-  Shield,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -36,9 +33,6 @@ interface FeeConfigData {
   minFee: number | null;
   maxFee: number | null;
   isActive: boolean;
-  insuranceEnabled: boolean;
-  insuranceRatePercent: number;
-  insuranceAppliesTo: string[];
 }
 
 interface OptimizationFeeData {
@@ -75,9 +69,6 @@ const DEFAULT_CONFIGS: FeeConfigData[] = Object.keys(CATEGORY_LABELS).map(cat =>
   minFee: null,
   maxFee: null,
   isActive: true,
-  insuranceEnabled: false,
-  insuranceRatePercent: 0,
-  insuranceAppliesTo: [],
 }));
 
 const OPTIMIZATION_TIER_META: Record<string, { label: string; description: string; Icon: any; color: string }> = {
@@ -232,59 +223,6 @@ function FeeConfigCard({
               data-testid={`input-max-fee-${config.category}`}
             />
           </div>
-        </div>
-
-        {/* Insurance Tier */}
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 p-3 space-y-3" data-testid={`card-insurance-tier-${config.category}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-xs font-semibold text-blue-800 dark:text-blue-200">Insurance Tier</span>
-            </div>
-            <Switch
-              checked={config.insuranceEnabled}
-              onCheckedChange={v => onChange("insuranceEnabled", v)}
-              data-testid={`switch-insurance-enabled-${config.category}`}
-            />
-          </div>
-          {config.insuranceEnabled && (
-            <div className="space-y-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Insurance rate (% of item cost)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={25}
-                    step={0.5}
-                    value={config.insuranceRatePercent}
-                    onChange={e => onChange("insuranceRatePercent", parseFloat(e.target.value) || 0)}
-                    className="w-24"
-                    data-testid={`input-insurance-rate-${config.category}`}
-                  />
-                  <span className="text-sm text-muted-foreground">%</span>
-                </div>
-              </div>
-              <div className="rounded bg-blue-100 dark:bg-blue-900/30 p-2 text-center">
-                <p className="text-[10px] text-blue-700 dark:text-blue-300">
-                  Added on top of platform fee. Applies to all bookings in this category unless restricted below.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Restrict to booking types (comma-separated, blank = all)</Label>
-                <Input
-                  type="text"
-                  placeholder="e.g. hotel,flight"
-                  value={config.insuranceAppliesTo.join(",")}
-                  onChange={e => onChange("insuranceAppliesTo", e.target.value ? e.target.value.split(",").map(s => s.trim()).filter(Boolean) : [])}
-                  data-testid={`input-insurance-applies-to-${config.category}`}
-                />
-              </div>
-            </div>
-          )}
-          {!config.insuranceEnabled && (
-            <p className="text-xs text-blue-600 dark:text-blue-400">Enable to add an insurance component to the platform fee for this category.</p>
-          )}
         </div>
 
         <Button
