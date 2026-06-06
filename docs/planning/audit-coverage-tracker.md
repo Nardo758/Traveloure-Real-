@@ -47,8 +47,8 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | Gap | Owner | Status |
 |---|---|---|
 | **Per-expert commission override** (`users.commission_override_expert_share_percent` + Tier-3 branch in `resolveCommissionRates` before category fallback + admin editor, audit-logged) | **CON / ✅ Shipped** (P1 `7d1c250`, P2 `5b13915`, P3 `79b335f`) | **Recruitment gate clears once tested E2E in staging.** Then §6.9 "20% vs 25%" outreach can ship; admin sets new beta experts to 80 before first booking settles. (Stored as expert-share %, not platform rate — same math, self-documenting name.) |
-| **Provider insurance-tier → tier commission (12/8/6/4)** | **FEE-2** | **Launch-blocking. Brief pending** — small (~one session): insurance-fields on `serviceProviderForms` + `insuranceTier` column + resolver branch sibling to per-expert. Open decision: admin-validated or self-attested? (see scoping doc Q2). |
-| **`pricing.service.ts` deposit + tier markups** | **FEE-3** | **Launch-blocking pending P0 alive-check.** If `pricing.service.ts:20,119-122` is actually called, half-session fix (extract to `booking_fee_configs`). If dead, delete-pass. |
+| **Provider insurance-tier → tier commission (12/8/6/4)** | **FEE-2** | **Launch-blocking. Specced** — `docs/planning/fee-2-provider-insurance-tier-brief.md`. Three phases: insurance fields + tier column on `serviceProviderForms`, resolver branch, admin UI. Locked admin-validated (compliance + revenue-anchored). Ready to execute. |
+| **`pricing.service.ts` deposit + tier markups** | **FEE-3** | **Launch-blocking. Specced** — `docs/planning/fee-3-pricing-service-brief.md`. P0 alive-check done: ✅ alive (consumed by `booking.service.ts` + `routes/bookings.ts:559` mounted at `/api/bookings`). Two phases: seed rates into `booking_fee_configs`, loadRateFromConfig helper with 60s cache; constants kept as DEFAULT_* fallback. Ready to execute. |
 | Single fee resolver every charge path reads from | FEE / Deferred-P2 | Works as two resolvers (`commission.ts` + `optimization-fee.service.ts`) in parallel. Unification is structural cleanup, not launch-blocking. |
 | 6 of 9 §4.8 fees hard-coded or missing | FEE | Down to **3 of 9 remaining** after CON-A + EXP-OVR + LB-P5a. Remaining three: provider commission tiers (FEE-2), affiliate handling (Deferred-P2), expert new-vs-established split (Deferred-P2). |
 | Override granularity (global→market→tier→entity) | FEE / Deferred-P2 | Phase-2 batch brief. Only matters at multi-market scale; first market doesn't need it. |
@@ -64,10 +64,10 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 
 | Gap | Owner | Status |
 |---|---|---|
-| Email verification — no send/confirm endpoints | LB-P1 (dep) | Resend wired + RESEND_API_KEY set + sending domain verified. The password-reset channel is live; a separate email-verification-on-signup flow is still missing. Small follow-up — same Resend client + a new `email_verifications` table. |
+| Email verification on signup | LB-P1 (extension) | ✅ Shipped (`e87f61f`) — `email_verification_tokens` table (migration 022), `sendEmailVerificationEmail` Resend helper, `POST /api/auth/send-verification` + `POST /api/auth/verify-email`, `/verify-email` landing page, fire-and-forget hook on `/api/auth/register`. |
 | Expert workspace affiliate-integrations panel "coming soon" | CON | ✅ Shipped (`2a5c89d`) — workspace reads admin `affiliate_partners` via `GET /api/affiliate/partners?isActive=true`; hardcoded list + "Coming soon" toast removed. |
 | Review-specific moderation (only generic queue) | — | Unowned |
-| Route fragmentation — `server/routes.ts` duplicates `routes/*.routes.ts` | post-launch | Surveyed: 628 of 642 endpoints in `routes.ts` are duplicated in 6 unmounted modules (admin, content, experts, trips, bookings-domain, payments). Active billing leak from this fragmentation was patched in `d886791` (LB-P3.5 — payment gate ported into the LIVE handler). Structural extraction is a multi-session brief; **post-launch**. |
+| Route fragmentation — `server/routes.ts` duplicates `routes/*.routes.ts` | post-launch | **Specced** — `docs/planning/route-defragmentation-brief.md`. Six phases (one per unmounted module, smallest first), ~7-9 days total. Hard prereqs: first market live + Playwright baseline green + per-phase feature freeze. Active billing leak from this fragmentation was patched in `d886791` (LB-P3.5). |
 | Executive Assistant role — RBAC granularity unclear | — | Unowned |
 | Cart multi-currency + sharing | — | Unowned |
 
