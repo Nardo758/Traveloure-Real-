@@ -1266,11 +1266,14 @@ export class DatabaseStorage implements IStorage {
       metadata: { rating: newReview.rating, serviceId: newReview.serviceId, providerId: newReview.providerId },
     });
     
-    // Update service average rating
+    // Update service average rating — approved reviews only so pending/removed don't skew stats
     const allReviews = await this.getServiceReviews(review.serviceId);
-    const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+    const approvedReviews = allReviews.filter(r => (r as any).status === "approved");
+    const avgRating = approvedReviews.length > 0
+      ? approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length
+      : 0;
     await db.update(providerServices)
-      .set({ averageRating: String(avgRating), reviewCount: allReviews.length, updatedAt: new Date() })
+      .set({ averageRating: String(avgRating), reviewCount: approvedReviews.length, updatedAt: new Date() })
       .where(eq(providerServices.id, review.serviceId));
     
     return newReview;
