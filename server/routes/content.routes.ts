@@ -2220,7 +2220,14 @@ router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/services/:serviceId/reviews", async (req, res) => {
     const all = await storage.getServiceReviews(req.params.serviceId);
-    const visible = all.filter(r => (r as any).status === "approved");
+    const visible = all
+      .filter(r => (r as any).status === "approved" || (r as any).status === "removed")
+      .map(r => {
+        if ((r as any).status === "removed") {
+          return { id: r.id, status: "removed", createdAt: r.createdAt };
+        }
+        return r;
+      });
     res.json(visible);
   });
 
