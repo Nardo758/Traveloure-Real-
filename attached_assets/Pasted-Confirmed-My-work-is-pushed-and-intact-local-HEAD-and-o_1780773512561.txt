@@ -1,0 +1,38 @@
+Confirmed. My work is pushed and intact — local `HEAD` and `origin/claude/nifty-dijkstra-w7e6v` are the **same commit `b5871f6`**. Nothing is missing on the remote; the Replit workspace is just looking at the wrong branch.
+
+## The mismatch
+
+| | Branch | HEAD |
+|---|---|---|
+| **My Phase 1 work** (this task's assigned branch) | `claude/nifty-dijkstra-w7e6v` | `b5871f6` |
+| **Replit workspace is on** | `claude/laughing-bardeen-KyTUY` | `3bc4d7a8` |
+
+`laughing-bardeen` is the old branch from the already-merged PR #18 — it will never contain my commits. Replit's suggested `git pull origin claude/laughing-bardeen-KyTUY` pulls the wrong branch.
+
+## What to run in the Replit shell instead
+
+Switch the workspace to my branch (don't merge it into laughing-bardeen):
+
+```bash
+git fetch origin claude/nifty-dijkstra-w7e6v
+git checkout claude/nifty-dijkstra-w7e6v
+```
+
+If `git fetch` is blocked in the sandbox, run it from the **Replit shell directly** (which has network), then verify you're on `b5871f6`:
+
+```bash
+git log --oneline -1        # should show b5871f6 … Phase 1
+```
+
+Then the real gate:
+
+```bash
+npx tsc --noEmit 2>&1 | grep "experience-template"
+```
+
+## Two things worth flagging from your report
+
+1. **Real baseline = 189 errors, not ~140.** The v2 handoff says "re-baseline on entry" — so 189 is the floor to hold, and Phase 1 must not exceed it. Good to have the real number now.
+2. **The one pre-existing `experience-template.tsx` error is `TS2322` at line 3171 — `ExperienceMapProps` mismatch.** Phase 1 did **not** touch `ExperienceMap`'s props, so this error persists (now at a shifted line, since the file is ~635 lines shorter). It's pre-existing, in the 189 baseline, and **not introduced by Phase 1** — but note it's exactly the map component Phase 6 builds on, so it's worth fixing when we get there. After checkout, the correct Phase-1 pass criterion is: **`tsc` count ≤ 189 with no *new* errors in `experience-template.tsx` beyond that one TS2322.**
+
+Once you've checked out `b5871f6` and have a tsc number, send it over and I'll confirm Phase 1 cleared the gate before we move to Phase 2.

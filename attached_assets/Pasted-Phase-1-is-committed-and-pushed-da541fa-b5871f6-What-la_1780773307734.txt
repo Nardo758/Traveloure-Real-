@@ -1,0 +1,25 @@
+Phase 1 is committed and pushed (`da541fa..b5871f6`).
+
+## What landed
+
+**Net: 43 insertions, 635 deletions** in `client/src/pages/experience-template.tsx`.
+
+| Area | Done |
+|---|---|
+| **Faceted filters** | Removed the Region-2 "Filters & Sort" Collapsible (price range, min-rating, sort, preference chips, interest chips) and the DB `TemplateFiltersPanel`. Replaced with a lightweight free-text search (most tabs) / vendor-type select (wedding vendors). |
+| **Price params** | Dropped `priceRange/minRating/sortBy` + flight/hotel `maxPrice/stops/starRating/sort` props and all their state, rehydration, and sessionStorage persistence. `filteredServices` reduced to category + search. |
+| **Ground transport** | Deleted the dead `transportation` branch, the `transfers` tab + its `AmadeusTransfers` body, and the `TravelpayoutsNomad`/`DiscoverCars` widgets. Removed the three now-dead component defs + 8 unused imports. |
+| **Anchors kept** | Flights + Hotels remain; flight selection still writes to cart with departure/arrival metadata. |
+| **Loud fallback** | A slug absent from `experienceConfigs` now hits the not-found card instead of silently rendering as wedding. |
+
+**Decisions applied** (all six recommendations): kept search box · kept FlightSearch/HotelSearch internal default sort · removed Nomad + DiscoverCars · dropped interest chips · loud fallback = error card · deferred flight temporal-anchor export to P3/P7.
+
+## Verification (and its one limit)
+- ✅ TypeScript compiler-API **syntax parse: clean**
+- ✅ **Grep gate: clean** — no dangling references to any removed symbol
+- ✅ Consumer props confirmed optional (FlightSearch/HotelSearch/ActivitySearch/VenueSearchPanel/AIMatchedExperts), and three consumer references that still pointed at removed state (`selectedInterests`×2, `minRating`) were caught and fixed
+- ⚠️ **The full `tsc` floor gate could not run here** — `@types` are absent and the npm registry is blocked, so `tsc` short-circuits before real type-checking (still the same 4 pre-existing env errors, zero new). **Re-run `npm run check` in the deps-installed workspace to confirm against the re-baselined floor** before treating Phase 1's gate as formally passed.
+
+`template-filters-panel.tsx` and the DB tab endpoints were intentionally left intact — Phase 2 repurposes them.
+
+Want me to start Phase 2 (adapt the dormant DB system into the content-category engine), or pause here for the workspace tsc confirmation first?
