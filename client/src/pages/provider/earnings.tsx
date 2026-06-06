@@ -26,13 +26,6 @@ interface ConnectStatus {
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
-interface FeeConfigRow {
-  category: string;
-  insurance_enabled: boolean;
-  insurance_rate_percent: number;
-  insurance_applies_to: string[];
-}
-
 export default function ProviderEarnings() {
   const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
     queryKey: ["/api/provider/bookings"],
@@ -40,10 +33,6 @@ export default function ProviderEarnings() {
 
   const { data: connectStatus } = useQuery<ConnectStatus>({
     queryKey: ["/api/stripe/connect/status"],
-  });
-
-  const { data: feeConfigs } = useQuery<FeeConfigRow[]>({
-    queryKey: ["/api/admin/fee-config"],
   });
 
   const canRequestPayout = connectStatus?.connected && connectStatus?.status === "active";
@@ -125,22 +114,17 @@ export default function ProviderEarnings() {
 
   const revenueBreakdown = useMemo(() => {
     if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: 0.30 };
-    let gross = 0, fee = 0, share = 0;
+    let gross = 0, fee = 0, share = 0, insurance = 0;
     for (const b of bookings) {
       gross += Number(b.totalAmount ?? 0);
       fee += Number(b.platformFee ?? 0);
       share += Number(b.providerEarnings ?? 0);
+      insurance += Number((b as any).insuranceFee ?? 0);
     }
     const effectiveRate = gross > 0 ? share / gross : 0.30;
-
-    // Calculate insurance portion using the default fee config (or zero if not enabled)
-    const defaultConfig = feeConfigs?.find(c => c.category === "default");
-    const insuranceRate = defaultConfig?.insurance_enabled ? (defaultConfig?.insurance_rate_percent ?? 0) / 100 : 0;
-    const insuranceFee = Math.round(gross * insuranceRate * 100) / 100;
-    const basePlatformFee = Math.round((fee - insuranceFee) * 100) / 100;
-
-    return { gross, platformFee: fee, basePlatformFee, insuranceFee, providerShare: share, effectiveRate };
-  }, [bookings, feeConfigs]);
+    const basePlatformFee = Math.round((fee - insurance) * 100) / 100;
+    return { gross, platformFee: fee, basePlatformFee, insuranceFee: insurance, providerShare: share, effectiveRate };
+  }, [bookings]);
 
   if (isLoading) {
     return (
