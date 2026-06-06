@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { expertServiceCategories, expertServiceOfferings, expertCustomServices, users, localExpertForms } from "@shared/schema";
+import { expertServiceCategories, expertServiceOfferings, users, localExpertForms } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const expertServiceData = [
