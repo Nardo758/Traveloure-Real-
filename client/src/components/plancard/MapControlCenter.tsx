@@ -12,6 +12,7 @@ import {
   TYPE_COLORS, MODE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardActivity, type PlanCardTransport,
 } from "./plancard-types";
+import { getModePolylineStyle } from "@/lib/transport-modes";
 
 interface MapControlCenterProps {
   tripId: string;
@@ -27,56 +28,6 @@ interface GeocodedActivity extends PlanCardActivity {
 }
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-
-function getModePolylineStyle(mode: string) {
-  const dash: google.maps.Symbol = {
-    path: "M 0,-1 0,1",
-    strokeOpacity: 1,
-    scale: 4,
-  };
-
-  switch (mode) {
-    case "walk":
-      return {
-        strokeColor: "#22C55E",
-        strokeOpacity: 0,
-        strokeWeight: 3,
-        icons: [{ icon: dash, offset: "0", repeat: "16px" }],
-      };
-    case "train":
-      return {
-        strokeColor: "#3B82F6",
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-      };
-    case "bus":
-    case "shuttle":
-      return {
-        strokeColor: "#8B5CF6",
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-      };
-    case "taxi":
-    case "car":
-      return {
-        strokeColor: "#F59E0B",
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-      };
-    case "ferry":
-      return {
-        strokeColor: "#06B6D4",
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-      };
-    default:
-      return {
-        strokeColor: "#6B7280",
-        strokeOpacity: 0.7,
-        strokeWeight: 2,
-      };
-  }
-}
 
 function MapContent({
   activities,
