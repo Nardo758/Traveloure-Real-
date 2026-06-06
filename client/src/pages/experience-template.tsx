@@ -970,8 +970,14 @@ const DB_TAB_ICON_MAP: Record<string, any> = {
 // Derive tabType from slug when the DB field is null/default
 function deriveTabType(slug: string): string {
   if (slug === "flights") return "flights";
-  if (slug === "hotels" || slug === "accommodations") return "hotels";
-  if (slug === "transportation") return "transport";
+  if (slug === "hotels" || slug === "accommodations" || slug.includes("accommodation")) return "hotels";
+  if (slug === "transportation" || slug === "transfers") return "transport";
+  if (slug === "activities" || slug.includes("activities")) return "activities";
+  if (slug === "events") return "events";
+  if (slug === "services") return "services";
+  if (slug === "dining" || slug.includes("dining")) return "dining";
+  if (slug === "nightlife" || slug.includes("nightlife")) return "nightlife";
+  if (slug === "vendors") return "vendors";
   return "venue-search";
 }
 
@@ -2192,7 +2198,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${experienceType.heroImage ?? config.heroImage}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? config?.heroImage ?? ""}')` }}
             />
 
             {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
@@ -2318,7 +2324,7 @@ export default function ExperienceTemplatePage() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="location" className="text-sm font-medium">
-                    {experienceType.locationLabel ?? config.locationLabel}
+                    {experienceType.locationLabel ?? config?.locationLabel ?? "Destination city"}
                   </Label>
                   <Input
                     id="location"
@@ -2924,7 +2930,8 @@ export default function ExperienceTemplatePage() {
             <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
-          {activeTab === "services" && (
+          {/* P5: tabType-registry driven — any tab with tabType "services" */}
+          {currentTabType === "services" && (
             <div className="mb-6">
               <ServiceBrowser
                 defaultLocation={destination}
@@ -2943,7 +2950,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "activities" && (
+          {/* P5: tabType-registry driven — any tab with tabType "activities" */}
+          {currentTabType === "activities" && (
             <div className="mb-6 space-y-4">
               <ActivitySearch
                 destination={destination}
@@ -3039,7 +3047,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "events" && (
+          {/* P5: tabType-registry driven — any tab with tabType "events" */}
+          {currentTabType === "events" && (
             <div className="mb-6">
               <FeverEventsSection
                 destination={destination}
@@ -3049,7 +3058,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "transfers" && (
+          {/* P5: tabType-registry driven — any tab with tabType "transport" */}
+          {currentTabType === "transport" && (
             <div className="mb-6">
               <AmadeusTransfers
                 destination={destination || ""}
@@ -3071,14 +3081,14 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* Restaurant Catalog Section (OpenTable + Booking.com) — shown for dining tabs */}
-          {activeTab === "dining" && destination && (
+          {/* Restaurant Catalog Section — shown for any tab with tabType "dining" */}
+          {currentTabType === "dining" && destination && (
             <RestaurantCatalogSection destination={destination} />
           )}
 
-          {/* Venue Search Panel - Google Places Integration (dynamically wired to all supported tabs) */}
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
-            (activeTab === "vendors" || activeTab in TAB_FALLBACK_CONFIG) && (
+          {/* Venue Search Panel — fallback for venue-search / dining / nightlife / vendors and any tab in TAB_FALLBACK_CONFIG */}
+          {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && currentTabType !== "planning-tools" && currentTabType !== "itinerary-builder" && (
+            (currentTabType === "vendors" || activeTab in TAB_FALLBACK_CONFIG || currentTabType === "venue-search" || currentTabType === "dining" || currentTabType === "nightlife") && (
               <div className="mb-6">
                 <VenueSearchPanel
                   template={slug || ''}
@@ -3351,7 +3361,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-48 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${experienceType.heroImage ?? config.heroImage}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? config?.heroImage ?? ""}')` }}
             />
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-between z-10">
               {/* Mobile Map/Form Toggle or Trip Planner link */}
@@ -3498,7 +3508,7 @@ export default function ExperienceTemplatePage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? config.locationLabel}</Label>
+                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? config?.locationLabel ?? "Destination city"}</Label>
                   <Input
                     placeholder="Eg: Paris, New York"
                     value={destination}
