@@ -65,6 +65,12 @@ import {
   Building2,
   Wrench,
   Ticket,
+  Sun,
+  Activity,
+  Zap,
+  ChefHat,
+  UtensilsCrossed,
+  Bus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -76,7 +82,7 @@ import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import type { ExperienceType, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
+import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
@@ -951,6 +957,24 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
   },
 };
 
+// P5: DB-driven tab icon registry — maps DB icon string → Lucide component
+const DB_TAB_ICON_MAP: Record<string, any> = {
+  MapPin, Home, Sun, Moon, UtensilsCrossed, Users, Activity, Star, Plane,
+  Building: Building2, Building2, Car, Music, Calendar, Sparkles, Gift,
+  Camera, ChefHat, Zap, Heart, Hotel, Utensils, Bus, Dumbbell, Wrench,
+  Landmark, Award, Package, Wine, Palmtree, PartyPopper, TreePine,
+  Baby, GraduationCap, Flower2, Ticket,
+};
+
+function dbTabsToConfig(tabs: ExperienceTemplateTab[]): TabConfig[] {
+  return tabs.map((tab) => ({
+    id: tab.slug,
+    label: tab.name,
+    icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
+    category: tab.slug,
+  }));
+}
+
 const slugAliases: Record<string, string> = {
   "romance": "date-night",
   "corporate": "corporate-events",
@@ -1183,6 +1207,12 @@ export default function ExperienceTemplatePage() {
     enabled: !!slug,
   });
 
+  // P5: DB-driven tabs (prefer over hardcoded config.tabs once loaded)
+  const { data: dbTabs } = useQuery<ExperienceTemplateTab[]>({
+    queryKey: ["/api/experience-types", experienceType?.id, "tabs"],
+    enabled: !!experienceType?.id,
+  });
+
   const { data: services, isLoading: servicesLoading } = useQuery<ProviderService[]>({
     queryKey: ["/api/provider-services"],
   });
@@ -1259,7 +1289,8 @@ export default function ExperienceTemplatePage() {
     return [...platformItems, ...localExternalCart];
   }, [serverCart, localExternalCart]);
 
-  const config = experienceConfigs[slug] || experienceConfigs.wedding;
+  // P1: null instead of silent wedding fallback — unrecognized slugs show "Coming Soon"
+  const config = experienceConfigs[slug] ?? null;
   
   // Read query params for pre-filled destination
   const searchString = useSearch();
@@ -1308,7 +1339,7 @@ export default function ExperienceTemplatePage() {
   const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
   const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(initialSettings?.endDate ? new Date(initialSettings.endDate) : undefined);
-  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? config.tabs[0]?.id ?? "venue");
+  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? config?.tabs[0]?.id ?? "venue");
   const [searchQuery, setSearchQuery] = useState(initialSettings?.searchQuery ?? "");
   const [priceRange, setPriceRange] = useState(initialSettings?.priceRange ?? [0, 500]);
   const [minRating, setMinRating] = useState(initialSettings?.minRating ?? 0);
@@ -1331,21 +1362,41 @@ export default function ExperienceTemplatePage() {
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
   
-  // Template-based filters (for experience types with database-driven tabs)
+  // Template-based filters (DB-driven — now enabled for all templates)
   const templateFilters = useTemplateFilters();
-  const hasTemplateTabs = slug === "bachelor-bachelorette" || slug === "anniversary-trip";
+  // P3: All templates with a DB record get TemplateFiltersPanel (gate removed)
+  const hasTemplateTabs = !!experienceType?.id;
   
   // Wedding mode state (planning vs guest activities)
   const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
   
-  // Get effective tabs based on mode for templates with dual modes
+  // P5+P1: effectiveTabs — prefer DB tabs when loaded; fallback to hardcoded config
   const effectiveTabs = useMemo(() => {
+    if (dbTabs && dbTabs.length > 0) {
+      // Wedding dual-mode: still reads planning/guest from hardcoded config
+      if (config?.modes && slug === "wedding") {
+        const modeConfig = weddingMode === "planning" ? config.modes.planning : config.modes.guest;
+        return modeConfig?.tabs || dbTabsToConfig(dbTabs);
+      }
+      return dbTabsToConfig(dbTabs);
+    }
+    // Fallback while DB tabs are loading or unavailable
+    if (!config) return [];
     if (config.modes && slug === "wedding") {
       const modeConfig = weddingMode === "planning" ? config.modes.planning : config.modes.guest;
       return modeConfig?.tabs || config.tabs;
     }
     return config.tabs;
-  }, [config, slug, weddingMode]);
+  }, [config, dbTabs, slug, weddingMode]);
+
+  // P5: Reset activeTab when dbTabs loads and current tab isn't present
+  useEffect(() => {
+    if (!dbTabs || dbTabs.length === 0) return;
+    const tabIds = dbTabsToConfig(dbTabs).map((t) => t.id);
+    if (!tabIds.includes(activeTab)) {
+      setActiveTab(tabIds[0] ?? "venue");
+    }
+  }, [dbTabs]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Track whether we've done initial hydration
   const hasHydratedRef = useRef(false);
@@ -1367,8 +1418,8 @@ export default function ExperienceTemplatePage() {
       const settings = getPersistedSearchSettings(slug);
       
       // Get defaults for this experience type
-      const currentConfig = experienceConfigs[slug] || experienceConfigs.wedding;
-      const defaultActiveTab = currentConfig.tabs[0]?.id || "venue";
+      const currentConfig = experienceConfigs[slug] ?? null;
+      const defaultActiveTab = currentConfig?.tabs[0]?.id || "venue";
       
       // Priority: query params > sessionStorage trip queue > stored settings > defaults
       // Check for destination from query params or sessionStorage (from Take me Here feature)
@@ -2110,6 +2161,29 @@ export default function ExperienceTemplatePage() {
     );
   }
 
+  // P1: experienceType exists in DB but no frontend config yet → "Coming Soon"
+  if (!config) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <Card className="p-8 max-w-md text-center">
+            <h2 className="text-xl font-semibold mb-2">Coming Soon</h2>
+            <p className="text-muted-foreground mb-6">
+              The <strong>{experienceType.name}</strong> experience template is coming soon.
+              Check back for updates!
+            </p>
+            <Link href="/experiences">
+              <Button data-testid="button-browse-experiences">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Browse Experiences
+              </Button>
+            </Link>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -2120,7 +2194,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${config.heroImage}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? config.heroImage}')` }}
             />
 
             {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
@@ -2216,32 +2290,37 @@ export default function ExperienceTemplatePage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                        <SelectItem key={n} value={n.toString()} data-testid={`select-adults-${n}`}>
-                          {n} {n === 1 ? 'adult' : 'adults'}
-                        </SelectItem>
-                      ))}
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
+                        const unitLabel = experienceType.headcountLabel || 'adult';
+                        return (
+                          <SelectItem key={n} value={n.toString()} data-testid={`select-adults-${n}`}>
+                            {n} {n === 1 ? unitLabel : unitLabel + 's'}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
-                  <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
-                    <SelectTrigger className="w-[100px] h-8" data-testid="select-kids">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                        <SelectItem key={n} value={n.toString()} data-testid={`select-kids-${n}`}>
-                          {n} {n === 1 ? 'kid' : 'kids'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {experienceType.showKids !== false && (
+                    <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
+                      <SelectTrigger className="w-[100px] h-8" data-testid="select-kids">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                          <SelectItem key={n} value={n.toString()} data-testid={`select-kids-${n}`}>
+                            {n} {n === 1 ? 'kid' : 'kids'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
               
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="location" className="text-sm font-medium">
-                    {config.locationLabel}
+                    {experienceType.locationLabel ?? config.locationLabel}
                   </Label>
                   <Input
                     id="location"
@@ -2253,9 +2332,10 @@ export default function ExperienceTemplatePage() {
                   />
                 </div>
 
+                {experienceType.showOriginCity !== "hide" && (
                 <div>
                   <Label htmlFor="origin" className="text-sm font-medium">
-                    City of Origin:
+                    City of Origin:{experienceType.showOriginCity === "optional" && <span className="text-muted-foreground font-normal ml-1">(optional)</span>}
                   </Label>
                   <Input
                     id="origin"
@@ -2269,6 +2349,7 @@ export default function ExperienceTemplatePage() {
                     data-testid="input-origin"
                   />
                 </div>
+                )}
 
                 <div>
                   <Label className="text-sm font-medium">{config.dateLabel}</Label>
@@ -2554,16 +2635,15 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          <Collapsible open={activeTab === "transportation" ? false : filtersOpen} onOpenChange={setFiltersOpen}>
-            {activeTab !== "transportation" && (
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Filters & Sort
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
-                </Button>
-              </CollapsibleTrigger>
-            )}
+          {(activeTab === "flights" || activeTab === "hotels" || activeTab === "accommodations") && (
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
+                <SlidersHorizontal className="w-4 h-4" />
+                Filters & Sort
+                <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
@@ -2668,157 +2748,14 @@ export default function ExperienceTemplatePage() {
                         </div>
                       </div>
                     </>
-                  ) : (
-                    <>
-                      <div>
-                        {activeTab === "vendors" ? (
-                          <>
-                            <Label className="text-sm font-medium">Vendor Type</Label>
-                            <Select value={vendorType} onValueChange={setVendorType}>
-                              <SelectTrigger className="mt-1" data-testid="select-vendor-type-main">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {WEDDING_VENDOR_TYPES.map(type => (
-                                  <SelectItem key={type.value} value={type.value}>
-                                    {type.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </>
-                        ) : (
-                          <>
-                            <Label className="text-sm font-medium">Search</Label>
-                            <div className="relative mt-1">
-                              <Input
-                                placeholder="Search by name, provider, or description..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-10"
-                                data-testid="input-search"
-                              />
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-4">
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Price Range: ${priceRange[0]} - ${priceRange[1]}+</Label>
-                          <Slider
-                            value={priceRange}
-                            onValueChange={setPriceRange}
-                            max={500}
-                            step={10}
-                            className="mt-2"
-                            data-testid="slider-price"
-                          />
-                        </div>
-
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Minimum Rating</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {[0, 3, 3.5, 4, 4.5].map((rating) => (
-                              <Button
-                                key={rating}
-                                variant={minRating === rating ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setMinRating(rating)}
-                                className={minRating === rating ? "bg-[#FF385C]" : ""}
-                                data-testid={`button-rating-${rating}`}
-                              >
-                                {rating === 0 ? "All" : <><Star className="w-3 h-3 mr-1" />{rating}+</>}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="min-w-[140px] max-w-[180px]">
-                          <Label className="text-sm font-medium">Sort By</Label>
-                          <Select value={sortBy} onValueChange={setSortBy}>
-                            <SelectTrigger className="mt-2" data-testid="select-sort">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="popular">Most Popular</SelectItem>
-                              <SelectItem value="price-low">Price: Low to High</SelectItem>
-                              <SelectItem value="price-high">Price: High to Low</SelectItem>
-                              <SelectItem value="rating">Highest Rated</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Hide Preferences section for vendors tab - VenueSearchPanel has its own Vendor Type filter */}
-                      {activeTab !== "vendors" && (
-                        <div>
-                          <Label className="text-sm font-medium mb-2 block">Preferences</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {config.filters.map((filter) => (
-                              <Badge
-                                key={filter}
-                                variant={selectedFilters.includes(filter) ? "default" : "outline"}
-                                className={cn(
-                                  "cursor-pointer",
-                                  selectedFilters.includes(filter) && "bg-[#FF385C]"
-                                )}
-                                onClick={() => toggleFilter(filter)}
-                                data-testid={`filter-${filter.toLowerCase()}`}
-                              >
-                                {filter}
-                              </Badge>
-                            ))}
-                            {/* Interest-based filters - shown for Activities tab */}
-                            {activeTab === "activities" && [
-                              { id: "culture", label: "Culture & History" },
-                              { id: "food", label: "Food & Dining" },
-                              { id: "adventure", label: "Adventure" },
-                              { id: "nature", label: "Nature & Outdoors" },
-                              { id: "nightlife", label: "Nightlife" },
-                              { id: "shopping", label: "Shopping" },
-                              { id: "wellness", label: "Wellness & Spa" },
-                              { id: "art", label: "Art & Museums" },
-                            ].map((interest) => (
-                              <Badge
-                                key={interest.id}
-                                variant={selectedInterests.includes(interest.id) ? "default" : "outline"}
-                                className={cn(
-                                  "cursor-pointer",
-                                  selectedInterests.includes(interest.id) && "bg-[#FF385C]"
-                                )}
-                                onClick={() => toggleInterest(interest.id)}
-                                data-testid={`interest-filter-${interest.id}`}
-                              >
-                                {interest.label}
-                              </Badge>
-                            ))}
-                            {(selectedFilters.length > 0 || selectedInterests.length > 0) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs h-6"
-                                onClick={() => {
-                                  setSelectedFilters([]);
-                                  setSelectedInterests([]);
-                                }}
-                                data-testid="button-clear-filters"
-                              >
-                                Clear all
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  ) : null}
                 </CardContent>
               </Card>
             </CollapsibleContent>
           </Collapsible>
+          )}
 
-          {hasTemplateTabs && experienceType?.id && (
+          {experienceType?.id && (
             <div className="mb-6">
               <TemplateFiltersPanel
                 experienceTypeId={experienceType.id}
@@ -3393,7 +3330,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-48 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${config.heroImage}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? config.heroImage}')` }}
             />
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-between z-10">
               {/* Mobile Map/Form Toggle or Trip Planner link */}
@@ -3540,7 +3477,7 @@ export default function ExperienceTemplatePage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <Label className="text-sm font-medium">{config.locationLabel}</Label>
+                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? config.locationLabel}</Label>
                   <Input
                     placeholder="Eg: Paris, New York"
                     value={destination}

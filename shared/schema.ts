@@ -977,6 +977,13 @@ export const experienceTypes = pgTable("experience_types", {
   typicalGroupSizeMax: integer("typical_group_size_max"),
   typicalDurationMinDays: integer("typical_duration_min_days"),
   typicalDurationMaxDays: integer("typical_duration_max_days"),
+  // Hero card configuration — DB-driven (P462)
+  headcountLabel: varchar("headcount_label", { length: 50 }),       // singular unit e.g. "guest" | "traveler" | "attendee"
+  showOriginCity: varchar("show_origin_city", { length: 10 }).default("optional"), // "hide" | "optional" | "required"
+  showKids: boolean("show_kids").default(true),
+  locationLabel: varchar("location_label", { length: 100 }),
+  heroImage: text("hero_image"),
+  contextFields: jsonb("context_fields").default([]),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2648,6 +2655,7 @@ export const experienceTemplateTabs = pgTable("experience_template_tabs", {
   icon: varchar("icon", { length: 50 }), // Lucide icon name
   sortOrder: integer("sort_order").default(0),
   isActive: boolean("is_active").default(true),
+  tabType: varchar("tab_type", { length: 50 }).default("venue-search"), // "flights"|"hotels"|"venue-search"|"activity-search"|"transport"
   createdAt: timestamp("created_at").defaultNow(),
 });
 
