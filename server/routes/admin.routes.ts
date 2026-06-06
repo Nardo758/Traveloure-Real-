@@ -1206,12 +1206,13 @@ router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { status, contentType, ownerId, flagged, limit, offset } = req.query;
+      const { status, contentType, ownerId, flagged, provider, limit, offset } = req.query;
       const content = await storage.getContentRegistry({
         status: status as string,
         contentType: contentType as string,
         ownerId: ownerId as string,
         flagged: flagged === 'true',
+        provider: provider as string,
         limit: limit ? parseInt(limit as string) : 50,
         offset: offset ? parseInt(offset as string) : 0,
       });
@@ -1219,6 +1220,23 @@ router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
       res.json(content);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get content registry", error: error.message });
+    }
+  });
+
+  // Get distinct affiliate providers present in the content registry
+
+router.get("/api/admin/content/providers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const providers = await storage.getAffiliateProviders();
+      res.json(providers);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get providers", error: error.message });
     }
   });
 

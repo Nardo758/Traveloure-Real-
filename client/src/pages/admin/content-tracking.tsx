@@ -42,6 +42,7 @@ import {
   History,
   BarChart3,
   Shield,
+  ShoppingBag,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -62,6 +63,7 @@ interface ContentRegistry {
   flagReason: string | null;
   flaggedAt: string | null;
   moderatorNotes: string | null;
+  metadata: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,6 +113,8 @@ const contentTypeLabels: Record<string, string> = {
   custom_venue: "Custom Venue",
   contract: "Contract",
   media: "Media",
+  tip: "Tip",
+  affiliate_product: "Affiliate Product",
   other: "Other",
 };
 
@@ -120,6 +124,7 @@ export default function ContentTracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [providerFilter, setProviderFilter] = useState<string>("all");
   const [selectedContent, setSelectedContent] = useState<ContentRegistry | null>(null);
   const [moderationDialogOpen, setModerationDialogOpen] = useState(false);
   const [moderationAction, setModerationAction] = useState<"approve" | "suspend" | "delete">("approve");
@@ -129,12 +134,17 @@ export default function ContentTracking() {
     queryKey: ["/api/admin/content/summary"],
   });
 
+  const { data: affiliateProviders } = useQuery<string[]>({
+    queryKey: ["/api/admin/content/providers"],
+  });
+
   const { data: content, isLoading: contentLoading } = useQuery<ContentRegistry[]>({
-    queryKey: ["/api/admin/content/registry", statusFilter, typeFilter],
+    queryKey: ["/api/admin/content/registry", statusFilter, typeFilter, providerFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (typeFilter !== "all") params.append("contentType", typeFilter);
+      if (providerFilter !== "all") params.append("provider", providerFilter);
       const response = await fetch(`/api/admin/content/registry?${params.toString()}`, {
         credentials: "include",
       });
@@ -179,7 +189,8 @@ export default function ContentTracking() {
   const filteredContent = content?.filter((c) =>
     searchQuery === "" ||
     c.trackingNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.title?.toLowerCase().includes(searchQuery.toLowerCase())
+    c.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.metadata?.provider as string | undefined)?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (summaryLoading) {
@@ -198,6 +209,8 @@ export default function ContentTracking() {
     { label: "Flagged", value: summary?.flaggedCount || 0, icon: Flag, color: "text-red-600" },
     { label: "Pending Review", value: summary?.byStatus?.pending_review || 0, icon: Clock, color: "text-amber-600" },
   ];
+
+  const showProviderFilter = typeFilter === "affiliate_product" || providerFilter !== "all";
 
   return (
     <AdminLayout title="Content Tracking">
@@ -250,11 +263,11 @@ export default function ContentTracking() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
+                <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search by tracking number or title..."
+                      placeholder="Search by tracking number, title, or provider..."
                       className="pl-10"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -274,7 +287,7 @@ export default function ContentTracking() {
                       <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); if (v !== "affiliate_product") setProviderFilter("all"); }}>
                     <SelectTrigger className="w-[180px]" data-testid="select-type-filter">
                       <SelectValue placeholder="Content Type" />
                     </SelectTrigger>
@@ -285,6 +298,19 @@ export default function ContentTracking() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {(showProviderFilter || (affiliateProviders && affiliateProviders.length > 0)) && (
+                    <Select value={providerFilter} onValueChange={setProviderFilter}>
+                      <SelectTrigger className="w-[180px]" data-testid="select-provider-filter">
+                        <SelectValue placeholder="Provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Providers</SelectItem>
+                        {affiliateProviders?.map((p) => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 {contentLoading ? (
@@ -298,6 +324,7 @@ export default function ContentTracking() {
                         <TableHead>Tracking #</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Title</TableHead>
+                        <TableHead>Provider</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Views</TableHead>
                         <TableHead>Created</TableHead>
@@ -308,8 +335,24 @@ export default function ContentTracking() {
                       {filteredContent?.map((item) => (
                         <TableRow key={item.id} data-testid={`row-content-${item.trackingNumber}`}>
                           <TableCell className="font-mono text-sm">{item.trackingNumber}</TableCell>
-                          <TableCell>{contentTypeLabels[item.contentType] || item.contentType}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {item.contentType === "affiliate_product" && (
+                                <ShoppingBag className="w-3 h-3 text-indigo-500" />
+                              )}
+                              {contentTypeLabels[item.contentType] || item.contentType}
+                            </div>
+                          </TableCell>
                           <TableCell className="max-w-[200px] truncate">{item.title || "-"}</TableCell>
+                          <TableCell>
+                            {item.contentType === "affiliate_product" && item.metadata?.provider ? (
+                              <Badge variant="outline" className="text-xs text-indigo-700 border-indigo-300" data-testid={`badge-provider-${item.trackingNumber}`}>
+                                {item.metadata.provider}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Badge className={statusColors[item.status] || ""}>
                               {item.status.replace("_", " ")}
@@ -336,7 +379,7 @@ export default function ContentTracking() {
                       ))}
                       {(!filteredContent || filteredContent.length === 0) && (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                             No content found
                           </TableCell>
                         </TableRow>
@@ -436,7 +479,10 @@ export default function ContentTracking() {
                 <CardContent className="space-y-2">
                   {summary?.byType && Object.entries(summary.byType).map(([type, count]) => (
                     <div key={type} className="flex items-center justify-between">
-                      <span className="text-sm">{contentTypeLabels[type] || type}</span>
+                      <span className="text-sm flex items-center gap-1">
+                        {type === "affiliate_product" && <ShoppingBag className="w-3 h-3 text-indigo-500" />}
+                        {contentTypeLabels[type] || type}
+                      </span>
                       <Badge variant="secondary">{count}</Badge>
                     </div>
                   ))}
@@ -462,6 +508,32 @@ export default function ContentTracking() {
                   )}
                 </CardContent>
               </Card>
+
+              {affiliateProviders && affiliateProviders.length > 0 && (
+                <Card className="md:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ShoppingBag className="w-4 h-4 text-indigo-500" />
+                      Affiliate Providers in Registry
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {affiliateProviders.map((p) => (
+                        <Badge
+                          key={p}
+                          variant="outline"
+                          className="text-indigo-700 border-indigo-300 cursor-pointer"
+                          onClick={() => { setTypeFilter("affiliate_product"); setProviderFilter(p); }}
+                          data-testid={`badge-affiliate-provider-${p.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          {p}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
         </Tabs>
@@ -480,7 +552,12 @@ export default function ContentTracking() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Type:</span>
-                    <p className="font-medium">{contentTypeLabels[selectedContent.contentType]}</p>
+                    <p className="font-medium flex items-center gap-1">
+                      {selectedContent.contentType === "affiliate_product" && (
+                        <ShoppingBag className="w-3 h-3 text-indigo-500" />
+                      )}
+                      {contentTypeLabels[selectedContent.contentType]}
+                    </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Status:</span>
@@ -490,6 +567,14 @@ export default function ContentTracking() {
                     <span className="text-muted-foreground">Title:</span>
                     <p className="font-medium">{selectedContent.title || "-"}</p>
                   </div>
+                  {selectedContent.contentType === "affiliate_product" && selectedContent.metadata?.provider && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Provider:</span>
+                      <Badge variant="outline" className="ml-2 text-indigo-700 border-indigo-300">
+                        {selectedContent.metadata.provider}
+                      </Badge>
+                    </div>
+                  )}
                   {selectedContent.flagReason && (
                     <div className="col-span-2">
                       <span className="text-muted-foreground">Flag Reason:</span>
