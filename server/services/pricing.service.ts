@@ -141,20 +141,6 @@ class PricingService {
   }
 
   /**
-   * Calculate expert fee (for personal assistant bookings)
-   */
-  calculateExpertFee(bookingAmount: number, expertTier: string = 'standard'): number {
-    const expertRates = {
-      standard: 0.10,   // 10%
-      premium: 0.15,    // 15%
-      concierge: 0.20,  // 20%
-    };
-
-    const rate = expertRates[expertTier as keyof typeof expertRates] || expertRates.standard;
-    return Math.round(bookingAmount * rate * 100) / 100;
-  }
-
-  /**
    * Apply promo code discount
    */
   async applyPromoCode(code: string, amount: number, userId: string) {
