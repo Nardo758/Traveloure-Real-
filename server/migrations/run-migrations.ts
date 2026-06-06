@@ -39,6 +39,7 @@ const MIGRATION_FILES = [
   "025_ai_cost_tracking.sql",
   "026_trip_collaborators.sql",
   "027_insurance_tier_fields.sql",
+  "028_service_bookings_insurance_fee.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
