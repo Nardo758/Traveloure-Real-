@@ -11,7 +11,7 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
-  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
+  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
@@ -948,8 +948,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       ? `$${Math.round(Number(trip.budget) / trip.numberOfTravelers).toLocaleString()}/person`
       : null);
 
-  const isViewer = role === "viewer";
-  const isOwner = role === "owner";
+  const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
+  const isViewer = effectiveRole === "viewer" || effectiveRole === "friend";
+  const isOwner = effectiveRole === "owner";
 
   return (
     <motion.div

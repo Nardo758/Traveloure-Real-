@@ -19,6 +19,7 @@ import {
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { getTripRole, canMutateTrip } from "../utils/trip-role";
 
 const router = Router();
 
@@ -146,8 +147,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: "Trip not found" });
     }
 
-    if (trip.userId !== userId) {
-      // Allow assigned experts to read the plancard
+    const tripRole = await getTripRole(tripId, userId);
+
+    if (!tripRole) {
+      // Legacy fallback: check trip_expert_advisors for assigned experts
       const expertCheck = await db.execute(sql`
         SELECT id FROM trip_expert_advisors
         WHERE trip_id = ${tripId}
@@ -368,6 +371,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const lastOptimizedAt = comparison?.optimizedAt ?? null;
 
     res.json({
+      tripRole: tripRole ?? (trip.userId === userId ? "owner" : "expert"),
       trip: {
         id: trip.id,
         title: trip.title,
@@ -550,10 +554,10 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
       return res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
     }
 
-    // Verify trip ownership
-    const trip = await storage.getTrip(tripId);
-    if (!trip || trip.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
+    // Verify trip role (owner or expert can confirm/dismiss transport legs; friends cannot)
+    const tripRole = await getTripRole(tripId, userId);
+    if (!canMutateTrip(tripRole)) {
+      return res.status(403).json({ error: tripRole === "friend" ? "Friends cannot confirm or dismiss transport legs" : "Access denied" });
     }
 
     // Verify that the leg belongs to a variant linked to this trip (prevent cross-trip mutations)
@@ -589,7 +593,7 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
       userName,
       status === "dismissed" ? "Declined suggested transport leg" : `Confirmed transport leg`,
       status === "dismissed" ? "decline" : "edit",
-      "owner",
+      tripRole!,
     );
 
     res.json({ success: true, legId, status });

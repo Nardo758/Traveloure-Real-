@@ -33,6 +33,15 @@ const MIGRATION_FILES = [
   "021_password_reset_tokens.sql",
   "022_email_verification_tokens.sql",
   "023_platform_deposit_rate.sql",
+  "024_experience_template_hero_fields.sql",
+  "024_provider_commission.sql",
+  "025_tab_control_config.sql",
+  "025_ai_cost_tracking.sql",
+  "026_trip_collaborators.sql",
+  "027_insurance_tier_fields.sql",
+  "028_service_bookings_insurance_fee.sql",
+  "029_review_moderation.sql",
+  "030_restore_expert_service_categories.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
