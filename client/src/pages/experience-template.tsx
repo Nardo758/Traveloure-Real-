@@ -1722,7 +1722,7 @@ export default function ExperienceTemplatePage() {
       : [];
     
     // P5: tabType-driven venue marker visibility
-    const customVenueMarkers = (currentTabType === "venue-search" || currentTabType === "hotels" || activeTab === "venue")
+    const customVenueMarkers = (currentTabType === "venue-search" || currentTabType === "hotels")
       ? customVenues
           .filter(v => v.latitude && v.longitude)
           .map(v => ({
@@ -2182,7 +2182,7 @@ export default function ExperienceTemplatePage() {
                       searchContext: 'experience-template',
                       // P4: DB contextField values included in analytics payload
                       ...(Object.keys(contextValues).length > 0 ? { contextFields: contextValues } : {}),
-                    } as any);
+                    });
                     toast({
                       title: "Details Saved",
                       description: slug === "wedding" 
@@ -2354,7 +2354,7 @@ export default function ExperienceTemplatePage() {
 
         <div className="container mx-auto px-4 py-6">
           {/* P5: tabType-registry driven — transport tab shows TripTransportPlanner */}
-          {(currentTabType === "transport" || activeTab === "transportation") && (
+          {currentTabType === "transport" && (
             <div className="mb-6">
               <TripTransportPlanner
                 cart={cart}
@@ -2819,9 +2819,9 @@ export default function ExperienceTemplatePage() {
                   onAddToCart={(item) => {
                     addToCart(item);
                   }}
-                  externalVendorType={activeTab === "vendors" ? vendorType : undefined}
+                  externalVendorType={currentTabType === "vendors" ? vendorType : undefined}
                   externalMinRating={minRating}
-                  externalKeyword={activeTab !== "vendors" ? searchQuery : undefined}
+                  externalKeyword={currentTabType !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
                 />
               </div>
@@ -2829,7 +2829,7 @@ export default function ExperienceTemplatePage() {
           )}
 
           {/* Recommended by Traveloure — content hub items matched to this tab + destination */}
-          {destination && currentTabType !== "flights" && currentTabType !== "hotels" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
+          {destination && currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "planning-tools" && currentTabType !== "itinerary-builder" && (
             <CuratedContentSection
               destination={destination}
               tab={activeTab}
@@ -2839,7 +2839,7 @@ export default function ExperienceTemplatePage() {
             />
           )}
 
-          {currentTabType !== "flights" && currentTabType !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
+          {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -2848,7 +2848,7 @@ export default function ExperienceTemplatePage() {
                   ? `No providers found in ${destination}` 
                   : "Enter a location to see available options"}
             </p>
-            {(activeTab === "venue" || currentTabType === "venue-search" || currentTabType === "hotels") && (
+            {(currentTabType === "venue-search" || currentTabType === "hotels") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -2862,11 +2862,11 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {currentTabType !== "flights" && currentTabType !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
+          {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(activeTab === "venue" || currentTabType === "venue-search" || currentTabType === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
+                  {(currentTabType === "venue-search" || currentTabType === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
                     const venueId = `custom-${venue.id}`;
                     const isInCart = selectedProviderIds.includes(venueId);
                     return (
