@@ -661,6 +661,21 @@ export const serviceReviews = pgTable("service_reviews", {
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
   isVerified: boolean("is_verified").default(false),
+  // Moderation (REV-MOD)
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | approved | flagged | removed
+  flagReason: text("flag_reason"),
+  moderatedBy: varchar("moderated_by", { length: 255 }),
+  moderatedAt: timestamp("moderated_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Review Moderation Logs ===
+export const reviewModerationLogs = pgTable("review_moderation_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  reviewId: varchar("review_id").notNull().references(() => serviceReviews.id, { onDelete: "cascade" }),
+  action: varchar("action", { length: 20 }).notNull(), // approve | flag | remove
+  actorId: varchar("actor_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
