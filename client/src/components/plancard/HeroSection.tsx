@@ -17,8 +17,17 @@ interface HeroSectionProps {
 export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, budget }: HeroSectionProps) {
   const { toast } = useToast();
   const photoUrl = getDestinationPhotoUrl(trip.destination || "travel");
-  const daysUntil = differenceInDays(new Date(trip.startDate ?? Date.now()), new Date());
-  const statusLabel = daysUntil > 0
+
+  function safeDate(raw: string | null | undefined): Date | null {
+    if (!raw) return null;
+    const d = new Date(raw);
+    return isValid(d) ? d : null;
+  }
+
+  const startDate = safeDate(trip.startDate);
+  const endDate = safeDate(trip.endDate);
+  const daysUntil = startDate ? differenceInDays(startDate, new Date()) : null;
+  const statusLabel = daysUntil != null && daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
     : "Planning";
 
@@ -96,7 +105,9 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
           </span>
           <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
             <Calendar className="w-3.5 h-3.5" />
-            {(() => { const s = new Date(trip.startDate ?? Date.now()); const e = new Date(trip.endDate ?? Date.now()); return isValid(s) && isValid(e) ? `${format(s, "MMM d")} - ${format(e, "MMM d, yyyy")}` : "Dates TBD"; })()}
+            {startDate && endDate
+              ? `${format(startDate, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`
+              : "Dates not set"}
           </span>
           {displayCost && (
             <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
