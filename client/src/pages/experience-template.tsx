@@ -1713,6 +1713,8 @@ export default function ExperienceTemplatePage() {
       minRating,
       tags: selectedFilters.length > 0 ? selectedFilters : undefined,
     });
+
+    if (sortBy === "price-low") {
       filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
     } else if (sortBy === "price-high") {
       filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
