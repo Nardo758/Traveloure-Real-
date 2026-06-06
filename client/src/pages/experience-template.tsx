@@ -1369,6 +1369,8 @@ export default function ExperienceTemplatePage() {
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
+  // P4: controlled state for DB contextFields inputs
+  const [contextValues, setContextValues] = useState<Record<string, string>>({});
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
   
@@ -1427,9 +1429,9 @@ export default function ExperienceTemplatePage() {
       
       const settings = getPersistedSearchSettings(slug);
       
-      // Get defaults for this experience type
-      const currentConfig = experienceConfigs[slug] ?? null;
-      const defaultActiveTab = currentConfig?.tabs[0]?.id || "venue";
+      // P5: DB-only-safe default — DB tabs aren't available here yet;
+      // a separate useEffect syncs activeTab once dbTabs loads.
+      const defaultActiveTab = settings?.activeTab ?? "venue";
       
       // Priority: query params > sessionStorage trip queue > stored settings > defaults
       // Check for destination from query params or sessionStorage (from Take me Here feature)
@@ -1745,6 +1747,8 @@ export default function ExperienceTemplatePage() {
       destination,
       startDate: startDate?.toISOString(),
       endDate: endDate?.toISOString(),
+      // P4: include DB contextField values in AI itinerary prompt payload
+      contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
       selectedServices: cart.map(item => ({
         name: item.name,
         provider: item.provider,
@@ -2032,7 +2036,8 @@ export default function ExperienceTemplatePage() {
         })
       : [];
     
-    const customVenueMarkers = (activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels")
+    // P5: tabType-driven venue marker visibility
+    const customVenueMarkers = (currentTabType === "venue-search" || currentTabType === "hotels" || activeTab === "venue")
       ? customVenues
           .filter(v => v.latitude && v.longitude)
           .map(v => ({
@@ -2353,6 +2358,8 @@ export default function ExperienceTemplatePage() {
                     <Input
                       id={`ctx-${field.key}`}
                       placeholder={field.placeholder || ""}
+                      value={contextValues[field.key] ?? ""}
+                      onChange={(e) => setContextValues(prev => ({ ...prev, [field.key]: e.target.value }))}
                       className="mt-1"
                       data-testid={`input-context-${field.key}`}
                     />
@@ -2448,7 +2455,9 @@ export default function ExperienceTemplatePage() {
                       travelers: adults + kids,
                       experienceType: experienceType?.slug || slug,
                       searchContext: 'experience-template',
-                    });
+                      // P4: DB contextField values included in analytics payload
+                      ...(Object.keys(contextValues).length > 0 ? { contextFields: contextValues } : {}),
+                    } as any);
                     toast({
                       title: "Details Saved",
                       description: slug === "wedding" 
@@ -2777,7 +2786,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "flights" && (
+          {/* P5: tabType-registry driven — any tab with tabType "flights" renders FlightSearch */}
+          {currentTabType === "flights" && (
             <div className="mb-6">
               <FlightSearch
                 destination={destination}
@@ -2830,19 +2840,20 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "flights" && destination && (
+          {currentTabType === "flights" && destination && (
             <TravelpayoutsNomad destination={destination} />
           )}
 
-          {activeTab === "flights" && destination && (
+          {currentTabType === "flights" && destination && (
             <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+          {/* P5: tabType-registry driven — any tab with tabType "hotels" renders HotelSearch */}
+          {currentTabType === "hotels" && destination && (
             <BookingComCatalogSection destination={destination} />
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && (
+          {currentTabType === "hotels" && (
             <div className="mb-6">
               <HotelSearch
                 destination={destination}
@@ -2909,7 +2920,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+          {currentTabType === "hotels" && destination && (
             <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
@@ -3096,7 +3107,7 @@ export default function ExperienceTemplatePage() {
             />
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
+          {currentTabType !== "flights" && currentTabType !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -3105,7 +3116,7 @@ export default function ExperienceTemplatePage() {
                   ? `No providers found in ${destination}` 
                   : "Enter a location to see available options"}
             </p>
-            {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && (
+            {(activeTab === "venue" || currentTabType === "venue-search" || currentTabType === "hotels") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -3119,11 +3130,11 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
+          {currentTabType !== "flights" && currentTabType !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
+                  {(activeTab === "venue" || currentTabType === "venue-search" || currentTabType === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
                     const venueId = `custom-${venue.id}`;
                     const isInCart = selectedProviderIds.includes(venueId);
                     return (

@@ -3964,6 +3964,7 @@ async function updateExperienceTypeHeroConfigs() {
     showKids?: boolean;
     showOriginCity?: string;
     locationLabel?: string;
+    contextFields?: Array<{ key: string; label: string; placeholder?: string; type?: string }>;
   };
 
   const configs: Record<string, HeroConfig> = {
@@ -3972,12 +3973,19 @@ async function updateExperienceTypeHeroConfigs() {
       showKids: false,
       showOriginCity: "required",
       locationLabel: "Destination city",
+      contextFields: [
+        { key: "theme", label: "Party theme", placeholder: "e.g. Vegas, Beach, Camping" },
+        { key: "guest_of_honor", label: "Guest of honor name", placeholder: "e.g. Alex" },
+      ],
     },
     "anniversary-trip": {
       headcountLabel: "traveler",
       showKids: false,
       showOriginCity: "required",
       locationLabel: "Destination city",
+      contextFields: [
+        { key: "years", label: "Years together", placeholder: "e.g. 5" },
+      ],
     },
     "date-night": {
       headcountLabel: "guest",
@@ -4056,10 +4064,38 @@ async function updateExperienceTypeHeroConfigs() {
           showKids: cfg.showKids,
           showOriginCity: cfg.showOriginCity,
           locationLabel: cfg.locationLabel,
+          ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
         })
         .where(eq(experienceTypes.slug, slug));
     } catch {
       // Row may not exist yet in this environment; skip silently
+    }
+  }
+
+  // Backfill tabType on existing tabs by slug so tabType-registry works
+  // for all templates including DB-only ones added without code changes.
+  const TAB_SLUG_TO_TYPE: Record<string, string> = {
+    "flights": "flights",
+    "hotels": "hotels",
+    "accommodations": "hotels",
+    "guest-accommodations": "hotels",
+    "romantic-accommodations": "hotels",
+    "venues": "venue-search",
+    "venue": "venue-search",
+    "daytime-activities": "activities",
+    "nightlife": "nightlife",
+    "dining": "dining",
+    "transportation": "transport",
+    "transfers": "transport",
+  };
+  for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
+    try {
+      await db
+        .update(experienceTemplateTabs)
+        .set({ tabType })
+        .where(eq(experienceTemplateTabs.slug, tabSlug));
+    } catch {
+      // Column may not exist in older environments; skip silently
     }
   }
 }
