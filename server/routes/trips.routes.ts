@@ -99,6 +99,8 @@ import {
   type CommissionRates,
 } from "../services/commission";
 
+import { trackAnthropicResponse } from "../services/ai-cost-tracker";
+
 const router = Router();
 
 const anthropic = new Anthropic({
@@ -322,6 +324,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           max_tokens: 4000,
           messages: [{ role: "user", content: prompt }],
         });
+        trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
         const text = (completion.content[0] as any).text;
         const jsonMatch = text.match(/\{[\s\S]*\}/);
