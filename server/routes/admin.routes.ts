@@ -4022,6 +4022,19 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         ...(status === "flagged" && reason ? { flagReason: reason } : {}),
       }).where(eq(serviceReviews.id, req.params.id)).returning();
       await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: status, actorId, reason: reason || null });
+
+      // Recalculate service rating/count from approved reviews only
+      const serviceId = review.serviceId;
+      const allSvcReviews = await db.select({ id: serviceReviews.id, rating: serviceReviews.rating, status: serviceReviews.status })
+        .from(serviceReviews).where(eq(serviceReviews.serviceId, serviceId));
+      const approvedSvcReviews = allSvcReviews.filter(r => r.status === "approved");
+      const newAvg = approvedSvcReviews.length > 0
+        ? approvedSvcReviews.reduce((sum, r) => sum + r.rating, 0) / approvedSvcReviews.length
+        : 0;
+      await db.update(providerServices)
+        .set({ averageRating: newAvg.toFixed(2), reviewCount: approvedSvcReviews.length, updatedAt: new Date() })
+        .where(eq(providerServices.id, serviceId));
+
       res.json(updated);
     } catch (err) {
       console.error("Admin review status error:", err);
