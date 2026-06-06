@@ -48,12 +48,10 @@ export function calcInsuranceFee(
   bookingType?: string | null,
 ): number {
   if (!rates.insuranceEnabled || rates.insuranceRatePercent <= 0) return 0;
-  if (
-    rates.insuranceAppliesTo.length > 0 &&
-    bookingType &&
-    !rates.insuranceAppliesTo.includes(bookingType)
-  ) {
-    return 0;
+  // If an explicit applies-to list is set, insurance only charges when bookingType
+  // is present AND in the list. A missing/unknown bookingType is treated as out-of-scope.
+  if (rates.insuranceAppliesTo.length > 0) {
+    if (!bookingType || !rates.insuranceAppliesTo.includes(bookingType)) return 0;
   }
   return Math.round(grossAmount * (rates.insuranceRatePercent / 100) * 100) / 100;
 }
