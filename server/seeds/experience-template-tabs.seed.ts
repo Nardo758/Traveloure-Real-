@@ -4166,19 +4166,59 @@ async function updateExperienceTypeHeroConfigs() {
   // Backfill tabType on existing tabs by slug so tabType-registry works
   // for all templates including DB-only ones added without code changes.
   const TAB_SLUG_TO_TYPE: Record<string, string> = {
+    // Booking tabs
     "flights": "flights",
     "hotels": "hotels",
     "accommodations": "hotels",
     "guest-accommodations": "hotels",
     "romantic-accommodations": "hotels",
+    // Venue / destination tabs
     "venues": "venue-search",
     "venue": "venue-search",
+    "destinations": "venue-search",
+    "rehearsal": "venue-search",
+    "special-touches": "venue-search",
+    "photo": "venue-search",
+    "photography": "services",
+    // Activity tabs
     "daytime-activities": "activities",
+    "activities": "activities",
+    "experiences": "activities",
+    "spa-wellness": "activities",
+    "team-activities": "activities",
+    "wellness": "activities",
+    "pregame": "activities",
+    "entertainment": "nightlife",
+    // Dining/nightlife tabs
     "nightlife": "nightlife",
     "dining": "dining",
+    "bars-clubs": "nightlife",
+    "live-music": "nightlife",
+    // Transport tabs
     "transportation": "transport",
     "transfers": "transport",
+    // Service/vendor tabs
+    "services": "services",
+    "vendors": "vendors",
+    "party-services": "services",
+    "corporate-services": "services",
+    // Events tab
+    "events": "events",
+    // Planning tool tabs (excluded from content rendering)
+    "planning-tools": "planning-tools",
+    "itinerary-builder": "itinerary-builder",
+    "budget-planning": "planning-tools",
   };
+
+  // Explicitly deactivate templates that are not yet ready for public access
+  const INACTIVE_SLUGS = ["sports-event"];
+  for (const slug of INACTIVE_SLUGS) {
+    try {
+      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, slug));
+    } catch {
+      // Skip silently if table/column not present
+    }
+  }
   for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
     try {
       await db
