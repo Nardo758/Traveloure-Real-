@@ -125,6 +125,24 @@ export interface PlanCardTransport {
   suggestedBy?: string;
   partnerName?: string;
   bookingSource?: "platform" | "affiliate";
+  // Per-leg mode-selection fields (feed the TransportConnector picker)
+  legOrder?: number;
+  recommendedMode?: string;
+  userSelectedMode?: string | null;
+  alternativeModes?: Array<{
+    mode: string;
+    durationMinutes: number;
+    costUsd: number | null;
+    energyCost?: number;
+    reason?: string;
+  }>;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+  distanceDisplay?: string;
+  estimatedDurationMinutes?: number;
+  estimatedCostUsd?: number | null;
 }
 
 export interface PlanCardDay {
