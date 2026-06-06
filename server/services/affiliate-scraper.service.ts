@@ -10,6 +10,7 @@ import {
   type InsertAffiliateProduct
 } from "@shared/schema";
 import { eq, desc, and, sql, ilike } from "drizzle-orm";
+import { storage } from "../storage";
 
 const GROK_MODEL = "grok-3";
 
@@ -215,8 +216,19 @@ class AffiliateScraperService {
             })
             .where(eq(affiliateProducts.id, existingProduct[0].id));
           productsUpdated++;
+          // Update registry (creates version if fields changed)
+          storage.registerAffiliateProduct({
+            id: existingProduct[0].id,
+            name: product.name,
+            description: product.description,
+            partnerId,
+            externalId: product.externalId,
+            price: product.price?.toString(),
+            isActive: true,
+            partnerName: partner.name,
+          }).catch((err) => console.error("[ContentHub] Failed to update affiliate product registry:", err));
         } else {
-          await db.insert(affiliateProducts).values({
+          const [inserted] = await db.insert(affiliateProducts).values({
             partnerId,
             ...product,
             affiliateUrl,
@@ -224,8 +236,19 @@ class AffiliateScraperService {
             price: product.price?.toString(),
             originalPrice: product.originalPrice?.toString(),
             rating: product.rating?.toString(),
-          });
+          }).returning();
           productsNew++;
+          // Register new product in content hub
+          storage.registerAffiliateProduct({
+            id: inserted.id,
+            name: product.name,
+            description: product.description,
+            partnerId,
+            externalId: product.externalId,
+            price: product.price?.toString(),
+            isActive: true,
+            partnerName: partner.name,
+          }).catch((err) => console.error("[ContentHub] Failed to register affiliate product:", err));
         }
       }
 

@@ -3567,6 +3567,7 @@ export const affiliateProducts = pgTable("affiliate_products", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   partnerId: varchar("partner_id").notNull().references(() => affiliatePartners.id, { onDelete: "cascade" }),
   externalId: varchar("external_id", { length: 200 }),
+  trackingNumber: varchar("tracking_number", { length: 25 }),
   name: varchar("name", { length: 500 }).notNull(),
   description: text("description"),
   shortDescription: varchar("short_description", { length: 500 }),
@@ -3905,6 +3906,7 @@ export const affiliateEarnings = pgTable("affiliate_earnings", {
   reconciledAt: timestamp("reconciled_at"),
   reconciliationNotes: text("reconciliation_notes"),
   externalReportData: jsonb("external_report_data"), // Raw line from partner report
+  contentTrackingNumber: varchar("content_tracking_number", { length: 25 }), // Links to content_registry
   confirmedAt: timestamp("confirmed_at"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -4131,6 +4133,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "contract",
   "media",
   "tip",
+  "affiliate_product",
   "other"
 ]);
 

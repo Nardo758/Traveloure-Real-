@@ -527,6 +527,28 @@ export interface IStorage {
   getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
   getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
   updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId">>): Promise<AffiliateBookingRequest | undefined>;
+
+  // Affiliate Content Registry helpers
+  registerAffiliateProduct(product: {
+    id: string;
+    name: string;
+    description?: string | null;
+    partnerId: string;
+    externalId?: string | null;
+    price?: string | null;
+    isActive?: boolean | null;
+    partnerName?: string;
+  }): Promise<string>;
+  getAffiliateProviders(): Promise<string[]>;
+  getContentRegistry(filters?: {
+    status?: string;
+    contentType?: string;
+    ownerId?: string;
+    flagged?: boolean;
+    provider?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ContentRegistry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3187,12 +3209,11 @@ export class DatabaseStorage implements IStorage {
     contentType?: string;
     ownerId?: string;
     flagged?: boolean;
+    provider?: string;
     limit?: number;
     offset?: number;
   }): Promise<ContentRegistry[]> {
-    let query = db.select().from(contentRegistry);
-
-    const conditions = [];
+    const conditions: any[] = [];
     if (filters?.status) {
       conditions.push(eq(contentRegistry.status, filters.status as any));
     }
@@ -3205,17 +3226,105 @@ export class DatabaseStorage implements IStorage {
     if (filters?.flagged) {
       conditions.push(eq(contentRegistry.status, 'flagged'));
     }
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as any;
+    if (filters?.provider) {
+      conditions.push(
+        sql`${contentRegistry.metadata}->>'provider' ILIKE ${'%' + filters.provider + '%'}`
+      );
     }
 
-    const results = await query
+    const baseQuery = conditions.length > 0
+      ? db.select().from(contentRegistry).where(and(...conditions))
+      : db.select().from(contentRegistry);
+
+    const results = await baseQuery
       .orderBy(desc(contentRegistry.createdAt))
       .limit(filters?.limit || 50)
       .offset(filters?.offset || 0);
 
     return results;
+  }
+
+  // Get distinct provider names from affiliate_product registry entries
+  async getAffiliateProviders(): Promise<string[]> {
+    const rows = await db.execute(sql`
+      SELECT DISTINCT metadata->>'provider' AS provider
+      FROM content_registry
+      WHERE content_type = 'affiliate_product'
+        AND metadata->>'provider' IS NOT NULL
+      ORDER BY 1
+    `);
+    return (rows.rows as any[]).map((r) => r.provider as string).filter(Boolean);
+  }
+
+  // Register an affiliate product in the content tracking system
+  async registerAffiliateProduct(product: {
+    id: string;
+    name: string;
+    description?: string | null;
+    partnerId: string;
+    externalId?: string | null;
+    price?: string | null;
+    isActive?: boolean | null;
+    partnerName?: string;
+  }): Promise<string> {
+    // Check if already registered to avoid duplicates
+    const existing = await this.getContentByContentId(product.id, 'affiliate_product');
+    if (existing) {
+      // Check if key fields changed and create a version if so
+      const prevMeta = (existing.metadata as any) || {};
+      const titleChanged = existing.title !== product.name;
+      const priceChanged = prevMeta.price !== product.price;
+      const statusChanged = prevMeta.isActive !== product.isActive;
+
+      if (titleChanged || priceChanged || statusChanged) {
+        await db.update(contentRegistry)
+          .set({
+            title: product.name,
+            description: product.description || existing.description,
+            metadata: {
+              ...(existing.metadata as object || {}),
+              price: product.price,
+              isActive: product.isActive,
+              provider: product.partnerName,
+              externalId: product.externalId,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(contentRegistry.trackingNumber, existing.trackingNumber));
+
+        await this.createContentVersion({
+          trackingNumber: existing.trackingNumber,
+          changeType: 'updated',
+          previousData: { title: existing.title, price: prevMeta.price, isActive: prevMeta.isActive },
+          newData: { title: product.name, price: product.price, isActive: product.isActive },
+        });
+      }
+      return existing.trackingNumber;
+    }
+
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'affiliate_product',
+      contentId: product.id,
+      title: product.name,
+      description: product.description || undefined,
+      status: product.isActive === false ? 'archived' : 'published',
+      metadata: {
+        provider: product.partnerName,
+        partnerId: product.partnerId,
+        externalId: product.externalId,
+        price: product.price,
+        isActive: product.isActive,
+      },
+    });
+
+    // Write the tracking number back to affiliate_products
+    await db.execute(sql`
+      UPDATE affiliate_products SET tracking_number = ${trackingNumber} WHERE id = ${product.id}
+    `);
+
+    return trackingNumber;
   }
 
   // Get moderation queue (flagged content)
