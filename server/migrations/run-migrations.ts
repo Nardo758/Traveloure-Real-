@@ -34,7 +34,9 @@ const MIGRATION_FILES = [
   "022_email_verification_tokens.sql",
   "023_platform_deposit_rate.sql",
   "024_experience_template_hero_fields.sql",
+  "024_provider_commission.sql",
   "025_tab_control_config.sql",
+  "025_ai_cost_tracking.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
