@@ -3,14 +3,15 @@
  * Checks trip_collaborators first, then falls back to platform role for expert/admin bypass.
  */
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { tripCollaborators } from "@shared/schema";
 import { storage } from "../storage";
 
 export type TripRole = "owner" | "expert" | "friend" | null;
 
 /**
  * Returns the caller's effective role for a trip:
- *  - "owner"  — owns the trip (trip.user_id === userId) or has owner row in trip_collaborators
+ *  - "owner"  — has owner row in trip_collaborators
  *  - "expert" — has expert row in trip_collaborators OR is a platform expert/admin
  *  - "friend" — has friend row in trip_collaborators
  *  - null     — no access at all
@@ -18,14 +19,14 @@ export type TripRole = "owner" | "expert" | "friend" | null;
  * Platform experts and admins always get "expert" access to any trip (backward-compat).
  */
 export async function getTripRole(tripId: string, userId: string): Promise<TripRole> {
-  const [collabRow] = await db.execute(sql`
-    SELECT role FROM trip_collaborators
-    WHERE trip_id = ${tripId} AND user_id = ${userId}
-    LIMIT 1
-  `);
+  const rows = await db
+    .select({ role: tripCollaborators.role })
+    .from(tripCollaborators)
+    .where(and(eq(tripCollaborators.tripId, tripId), eq(tripCollaborators.userId, userId)))
+    .limit(1);
 
-  if (collabRow) {
-    return (collabRow as any).role as TripRole;
+  if (rows.length > 0) {
+    return rows[0].role as TripRole;
   }
 
   const user = await storage.getUser(userId);

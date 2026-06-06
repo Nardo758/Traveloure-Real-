@@ -1477,10 +1477,16 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
 
 router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
       const userName = (req.user as any).claims.name || "User";
+      const { tripId } = req.params;
+      const tripRole = await getTripRole(tripId, userId);
+      if (!canMutateTrip(tripRole)) {
+        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot reorder activities" : "Access denied" });
+      }
       const { dayNumber, itemIds } = req.body;
-      const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
-      logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", "owner");
+      const items = await itineraryIntelligenceService.reorderItems(tripId, dayNumber, itemIds);
+      logItineraryChange(tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", tripRole!);
       res.json(items);
     } catch (error) {
       res.status(500).json({ message: "Failed to reorder items" });
