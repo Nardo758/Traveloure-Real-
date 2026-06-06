@@ -69,6 +69,7 @@ import { aiUsageService } from "./services/ai-usage.service";
 import { getSequencingRulesForTemplate } from "./services/smart-sequencing.service";
 import { complexityTier } from "./services/smart-sequencing.service";
 import { getFee } from "./services/optimization-fee.service";
+import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { experienceTypes as experienceTypesTable } from "@shared/schema";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
@@ -8503,6 +8504,7 @@ Respond with this exact JSON structure:
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      trackAnthropicResponse(aiResponse, { sourceType: "ai_transport" });
 
       const responseText = aiResponse.content[0]?.type === "text" ? aiResponse.content[0].text : "";
 
