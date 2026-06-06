@@ -269,6 +269,18 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           suggestedBy: leg.userSelectedMode ? null : "ai",
           bookingSource: legBookingMap[leg.id]?.bookingSource ?? null,
           partnerName: legBookingMap[leg.id]?.partnerName ?? null,
+          // Per-leg mode-selection fields for the activities-view picker
+          legOrder: leg.legOrder,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode ?? null,
+          alternativeModes: leg.alternativeModes ?? [],
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+          distanceDisplay: leg.distanceDisplay,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd ?? null,
         })),
       };
     });
@@ -354,6 +366,18 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
               suggestedBy: "ai",
               bookingSource: "platform",
               partnerName: null,
+              // Per-leg mode-selection fields for the activities-view picker
+              legOrder: l.legOrder ?? li,
+              recommendedMode: l.recommendedMode || l.mode || "walk",
+              userSelectedMode: l.userSelectedMode ?? null,
+              alternativeModes: l.alternativeModes ?? [],
+              fromLat: l.fromLat ?? null,
+              fromLng: l.fromLng ?? null,
+              toLat: l.toLat ?? null,
+              toLng: l.toLng ?? null,
+              distanceDisplay: l.distanceDisplay ?? "",
+              estimatedDurationMinutes: l.estimatedDurationMinutes ?? l.duration ?? 0,
+              estimatedCostUsd: l.estimatedCostUsd ?? l.cost ?? null,
             })),
           };
         });
