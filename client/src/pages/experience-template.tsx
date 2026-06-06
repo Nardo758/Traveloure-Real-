@@ -84,21 +84,13 @@ import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
-import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
-import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
-import { AmadeusTransfers } from "@/components/amadeus-transfers";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
-import { TransferCard } from "@/components/travelpayouts/TransferCard";
-import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportCard";
-import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
-import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 
@@ -368,210 +360,6 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
   );
 }
 
-function TravelpayoutsTransport({ destination }: { destination: string }) {
-  const [transferFrom, setTransferFrom] = useState("");
-  const [transferTo, setTransferTo] = useState(destination);
-  const [transferSearched, setTransferSearched] = useState(false);
-
-  useEffect(() => { setTransferTo(destination); }, [destination]);
-
-  const transfersQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/transfers", transferFrom, transferTo],
-    enabled: !!transferFrom && !!transferTo && transferSearched,
-    queryFn: async () => {
-      const params = new URLSearchParams({ from: transferFrom, to: transferTo });
-      const res = await fetch(`/api/catalog/transfers?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Transfers fetch failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const groundQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/ground-transport", destination],
-    enabled: !!destination,
-    queryFn: async () => {
-      const params = new URLSearchParams({ destination });
-      const res = await fetch(`/api/catalog/ground-transport?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Ground transport fetch failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const transfers = transfersQuery.data?.items || [];
-  const ground = groundQuery.data?.items || [];
-
-  if (!destination) return null;
-
-  return (
-    <div className="mt-6 space-y-6">
-      {/* GetTransfer — requires pickup + dropoff */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
-          Private Transfers via GetTransfer
-        </h3>
-        <div className="flex gap-2 mb-3">
-          <input
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="From (e.g. airport, hotel)"
-            value={transferFrom}
-            onChange={e => setTransferFrom(e.target.value)}
-            data-testid="input-transfer-from"
-          />
-          <input
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="To"
-            value={transferTo}
-            onChange={e => setTransferTo(e.target.value)}
-            data-testid="input-transfer-to"
-          />
-          <Button
-            size="sm"
-            onClick={() => setTransferSearched(true)}
-            disabled={!transferFrom || !transferTo}
-            data-testid="button-search-transfers"
-          >
-            Search
-          </Button>
-        </div>
-        {transfersQuery.isLoading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
-            ))}
-          </div>
-        )}
-        {transfersQuery.isError && (
-          <p className="text-xs text-destructive">Could not load transfer options. Please try again.</p>
-        )}
-        {!transfersQuery.isLoading && !transfersQuery.isError && transfers.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {transfers.slice(0, 6).map(item => (
-              <TransferCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
-        {transferSearched && !transfersQuery.isLoading && !transfersQuery.isError && transfers.length === 0 && (
-          <p className="text-xs text-muted-foreground">No transfers found for this route.</p>
-        )}
-      </div>
-
-      {/* Omio ground transport */}
-      {(groundQuery.isLoading || ground.length > 0 || groundQuery.isError) && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
-            Trains & Buses via Omio
-          </h3>
-          {groundQuery.isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
-              ))}
-            </div>
-          )}
-          {groundQuery.isError && (
-            <p className="text-xs text-destructive">Could not load ground transport options.</p>
-          )}
-          {!groundQuery.isLoading && ground.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {ground.slice(0, 6).map(item => (
-                <GroundTransportCard key={item.id} item={item} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DiscoverCarsWidget({ destination }: { destination: string }) {
-  const today = new Date();
-  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
-
-  const carsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/cars", destination],
-    enabled: !!destination,
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        location: destination,
-        pickup: fmt(today),
-        dropoff: fmt(nextWeek),
-        limit: "4",
-      });
-      const res = await fetch(`/api/catalog/cars?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch car rentals");
-      return res.json();
-    },
-  });
-
-  const cars = carsQuery.data?.items || [];
-  if (carsQuery.isLoading) return (
-    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {Array.from({ length: 2 }).map((_, i) => (
-        <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
-      ))}
-    </div>
-  );
-  if (carsQuery.isError || cars.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
-        Need a car? — DiscoverCars
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {cars.slice(0, 4).map(item => (
-          <CarRentalCard key={item.id} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TravelpayoutsNomad({ destination }: { destination: string }) {
-  const nomadQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/nomad", destination],
-    enabled: !!destination,
-    queryFn: async () => {
-      const params = new URLSearchParams({ cities: destination, limit: "6" });
-      const res = await fetch(`/api/catalog/nomad?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Nomad routes fetch failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const routes = nomadQuery.data?.items || [];
-  if (nomadQuery.isLoading) return (
-    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
-      ))}
-    </div>
-  );
-  if (nomadQuery.isError) return (
-    <p className="mt-4 text-xs text-destructive">Could not load nomad routes.</p>
-  );
-  if (routes.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-violet-500" />
-        Multi-city routes via Kiwi.com Nomad
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {routes.slice(0, 6).map(item => (
-          <NomadRouteCard key={item.id} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 interface CartItem {
   id: string;
   cartItemId?: string;
@@ -654,7 +442,6 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
       { id: "events", label: "Events", icon: Ticket, category: "events" },
       { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
-      { id: "transfers", label: "Transfers", icon: Car, category: "transfers" },
       { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
       { id: "flights", label: "Flights", icon: Plane, category: "flights" },
@@ -1259,8 +1046,12 @@ export default function ExperienceTemplatePage() {
     return [...platformItems, ...localExternalCart];
   }, [serverCart, localExternalCart]);
 
+  // Loud fallback: an unconfigured slug must never silently render as another
+  // template. `config` keeps a safe default to avoid null-derefs during render,
+  // but `isConfiguredTemplate` gates the page — see the not-found guard below.
+  const isConfiguredTemplate = !!experienceConfigs[slug];
   const config = experienceConfigs[slug] || experienceConfigs.wedding;
-  
+
   // Read query params for pre-filled destination
   const searchString = useSearch();
   const queryParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
@@ -1310,31 +1101,12 @@ export default function ExperienceTemplatePage() {
   const [endDate, setEndDate] = useState<Date | undefined>(initialSettings?.endDate ? new Date(initialSettings.endDate) : undefined);
   const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? config.tabs[0]?.id ?? "venue");
   const [searchQuery, setSearchQuery] = useState(initialSettings?.searchQuery ?? "");
-  const [priceRange, setPriceRange] = useState(initialSettings?.priceRange ?? [0, 500]);
-  const [minRating, setMinRating] = useState(initialSettings?.minRating ?? 0);
-  const [sortBy, setSortBy] = useState(initialSettings?.sortBy ?? "popular");
-  const [selectedFilters, setSelectedFilters] = useState<string[]>(initialSettings?.selectedFilters ?? []);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>(initialSettings?.selectedInterests ?? []);
   const [vendorType, setVendorType] = useState<string>(initialSettings?.vendorType ?? "photographer");
-  
-  // Flight-specific filters
-  const [flightMaxPrice, setFlightMaxPrice] = useState(initialSettings?.flightMaxPrice ?? 2000);
-  const [flightStops, setFlightStops] = useState<"any" | "nonstop" | "1stop">(initialSettings?.flightStops ?? "any");
-  const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">(initialSettings?.flightSortBy ?? "price");
-  
-  // Hotel-specific filters
-  const [hotelMaxPrice, setHotelMaxPrice] = useState(initialSettings?.hotelMaxPrice ?? 5000);
-  const [hotelStarRating, setHotelStarRating] = useState<number>(initialSettings?.hotelStarRating ?? 0);
-  const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
-  
-  // Template-based filters (for experience types with database-driven tabs)
-  const templateFilters = useTemplateFilters();
-  const hasTemplateTabs = slug === "bachelor-bachelorette" || slug === "anniversary-trip";
-  
+
   // Wedding mode state (planning vs guest activities)
   const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
   
@@ -1399,17 +1171,6 @@ export default function ExperienceTemplatePage() {
       setEndDate(settings?.endDate ? new Date(settings.endDate) : undefined);
       setActiveTab(settings?.activeTab ?? defaultActiveTab);
       setSearchQuery(settings?.searchQuery ?? "");
-      setPriceRange(settings?.priceRange ?? [0, 500]);
-      setMinRating(settings?.minRating ?? 0);
-      setSortBy(settings?.sortBy ?? "popular");
-      setSelectedFilters(settings?.selectedFilters ?? []);
-      setSelectedInterests(settings?.selectedInterests ?? []);
-      setFlightMaxPrice(settings?.flightMaxPrice ?? 2000);
-      setFlightStops(settings?.flightStops ?? "any");
-      setFlightSortBy(settings?.flightSortBy ?? "price");
-      setHotelMaxPrice(settings?.hotelMaxPrice ?? 5000);
-      setHotelStarRating(settings?.hotelStarRating ?? 0);
-      setHotelSortBy(settings?.hotelSortBy ?? "price");
       setAdults(settings?.adults ?? settings?.travelers ?? 2);
       setKids(settings?.kids ?? 0);
       setDetailsSubmitted(settings?.detailsSubmitted ?? false);
@@ -1427,17 +1188,6 @@ export default function ExperienceTemplatePage() {
       endDate: endDate?.toISOString(),
       activeTab,
       searchQuery,
-      priceRange,
-      minRating,
-      sortBy,
-      selectedFilters,
-      selectedInterests,
-      flightMaxPrice,
-      flightStops,
-      flightSortBy,
-      hotelMaxPrice,
-      hotelStarRating,
-      hotelSortBy,
       adults,
       kids,
       detailsSubmitted,
@@ -1445,13 +1195,10 @@ export default function ExperienceTemplatePage() {
     sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
   }, [
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
-    searchQuery, priceRange, minRating, sortBy, selectedFilters, selectedInterests,
-    flightMaxPrice, flightStops, flightSortBy, hotelMaxPrice, hotelStarRating,
-    hotelSortBy, adults, kids, detailsSubmitted
+    searchQuery, adults, kids, detailsSubmitted
   ]);
   
   const [cartOpen, setCartOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [expertHelpDialogOpen, setExpertHelpDialogOpen] = useState(false);
@@ -1739,18 +1486,6 @@ export default function ExperienceTemplatePage() {
     setAiItineraryDialogOpen(true);
   };
 
-  const toggleFilter = (filter: string) => {
-    setSelectedFilters((prev) =>
-      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter]
-    );
-  };
-
-  const toggleInterest = (interest: string) => {
-    setSelectedInterests((prev) =>
-      prev.includes(interest) ? prev.filter((i) => i !== interest) : [...prev, interest]
-    );
-  };
-
   const isExternalProviderItem = (itemOrId: CartItem | string) => {
     if (typeof itemOrId === 'object') {
       return itemOrId.isExternal === true;
@@ -1908,37 +1643,8 @@ export default function ExperienceTemplatePage() {
       );
     }
 
-    if (priceRange[0] > 0 || priceRange[1] < 500) {
-      filtered = filtered.filter(s => {
-        const price = Number(s.price) || 0;
-        return price >= priceRange[0] && (priceRange[1] >= 500 || price <= priceRange[1]);
-      });
-    }
-
-    if (minRating > 0) {
-      filtered = filtered.filter(s => (Number(s.averageRating) || 0) >= minRating);
-    }
-
-    if (selectedFilters.length > 0) {
-      filtered = filtered.filter(s => {
-        const desc = (s.description || "").toLowerCase();
-        const name = s.serviceName.toLowerCase();
-        return selectedFilters.some(f => 
-          desc.includes(f.toLowerCase()) || name.includes(f.toLowerCase())
-        );
-      });
-    }
-
-    if (sortBy === "price-low") {
-      filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
-    } else if (sortBy === "price-high") {
-      filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
-    } else if (sortBy === "rating") {
-      filtered.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
-    }
-
     return filtered;
-  }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
+  }, [services, searchQuery, currentTabCategory]);
 
   const mapProviders = useMemo(() => {
     // Show service markers when destination is set
@@ -2089,7 +1795,7 @@ export default function ExperienceTemplatePage() {
     );
   }
 
-  if (!experienceType) {
+  if (!experienceType || !isConfiguredTemplate) {
     return (
       <Layout>
         <div className="min-h-screen bg-background flex items-center justify-center">
@@ -2528,307 +2234,42 @@ export default function ExperienceTemplatePage() {
         </div>
 
         <div className="container mx-auto px-4 py-6">
-          {activeTab === "transportation" && (
+          {/* Lightweight controls: free-text search (most tabs) or vendor-type
+              (wedding vendors). Faceted filters + price params removed in Phase 1 —
+              selection replaces filtering; the cart total is the budget signal. */}
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "accommodations" && (
             <div className="mb-6">
-              <TripTransportPlanner
-                cart={cart}
-                destination={destination}
-                startDate={startDate}
-                endDate={endDate}
-                travelers={adults + kids}
-                variantId={recentVariantId}
-                onBookTransfer={(segment, option) => {
-                  addToCart({
-                    id: `transport-${segment.id}-${Date.now()}`,
-                    type: "transportation",
-                    name: `${option.name}: ${segment.from.name} → ${segment.to.name}`,
-                    price: option.price || 0,
-                    quantity: 1,
-                    provider: option.provider,
-                    details: option.description,
-                    isExternal: true,
-                  });
-                }}
-              />
-              {destination && <TravelpayoutsTransport destination={destination} />}
+              {activeTab === "vendors" ? (
+                <div className="max-w-xs">
+                  <Label className="text-sm font-medium">Vendor Type</Label>
+                  <Select value={vendorType} onValueChange={setVendorType}>
+                    <SelectTrigger className="mt-1" data-testid="select-vendor-type-main">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WEDDING_VENDOR_TYPES.map(type => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="relative max-w-md">
+                  <Input
+                    placeholder="Search by name, provider, or description..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                    data-testid="input-search"
+                  />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                </div>
+              )}
             </div>
           )}
 
-          <Collapsible open={activeTab === "transportation" ? false : filtersOpen} onOpenChange={setFiltersOpen}>
-            {activeTab !== "transportation" && (
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Filters & Sort
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
-                </Button>
-              </CollapsibleTrigger>
-            )}
-            <CollapsibleContent>
-              <Card className="mb-6">
-                <CardContent className="p-4 space-y-4">
-                  {activeTab === "flights" ? (
-                    <>
-                      <div className="flex flex-wrap gap-4">
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Max Price: ${flightMaxPrice}</Label>
-                          <Slider
-                            value={[flightMaxPrice]}
-                            onValueChange={(v) => setFlightMaxPrice(v[0])}
-                            min={100}
-                            max={5000}
-                            step={100}
-                            className="mt-2"
-                            data-testid="slider-flight-price"
-                          />
-                        </div>
-
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Stops</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {[
-                              { value: "any", label: "Any" },
-                              { value: "nonstop", label: "Nonstop" },
-                              { value: "1stop", label: "1 Stop" },
-                            ].map((option) => (
-                              <Button
-                                key={option.value}
-                                variant={flightStops === option.value ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setFlightStops(option.value as "any" | "nonstop" | "1stop")}
-                                className={flightStops === option.value ? "bg-[#FF385C]" : ""}
-                                data-testid={`button-stops-${option.value}`}
-                              >
-                                {option.label}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="min-w-[140px] max-w-[180px]">
-                          <Label className="text-sm font-medium">Sort By</Label>
-                          <Select value={flightSortBy} onValueChange={(v) => setFlightSortBy(v as "price" | "duration" | "departure")}>
-                            <SelectTrigger className="mt-2" data-testid="select-flight-sort">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="price">Lowest Price</SelectItem>
-                              <SelectItem value="duration">Shortest Duration</SelectItem>
-                              <SelectItem value="departure">Earliest Departure</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </>
-                  ) : activeTab === "hotels" || activeTab === "accommodations" ? (
-                    <>
-                      <div className="flex flex-wrap gap-4">
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Max Price/Night: ${hotelMaxPrice}</Label>
-                          <Slider
-                            value={[hotelMaxPrice]}
-                            onValueChange={(v) => setHotelMaxPrice(v[0])}
-                            min={50}
-                            max={1000}
-                            step={25}
-                            className="mt-2"
-                            data-testid="slider-hotel-price"
-                          />
-                        </div>
-
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Star Rating</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {[0, 3, 4, 5].map((stars) => (
-                              <Button
-                                key={stars}
-                                variant={hotelStarRating === stars ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setHotelStarRating(stars)}
-                                className={hotelStarRating === stars ? "bg-[#FF385C]" : ""}
-                                data-testid={`button-stars-${stars}`}
-                              >
-                                {stars === 0 ? "All" : <><Star className="w-3 h-3 mr-1 fill-current" />{stars}+</>}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="min-w-[140px] max-w-[180px]">
-                          <Label className="text-sm font-medium">Sort By</Label>
-                          <Select value={hotelSortBy} onValueChange={(v) => setHotelSortBy(v as "price" | "rating")}>
-                            <SelectTrigger className="mt-2" data-testid="select-hotel-sort">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="price">Lowest Price</SelectItem>
-                              <SelectItem value="rating">Highest Rating</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        {activeTab === "vendors" ? (
-                          <>
-                            <Label className="text-sm font-medium">Vendor Type</Label>
-                            <Select value={vendorType} onValueChange={setVendorType}>
-                              <SelectTrigger className="mt-1" data-testid="select-vendor-type-main">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {WEDDING_VENDOR_TYPES.map(type => (
-                                  <SelectItem key={type.value} value={type.value}>
-                                    {type.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </>
-                        ) : (
-                          <>
-                            <Label className="text-sm font-medium">Search</Label>
-                            <div className="relative mt-1">
-                              <Input
-                                placeholder="Search by name, provider, or description..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-10"
-                                data-testid="input-search"
-                              />
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-4">
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Price Range: ${priceRange[0]} - ${priceRange[1]}+</Label>
-                          <Slider
-                            value={priceRange}
-                            onValueChange={setPriceRange}
-                            max={500}
-                            step={10}
-                            className="mt-2"
-                            data-testid="slider-price"
-                          />
-                        </div>
-
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Minimum Rating</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {[0, 3, 3.5, 4, 4.5].map((rating) => (
-                              <Button
-                                key={rating}
-                                variant={minRating === rating ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setMinRating(rating)}
-                                className={minRating === rating ? "bg-[#FF385C]" : ""}
-                                data-testid={`button-rating-${rating}`}
-                              >
-                                {rating === 0 ? "All" : <><Star className="w-3 h-3 mr-1" />{rating}+</>}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="min-w-[140px] max-w-[180px]">
-                          <Label className="text-sm font-medium">Sort By</Label>
-                          <Select value={sortBy} onValueChange={setSortBy}>
-                            <SelectTrigger className="mt-2" data-testid="select-sort">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="popular">Most Popular</SelectItem>
-                              <SelectItem value="price-low">Price: Low to High</SelectItem>
-                              <SelectItem value="price-high">Price: High to Low</SelectItem>
-                              <SelectItem value="rating">Highest Rated</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Hide Preferences section for vendors tab - VenueSearchPanel has its own Vendor Type filter */}
-                      {activeTab !== "vendors" && (
-                        <div>
-                          <Label className="text-sm font-medium mb-2 block">Preferences</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {config.filters.map((filter) => (
-                              <Badge
-                                key={filter}
-                                variant={selectedFilters.includes(filter) ? "default" : "outline"}
-                                className={cn(
-                                  "cursor-pointer",
-                                  selectedFilters.includes(filter) && "bg-[#FF385C]"
-                                )}
-                                onClick={() => toggleFilter(filter)}
-                                data-testid={`filter-${filter.toLowerCase()}`}
-                              >
-                                {filter}
-                              </Badge>
-                            ))}
-                            {/* Interest-based filters - shown for Activities tab */}
-                            {activeTab === "activities" && [
-                              { id: "culture", label: "Culture & History" },
-                              { id: "food", label: "Food & Dining" },
-                              { id: "adventure", label: "Adventure" },
-                              { id: "nature", label: "Nature & Outdoors" },
-                              { id: "nightlife", label: "Nightlife" },
-                              { id: "shopping", label: "Shopping" },
-                              { id: "wellness", label: "Wellness & Spa" },
-                              { id: "art", label: "Art & Museums" },
-                            ].map((interest) => (
-                              <Badge
-                                key={interest.id}
-                                variant={selectedInterests.includes(interest.id) ? "default" : "outline"}
-                                className={cn(
-                                  "cursor-pointer",
-                                  selectedInterests.includes(interest.id) && "bg-[#FF385C]"
-                                )}
-                                onClick={() => toggleInterest(interest.id)}
-                                data-testid={`interest-filter-${interest.id}`}
-                              >
-                                {interest.label}
-                              </Badge>
-                            ))}
-                            {(selectedFilters.length > 0 || selectedInterests.length > 0) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs h-6"
-                                onClick={() => {
-                                  setSelectedFilters([]);
-                                  setSelectedInterests([]);
-                                }}
-                                data-testid="button-clear-filters"
-                              >
-                                Clear all
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </CollapsibleContent>
-          </Collapsible>
-
-          {hasTemplateTabs && experienceType?.id && (
-            <div className="mb-6">
-              <TemplateFiltersPanel
-                experienceTypeId={experienceType.id}
-                activeTab={activeTab}
-                selectedFilters={templateFilters.selectedFilters}
-                onFilterChange={templateFilters.onFilterChange}
-                onClearFilters={templateFilters.onClearFilters}
-              />
-            </div>
-          )}
 
           {activeTab === "flights" && (
             <div className="mb-6">
@@ -2838,9 +2279,6 @@ export default function ExperienceTemplatePage() {
                 startDate={startDate}
                 endDate={endDate}
                 travelers={adults + kids}
-                maxPrice={flightMaxPrice}
-                stops={flightStops}
-                sortBy={flightSortBy}
                 onSelectFlight={(flight) => {
                   const outbound = flight.itineraries[0];
                   const firstSegment = outbound?.segments[0];
@@ -2884,10 +2322,6 @@ export default function ExperienceTemplatePage() {
           )}
 
           {activeTab === "flights" && destination && (
-            <TravelpayoutsNomad destination={destination} />
-          )}
-
-          {activeTab === "flights" && destination && (
             <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
@@ -2902,9 +2336,6 @@ export default function ExperienceTemplatePage() {
                 checkIn={startDate}
                 checkOut={endDate}
                 guests={adults + kids}
-                maxPrice={hotelMaxPrice}
-                starRating={hotelStarRating}
-                sortBy={hotelSortBy}
                 activityLocations={activityLocations}
                 onResultsLoaded={setHotelSearchMarkers}
                 destinationCenter={destinationCenter}
@@ -2958,7 +2389,6 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
-              {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
           )}
 
@@ -2992,7 +2422,7 @@ export default function ExperienceTemplatePage() {
                 startDate={startDate}
                 endDate={endDate}
                 travelers={adults + kids}
-                interests={selectedInterests}
+                interests={[]}
                 onResultsLoaded={setActivitySearchMarkers}
                 destinationCenter={destinationCenter}
                 onSelectActivity={(activity) => {
@@ -3091,27 +2521,6 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "transfers" && (
-            <div className="mb-6">
-              <AmadeusTransfers
-                destination={destination || ""}
-                startDate={startDate?.toISOString().split('T')[0]}
-                travelers={adults + kids}
-                onAddToCart={(item) => {
-                  addToCart({
-                    id: item.id,
-                    type: "transportation",
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                    provider: item.provider,
-                    details: item.details,
-                    isExternal: item.isExternal,
-                  });
-                }}
-              />
-            </div>
-          )}
 
           {/* Restaurant Catalog Section (OpenTable + Booking.com) — shown for dining tabs */}
           {activeTab === "dining" && destination && (
@@ -3130,7 +2539,6 @@ export default function ExperienceTemplatePage() {
                     addToCart(item);
                   }}
                   externalVendorType={activeTab === "vendors" ? vendorType : undefined}
-                  externalMinRating={minRating}
                   externalKeyword={activeTab !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
                 />
@@ -3839,7 +3247,7 @@ export default function ExperienceTemplatePage() {
                     endDate={endDate}
                     experienceType={experienceType?.name}
                     travelers={adults + kids}
-                    preferences={selectedInterests}
+                    preferences={[]}
                     userId={user?.id}
                     isVisible={true}
                   />
