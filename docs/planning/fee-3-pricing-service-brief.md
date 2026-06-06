@@ -1,207 +1,127 @@
-# FEE-3 — `pricing.service.ts` Deposit Rate + Expert Tier Markups
+# FEE-3 (narrowed) — Configurable deposit rate (P0 billing fix)
 
-**Goal:** Remove the hard-coded literals in `server/services/pricing.service.ts:20,119-122` — `depositRate = 0.25`, `expertRates = { standard: 0.10, premium: 0.15, concierge: 0.20 }` — and resolve them through the same admin-editable fee config that the rest of the platform uses. Closes the last of the §4.8 "no fee literals at charge time" gaps.
+**Scope:** One live billing literal — `server/services/pricing.service.ts:20` `depositRate = 0.25`. Charged to real users who pick "deposit" at checkout (→ written to the `bookings` row and used as the Stripe PaymentIntent amount via `booking.service.ts:301, 336, 346`). Make it config-resolved.
 
-**Status flagged in tracker:** `FEE-3 / Launch-blocking pending P0 alive-check`. The scoping doc gated execution on confirming the file is actually called at runtime.
+**This is a make-configurable fix, NOT a rate change.** Default stays 25 %; behavior is identical day one. Admin can move it without a redeploy.
 
-**P0 ALIVE-CHECK RESULT (done before this brief was finalized):** ✅ alive. `pricing.service.ts` is consumed by:
-- `server/services/booking.service.ts` (depositRate + expert tier markup, lines 287, 291, 301)
-- `server/routes/bookings.ts` (mounted at `app.use("/api/bookings", bookingsRoutes)` in `server/routes.ts:559`) — calls `pricingService.estimateTripCost` and `applyPromoCode`
+**Status flagged in tracker:** `FEE-3 / Launch-blocking (P0 billing literal)`.
 
-So this is NOT a delete-pass. Real billing surface. Brief proceeds with the fix.
+**Owner:** FEE workstream.
 
-**Owner:** FEE workstream. Pairs with `fee-2-provider-insurance-tier-brief.md`.
-
-**Target:** Claude Code, repo working tree.
+**Target:** Claude Code, repo working tree, branch `claude/laughing-bardeen-KyTUY`.
 
 ---
 
-## HOW TO USE THIS BRIEF — READ FULLY BEFORE WRITING CODE
+## DIAGNOSIS (the trace that produced this brief)
 
-1. Read every phase before starting. Phases share the `booking_fee_configs` row contract.
-2. Work in strict phase order: 0 → 2.
-3. Each phase ends with a grep + typecheck gate and a commit (`feat(FEE-3.Pn): …`).
-4. **Typecheck floor = 140 pre-existing errors.** Every phase must return `npm run check` at **≤140 errors**.
-5. **Phase 1 edits no schema** — only seeds rows into the existing `booking_fee_configs` table via a small migration.
-6. File:line refs confirmed via P0 grep; should be stable.
+`pricing.service.ts` reachability — only TWO surfaces matter:
 
----
+| Surface | Status |
+|---|---|
+| `calculatePlatformFees` (`pricing.service.ts:82`) | **Already clean.** Resolves via `resolveCommissionRates(category)` (line 83). Reads `booking_fee_configs`. Not in scope. |
+| `calculateDeposit` (`pricing.service.ts:103`) | **Live billing literal.** `this.depositRate = 0.25`. Hit by `bookingService.processCart → booking.service.ts:301`, which feeds the Stripe PI amount in `processCart` (`:336, :346`). **In scope.** |
+| `calculateExpertFee` (`pricing.service.ts:118`) | **Dead code.** Zero callers (`grep -rn "calculateExpertFee" .`). Hardcoded 10/15/20 % markups. Handled as a SEPARATE cleanup commit (Step 5). |
 
-## HARD PREREQS
-
-1. **The §4.8 single-resolver pattern is already shipped enough** for this brief. `booking_fee_configs` is the source of truth for category-keyed rates. `getFee()` exists for AI-Concierge. We're routing the pricing-service rates through the booking-side resolver (`booking_fee_configs`) since that's what's category-keyed and already admin-editable in `/admin/fee-config`.
-2. **No need to wait for the unification brief.** The two-resolver world (`commission.ts` + `optimization-fee.service.ts`) handles this fine; pricing.service queries `booking_fee_configs` directly via SQL (matching the pattern in `commission.ts`).
-
----
-
-## DECIDED DEFAULTS
-
-- **D1 Rate storage:** four new rows in `booking_fee_configs`:
-  - `category = 'platform_deposit_rate'` — `platform_fee_percent = 25` (the deposit %).
-  - `category = 'expert_tier_standard_markup'` — `platform_fee_percent = 10`.
-  - `category = 'expert_tier_premium_markup'` — `platform_fee_percent = 15`.
-  - `category = 'expert_tier_concierge_markup'` — `platform_fee_percent = 20`.
-  Semantic: these rows reuse `platform_fee_percent` as a generic-percent column. The `expert_share_percent` column is left null (or zero) for these rows since the "expert share" semantic doesn't apply to deposit/markup. **Document this inline in the migration so future readers don't misinterpret.**
-- **D2 Resolver shape:** new helper in `pricing.service.ts` — `private async loadRateFromConfig(category: string, fallback: number): Promise<number>` — single SELECT against `booking_fee_configs`. 60-second in-memory cache (same pattern as `affiliate.service.ts` post-LB-P4a). Cache invalidates on admin save (best-effort via a TTL — the admin UI can also bust the cache explicitly in Phase 2).
-- **D3 Fallback chain:** DB row > in-code constant (kept for safety net). The constants stay at the top of the file as `DEFAULT_*` to be the last-resort fallback if `booking_fee_configs` is unreachable or empty for that category.
-- **D4 Caller signature stability:** `getPrice`, `calculatePlatformFees`, `calculateDeposit` etc. keep their existing signatures. The resolution becomes async-internal but the callers don't change.
-- **D5 Admin UI:** the four new rows surface in the existing `fee-config.tsx` UI without any new component — the per-category list already iterates `booking_fee_configs` rows.
-
----
-
-## GLOBAL "WHAT NOT TO DO"
-
-- **Do not delete the in-code constants.** They remain as `DEFAULT_DEPOSIT_RATE`, `DEFAULT_EXPERT_TIER_RATES` — the last-resort fallback when the DB is unreachable. Per §4.8: "the values below are *approved defaults* that ship out of the box."
-- **Do not add new tables.** The four rates fit cleanly in `booking_fee_configs` with the right category prefixes.
-- **Do not change caller signatures.** This is a guts-only refactor; UI, routes, and other services keep working identically.
-- **Do not couple to FEE-2.** Provider tier is a separate dimension; the pricing-service rates are category-keyed.
-- **Do not surface the deposit/markup rows as "categories" in the booking flow.** They're rate-config storage only — `category` is being overloaded as a key, not a domain concept. The fee-config UI should label these clearly as "Platform deposit rate" + "Expert tier markups" rather than letting them mix with the booking-category rows.
-
----
-
-## REUSE MAP
-
-| Need | Use | Evidence |
-|---|---|---|
-| Rate config storage | `booking_fee_configs` | shared/schema.ts |
-| Resolver pattern | `commission.ts:resolveCommissionRates` (SQL-based config read with constant fallback) | shipped |
-| In-memory cache pattern | `affiliate.service.ts:commissionCache` (LB-P4a) | `server/services/affiliate.service.ts:31-33` |
-| Admin fee UI surface | `client/src/pages/admin/fee-config.tsx` | shipped |
-
----
-
-## PHASE 0 — Alive-check + caller map (already done; documented)
-
-✅ **Already done.** `pricing.service.ts` is alive — see brief header. Documenting the caller map for Phase 1's awareness:
-
-- `pricing.service.ts:104` — `calculateDeposit(amount, customRate?)` uses `depositRate = 0.25` when `customRate` is undefined.
-- `pricing.service.ts:125` — `expertRates[expertTier]` lookup in `calculatePlatformFees` (or similar — confirm exact function name in source). Three tiers, three rates.
-- `booking.service.ts:287, 291, 301` — three call sites consuming the above.
-- `routes/bookings.ts:156, 183` — two call sites via `estimateTripCost` and `applyPromoCode`.
-
-No more callers to find. Migration affects exactly those code paths.
-
-**Gate:** map noted. No code changed.
-
----
-
-## PHASE 1 — Seed rate rows + resolver helper in `pricing.service.ts`
-
-**Files:** `server/services/pricing.service.ts`, `server/migrations/024_pricing_service_rates.sql`, `server/migrations/run-migrations.ts`.
-
-**Steps**
-1. **Migration `024_pricing_service_rates.sql`:**
-   ```sql
-   -- FEE-3: seed the pricing.service.ts hard-coded rates into booking_fee_configs.
-   -- These rows use the generic platform_fee_percent column as a single-rate
-   -- carrier; expert_share_percent is left zero for these categories since
-   -- the "expert share" semantic doesn't apply to deposit/markup.
-
-   INSERT INTO booking_fee_configs (category, platform_fee_percent, expert_share_percent, is_active)
-   VALUES
-     ('platform_deposit_rate',          25,  0, true),
-     ('expert_tier_standard_markup',    10,  0, true),
-     ('expert_tier_premium_markup',     15,  0, true),
-     ('expert_tier_concierge_markup',   20,  0, true)
-   ON CONFLICT (category) DO NOTHING;
-   ```
-   Register in `run-migrations.ts` after `023_provider_insurance_tier.sql`.
-2. **`pricing.service.ts` helper + replacement:**
-   - Add private static maps for constants (rename for clarity):
-     ```ts
-     private readonly DEFAULT_DEPOSIT_RATE = 0.25;
-     private readonly DEFAULT_EXPERT_TIER_RATES = { standard: 0.10, premium: 0.15, concierge: 0.20 } as const;
-     ```
-   - Add the resolver helper with cache:
-     ```ts
-     private rateCache = new Map<string, { value: number; expiresAt: number }>();
-     private readonly RATE_CACHE_TTL_MS = 60_000;
-
-     private async loadRateFromConfig(category: string, fallback: number): Promise<number> {
-       const cached = this.rateCache.get(category);
-       if (cached && cached.expiresAt > Date.now()) return cached.value;
-       try {
-         const result = await db.execute(sql`
-           SELECT CAST(platform_fee_percent AS FLOAT) AS rate
-           FROM booking_fee_configs
-           WHERE category = ${category} AND is_active = true
-           LIMIT 1
-         `);
-         const row = result.rows?.[0] as { rate: number | null } | undefined;
-         const value = row?.rate !== undefined && row.rate !== null ? Number(row.rate) / 100 : fallback;
-         this.rateCache.set(category, { value, expiresAt: Date.now() + this.RATE_CACHE_TTL_MS });
-         return value;
-       } catch (err) {
-         console.warn(`[pricing] config lookup failed for ${category}:`, err);
-         return fallback;
-       }
-     }
-     ```
-   - Replace the two call sites:
-     - `calculateDeposit`: replace `const rate = customRate || this.depositRate;` with `const rate = customRate ?? await this.loadRateFromConfig('platform_deposit_rate', this.DEFAULT_DEPOSIT_RATE);`. **Note:** this changes the function to async; call sites already await it per the existing `await pricingService.calculateDeposit(...)` in `booking.service.ts:301`, so no caller change.
-     - Expert tier lookup: replace inline `expertRates[expertTier]` with `await this.loadRateFromConfig('expert_tier_' + expertTier + '_markup', this.DEFAULT_EXPERT_TIER_RATES[expertTier as keyof typeof this.DEFAULT_EXPERT_TIER_RATES] ?? this.DEFAULT_EXPERT_TIER_RATES.standard)`.
-   - Remove the inline literals (the `depositRate = 0.25` field and the `expertRates = {...}` object). Constants now live as `DEFAULT_*` only.
-
-**Acceptance**
-- `calculateDeposit` returns the DB-configured rate when present.
-- Expert tier markup resolves from DB.
-- When DB row missing or unreachable: fallback to in-code constant.
-- Cache reduces DB hits to once per minute per category.
-- No literal numeric rate is read at charge time — only `DEFAULT_*` fallbacks.
-
-**Verify / Gate**
+Single-source confirmed via:
 ```
-grep -n "depositRate = 0\.25\|standard: 0\.10\|premium: 0\.15\|concierge: 0\.20" server/services/pricing.service.ts
-# Expect: only inside the DEFAULT_* constants block, NOT inside any function body.
-grep -n "loadRateFromConfig" server/services/pricing.service.ts
-grep -n "platform_deposit_rate\|expert_tier_.*_markup" server/migrations/024_pricing_service_rates.sql server/services/pricing.service.ts
-npm run check                                                                   # ≤140
+grep -rn "0\.25\|depositRate\|calculateDeposit" server/ client/
 ```
-Commit: `feat(FEE-3.P1): pricing.service rates resolve from booking_fee_configs`
+Only `pricing.service.ts:20` is a charge-path deposit literal. `commission.ts:25 PLATFORM_FEE_RATE = 0.25` is the per-category fallback constant per §4.8 ("approved defaults that ship out of the box") — sibling concern, not in scope.
 
 ---
 
-## PHASE 2 — Admin UI labels + cache busting
+## WHAT NOT TO DO
 
-**Files:** `client/src/pages/admin/fee-config.tsx`, possibly `server/routes/admin.routes.ts` for cache-bust signal.
-
-**Steps**
-1. **Label the new rows correctly in the admin UI.** The four new categories will appear in the existing per-category list — by default they'd show with their raw keys. Add display-label overrides:
-   - `platform_deposit_rate` → "Platform deposit rate"
-   - `expert_tier_standard_markup` → "Expert tier — Standard markup"
-   - `expert_tier_premium_markup` → "Expert tier — Premium markup"
-   - `expert_tier_concierge_markup` → "Expert tier — Concierge markup"
-   Group them in a separate "Pricing rates" section below the booking-category rates so admins don't confuse them with bookable-category fees.
-2. **Cache busting (best-effort):** the in-process 60s cache means an admin rate change takes up to 60s to propagate. For Phase 2, accept that; document it. For Phase B, add an explicit cache-bust call from the admin save handler — but that requires `pricingService` to be a shared singleton with a `bustCache()` method, which is a small refactor. Note as known follow-up.
-
-**Acceptance**
-- Admins see + edit the four pricing.service rates from `/admin/fee-config` with clear labels.
-- Saving a rate updates the DB; the change takes effect on next read (≤60s due to cache).
-
-**Verify / Gate**
-```
-grep -n "Pricing rates\|platform_deposit_rate\|expert_tier_.*_markup" client/src/pages/admin/fee-config.tsx
-npm run check                                                                   # ≤140
-```
-Commit: `feat(FEE-3.P2): admin labels for pricing.service rates`
+- **Do not change the effective rate.** 0.25 stays the day-one default; no user-facing change.
+- **Do not introduce a new constant.** Resolve from `booking_fee_configs` with **0.25 as the safe fallback** (a missing/unseeded row must NEVER silently drop the deposit to 0 — that would break checkout).
+- **Do not add a new admin UI section.** `platform_deposit_rate` surfaces automatically in `fee-config.tsx` via the existing per-category iteration.
+- **Do not delete `calculateExpertFee` in the same commit.** Dead-code cleanup ships separately (Step 5) so the P0 diff stays surgical.
+- **Do not exceed the 140 typecheck floor.**
 
 ---
 
-## FINAL VERIFICATION CHECKLIST
+## STEP 1 — Pre-flight (done; documented)
 
-- [ ] P1 — DB rates seeded; resolver helper in place; in-code literals removed (constants stay as DEFAULT_* fallbacks).
-- [ ] P2 — admin UI labels render the rates clearly; grouped separately from booking categories.
-- [ ] No literal rate is read at charge time — only `DEFAULT_*` constants as the last-resort fallback.
-- [ ] `npm run check` ≤ 140 (the floor) after every phase.
+✅ Single source confirmed. `pricing.service.ts:20` is the only deposit literal in a charge path. Callers of `calculateDeposit`:
+- `server/services/booking.service.ts:301` (live `processCart` → Stripe PI)
+- `server/services/pricing.service.ts:231` (inside `estimateTripCost`, live `POST /api/bookings/estimate-cost`)
 
-## KNOWN FOLLOW-UPS
+Both call sites need `await` once `calculateDeposit` becomes async.
 
-- **Explicit cache-busting on admin save** — Phase 2 leaves up to 60s drift. Make `pricingService` a singleton with `bustCache(category?)` and call it from the admin POST handler. ~30 min of work; not blocking.
-- **Resolver unification (FEE-Defer)** — Phase-2 batch brief eventually consolidates `commission.ts`, `optimization-fee.service.ts`, `pricing.service.ts`'s `loadRateFromConfig`, and `affiliate.service.ts`'s `resolveCommission` into one `fee-resolver.service.ts`. Cosmetic; works as four resolvers fine.
+---
+
+## STEP 2 — Migration: seed `platform_deposit_rate` row
+
+**File:** `server/migrations/023_platform_deposit_rate.sql`, registered in `run-migrations.ts`.
+
+```sql
+-- FEE-3: seed the pricing.service.ts deposit rate into booking_fee_configs.
+-- platform_fee_percent reused as a generic single-rate carrier; expert_share_percent
+-- is zero since the "expert share" semantic doesn't apply to deposit.
+-- Seeded at 25 to preserve day-one behavior; admin can edit via /admin/fee-config.
+INSERT INTO booking_fee_configs (category, platform_fee_percent, expert_share_percent, is_active)
+VALUES ('platform_deposit_rate', 25, 0, true)
+ON CONFLICT (category) DO NOTHING;
+```
+
+---
+
+## STEP 3 — Resolver in `pricing.service.ts`
+
+- Add a private `loadDepositRate()` helper: single `SELECT platform_fee_percent FROM booking_fee_configs WHERE category = 'platform_deposit_rate' AND is_active = true LIMIT 1`. Divide by 100. Safe fallback `0.25` on any failure (DB error, row missing, NULL).
+- 60-second in-memory cache (same TTL pattern as `affiliate.service.ts` post-LB-P4a).
+- `calculateDeposit` becomes `async`: `const rate = customRate ?? await this.loadDepositRate();`. Returns `Promise<number>`.
+- Remove the `private readonly depositRate = 0.25;` field.
+- Update the two callers to `await pricingService.calculateDeposit(...)`:
+  - `server/services/booking.service.ts:301`
+  - `server/services/pricing.service.ts:231` (internal — `await this.calculateDeposit(total)`)
+
+---
+
+## STEP 4 — Verify the rate reaches the money, not just the row
+
+- Confirm the resolved rate flows through to BOTH `bookings.deposit_amount` AND the Stripe PaymentIntent amount (`booking.service.ts:336, 346`). The charged amount must reflect config.
+- **Acceptance:**
+  - Default → deposit booking still charges 25 % (PI amount unchanged from today).
+  - Edit `platform_deposit_rate` via `/admin/fee-config` → next checkout's PI amount matches new rate (within the 60 s cache TTL).
+  - Missing config row → safe 0.25 fallback, no checkout break.
+
+---
+
+## GATE (P0 commit)
+
+```
+grep -n "0\.25\|depositRate" server/services/pricing.service.ts
+# Expect: ZERO matches outside the safe-fallback literal `0.25` inside loadDepositRate.
+# The `private readonly depositRate` field is gone.
+grep -rn "platform_deposit_rate" server/migrations/023_platform_deposit_rate.sql server/services/pricing.service.ts
+npm run check 2>&1 | grep -cE "^[a-zA-Z].*\\.ts\\([0-9]+,[0-9]+\\): error"   # ≤140
+```
+
+Commit: `fix(FEE-3): resolve deposit rate from config, remove hard-coded 0.25`
+
+---
+
+## STEP 5 — Separate cleanup commit: delete dead `calculateExpertFee`
+
+Dead code with hardcoded 10/15/20 % markups (`pricing.service.ts:118-127`) — zero callers, already misled this brief's first-pass scoping. Delete it cleanly in its own commit so:
+- The P0 diff stays surgical and trivially auditable.
+- The landmine is removed before a future audit (or expert-tier feature) wires it up assuming it's canonical.
+- When the real expert-tier feature lands, it'll resolve from config anyway, so nothing of value is lost.
+
+```
+grep -rn "calculateExpertFee" server/ client/
+# Expect: zero matches after deletion.
+npm run check 2>&1 | grep -cE "^[a-zA-Z].*\\.ts\\([0-9]+,[0-9]+\\): error"   # ≤140
+```
+
+Commit: `chore(pricing): delete dead calculateExpertFee (no callers; landmine removal)`
+
+---
 
 ## OUT OF SCOPE
 
-- Changing pricing.service.ts's domain logic (estimateTripCost, applyPromoCode, etc.) — guts-only refactor.
-- Adding new pricing-service rates (e.g. peak-season markup) — separate scope.
-- Cross-cutting fee architecture cleanup — FEE-Defer batch.
-- Deposit-rate variation by category, market, or tier — single global rate today; granularity is FEE-Defer territory.
+- Expert tier markups (the deleted dead function) — when the real feature lands, it resolves from config.
+- `commission.ts` PLATFORM_FEE_RATE / EXPERT_SHARE_RATE constants — §4.8-approved defaults, intentionally kept as last-resort fallback.
+- Explicit cache-bust on admin save (60 s TTL is acceptable for a deposit-rate change; making `pricingService` a singleton with `bustCache()` is a 30-min follow-up if drift becomes painful).
+- Cross-resolver unification (`commission.ts` + `optimization-fee.service.ts` + `pricing.service.ts`) — cosmetic; works fine as multiple resolvers.
