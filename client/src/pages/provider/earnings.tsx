@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   Loader2,
   PieChart,
+  Shield,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -25,6 +26,13 @@ interface ConnectStatus {
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
+interface FeeConfigRow {
+  category: string;
+  insurance_enabled: boolean;
+  insurance_rate_percent: number;
+  insurance_applies_to: string[];
+}
+
 export default function ProviderEarnings() {
   const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
     queryKey: ["/api/provider/bookings"],
@@ -32,6 +40,10 @@ export default function ProviderEarnings() {
 
   const { data: connectStatus } = useQuery<ConnectStatus>({
     queryKey: ["/api/stripe/connect/status"],
+  });
+
+  const { data: feeConfigs } = useQuery<FeeConfigRow[]>({
+    queryKey: ["/api/admin/fee-config"],
   });
 
   const canRequestPayout = connectStatus?.connected && connectStatus?.status === "active";
@@ -112,7 +124,7 @@ export default function ProviderEarnings() {
   const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
 
   const revenueBreakdown = useMemo(() => {
-    if (!bookings) return { gross: 0, platformFee: 0, providerShare: 0, effectiveRate: 0.30 };
+    if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: 0.30 };
     let gross = 0, fee = 0, share = 0;
     for (const b of bookings) {
       gross += Number(b.totalAmount ?? 0);
@@ -120,8 +132,15 @@ export default function ProviderEarnings() {
       share += Number(b.providerEarnings ?? 0);
     }
     const effectiveRate = gross > 0 ? share / gross : 0.30;
-    return { gross, platformFee: fee, providerShare: share, effectiveRate };
-  }, [bookings]);
+
+    // Calculate insurance portion using the default fee config (or zero if not enabled)
+    const defaultConfig = feeConfigs?.find(c => c.category === "default");
+    const insuranceRate = defaultConfig?.insurance_enabled ? (defaultConfig?.insurance_rate_percent ?? 0) / 100 : 0;
+    const insuranceFee = Math.round(gross * insuranceRate * 100) / 100;
+    const basePlatformFee = Math.round((fee - insuranceFee) * 100) / 100;
+
+    return { gross, platformFee: fee, basePlatformFee, insuranceFee, providerShare: share, effectiveRate };
+  }, [bookings, feeConfigs]);
 
   if (isLoading) {
     return (
@@ -269,7 +288,41 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
               </div>
             </div>
-            <div className="mt-4 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+
+            {/* Fee breakdown line items */}
+            <div className="mt-4 rounded-lg border border-border bg-muted/30 divide-y divide-border" data-testid="section-fee-breakdown">
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-3.5 h-3.5 text-red-500" />
+                  <span className="text-sm text-muted-foreground">Base commission</span>
+                </div>
+                <span className="text-sm font-medium text-red-600" data-testid="text-base-commission">
+                  -${Math.max(0, revenueBreakdown.basePlatformFee).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              {revenueBreakdown.insuranceFee > 0 && (
+                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-insurance-fee">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-sm text-muted-foreground">Insurance fee</span>
+                  </div>
+                  <span className="text-sm font-medium text-blue-600">
+                    -${revenueBreakdown.insuranceFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-950/20 rounded-b-lg">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Your net earnings</span>
+                </div>
+                <span className="text-sm font-bold text-green-600" data-testid="text-net-earnings">
+                  ${revenueBreakdown.providerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
                 className="h-full bg-[#FF385C] transition-all"
                 style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
