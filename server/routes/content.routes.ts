@@ -98,6 +98,7 @@ import webhooksRoutes from "./webhooks.routes";
 import { affiliateClicks } from "@shared/schema";
 import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
+import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
 
@@ -407,6 +408,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
           { role: "user", content: prompt }
         ],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
       const blueprintContent = completion.content[0]?.type === "text" ? completion.content[0].text : null;
       const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
@@ -461,6 +463,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
         system: systemPrompt,
         messages: anthropicMessages,
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_chat" });
 
       const response = completion.content[0]?.type === "text" ? completion.content[0].text : "I'm sorry, I couldn't process your request.";
       res.json({ response });
@@ -534,6 +537,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
           { role: "user", content: `Please analyze and optimize my ${experienceType} experience plan.` }
         ],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_optimization" });
 
       const responseText = completion.content[0]?.type === "text" ? completion.content[0].text : "{}";
       const optimization = JSON.parse(responseText);
@@ -2107,6 +2111,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           { role: "user", content: prompt }
         ],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
       const responseText = completion.content[0]?.type === "text" ? completion.content[0].text : "{}";
       const recommendations = JSON.parse(responseText);
@@ -3278,6 +3283,7 @@ Respond with this exact JSON structure:
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      trackAnthropicResponse(aiResponse, { sourceType: "ai_content" });
 
       const responseText = aiResponse.content[0]?.type === "text" ? aiResponse.content[0].text : "";
 

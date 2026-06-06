@@ -87,6 +87,8 @@ import {
   type CommissionRates,
 } from "../services/commission";
 
+import { trackAnthropicResponse } from "../services/ai-cost-tracker";
+
 const router = Router();
 
 const anthropic = new Anthropic({
@@ -4640,6 +4642,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_expert" });
 
       const text = (completion.content[0] as any).text;
       const jsonMatch = text.match(/\{[\s\S]*\}/);

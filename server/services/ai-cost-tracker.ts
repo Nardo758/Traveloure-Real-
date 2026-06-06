@@ -7,8 +7,18 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 
+// Anthropic pricing per token (Claude Sonnet 4, as of 2026-06)
+const ANTHROPIC_PRICING = {
+  input: 3 / 1_000_000,    // $3 per million input tokens
+  output: 15 / 1_000_000,  // $15 per million output tokens
+};
+
+export function calculateAnthropicCost(inputTokens: number, outputTokens: number): number {
+  return (inputTokens * ANTHROPIC_PRICING.input) + (outputTokens * ANTHROPIC_PRICING.output);
+}
+
 export interface AICostTrackingParams {
-  sourceType: "ai_concierge" | "ai_optimization" | "ai_traveler" | string;
+  sourceType: "ai_concierge" | "ai_optimization" | "ai_chat" | "ai_traveler" | "ai_content" | "ai_expert" | string;
   modelUsed?: string | null;
   requestId?: string | null;
   userId?: string | null;
@@ -42,6 +52,30 @@ export async function trackAICost(params: AICostTrackingParams): Promise<void> {
     console.error("[ai-cost-tracker] failed to log cost:", err);
     // Do not throw — logging failures should not block the request
   }
+}
+
+/**
+ * Convenience wrapper: takes an Anthropic Message response and logs the cost.
+ * Use immediately after `anthropic.messages.create()`:
+ *
+ *   const response = await anthropic.messages.create({...});
+ *   trackAnthropicResponse(response, { sourceType: "ai_concierge", userId });
+ */
+export function trackAnthropicResponse(
+  response: { usage?: { input_tokens: number; output_tokens: number }; model?: string },
+  opts: { sourceType: string; userId?: string | null; requestId?: string | null }
+): void {
+  if (!response.usage) return;
+  const cost = calculateAnthropicCost(response.usage.input_tokens, response.usage.output_tokens);
+  trackAICost({
+    sourceType: opts.sourceType,
+    modelUsed: response.model ?? null,
+    requestId: opts.requestId ?? null,
+    userId: opts.userId ?? null,
+    costUsd: cost,
+    tokensIn: response.usage.input_tokens,
+    tokensOut: response.usage.output_tokens,
+  }).catch(err => console.error("[ai-cost-tracker] async failure:", err));
 }
 
 /**
