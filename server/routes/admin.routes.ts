@@ -4020,7 +4020,10 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
       if (!category) return res.status(400).json({ error: "category required" });
 
       const insuranceRate = typeof insuranceRatePercent === "number" ? insuranceRatePercent : 0;
-      const insuranceApply = Array.isArray(insuranceAppliesTo) ? JSON.stringify(insuranceAppliesTo) : "[]";
+      // Validate and serialize insurance_applies_to as JSON string; bind via parameter to avoid injection
+      const rawAppliesTo = Array.isArray(insuranceAppliesTo) ? insuranceAppliesTo : [];
+      const validAppliesTo = rawAppliesTo.filter((v: any) => typeof v === "string" && v.length <= 100);
+      const insuranceApplyJson = JSON.stringify(validAppliesTo);
 
       await db.execute(sql`
         INSERT INTO booking_fee_configs (
@@ -4031,7 +4034,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
         ) VALUES (
           gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 75},
           ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
-          ${insuranceEnabled ?? false}, ${insuranceRate}, ${sql.raw(`'${insuranceApply}'::jsonb`)},
+          ${insuranceEnabled ?? false}, ${insuranceRate}, ${insuranceApplyJson}::jsonb,
           ${userId}, NOW(), NOW()
         )
         ON CONFLICT (category) DO UPDATE SET
