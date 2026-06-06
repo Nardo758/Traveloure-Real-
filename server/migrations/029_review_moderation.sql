@@ -5,8 +5,11 @@ ALTER TABLE service_reviews
   ADD COLUMN IF NOT EXISTS moderated_by VARCHAR(255),
   ADD COLUMN IF NOT EXISTS moderated_at TIMESTAMP;
 
--- Backfill: existing reviews are considered approved so they stay visible
-UPDATE service_reviews SET status = 'approved' WHERE status = 'pending';
+-- Backfill: pre-migration reviews (before 2026-06-06) are considered approved so they stay visible.
+-- Scoped by date so this UPDATE is safe to re-run on every server start without touching new
+-- legitimately-pending reviews created after the migration was introduced.
+UPDATE service_reviews SET status = 'approved'
+WHERE status = 'pending' AND created_at < '2026-06-06 00:00:00'::timestamp;
 
 CREATE TABLE IF NOT EXISTS review_moderation_logs (
   id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
