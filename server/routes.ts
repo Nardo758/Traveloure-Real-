@@ -415,7 +415,6 @@ export async function registerRoutes(
 
   // ── Extracted route modules (defrag P1-P6) ──────────────────────────────────
   // These routers were extracted from routes.ts and take priority via first-match.
-  // The corresponding app.* handlers below remain as fallback during migration.
   app.use(tripsRoutes);
   app.use(adminRoutes);
   app.use(expertsRoutes);
@@ -426,5 +425,5 @@ export async function registerRoutes(
   app.use(savedItemsRoutes);
   // ────────────────────────────────────────────────────────────────────────────
 
-
+  return httpServer;
 }
