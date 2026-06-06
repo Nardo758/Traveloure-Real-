@@ -15,7 +15,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -3972,6 +3972,62 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
       return false;
     }
   }
+
+  // === Review Moderation Routes (REV-MOD) ===
+
+router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await db.select({ role: users.role }).from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const status = req.query.status as string | undefined;
+      const rows = status
+        ? await db.select().from(serviceReviews).where(eq(serviceReviews.status, status)).orderBy(desc(serviceReviews.createdAt))
+        : await db.select().from(serviceReviews).where(
+            sql`status IN ('pending', 'flagged')`
+          ).orderBy(desc(serviceReviews.createdAt));
+      // Enrich with traveler + service names
+      const enriched = await Promise.all(rows.map(async r => {
+        const traveler = await storage.getUser(r.travelerId);
+        const service = await storage.getProviderServiceById(r.serviceId);
+        const logs = await db.select().from(reviewModerationLogs).where(eq(reviewModerationLogs.reviewId, r.id)).orderBy(desc(reviewModerationLogs.createdAt));
+        return {
+          ...r,
+          travelerName: traveler ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email : "Unknown",
+          serviceName: service?.serviceName ?? "Unknown Service",
+          logs,
+        };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      console.error("Admin reviews error:", err);
+      res.status(500).json({ message: "Failed to fetch reviews" });
+    }
+  });
+
+router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const admin = await db.select({ role: users.role }).from(users).where(eq(users.id, actorId)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const { status, reason } = req.body;
+      if (!["approved", "flagged", "removed", "pending"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status. Must be approved, flagged, removed, or pending." });
+      }
+      const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, req.params.id)).limit(1);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      const [updated] = await db.update(serviceReviews).set({
+        status,
+        moderatedBy: actorId,
+        moderatedAt: new Date(),
+        ...(status === "flagged" && reason ? { flagReason: reason } : {}),
+      }).where(eq(serviceReviews.id, req.params.id)).returning();
+      await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: status, actorId, reason: reason || null });
+      res.json(updated);
+    } catch (err) {
+      console.error("Admin review status error:", err);
+      res.status(500).json({ message: "Failed to update review status" });
+    }
+  });
 
   // Hook into itinerary generation to auto-capture analytics
 
