@@ -83,7 +83,9 @@ import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
-import { matchesCategory } from "@shared/constants/providerCategories";
+import { filterServices } from "@shared/service-filter";
+import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
+import { SelectionControlsPanel } from "@/components/selection-controls-panel";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
@@ -623,6 +625,8 @@ interface TabControlConfig {
   stops?: Array<{ value: string; label: string }>;
   starRatings?: number[];
   sortOptions?: Array<{ value: string; label: string }>;
+  // P462 reconcile: lean per-tab selection controls (replace the inert facet wall)
+  selectionControls?: SelectionControl[];
 }
 
 interface TabConfig {
@@ -1648,51 +1652,67 @@ export default function ExperienceTemplatePage() {
   // P462: DB-driven tab filter control config (replaces hardcoded flight/hotel filter JSX)
   const activeTabControlConfig = effectiveTabs.find(t => t.id === activeTab)?.controlConfig;
 
+  // P462 reconcile (Phase 3): per-tab selection controls. Selecting options
+  // resolves to the #462 working keys (priceRange / minRating / tags) and drives
+  // the same filteredServices memo — the selection panel is the source of truth
+  // for those keys on tabs that have controls.
+  const [selectionState, setSelectionState] = useState<Record<string, string[]>>({});
+
+  const applySelections = (controls: SelectionControl[], next: Record<string, string[]>) => {
+    const opts: SelectionOption[] = [];
+    for (const c of controls) {
+      for (const id of next[c.id] ?? []) {
+        const o = c.options.find(x => x.id === id);
+        if (o) opts.push(o);
+      }
+    }
+    const q = resolveSelectionsToFilterQuery(opts);
+    setPriceRange(q.priceRange ?? [0, 500]);
+    setMinRating(q.minRating ?? 0);
+    setSelectedFilters(q.tags ?? []);
+  };
+
+  const handleSelectionToggle = (control: SelectionControl, optionId: string) => {
+    const controls = activeTabControlConfig?.selectionControls ?? [];
+    const cur = selectionState[control.id] ?? [];
+    const nextIds = control.type === "single_select"
+      ? (cur.includes(optionId) ? [] : [optionId])
+      : (cur.includes(optionId) ? cur.filter(i => i !== optionId) : [...cur, optionId]);
+    const next = { ...selectionState, [control.id]: nextIds };
+    setSelectionState(next);
+    applySelections(controls, next);
+  };
+
+  const handleSelectionClear = () => {
+    setSelectionState({});
+    setPriceRange([0, 500]);
+    setMinRating(0);
+    setSelectedFilters([]);
+  };
+
+  // Clear refinements when switching tabs (skip first mount to preserve any
+  // restored saved-trip settings).
+  const didMountTabRef = useRef(false);
+  useEffect(() => {
+    if (!didMountTabRef.current) { didMountTabRef.current = true; return; }
+    setSelectionState({});
+    setPriceRange([0, 500]);
+    setMinRating(0);
+    setSelectedFilters([]);
+  }, [activeTab]);
+
   const filteredServices = useMemo(() => {
     if (!services) return [];
-    
-    let filtered = [...services];
 
-    if (currentTabCategory) {
-      filtered = filtered.filter(s => 
-        matchesCategory(
-          s.serviceType || "",
-          s.serviceName,
-          s.description || "",
-          currentTabCategory
-        )
-      );
-    }
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(s => 
-        s.serviceName.toLowerCase().includes(query) ||
-        (s.shortDescription?.toLowerCase().includes(query)) ||
-        (s.description?.toLowerCase().includes(query))
-      );
-    }
-
-    if (priceRange[0] > 0 || priceRange[1] < 500) {
-      filtered = filtered.filter(s => {
-        const price = Number(s.price) || 0;
-        return price >= priceRange[0] && (priceRange[1] >= 500 || price <= priceRange[1]);
-      });
-    }
-
-    if (minRating > 0) {
-      filtered = filtered.filter(s => (Number(s.averageRating) || 0) >= minRating);
-    }
-
-    if (selectedFilters.length > 0) {
-      filtered = filtered.filter(s => {
-        const desc = (s.description || "").toLowerCase();
-        const name = s.serviceName.toLowerCase();
-        return selectedFilters.some(f => 
-          desc.includes(f.toLowerCase()) || name.includes(f.toLowerCase())
-        );
-      });
-    }
+    // #462 filter predicate (extracted to shared/service-filter for unit-testing
+    // and reuse by the selection-controls reconcile). Behavior unchanged.
+    let filtered = filterServices([...services], {
+      category: currentTabCategory || undefined,
+      searchQuery: searchQuery || undefined,
+      priceRange,
+      minRating,
+      tags: selectedFilters.length > 0 ? selectedFilters : undefined,
+    });
 
     if (sortBy === "price-low") {
       filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
@@ -2487,16 +2507,27 @@ export default function ExperienceTemplatePage() {
           </Collapsible>
           )}
 
-          {/* P3: TemplateFiltersPanel — DB-driven filters; hidden on flight/hotel tabs (those use the Collapsible above) */}
+          {/* P462 reconcile (Phase 3): selection controls replace the inert facet wall
+              on tabs that have them seeded; other tabs fall back to TemplateFiltersPanel.
+              Both hidden on flight/hotel tabs (those use the Collapsible above). */}
           {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
             <div className="mb-6">
-              <TemplateFiltersPanel
-                experienceTypeId={experienceType.id}
-                activeTab={activeTab}
-                selectedFilters={templateFilters.selectedFilters}
-                onFilterChange={templateFilters.onFilterChange}
-                onClearFilters={templateFilters.onClearFilters}
-              />
+              {activeTabControlConfig?.selectionControls?.length ? (
+                <SelectionControlsPanel
+                  controls={activeTabControlConfig.selectionControls}
+                  selected={selectionState}
+                  onToggle={handleSelectionToggle}
+                  onClear={handleSelectionClear}
+                />
+              ) : (
+                <TemplateFiltersPanel
+                  experienceTypeId={experienceType.id}
+                  activeTab={activeTab}
+                  selectedFilters={templateFilters.selectedFilters}
+                  onFilterChange={templateFilters.onFilterChange}
+                  onClearFilters={templateFilters.onClearFilters}
+                />
+              )}
             </div>
           )}
 
