@@ -7482,4 +7482,26 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
 
 } // end registerDiscoveryRoutes
 
+// === Exchange Rate Endpoint (top-level, always registered) ===
+let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
+const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
+
+router.get("/api/exchange-rates", async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (_exchangeRateCache && now - _exchangeRateCache.fetchedAt < EXCHANGE_RATE_TTL_MS) {
+      return res.json({ base: "USD", rates: _exchangeRateCache.rates, cachedAt: _exchangeRateCache.fetchedAt });
+    }
+    const resp = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,AUD,SGD");
+    if (!resp.ok) throw new Error(`Frankfurter API error: ${resp.status}`);
+    const data = await resp.json() as { rates: Record<string, number> };
+    _exchangeRateCache = { rates: data.rates, fetchedAt: now };
+    res.json({ base: "USD", rates: data.rates, cachedAt: now });
+  } catch (err) {
+    console.error("Exchange rate fetch error:", err);
+    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
+    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+  }
+});
+
 export default router;
