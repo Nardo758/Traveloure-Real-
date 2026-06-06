@@ -15,7 +15,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -2216,11 +2216,29 @@ router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
 
   // === Service Reviews Routes ===
   
-  // Get reviews for a service
+  // Get reviews for a service (public: approved only)
 
 router.get("/api/services/:serviceId/reviews", async (req, res) => {
-    const reviews = await storage.getServiceReviews(req.params.serviceId);
-    res.json(reviews);
+    const all = await storage.getServiceReviews(req.params.serviceId);
+    const visible = all.filter(r => (r as any).status === "approved");
+    res.json(visible);
+  });
+
+  // Flag a review (any authenticated user)
+router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { reason } = req.body;
+      const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, req.params.id)).limit(1);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (review.status === "removed") return res.status(400).json({ message: "Review already removed" });
+      await db.update(serviceReviews).set({ status: "flagged", flagReason: reason || null }).where(eq(serviceReviews.id, req.params.id));
+      await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: "flag", actorId: userId, reason: reason || null });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Flag review error:", err);
+      res.status(500).json({ message: "Failed to flag review" });
+    }
   });
 
   // Create a review (only after completed booking)

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
@@ -21,7 +22,16 @@ import {
   Users,
   ShieldCheck,
   Building2,
+  Flag,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -58,6 +68,7 @@ interface Review {
   responseText: string | null;
   responseAt: string | null;
   isVerified: boolean;
+  status: string;
   createdAt: string;
 }
 
@@ -248,7 +259,7 @@ export default function ServiceDetailPage() {
                 ) : (
                   <div className="space-y-4">
                     {reviews.map((review) => (
-                      <ReviewCard key={review.id} review={review} />
+                      <ReviewCard key={review.id} review={review} serviceId={id!} />
                     ))}
                   </div>
                 )}
@@ -323,55 +334,120 @@ export default function ServiceDetailPage() {
   );
 }
 
-function ReviewCard({ review }: { review: Review }) {
+function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [flagReason, setFlagReason] = useState("");
+
+  const flagMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/reviews/${review.id}/flag`, { reason: flagReason || undefined }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/services", serviceId, "reviews"] });
+      toast({ title: "Review reported", description: "Thank you. A moderator will review your report." });
+      setFlagOpen(false);
+      setFlagReason("");
+    },
+    onError: () => toast({ title: "Failed to report review", variant: "destructive" }),
+  });
+
+  if (review.status === "removed") {
+    return (
+      <div className="border-b last:border-0 pb-4 last:pb-0 text-sm text-muted-foreground italic" data-testid={`card-review-${review.id}`}>
+        This review has been removed by a moderator.
+      </div>
+    );
+  }
+
   return (
-    <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
-      <div className="flex items-start gap-3">
-        <Avatar className="w-10 h-10">
-          <AvatarFallback>
-            <User className="w-5 h-5" />
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star 
-                  key={star}
-                  className={`w-4 h-4 ${
-                    star <= review.rating 
-                      ? "text-amber-500 fill-amber-500" 
-                      : "text-muted-foreground"
-                  }`}
-                />
-              ))}
+    <>
+      <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
+        <div className="flex items-start gap-3">
+          <Avatar className="w-10 h-10">
+            <AvatarFallback>
+              <User className="w-5 h-5" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-4 h-4 ${star <= review.rating ? "text-amber-500 fill-amber-500" : "text-muted-foreground"}`}
+                  />
+                ))}
+              </div>
+              {review.isVerified && (
+                <Badge variant="secondary" className="text-xs">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Verified
+                </Badge>
+              )}
+              {review.status === "flagged" && (
+                <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
+                  <Flag className="w-3 h-3 mr-1" />
+                  Under review
+                </Badge>
+              )}
             </div>
-            {review.isVerified && (
-              <Badge variant="secondary" className="text-xs">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Verified
-              </Badge>
+            <p className="text-sm text-muted-foreground mb-1">
+              {format(new Date(review.createdAt), "MMM d, yyyy")}
+            </p>
+            {review.reviewText && (
+              <p className="text-sm" data-testid={`text-review-${review.id}`}>
+                {review.reviewText}
+              </p>
+            )}
+            {review.responseText && (
+              <div className="mt-3 pl-4 border-l-2 border-primary/20">
+                <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
+                <p className="text-sm" data-testid={`text-response-${review.id}`}>
+                  {review.responseText}
+                </p>
+              </div>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mb-1">
-            {format(new Date(review.createdAt), "MMM d, yyyy")}
-          </p>
-          {review.reviewText && (
-            <p className="text-sm" data-testid={`text-review-${review.id}`}>
-              {review.reviewText}
-            </p>
-          )}
-          
-          {review.responseText && (
-            <div className="mt-3 pl-4 border-l-2 border-primary/20">
-              <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
-              <p className="text-sm" data-testid={`text-response-${review.id}`}>
-                {review.responseText}
-              </p>
-            </div>
+          {user && review.travelerId !== user.id && (
+            <button
+              onClick={() => setFlagOpen(true)}
+              className="text-muted-foreground hover:text-red-600 transition-colors p-1 rounded"
+              title="Report this review"
+              data-testid={`button-flag-review-${review.id}`}
+            >
+              <Flag className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
-    </div>
+
+      <Dialog open={flagOpen} onOpenChange={setFlagOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Report this review</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Let us know why this review is inappropriate. Our moderation team will review it.
+          </p>
+          <Textarea
+            placeholder="Describe the issue (optional)"
+            value={flagReason}
+            onChange={e => setFlagReason(e.target.value)}
+            className="h-24"
+            data-testid="input-flag-reason"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFlagOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => flagMutation.mutate()}
+              disabled={flagMutation.isPending}
+              data-testid="button-submit-flag"
+            >
+              {flagMutation.isPending ? "Submitting…" : "Submit Report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
