@@ -65,6 +65,12 @@ import {
   Building2,
   Wrench,
   Ticket,
+  Sun,
+  Activity,
+  Zap,
+  ChefHat,
+  UtensilsCrossed,
+  Bus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -76,7 +82,7 @@ import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import type { ExperienceType, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
+import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
@@ -84,13 +90,21 @@ import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
+import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
+import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
+import { AmadeusTransfers } from "@/components/amadeus-transfers";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
+import { TransferCard } from "@/components/travelpayouts/TransferCard";
+import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportCard";
+import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
+import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 
@@ -360,6 +374,210 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
   );
 }
 
+function TravelpayoutsTransport({ destination }: { destination: string }) {
+  const [transferFrom, setTransferFrom] = useState("");
+  const [transferTo, setTransferTo] = useState(destination);
+  const [transferSearched, setTransferSearched] = useState(false);
+
+  useEffect(() => { setTransferTo(destination); }, [destination]);
+
+  const transfersQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/transfers", transferFrom, transferTo],
+    enabled: !!transferFrom && !!transferTo && transferSearched,
+    queryFn: async () => {
+      const params = new URLSearchParams({ from: transferFrom, to: transferTo });
+      const res = await fetch(`/api/catalog/transfers?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Transfers fetch failed: ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const groundQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/ground-transport", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination });
+      const res = await fetch(`/api/catalog/ground-transport?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Ground transport fetch failed: ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const transfers = transfersQuery.data?.items || [];
+  const ground = groundQuery.data?.items || [];
+
+  if (!destination) return null;
+
+  return (
+    <div className="mt-6 space-y-6">
+      {/* GetTransfer — requires pickup + dropoff */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+          Private Transfers via GetTransfer
+        </h3>
+        <div className="flex gap-2 mb-3">
+          <input
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="From (e.g. airport, hotel)"
+            value={transferFrom}
+            onChange={e => setTransferFrom(e.target.value)}
+            data-testid="input-transfer-from"
+          />
+          <input
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="To"
+            value={transferTo}
+            onChange={e => setTransferTo(e.target.value)}
+            data-testid="input-transfer-to"
+          />
+          <Button
+            size="sm"
+            onClick={() => setTransferSearched(true)}
+            disabled={!transferFrom || !transferTo}
+            data-testid="button-search-transfers"
+          >
+            Search
+          </Button>
+        </div>
+        {transfersQuery.isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+            ))}
+          </div>
+        )}
+        {transfersQuery.isError && (
+          <p className="text-xs text-destructive">Could not load transfer options. Please try again.</p>
+        )}
+        {!transfersQuery.isLoading && !transfersQuery.isError && transfers.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {transfers.slice(0, 6).map(item => (
+              <TransferCard key={item.id} item={item} />
+            ))}
+          </div>
+        )}
+        {transferSearched && !transfersQuery.isLoading && !transfersQuery.isError && transfers.length === 0 && (
+          <p className="text-xs text-muted-foreground">No transfers found for this route.</p>
+        )}
+      </div>
+
+      {/* Omio ground transport */}
+      {(groundQuery.isLoading || ground.length > 0 || groundQuery.isError) && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
+            Trains & Buses via Omio
+          </h3>
+          {groundQuery.isLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          )}
+          {groundQuery.isError && (
+            <p className="text-xs text-destructive">Could not load ground transport options.</p>
+          )}
+          {!groundQuery.isLoading && ground.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {ground.slice(0, 6).map(item => (
+                <GroundTransportCard key={item.id} item={item} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiscoverCarsWidget({ destination }: { destination: string }) {
+  const today = new Date();
+  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+  const carsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/cars", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        location: destination,
+        pickup: fmt(today),
+        dropoff: fmt(nextWeek),
+        limit: "4",
+      });
+      const res = await fetch(`/api/catalog/cars?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch car rentals");
+      return res.json();
+    },
+  });
+
+  const cars = carsQuery.data?.items || [];
+  if (carsQuery.isLoading) return (
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  );
+  if (carsQuery.isError || cars.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
+        Need a car? — DiscoverCars
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {cars.slice(0, 4).map(item => (
+          <CarRentalCard key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TravelpayoutsNomad({ destination }: { destination: string }) {
+  const nomadQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/nomad", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({ cities: destination, limit: "6" });
+      const res = await fetch(`/api/catalog/nomad?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Nomad routes fetch failed: ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const routes = nomadQuery.data?.items || [];
+  if (nomadQuery.isLoading) return (
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  );
+  if (nomadQuery.isError) return (
+    <p className="mt-4 text-xs text-destructive">Could not load nomad routes.</p>
+  );
+  if (routes.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-violet-500" />
+        Multi-city routes via Kiwi.com Nomad
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {routes.slice(0, 6).map(item => (
+          <NomadRouteCard key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface CartItem {
   id: string;
   cartItemId?: string;
@@ -400,28 +618,28 @@ interface CartItem {
   };
 }
 
+interface TabControlConfig {
+  priceRange?: { min: number; max: number; step: number; default: number; label?: string };
+  stops?: Array<{ value: string; label: string }>;
+  starRatings?: number[];
+  sortOptions?: Array<{ value: string; label: string }>;
+}
+
 interface TabConfig {
   id: string;
   label: string;
   icon: any;
   category: string | null;
+  tabType?: string;
+  controlConfig?: TabControlConfig;
 }
 
-interface ExperienceMode {
+interface ContextField {
+  key: string;
   label: string;
-  tabs: TabConfig[];
-}
-
-interface ExperienceConfig {
-  heroImage: string;
-  tabs: TabConfig[];
-  filters: string[];
-  locationLabel: string;
-  dateLabel: string;
-  modes?: {
-    planning?: ExperienceMode;
-    guest?: ExperienceMode;
-  };
+  type: "text" | "number" | "date" | "select";
+  placeholder?: string;
+  options?: string[];
 }
 
 const WEDDING_VENDOR_TYPES = [
@@ -435,308 +653,40 @@ const WEDDING_VENDOR_TYPES = [
   { value: 'baker', label: 'Cake Bakers' }
 ];
 
-const experienceConfigs: Record<string, ExperienceConfig> = {
-  travel: {
-    heroImage: "https://picsum.photos/seed/exp-travel/1600/900",
-    tabs: [
-      { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
-      { id: "events", label: "Events", icon: Ticket, category: "events" },
-      { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "flights", label: "Flights", icon: Plane, category: "flights" },
-    ],
-    filters: ["Budget", "Luxury", "Family", "Adventure", "Business", "Beach", "City", "Nature"],
-    locationLabel: "Destination:",
-    dateLabel: "Travel Dates:",
-  },
-  wedding: {
-    heroImage: "https://picsum.photos/seed/exp-wedding/1600/900",
-    tabs: [
-      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "vendors", label: "Vendors", icon: Users, category: "vendors" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
-      { id: "guest-accommodations", label: "Guest Accommodations", icon: Hotel, category: "accommodations" },
-      { id: "rehearsal", label: "Rehearsal", icon: Utensils, category: "rehearsal" },
-    ],
-    filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
-    locationLabel: "Wedding Location:",
-    dateLabel: "Wedding Date:",
-    modes: {
-      planning: {
-        label: "Planning Mode",
-        tabs: [
-          { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
-          { id: "vendors", label: "Vendors", icon: Users, category: "vendors" },
-          { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
-          { id: "guest-accommodations", label: "Guest Accommodations", icon: Hotel, category: "accommodations" },
-          { id: "rehearsal", label: "Rehearsal", icon: Utensils, category: "rehearsal" },
-            ],
-      },
-      guest: {
-        label: "Guest Activities Mode",
-        tabs: [
-          { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
-          { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-          { id: "services", label: "Services", icon: Wrench, category: "services-guest" },
-          { id: "welcome-events", label: "Welcome Events", icon: PartyPopper, category: "welcome" },
-          { id: "local-experiences", label: "Local Experiences", icon: MapPin, category: "experiences" },
-        ],
-      },
-    },
-  },
-  proposal: {
-    heroImage: "https://picsum.photos/seed/exp-proposal/1600/900",
-    tabs: [
-      { id: "locations", label: "Locations", icon: MapPin, category: "venue" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-proposal" },
-      { id: "celebration-dining", label: "Celebration Dining", icon: Utensils, category: "dining" },
-      { id: "post-proposal", label: "Post-Proposal Activities", icon: Heart, category: "activities" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-    ],
-    filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
-    locationLabel: "Proposal Location:",
-    dateLabel: "Proposal Date:",
-  },
-  birthday: {
-    heroImage: "https://picsum.photos/seed/exp-birthday/1600/900",
-    tabs: [
-      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "activities", label: "Activities", icon: PartyPopper, category: "activities" },
-      { id: "dining", label: "Dining", icon: Cake, category: "dining" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-birthday" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-    ],
-    filters: ["Kids", "Teens", "Adults", "Milestone", "Outdoor", "Indoor", "Theme Party", "Elegant"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "boys-trip": {
-    heroImage: "https://picsum.photos/seed/exp-boys-trip/1600/900",
-    tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-      { id: "activities", label: "Adventures", icon: Dumbbell, category: "adventures" },
-      { id: "nightlife", label: "Nightlife", icon: Moon, category: "nightlife" },
-      { id: "sports", label: "Sports", icon: Dumbbell, category: "sports" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-trip" },
-    ],
-    filters: ["Adventure", "Sports", "Nightlife", "Beach", "Mountains", "City", "Bachelor", "Fishing"],
-    locationLabel: "Destination:",
-    dateLabel: "Trip Dates:",
-  },
-  "girls-trip": {
-    heroImage: "https://picsum.photos/seed/exp-girls-trip/1600/900",
-    tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-      { id: "spa", label: "Spa & Wellness", icon: Heart, category: "spa" },
-      { id: "shopping", label: "Shopping", icon: ShoppingBag, category: "shopping" },
-      { id: "dining", label: "Dining & Wine", icon: Wine, category: "dining" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-trip" },
-    ],
-    filters: ["Spa", "Shopping", "Beach", "Wine", "Brunch", "Wellness", "Bachelorette", "Luxury"],
-    locationLabel: "Destination:",
-    dateLabel: "Trip Dates:",
-  },
-  "date-night": {
-    heroImage: "https://picsum.photos/seed/exp-date-night/1600/900",
-    tabs: [
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "activities", label: "Activities", icon: Heart, category: "activities" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-romance" },
-    ],
-    filters: ["Romantic", "Casual", "Upscale", "Adventure", "Foodie", "First Date", "Anniversary"],
-    locationLabel: "Location:",
-    dateLabel: "Date:",
-  },
-  "corporate-events": {
-    heroImage: "https://picsum.photos/seed/exp-corporate/1600/900",
-    tabs: [
-      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "team-activities", label: "Team Activities", icon: Users, category: "team-building" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-corporate" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-    ],
-    filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking"],
-    locationLabel: "Event Location:",
-    dateLabel: "Event Date:",
-  },
-  "reunions": {
-    heroImage: "https://picsum.photos/seed/exp-reunions/1600/900",
-    tabs: [
-      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "activities", label: "Activities", icon: Users, category: "activities" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-event" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-    ],
-    filters: ["Family", "School", "Friends", "Outdoor", "Indoor", "Casual", "Formal", "Weekend"],
-    locationLabel: "Reunion Location:",
-    dateLabel: "Reunion Date:",
-  },
-  "wedding-anniversaries": {
-    heroImage: "https://picsum.photos/seed/exp-anniversary/1600/900",
-    tabs: [
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "activities", label: "Activities", icon: Heart, category: "activities" },
-      { id: "photography", label: "Photography", icon: Camera, category: "photography" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-romance" },
-    ],
-    filters: ["Romantic", "Elegant", "Intimate", "Luxury", "Destination", "Classic", "Milestone"],
-    locationLabel: "Celebration Location:",
-    dateLabel: "Anniversary Date:",
-  },
-  "retreats": {
-    heroImage: "https://picsum.photos/seed/exp-retreats/1600/900",
-    tabs: [
-      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "activities", label: "Activities", icon: TreePine, category: "activities" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-retreat" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-      { id: "wellness", label: "Wellness", icon: Heart, category: "wellness" },
-    ],
-    filters: ["Wellness", "Yoga", "Meditation", "Nature", "Spiritual", "Detox", "Corporate", "Silent"],
-    locationLabel: "Retreat Location:",
-    dateLabel: "Retreat Dates:",
-  },
-  "baby-shower": {
-    heroImage: "https://picsum.photos/seed/exp-baby-shower/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Cake, category: "catering" },
-      { id: "decorations", label: "Decorations", icon: Baby, category: "decorations" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
-    ],
-    filters: ["Boy", "Girl", "Gender Neutral", "Garden", "Indoor", "Elegant", "Casual", "Theme"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "graduation-party": {
-    heroImage: "https://picsum.photos/seed/exp-graduation/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "decorations", label: "Decorations", icon: GraduationCap, category: "decorations" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
-    ],
-    filters: ["High School", "College", "Masters", "PhD", "Outdoor", "Indoor", "Casual", "Formal"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "engagement-party": {
-    heroImage: "https://picsum.photos/seed/exp-engagement/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Wine, category: "catering" },
-      { id: "photography", label: "Photography", icon: Camera, category: "photography" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
-    ],
-    filters: ["Elegant", "Casual", "Garden", "Rooftop", "Beach", "Restaurant", "Home", "Cocktail"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "housewarming-party": {
-    heroImage: "https://picsum.photos/seed/exp-housewarming/1600/900",
-    tabs: [
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "decorations", label: "Decorations", icon: Home, category: "decorations" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "rentals", label: "Rentals", icon: Package, category: "rentals" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
-    ],
-    filters: ["Casual", "Formal", "BBQ", "Cocktail", "Brunch", "Dinner", "Open House", "Theme"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "retirement-party": {
-    heroImage: "https://picsum.photos/seed/exp-retirement/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Wine, category: "catering" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "decorations", label: "Decorations", icon: PartyPopper, category: "decorations" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
-    ],
-    filters: ["Elegant", "Casual", "Office", "Restaurant", "Garden", "Formal", "Surprise", "Milestone"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "career-achievement-party": {
-    heroImage: "https://picsum.photos/seed/exp-career/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "av", label: "A/V Equipment", icon: Award, category: "av-equipment" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-corporate" },
-    ],
-    filters: ["Promotion", "Award", "Milestone", "Corporate", "Formal", "Cocktail", "Dinner", "Gala"],
-    locationLabel: "Event Location:",
-    dateLabel: "Event Date:",
-  },
-  "farewell-party": {
-    heroImage: "https://picsum.photos/seed/exp-farewell/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "decorations", label: "Decorations", icon: Gift, category: "decorations" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
-    ],
-    filters: ["Casual", "Formal", "Office", "Outdoor", "Restaurant", "Surprise", "Sentimental", "Fun"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "holiday-party": {
-    heroImage: "https://picsum.photos/seed/exp-holiday/1600/900",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "decorations", label: "Decorations", icon: TreePine, category: "decorations" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
-    ],
-    filters: ["Christmas", "New Year", "Thanksgiving", "Easter", "Halloween", "July 4th", "Corporate", "Family"],
-    locationLabel: "Party Location:",
-    dateLabel: "Party Date:",
-  },
-  "bachelor-bachelorette": {
-    heroImage: "https://picsum.photos/seed/exp-bachelor/1600/900",
-    tabs: [
-      { id: "destinations", label: "Destinations", icon: MapPin, category: "destinations" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-      { id: "daytime-activities", label: "Daytime Activities", icon: Palmtree, category: "activities" },
-      { id: "nightlife", label: "Nightlife", icon: Moon, category: "nightlife" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "party-services", label: "Party Services", icon: PartyPopper, category: "party-services" },
-    ],
-    filters: ["Beach Party", "City Nightlife", "Adventure", "Wellness", "Vegas-Style", "International"],
-    locationLabel: "Party Destination:",
-    dateLabel: "Party Dates:",
-  },
-  "anniversary-trip": {
-    heroImage: "https://picsum.photos/seed/exp-anniversary-trip/1600/900",
-    tabs: [
-      { id: "destinations", label: "Destinations", icon: Heart, category: "destinations" },
-      { id: "accommodations", label: "Romantic Stays", icon: Hotel, category: "accommodations" },
-      { id: "experiences", label: "Couple Experiences", icon: Users, category: "experiences" },
-      { id: "dining", label: "Romantic Dining", icon: Utensils, category: "dining" },
-      { id: "spa-wellness", label: "Spa & Wellness", icon: Flower2, category: "spa" },
-      { id: "special-touches", label: "Special Touches", icon: Gift, category: "special" },
-      { id: "itinerary-builder", label: "Itinerary Builder", icon: Wrench, category: "planning" },
-    ],
-    filters: ["Ultra Romantic", "Beach Paradise", "European City", "Wine Country", "Island Escape", "Mountain Retreat"],
-    locationLabel: "Anniversary Destination:",
-    dateLabel: "Anniversary Dates:",
-  },
+
+// P5: DB-driven tab icon registry — maps DB icon string → Lucide component
+const DB_TAB_ICON_MAP: Record<string, any> = {
+  MapPin, Home, Sun, Moon, UtensilsCrossed, Users, Activity, Star, Plane,
+  Building: Building2, Building2, Car, Music, Calendar, Sparkles, Gift,
+  Camera, ChefHat, Zap, Heart, Hotel, Utensils, Bus, Dumbbell, Wrench,
+  Landmark, Award, Package, Wine, Palmtree, PartyPopper, TreePine,
+  Baby, GraduationCap, Flower2, Ticket,
 };
+
+// Derive tabType from slug when the DB field is null/default
+function deriveTabType(slug: string): string {
+  if (slug === "flights") return "flights";
+  if (slug === "hotels" || slug === "accommodations" || slug.includes("accommodation")) return "hotels";
+  if (slug === "transportation" || slug === "transfers") return "transport";
+  if (slug === "activities" || slug.includes("activities")) return "activities";
+  if (slug === "events") return "events";
+  if (slug === "services") return "services";
+  if (slug === "dining" || slug.includes("dining")) return "dining";
+  if (slug === "nightlife" || slug.includes("nightlife")) return "nightlife";
+  if (slug === "vendors") return "vendors";
+  return "venue-search";
+}
+
+function dbTabsToConfig(tabs: ExperienceTemplateTab[]): TabConfig[] {
+  return tabs.map((tab) => ({
+    id: tab.slug,
+    label: tab.name,
+    icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
+    category: tab.slug,
+    tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
+    controlConfig: (tab as any).controlConfig as TabControlConfig | undefined,
+  }));
+}
 
 const slugAliases: Record<string, string> = {
   "romance": "date-night",
@@ -970,6 +920,12 @@ export default function ExperienceTemplatePage() {
     enabled: !!slug,
   });
 
+  // P5: DB-driven tabs (prefer over hardcoded config.tabs once loaded)
+  const { data: dbTabs } = useQuery<ExperienceTemplateTab[]>({
+    queryKey: ["/api/experience-types", experienceType?.id, "tabs"],
+    enabled: !!experienceType?.id,
+  });
+
   const { data: services, isLoading: servicesLoading } = useQuery<ProviderService[]>({
     queryKey: ["/api/provider-services"],
   });
@@ -1046,12 +1002,6 @@ export default function ExperienceTemplatePage() {
     return [...platformItems, ...localExternalCart];
   }, [serverCart, localExternalCart]);
 
-  // Loud fallback: an unconfigured slug must never silently render as another
-  // template. `config` keeps a safe default to avoid null-derefs during render,
-  // but `isConfiguredTemplate` gates the page — see the not-found guard below.
-  const isConfiguredTemplate = !!experienceConfigs[slug];
-  const config = experienceConfigs[slug] || experienceConfigs.wedding;
-
   // Read query params for pre-filled destination
   const searchString = useSearch();
   const queryParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
@@ -1099,25 +1049,60 @@ export default function ExperienceTemplatePage() {
   const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
   const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(initialSettings?.endDate ? new Date(initialSettings.endDate) : undefined);
-  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? config.tabs[0]?.id ?? "venue");
+  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? "venue");
   const [searchQuery, setSearchQuery] = useState(initialSettings?.searchQuery ?? "");
+  const [priceRange, setPriceRange] = useState(initialSettings?.priceRange ?? [0, 500]);
+  const [minRating, setMinRating] = useState(initialSettings?.minRating ?? 0);
+  const [sortBy, setSortBy] = useState(initialSettings?.sortBy ?? "popular");
+  const [selectedFilters, setSelectedFilters] = useState<string[]>(initialSettings?.selectedFilters ?? []);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>(initialSettings?.selectedInterests ?? []);
   const [vendorType, setVendorType] = useState<string>(initialSettings?.vendorType ?? "photographer");
+  
+  // Flight-specific filters
+  const [flightMaxPrice, setFlightMaxPrice] = useState(initialSettings?.flightMaxPrice ?? 2000);
+  const [flightStops, setFlightStops] = useState<"any" | "nonstop" | "1stop">(initialSettings?.flightStops ?? "any");
+  const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">(initialSettings?.flightSortBy ?? "price");
+  
+  // Hotel-specific filters
+  const [hotelMaxPrice, setHotelMaxPrice] = useState(initialSettings?.hotelMaxPrice ?? 5000);
+  const [hotelStarRating, setHotelStarRating] = useState<number>(initialSettings?.hotelStarRating ?? 0);
+  const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
+  // P4: controlled state for DB contextFields inputs
+  const [contextValues, setContextValues] = useState<Record<string, string>>({});
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
-
+  
+  // Template-based filters (DB-driven — now enabled for all templates)
+  const templateFilters = useTemplateFilters();
+  // P3: All templates with a DB record get TemplateFiltersPanel (gate removed)
+  const hasTemplateTabs = !!experienceType?.id;
+  
   // Wedding mode state (planning vs guest activities)
   const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
   
-  // Get effective tabs based on mode for templates with dual modes
+  // P5: effectiveTabs — DB is the single source of truth; experienceConfigs no longer drives structure
   const effectiveTabs = useMemo(() => {
-    if (config.modes && slug === "wedding") {
-      const modeConfig = weddingMode === "planning" ? config.modes.planning : config.modes.guest;
-      return modeConfig?.tabs || config.tabs;
+    if (!dbTabs || dbTabs.length === 0) return [];
+    const allTabs = dbTabsToConfig(dbTabs);
+    // Wedding guest-mode: filter to guest-relevant tabTypes only (DB-driven)
+    if (slug === "wedding" && weddingMode === "guest") {
+      const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events", "hotels", "venue-search"]);
+      const filtered = allTabs.filter(t => GUEST_TAB_TYPES.has(t.tabType ?? deriveTabType(t.id)));
+      return filtered.length > 0 ? filtered : allTabs;
     }
-    return config.tabs;
-  }, [config, slug, weddingMode]);
+    return allTabs;
+  }, [dbTabs, slug, weddingMode]);
+
+  // P5: Reset activeTab when dbTabs loads and current tab isn't present
+  useEffect(() => {
+    if (!dbTabs || dbTabs.length === 0) return;
+    const tabIds = dbTabsToConfig(dbTabs).map((t) => t.id);
+    if (!tabIds.includes(activeTab)) {
+      setActiveTab(tabIds[0] ?? "venue");
+    }
+  }, [dbTabs]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Track whether we've done initial hydration
   const hasHydratedRef = useRef(false);
@@ -1138,9 +1123,9 @@ export default function ExperienceTemplatePage() {
       
       const settings = getPersistedSearchSettings(slug);
       
-      // Get defaults for this experience type
-      const currentConfig = experienceConfigs[slug] || experienceConfigs.wedding;
-      const defaultActiveTab = currentConfig.tabs[0]?.id || "venue";
+      // P5: DB-only-safe default — DB tabs aren't available here yet;
+      // a separate useEffect syncs activeTab once dbTabs loads.
+      const defaultActiveTab = settings?.activeTab ?? "venue";
       
       // Priority: query params > sessionStorage trip queue > stored settings > defaults
       // Check for destination from query params or sessionStorage (from Take me Here feature)
@@ -1171,6 +1156,17 @@ export default function ExperienceTemplatePage() {
       setEndDate(settings?.endDate ? new Date(settings.endDate) : undefined);
       setActiveTab(settings?.activeTab ?? defaultActiveTab);
       setSearchQuery(settings?.searchQuery ?? "");
+      setPriceRange(settings?.priceRange ?? [0, 500]);
+      setMinRating(settings?.minRating ?? 0);
+      setSortBy(settings?.sortBy ?? "popular");
+      setSelectedFilters(settings?.selectedFilters ?? []);
+      setSelectedInterests(settings?.selectedInterests ?? []);
+      setFlightMaxPrice(settings?.flightMaxPrice ?? 2000);
+      setFlightStops(settings?.flightStops ?? "any");
+      setFlightSortBy(settings?.flightSortBy ?? "price");
+      setHotelMaxPrice(settings?.hotelMaxPrice ?? 5000);
+      setHotelStarRating(settings?.hotelStarRating ?? 0);
+      setHotelSortBy(settings?.hotelSortBy ?? "price");
       setAdults(settings?.adults ?? settings?.travelers ?? 2);
       setKids(settings?.kids ?? 0);
       setDetailsSubmitted(settings?.detailsSubmitted ?? false);
@@ -1188,6 +1184,17 @@ export default function ExperienceTemplatePage() {
       endDate: endDate?.toISOString(),
       activeTab,
       searchQuery,
+      priceRange,
+      minRating,
+      sortBy,
+      selectedFilters,
+      selectedInterests,
+      flightMaxPrice,
+      flightStops,
+      flightSortBy,
+      hotelMaxPrice,
+      hotelStarRating,
+      hotelSortBy,
       adults,
       kids,
       detailsSubmitted,
@@ -1195,10 +1202,13 @@ export default function ExperienceTemplatePage() {
     sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
   }, [
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
-    searchQuery, adults, kids, detailsSubmitted
+    searchQuery, priceRange, minRating, sortBy, selectedFilters, selectedInterests,
+    flightMaxPrice, flightStops, flightSortBy, hotelMaxPrice, hotelStarRating,
+    hotelSortBy, adults, kids, detailsSubmitted
   ]);
   
   const [cartOpen, setCartOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [expertHelpDialogOpen, setExpertHelpDialogOpen] = useState(false);
@@ -1431,6 +1441,8 @@ export default function ExperienceTemplatePage() {
       destination,
       startDate: startDate?.toISOString(),
       endDate: endDate?.toISOString(),
+      // P4: include DB contextField values in AI itinerary prompt payload
+      contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
       selectedServices: cart.map(item => ({
         name: item.name,
         provider: item.provider,
@@ -1484,6 +1496,18 @@ export default function ExperienceTemplatePage() {
   const openAiItineraryBuilder = () => {
     // Open the AI Itinerary Builder dialog (powered by Grok)
     setAiItineraryDialogOpen(true);
+  };
+
+  const toggleFilter = (filter: string) => {
+    setSelectedFilters((prev) =>
+      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter]
+    );
+  };
+
+  const toggleInterest = (interest: string) => {
+    setSelectedInterests((prev) =>
+      prev.includes(interest) ? prev.filter((i) => i !== interest) : [...prev, interest]
+    );
   };
 
   const isExternalProviderItem = (itemOrId: CartItem | string) => {
@@ -1616,7 +1640,13 @@ export default function ExperienceTemplatePage() {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const currentTabCategory = config.tabs.find(t => t.id === activeTab)?.category;
+  // P1/P5: use effectiveTabs (DB-driven) instead of config.tabs
+  const currentTabCategory = effectiveTabs.find(t => t.id === activeTab)?.category;
+  // P2/P5: tabType drives which filter panel / component renders for this tab
+  const currentTabType = effectiveTabs.find(t => t.id === activeTab)?.tabType
+    ?? deriveTabType(activeTab);
+  // P462: DB-driven tab filter control config (replaces hardcoded flight/hotel filter JSX)
+  const activeTabControlConfig = effectiveTabs.find(t => t.id === activeTab)?.controlConfig;
 
   const filteredServices = useMemo(() => {
     if (!services) return [];
@@ -1643,8 +1673,37 @@ export default function ExperienceTemplatePage() {
       );
     }
 
+    if (priceRange[0] > 0 || priceRange[1] < 500) {
+      filtered = filtered.filter(s => {
+        const price = Number(s.price) || 0;
+        return price >= priceRange[0] && (priceRange[1] >= 500 || price <= priceRange[1]);
+      });
+    }
+
+    if (minRating > 0) {
+      filtered = filtered.filter(s => (Number(s.averageRating) || 0) >= minRating);
+    }
+
+    if (selectedFilters.length > 0) {
+      filtered = filtered.filter(s => {
+        const desc = (s.description || "").toLowerCase();
+        const name = s.serviceName.toLowerCase();
+        return selectedFilters.some(f => 
+          desc.includes(f.toLowerCase()) || name.includes(f.toLowerCase())
+        );
+      });
+    }
+
+    if (sortBy === "price-low") {
+      filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    } else if (sortBy === "price-high") {
+      filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+    } else if (sortBy === "rating") {
+      filtered.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
+    }
+
     return filtered;
-  }, [services, searchQuery, currentTabCategory]);
+  }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
     // Show service markers when destination is set
@@ -1673,7 +1732,8 @@ export default function ExperienceTemplatePage() {
         })
       : [];
     
-    const customVenueMarkers = (activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels")
+    // P5: tabType-driven venue marker visibility
+    const customVenueMarkers = (currentTabType === "venue-search" || currentTabType === "hotels")
       ? customVenues
           .filter(v => v.latitude && v.longitude)
           .map(v => ({
@@ -1795,7 +1855,7 @@ export default function ExperienceTemplatePage() {
     );
   }
 
-  if (!experienceType || !isConfiguredTemplate) {
+  if (!experienceType) {
     return (
       <Layout>
         <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1816,6 +1876,31 @@ export default function ExperienceTemplatePage() {
     );
   }
 
+  // Explicit unavailable-state guard: hide templates not marked as active in DB
+  if (!experienceType.isActive) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <Card className="p-8 max-w-md text-center">
+            <h2 className="text-xl font-semibold mb-2">Coming Soon</h2>
+            <p className="text-muted-foreground mb-6">
+              This experience type is not yet available. Check back soon!
+            </p>
+            <Link href="/">
+              <Button data-testid="button-back-home">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Explore Other Experiences
+              </Button>
+            </Link>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  // config is kept as a read-only aesthetic reference only (hero images from pre-DB era).
+  // All structural behavior (tabs, form fields, filters) is DB-driven via experienceType + dbTabs.
+
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -1826,7 +1911,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${config.heroImage}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? ""}')` }}
             />
 
             {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
@@ -1922,32 +2007,37 @@ export default function ExperienceTemplatePage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                        <SelectItem key={n} value={n.toString()} data-testid={`select-adults-${n}`}>
-                          {n} {n === 1 ? 'adult' : 'adults'}
-                        </SelectItem>
-                      ))}
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
+                        const unitLabel = experienceType.headcountLabel || 'adult';
+                        return (
+                          <SelectItem key={n} value={n.toString()} data-testid={`select-adults-${n}`}>
+                            {n} {n === 1 ? unitLabel : unitLabel + 's'}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
-                  <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
-                    <SelectTrigger className="w-[100px] h-8" data-testid="select-kids">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                        <SelectItem key={n} value={n.toString()} data-testid={`select-kids-${n}`}>
-                          {n} {n === 1 ? 'kid' : 'kids'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {experienceType.showKids !== false && (
+                    <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
+                      <SelectTrigger className="w-[100px] h-8" data-testid="select-kids">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                          <SelectItem key={n} value={n.toString()} data-testid={`select-kids-${n}`}>
+                            {n} {n === 1 ? 'kid' : 'kids'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
               
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="location" className="text-sm font-medium">
-                    {config.locationLabel}
+                    {experienceType.locationLabel ?? "Destination city"}
                   </Label>
                   <Input
                     id="location"
@@ -1959,9 +2049,10 @@ export default function ExperienceTemplatePage() {
                   />
                 </div>
 
+                {experienceType.showOriginCity !== "hide" && (
                 <div>
                   <Label htmlFor="origin" className="text-sm font-medium">
-                    City of Origin:
+                    City of Origin:{experienceType.showOriginCity === "optional" && <span className="text-muted-foreground font-normal ml-1">(optional)</span>}
                   </Label>
                   <Input
                     id="origin"
@@ -1975,9 +2066,44 @@ export default function ExperienceTemplatePage() {
                     data-testid="input-origin"
                   />
                 </div>
+                )}
+
+                {/* P4: DB contextFields — extra per-template form inputs */}
+                {((experienceType.contextFields as ContextField[]) || []).map((field: ContextField) => (
+                  <div key={field.key}>
+                    <Label htmlFor={`ctx-${field.key}`} className="text-sm font-medium">
+                      {field.label}
+                    </Label>
+                    {field.type === "select" && Array.isArray(field.options) ? (
+                      <Select
+                        value={contextValues[field.key] ?? ""}
+                        onValueChange={(v) => setContextValues(prev => ({ ...prev, [field.key]: v }))}
+                      >
+                        <SelectTrigger id={`ctx-${field.key}`} className="mt-1" data-testid={`select-context-${field.key}`}>
+                          <SelectValue placeholder={field.placeholder || `Select ${field.label}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(field.options as string[]).map((opt: string) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id={`ctx-${field.key}`}
+                        type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                        placeholder={field.placeholder || ""}
+                        value={contextValues[field.key] ?? ""}
+                        onChange={(e) => setContextValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        className="mt-1"
+                        data-testid={`input-context-${field.key}`}
+                      />
+                    )}
+                  </div>
+                ))}
 
                 <div>
-                  <Label className="text-sm font-medium">{config.dateLabel}</Label>
+                  <Label className="text-sm font-medium">Event Dates:</Label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <div>
                       <span className="text-sm text-muted-foreground">
@@ -2065,6 +2191,8 @@ export default function ExperienceTemplatePage() {
                       travelers: adults + kids,
                       experienceType: experienceType?.slug || slug,
                       searchContext: 'experience-template',
+                      // P4: DB contextField values included in analytics payload
+                      ...(Object.keys(contextValues).length > 0 ? { contextFields: contextValues } : {}),
                     });
                     toast({
                       title: "Details Saved",
@@ -2084,15 +2212,15 @@ export default function ExperienceTemplatePage() {
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
-            {/* Wedding Mode Toggle */}
-            {slug === "wedding" && config.modes && (
+            {/* Wedding Mode Toggle — DB-driven: shown whenever wedding template has DB tabs */}
+            {slug === "wedding" && dbTabs && dbTabs.length > 0 && (
               <div className="flex items-center justify-center gap-2 py-2 border-b border-gray-100 dark:border-gray-700">
                 <Button
                   variant={weddingMode === "planning" ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     setWeddingMode("planning");
-                    setActiveTab(config.modes?.planning?.tabs[0]?.id || "venues");
+                    setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
                   }}
                   className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-planning"
@@ -2104,7 +2232,9 @@ export default function ExperienceTemplatePage() {
                   size="sm"
                   onClick={() => {
                     setWeddingMode("guest");
-                    setActiveTab(config.modes?.guest?.tabs[0]?.id || "activities");
+                    const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
+                    const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                    setActiveTab(firstGuest?.id ?? "activities");
                   }}
                   className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-guest"
@@ -2234,44 +2364,144 @@ export default function ExperienceTemplatePage() {
         </div>
 
         <div className="container mx-auto px-4 py-6">
-          {/* Lightweight controls: free-text search (most tabs) or vendor-type
-              (wedding vendors). Faceted filters + price params removed in Phase 1 —
-              selection replaces filtering; the cart total is the budget signal. */}
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "accommodations" && (
+          {/* P5: tabType-registry driven — transport tab shows TripTransportPlanner */}
+          {currentTabType === "transport" && (
             <div className="mb-6">
-              {activeTab === "vendors" ? (
-                <div className="max-w-xs">
-                  <Label className="text-sm font-medium">Vendor Type</Label>
-                  <Select value={vendorType} onValueChange={setVendorType}>
-                    <SelectTrigger className="mt-1" data-testid="select-vendor-type-main">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WEDDING_VENDOR_TYPES.map(type => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="relative max-w-md">
-                  <Input
-                    placeholder="Search by name, provider, or description..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                    data-testid="input-search"
-                  />
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                </div>
-              )}
+              <TripTransportPlanner
+                cart={cart}
+                destination={destination}
+                startDate={startDate}
+                endDate={endDate}
+                travelers={adults + kids}
+                variantId={recentVariantId}
+                onBookTransfer={(segment, option) => {
+                  addToCart({
+                    id: `transport-${segment.id}-${Date.now()}`,
+                    type: "transportation",
+                    name: `${option.name}: ${segment.from.name} → ${segment.to.name}`,
+                    price: option.price || 0,
+                    quantity: 1,
+                    provider: option.provider,
+                    details: option.description,
+                    isExternal: true,
+                  });
+                }}
+              />
+              {destination && <TravelpayoutsTransport destination={destination} />}
             </div>
           )}
 
+          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab */}
+          {activeTabControlConfig && (
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
+                <SlidersHorizontal className="w-4 h-4" />
+                Filters & Sort
+                <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <Card className="mb-6">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex flex-wrap gap-4">
+                    {activeTabControlConfig.priceRange && (
+                      <div className="min-w-[200px] flex-1">
+                        <Label className="text-sm font-medium">
+                          {activeTabControlConfig.priceRange.label ?? "Max Price"}: $
+                          {currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice}
+                        </Label>
+                        <Slider
+                          value={[currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice]}
+                          onValueChange={(v) => currentTabType === "flights" ? setFlightMaxPrice(v[0]) : setHotelMaxPrice(v[0])}
+                          min={activeTabControlConfig.priceRange.min}
+                          max={activeTabControlConfig.priceRange.max}
+                          step={activeTabControlConfig.priceRange.step}
+                          className="mt-2"
+                          data-testid={currentTabType === "flights" ? "slider-flight-price" : "slider-hotel-price"}
+                        />
+                      </div>
+                    )}
+                    {activeTabControlConfig.stops && (
+                      <div className="min-w-[200px] flex-1">
+                        <Label className="text-sm font-medium">Stops</Label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {activeTabControlConfig.stops.map((option) => (
+                            <Button
+                              key={option.value}
+                              variant={flightStops === option.value ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setFlightStops(option.value as "any" | "nonstop" | "1stop")}
+                              className={flightStops === option.value ? "bg-[#FF385C]" : ""}
+                              data-testid={`button-stops-${option.value}`}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {activeTabControlConfig.starRatings && (
+                      <div className="min-w-[200px] flex-1">
+                        <Label className="text-sm font-medium">Star Rating</Label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {activeTabControlConfig.starRatings.map((stars) => (
+                            <Button
+                              key={stars}
+                              variant={hotelStarRating === stars ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setHotelStarRating(stars)}
+                              className={hotelStarRating === stars ? "bg-[#FF385C]" : ""}
+                              data-testid={`button-stars-${stars}`}
+                            >
+                              {stars === 0 ? "All" : <><Star className="w-3 h-3 mr-1 fill-current" />{stars}+</>}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {activeTabControlConfig.sortOptions && (
+                      <div className="min-w-[140px] max-w-[180px]">
+                        <Label className="text-sm font-medium">Sort By</Label>
+                        <Select
+                          value={currentTabType === "flights" ? flightSortBy : hotelSortBy}
+                          onValueChange={(v) => currentTabType === "flights"
+                            ? setFlightSortBy(v as "price" | "duration" | "departure")
+                            : setHotelSortBy(v as "price" | "rating")}
+                        >
+                          <SelectTrigger className="mt-2" data-testid={currentTabType === "flights" ? "select-flight-sort" : "select-hotel-sort"}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeTabControlConfig.sortOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </CollapsibleContent>
+          </Collapsible>
+          )}
 
-          {activeTab === "flights" && (
+          {/* P3: TemplateFiltersPanel — DB-driven filters; hidden on flight/hotel tabs (those use the Collapsible above) */}
+          {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
+            <div className="mb-6">
+              <TemplateFiltersPanel
+                experienceTypeId={experienceType.id}
+                activeTab={activeTab}
+                selectedFilters={templateFilters.selectedFilters}
+                onFilterChange={templateFilters.onFilterChange}
+                onClearFilters={templateFilters.onClearFilters}
+              />
+            </div>
+          )}
+
+          {/* P5: tabType-registry driven — any tab with tabType "flights" renders FlightSearch */}
+          {currentTabType === "flights" && (
             <div className="mb-6">
               <FlightSearch
                 destination={destination}
@@ -2279,6 +2509,9 @@ export default function ExperienceTemplatePage() {
                 startDate={startDate}
                 endDate={endDate}
                 travelers={adults + kids}
+                maxPrice={flightMaxPrice}
+                stops={flightStops}
+                sortBy={flightSortBy}
                 onSelectFlight={(flight) => {
                   const outbound = flight.itineraries[0];
                   const firstSegment = outbound?.segments[0];
@@ -2321,21 +2554,29 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "flights" && destination && (
+          {currentTabType === "flights" && destination && (
+            <TravelpayoutsNomad destination={destination} />
+          )}
+
+          {currentTabType === "flights" && destination && (
             <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+          {/* P5: tabType-registry driven — any tab with tabType "hotels" renders HotelSearch */}
+          {currentTabType === "hotels" && destination && (
             <BookingComCatalogSection destination={destination} />
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && (
+          {currentTabType === "hotels" && (
             <div className="mb-6">
               <HotelSearch
                 destination={destination}
                 checkIn={startDate}
                 checkOut={endDate}
                 guests={adults + kids}
+                maxPrice={hotelMaxPrice}
+                starRating={hotelStarRating}
+                sortBy={hotelSortBy}
                 activityLocations={activityLocations}
                 onResultsLoaded={setHotelSearchMarkers}
                 destinationCenter={destinationCenter}
@@ -2389,14 +2630,16 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+              {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+          {currentTabType === "hotels" && destination && (
             <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
-          {activeTab === "services" && (
+          {/* P5: tabType-registry driven — any tab with tabType "services" */}
+          {currentTabType === "services" && (
             <div className="mb-6">
               <ServiceBrowser
                 defaultLocation={destination}
@@ -2415,14 +2658,15 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "activities" && (
+          {/* P5: tabType-registry driven — any tab with tabType "activities" */}
+          {currentTabType === "activities" && (
             <div className="mb-6 space-y-4">
               <ActivitySearch
                 destination={destination}
                 startDate={startDate}
                 endDate={endDate}
                 travelers={adults + kids}
-                interests={[]}
+                interests={selectedInterests}
                 onResultsLoaded={setActivitySearchMarkers}
                 destinationCenter={destinationCenter}
                 onSelectActivity={(activity) => {
@@ -2511,7 +2755,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "events" && (
+          {/* P5: tabType-registry driven — any tab with tabType "events" */}
+          {currentTabType === "events" && (
             <div className="mb-6">
               <FeverEventsSection
                 destination={destination}
@@ -2521,15 +2766,37 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
+          {/* P5: tabType-registry driven — any tab with tabType "transport" */}
+          {currentTabType === "transport" && (
+            <div className="mb-6">
+              <AmadeusTransfers
+                destination={destination || ""}
+                startDate={startDate?.toISOString().split('T')[0]}
+                travelers={adults + kids}
+                onAddToCart={(item) => {
+                  addToCart({
+                    id: item.id,
+                    type: "transportation",
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    provider: item.provider,
+                    details: item.details,
+                    isExternal: item.isExternal,
+                  });
+                }}
+              />
+            </div>
+          )}
 
-          {/* Restaurant Catalog Section (OpenTable + Booking.com) — shown for dining tabs */}
-          {activeTab === "dining" && destination && (
+          {/* Restaurant Catalog Section — shown for any tab with tabType "dining" */}
+          {currentTabType === "dining" && destination && (
             <RestaurantCatalogSection destination={destination} />
           )}
 
-          {/* Venue Search Panel - Google Places Integration (dynamically wired to all supported tabs) */}
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
-            (activeTab === "vendors" || activeTab in TAB_FALLBACK_CONFIG) && (
+          {/* Venue Search Panel — fallback for venue-search / dining / nightlife / vendors and any tab in TAB_FALLBACK_CONFIG */}
+          {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && currentTabType !== "planning-tools" && currentTabType !== "itinerary-builder" && (
+            (currentTabType === "vendors" || activeTab in TAB_FALLBACK_CONFIG || currentTabType === "venue-search" || currentTabType === "dining" || currentTabType === "nightlife") && (
               <div className="mb-6">
                 <VenueSearchPanel
                   template={slug || ''}
@@ -2538,8 +2805,9 @@ export default function ExperienceTemplatePage() {
                   onAddToCart={(item) => {
                     addToCart(item);
                   }}
-                  externalVendorType={activeTab === "vendors" ? vendorType : undefined}
-                  externalKeyword={activeTab !== "vendors" ? searchQuery : undefined}
+                  externalVendorType={currentTabType === "vendors" ? vendorType : undefined}
+                  externalMinRating={minRating}
+                  externalKeyword={currentTabType !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
                 />
               </div>
@@ -2547,7 +2815,7 @@ export default function ExperienceTemplatePage() {
           )}
 
           {/* Recommended by Traveloure — content hub items matched to this tab + destination */}
-          {destination && activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
+          {destination && currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "planning-tools" && currentTabType !== "itinerary-builder" && (
             <CuratedContentSection
               destination={destination}
               tab={activeTab}
@@ -2557,7 +2825,7 @@ export default function ExperienceTemplatePage() {
             />
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
+          {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -2566,7 +2834,7 @@ export default function ExperienceTemplatePage() {
                   ? `No providers found in ${destination}` 
                   : "Enter a location to see available options"}
             </p>
-            {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && (
+            {(currentTabType === "venue-search" || currentTabType === "hotels") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -2580,11 +2848,11 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
+          {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
+                  {(currentTabType === "venue-search" || currentTabType === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
                     const venueId = `custom-${venue.id}`;
                     const isInCart = selectedProviderIds.includes(venueId);
                     return (
@@ -2801,7 +3069,7 @@ export default function ExperienceTemplatePage() {
           <div className="relative h-48 flex-shrink-0 overflow-hidden">
             <div 
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${config.heroImage}')` }}
+              style={{ backgroundImage: `url('${experienceType.heroImage ?? ""}')` }}
             />
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-between z-10">
               {/* Mobile Map/Form Toggle or Trip Planner link */}
@@ -2948,7 +3216,7 @@ export default function ExperienceTemplatePage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <Label className="text-sm font-medium">{config.locationLabel}</Label>
+                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? "Destination city"}</Label>
                   <Input
                     placeholder="Eg: Paris, New York"
                     value={destination}
@@ -2993,15 +3261,15 @@ export default function ExperienceTemplatePage() {
             </CardContent>
           </Card>
 
-          {/* Mobile Mode Toggle for Wedding */}
-          {slug === "wedding" && config.modes && !showMobileMap && (
+          {/* Mobile Mode Toggle for Wedding — DB-driven */}
+          {slug === "wedding" && dbTabs && dbTabs.length > 0 && !showMobileMap && (
             <div className="flex items-center justify-center gap-2 py-2 border-b bg-white dark:bg-gray-800">
               <Button
                 variant={weddingMode === "planning" ? "default" : "outline"}
                 size="sm"
                 onClick={() => {
                   setWeddingMode("planning");
-                  setActiveTab(config.modes?.planning?.tabs[0]?.id || "venues");
+                  setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
                 }}
                 className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
               >
@@ -3012,7 +3280,9 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   setWeddingMode("guest");
-                  setActiveTab(config.modes?.guest?.tabs[0]?.id || "activities");
+                  const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
+                  const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                  setActiveTab(firstGuest?.id ?? "activities");
                 }}
                 className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
               >
@@ -3247,7 +3517,7 @@ export default function ExperienceTemplatePage() {
                     endDate={endDate}
                     experienceType={experienceType?.name}
                     travelers={adults + kids}
-                    preferences={[]}
+                    preferences={selectedInterests}
                     userId={user?.id}
                     isVisible={true}
                   />

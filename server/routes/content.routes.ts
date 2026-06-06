@@ -7,7 +7,7 @@ import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
-  users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
+  users, contactSubmissions, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
@@ -15,7 +15,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -98,6 +98,7 @@ import webhooksRoutes from "./webhooks.routes";
 import { affiliateClicks } from "@shared/schema";
 import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
+import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
 
@@ -192,21 +193,53 @@ router.get("/api/status", (_req, res) => {
 router.post("/api/contact", async (req, res) => {
     try {
       const input = contactSchema.parse(req.body);
-      
-      // Log contact form submission (in production, send email or save to DB)
-      console.log("Contact form submission:", {
+
+      // Persist the submission
+      const [submission] = await db.insert(contactSubmissions).values({
         name: input.name,
         email: input.email,
+        phone: input.phone || null,
         subject: input.subject,
-        timestamp: new Date().toISOString(),
-      });
+        message: input.message,
+        reason: (input as any).reason || null,
+        preferredContactMethod: input.preferredContactMethod || null,
+        source: (input as any).source || "contact_page",
+        ipAddress: (req.ip || req.socket.remoteAddress || "").toString().slice(0, 45),
+        userAgent: (req.headers["user-agent"] || "").toString().slice(0, 500),
+      }).returning();
 
-      // TODO: Implement email sending (e.g., SendGrid, Resend, etc.)
-      // For now, just acknowledge receipt
-      
-      res.status(200).json({ 
-        success: true, 
-        message: "Thank you for your message. We'll get back to you soon!" 
+      // Notify all admins (fire & forget)
+      try {
+        const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+        for (const admin of admins) {
+          try {
+            await storage.createNotification({
+              userId: admin.id,
+              type: "contact_submission",
+              title: `New ${(input as any).reason || "Contact"} Inquiry`,
+              message: `${input.name} (${input.email}): ${input.subject}`,
+              relatedId: submission.id,
+              relatedType: "contact_submission",
+              data: {
+                submissionId: submission.id,
+                name: input.name,
+                email: input.email,
+                subject: input.subject,
+                reason: (input as any).reason,
+              },
+            });
+          } catch (notifErr) {
+            console.error(`Failed to notify admin ${admin.id}:`, notifErr);
+          }
+        }
+      } catch (notifyErr) {
+        console.error("Failed to notify admins of contact submission:", notifyErr);
+      }
+
+      res.status(200).json({
+        success: true,
+        submissionId: submission.id,
+        message: "Thank you for your message. We'll get back to you soon!"
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -407,6 +440,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
           { role: "user", content: prompt }
         ],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
       const blueprintContent = completion.content[0]?.type === "text" ? completion.content[0].text : null;
       const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
@@ -461,6 +495,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
         system: systemPrompt,
         messages: anthropicMessages,
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_chat" });
 
       const response = completion.content[0]?.type === "text" ? completion.content[0].text : "I'm sorry, I couldn't process your request.";
       res.json({ response });
@@ -534,6 +569,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
           { role: "user", content: `Please analyze and optimize my ${experienceType} experience plan.` }
         ],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_optimization" });
 
       const responseText = completion.content[0]?.type === "text" ? completion.content[0].text : "{}";
       const optimization = JSON.parse(responseText);
@@ -2107,6 +2143,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           { role: "user", content: prompt }
         ],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
       const responseText = completion.content[0]?.type === "text" ? completion.content[0].text : "{}";
       const recommendations = JSON.parse(responseText);
@@ -2179,11 +2216,36 @@ router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
 
   // === Service Reviews Routes ===
   
-  // Get reviews for a service
+  // Get reviews for a service (public: approved only)
 
 router.get("/api/services/:serviceId/reviews", async (req, res) => {
-    const reviews = await storage.getServiceReviews(req.params.serviceId);
-    res.json(reviews);
+    const all = await storage.getServiceReviews(req.params.serviceId);
+    const visible = all
+      .filter(r => (r as any).status === "approved" || (r as any).status === "removed")
+      .map(r => {
+        if ((r as any).status === "removed") {
+          return { id: r.id, status: "removed", createdAt: r.createdAt };
+        }
+        return r;
+      });
+    res.json(visible);
+  });
+
+  // Flag a review (any authenticated user)
+router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { reason } = req.body;
+      const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, req.params.id)).limit(1);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (review.status === "removed") return res.status(400).json({ message: "Review already removed" });
+      await db.update(serviceReviews).set({ status: "flagged", flagReason: reason || null }).where(eq(serviceReviews.id, req.params.id));
+      await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: "flag", actorId: userId, reason: reason || null });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Flag review error:", err);
+      res.status(500).json({ message: "Failed to flag review" });
+    }
   });
 
   // Create a review (only after completed booking)
@@ -2212,6 +2274,7 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         serviceId: req.params.serviceId,
         travelerId: userId,
         providerId: service.userId,
+        status: "pending",
       });
       
       const review = await storage.createServiceReview(input);
@@ -3278,6 +3341,7 @@ Respond with this exact JSON structure:
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      trackAnthropicResponse(aiResponse, { sourceType: "ai_content" });
 
       const responseText = aiResponse.content[0]?.type === "text" ? aiResponse.content[0].text : "";
 
@@ -7417,5 +7481,27 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
   });
 
 } // end registerDiscoveryRoutes
+
+// === Exchange Rate Endpoint (top-level, always registered) ===
+let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
+const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
+
+router.get("/api/exchange-rates", async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (_exchangeRateCache && now - _exchangeRateCache.fetchedAt < EXCHANGE_RATE_TTL_MS) {
+      return res.json({ base: "USD", rates: _exchangeRateCache.rates, cachedAt: _exchangeRateCache.fetchedAt });
+    }
+    const resp = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,AUD,SGD");
+    if (!resp.ok) throw new Error(`Frankfurter API error: ${resp.status}`);
+    const data = await resp.json() as { rates: Record<string, number> };
+    _exchangeRateCache = { rates: data.rates, fetchedAt: now };
+    res.json({ base: "USD", rates: data.rates, cachedAt: now });
+  } catch (err) {
+    console.error("Exchange rate fetch error:", err);
+    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
+    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+  }
+});
 
 export default router;
