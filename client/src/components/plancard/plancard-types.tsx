@@ -72,8 +72,9 @@ export function getTemplateConfig(eventType: string | null | undefined): Templat
   return TEMPLATES.travel;
 }
 
-export function getDestinationPhotoUrl(destination: string): string {
-  const seed = destination
+export function getDestinationPhotoUrl(destination: string | undefined | null): string {
+  const safe = destination || "travel";
+  const seed = safe
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
@@ -174,6 +175,7 @@ export interface OptimizationDelta {
 }
 
 export interface PlanCardData {
+  tripRole?: PlanCardRole;
   days: PlanCardDay[];
   changeLog: PlanCardChange[];
   metrics: PlanCardMetrics;
@@ -193,7 +195,7 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
-export type PlanCardRole = "owner" | "expert" | "viewer";
+export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
 export type PlanCardStage = "summary" | "full";
 
 export interface PlanCardProps {

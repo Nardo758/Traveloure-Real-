@@ -40,6 +40,7 @@ import {
   GitBranch,
   LayoutTemplate,
   ImageIcon,
+  ShieldCheck,
 } from "lucide-react";
 
 const menuGroups = [
@@ -71,6 +72,7 @@ const menuGroups = [
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
       { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
+      { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
     ],
   },
   {
