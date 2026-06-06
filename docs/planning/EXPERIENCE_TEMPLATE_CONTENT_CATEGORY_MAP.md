@@ -3,7 +3,7 @@
 Foundation for the "template as logistics hub" rebuild. Defines, per template, **which content categories it surfaces** and **what each pulls from** — the thing every other workstream (content-network wiring, Platform Services wiring, split-screen map, profiling→upsell) builds on.
 
 ## The model (recap)
-Split-screen: tailored **selectable** content on one side, live map (`MapControlCenter`) on the other. **No filters, no price parameters** — the **real-time cart total** is the budget feedback. Every selection **profiles the user**; that profile is what the paid Optimize upsell personalizes against. **Transport is NOT a template category** — it's chosen in the Trip Details command center post-planning (reaffirming the established principle). The template is the free build; the upsell is the paid AI optimize.
+Split-screen: tailored **selectable** content on one side, live map (`ExperienceMap`, the existing template-native map) on the other. **No filters, no price parameters** — the **real-time cart total** is the budget feedback. Every selection **profiles the user**; that profile is what the paid Optimize upsell personalizes against. **Transport is NOT a template category** — it's chosen in the Trip Details command center post-planning (reaffirming the established principle). The template is the free build; the upsell is the paid AI optimize.
 
 ---
 
@@ -16,7 +16,7 @@ Split-screen: tailored **selectable** content on one side, live map (`MapControl
 | **Activities & Experiences** | Viator · GetYourGuide · Klook · WeGoTrip | interests, pace, energy |
 | **Tickets & Attractions** | Tiqets · Fever | culture vs nightlife vs family |
 | **Events / "What's on"** | Fever · TravelPulse · Grok city intel | timing, vibe, spontaneity |
-| **Dining** | Amadeus POIs ⚠ *(thin — see notes)* | cuisine, formality, budget |
+| **Dining** | Google Places (`/api/venues/search`) | cuisine, formality, budget |
 | **Local Experts** | Platform — Expert Profile | intent depth → concierge funnel |
 | **Platform Services** | Platform — Provider/Service marketplace (photo, guides, childcare, décor, entertainment, hair/makeup…) | service needs, spend level |
 | **Travel Essentials** | Airalo (eSIM) · SafetyWing (insurance) · Stasher (luggage) | international, trip length, risk profile |
@@ -77,6 +77,6 @@ Categories your integrated providers already support but the templates aren't su
 
 ## 4. Notes / open items
 - **Transport** providers (Busbud, KiwiTaxi, GetTransfer, Welcome Pickups, Discover Cars, Rental Cars) wire to the **Trip Details command center**, not the templates. The live Travel template's "Transportation" tab is drift from this principle — remove it.
-- **Dining source is thin.** Amadeus POIs are the only obvious feed here; there's no dedicated dining/restaurant provider in the stack (Google Places / Foursquare appeared in earlier notes but aren't in the integrated list). Resolve the dining content source before relying on a Dining tab.
+- **Dining is sourced from Google Places** (`/api/venues/search?type=restaurant`) — confirmed wired in the Phase 0 audit. (Earlier "thin source" concern was wrong.)
 - **Selection = profiling.** Each category's picks feed the implicit profile the Optimizer reads (the spec's "cart analysis"). The profiling-signal column above is what makes the upsell ("here's your vision optimized") land — design the selection events to capture it.
 - **Per-template definition** holds the category list (which categories, in what order, weighted how) — this is the single source of truth the engine renders from. Authoring it per template *is* the foundation for the content-network + Platform-Services wiring workstreams.
