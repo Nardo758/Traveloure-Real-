@@ -336,10 +336,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
-        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare);
+        // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
+        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
       }
       const subtotal = checkoutSubtotal;
-      // For Stripe total, charge subtotal + weighted-average platform fee
+      // For Stripe total, charge subtotal + weighted-average platform fee (includes insurance)
       const platformFee = checkoutPlatformFeeTotal;
       const total = subtotal + platformFee;
       
@@ -372,8 +374,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const baseExpertEarningsAmt = price * expertShareRate;
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
-        // Insurance tier (FEE-2 Phase 2): compute per-booking insurance component from category config
-        const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, null);
+        // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
+        const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt;
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
