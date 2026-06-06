@@ -7,7 +7,7 @@ import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
-  users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
+  users, contactSubmissions, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
@@ -264,6 +264,59 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin revenue error:", err);
       res.status(500).json({ message: "Failed to fetch revenue" });
+    }
+  });
+
+  // Admin: list contact submissions
+router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const status = req.query.status as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
+      const baseQuery = db.select().from(contactSubmissions);
+      const submissions = status
+        ? await baseQuery.where(eq(contactSubmissions.status, status)).orderBy(desc(contactSubmissions.createdAt)).limit(limit)
+        : await baseQuery.orderBy(desc(contactSubmissions.createdAt)).limit(limit);
+
+      res.json(submissions);
+    } catch (err) {
+      console.error("List contact submissions error:", err);
+      res.status(500).json({ message: "Failed to load contact submissions" });
+    }
+  });
+
+  // Admin: update contact submission status
+router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { status, responseNotes, assignedAdminId } = req.body;
+      const updates: any = {};
+      if (status) updates.status = status;
+      if (status === "resolved") updates.resolvedAt = new Date();
+      if (responseNotes !== undefined) updates.responseNotes = responseNotes;
+      if (assignedAdminId !== undefined) updates.assignedAdminId = assignedAdminId;
+
+      const [updated] = await db.update(contactSubmissions)
+        .set(updates)
+        .where(eq(contactSubmissions.id, req.params.id))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "Submission not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Update contact submission error:", err);
+      res.status(500).json({ message: "Failed to update contact submission" });
     }
   });
 

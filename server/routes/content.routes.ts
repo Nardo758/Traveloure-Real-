@@ -7,7 +7,7 @@ import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
-  users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
+  users, contactSubmissions, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
@@ -193,21 +193,53 @@ router.get("/api/status", (_req, res) => {
 router.post("/api/contact", async (req, res) => {
     try {
       const input = contactSchema.parse(req.body);
-      
-      // Log contact form submission (in production, send email or save to DB)
-      console.log("Contact form submission:", {
+
+      // Persist the submission
+      const [submission] = await db.insert(contactSubmissions).values({
         name: input.name,
         email: input.email,
+        phone: input.phone || null,
         subject: input.subject,
-        timestamp: new Date().toISOString(),
-      });
+        message: input.message,
+        reason: (input as any).reason || null,
+        preferredContactMethod: input.preferredContactMethod || null,
+        source: (input as any).source || "contact_page",
+        ipAddress: (req.ip || req.socket.remoteAddress || "").toString().slice(0, 45),
+        userAgent: (req.headers["user-agent"] || "").toString().slice(0, 500),
+      }).returning();
 
-      // TODO: Implement email sending (e.g., SendGrid, Resend, etc.)
-      // For now, just acknowledge receipt
-      
-      res.status(200).json({ 
-        success: true, 
-        message: "Thank you for your message. We'll get back to you soon!" 
+      // Notify all admins (fire & forget)
+      try {
+        const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+        for (const admin of admins) {
+          try {
+            await storage.createNotification({
+              userId: admin.id,
+              type: "contact_submission",
+              title: `New ${(input as any).reason || "Contact"} Inquiry`,
+              message: `${input.name} (${input.email}): ${input.subject}`,
+              relatedId: submission.id,
+              relatedType: "contact_submission",
+              data: {
+                submissionId: submission.id,
+                name: input.name,
+                email: input.email,
+                subject: input.subject,
+                reason: (input as any).reason,
+              },
+            });
+          } catch (notifErr) {
+            console.error(`Failed to notify admin ${admin.id}:`, notifErr);
+          }
+        }
+      } catch (notifyErr) {
+        console.error("Failed to notify admins of contact submission:", notifyErr);
+      }
+
+      res.status(200).json({
+        success: true,
+        submissionId: submission.id,
+        message: "Thank you for your message. We'll get back to you soon!"
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
