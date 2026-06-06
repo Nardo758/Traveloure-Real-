@@ -3996,7 +3996,7 @@ async function updateExperienceTypeHeroConfigs() {
     "wedding": {
       headcountLabel: "guest",
       showKids: false,
-      showOriginCity: "optional",
+      showOriginCity: "hide",
       locationLabel: "Venue city",
     },
     "birthday-party": {
@@ -4112,7 +4112,7 @@ async function updateExperienceTypeHeroConfigs() {
     "wedding-anniversaries": {
       headcountLabel: "guest",
       showKids: false,
-      showOriginCity: "optional",
+      showOriginCity: "hide",
       locationLabel: "City / venue",
     },
     // --- Milestone celebration templates ---
