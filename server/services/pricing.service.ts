@@ -16,8 +16,35 @@ interface FeeBreakdown {
 }
 
 class PricingService {
-  // Deposit percentages
-  private readonly depositRate = 0.25; // 25% deposit
+  // FEE-3: deposit rate resolves from booking_fee_configs.platform_deposit_rate.
+  // 0.25 is the safe fallback if the row is missing/unseeded so checkout cannot
+  // silently drop to a 0 deposit. Cached for 60 s to bound DB load.
+  private static readonly DEFAULT_DEPOSIT_RATE = 0.25;
+  private static readonly RATE_CACHE_TTL_MS = 60_000;
+  private depositRateCache: { value: number; expiresAt: number } | null = null;
+
+  private async loadDepositRate(): Promise<number> {
+    if (this.depositRateCache && this.depositRateCache.expiresAt > Date.now()) {
+      return this.depositRateCache.value;
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT CAST(platform_fee_percent AS FLOAT) AS rate
+        FROM booking_fee_configs
+        WHERE category = 'platform_deposit_rate' AND is_active = true
+        LIMIT 1
+      `);
+      const row = result.rows?.[0] as { rate: number | null } | undefined;
+      const value = row?.rate !== undefined && row.rate !== null
+        ? Number(row.rate) / 100
+        : PricingService.DEFAULT_DEPOSIT_RATE;
+      this.depositRateCache = { value, expiresAt: Date.now() + PricingService.RATE_CACHE_TTL_MS };
+      return value;
+    } catch (err) {
+      console.warn('[pricing] deposit-rate config lookup failed, using fallback:', err);
+      return PricingService.DEFAULT_DEPOSIT_RATE;
+    }
+  }
 
   /**
    * Get current price for a service
@@ -98,10 +125,11 @@ class PricingService {
   }
 
   /**
-   * Calculate deposit amount (25% default)
+   * Calculate deposit amount. Rate resolves from booking_fee_configs.platform_deposit_rate
+   * (admin-editable). Falls back to 0.25 if the config row is missing/unreachable.
    */
-  calculateDeposit(totalAmount: number, customRate?: number): number {
-    const rate = customRate || this.depositRate;
+  async calculateDeposit(totalAmount: number, customRate?: number): Promise<number> {
+    const rate = customRate ?? await this.loadDepositRate();
     return Math.round(totalAmount * rate * 100) / 100;
   }
 
@@ -110,20 +138,6 @@ class PricingService {
    */
   calculateBalance(totalAmount: number, depositPaid: number): number {
     return Math.round((totalAmount - depositPaid) * 100) / 100;
-  }
-
-  /**
-   * Calculate expert fee (for personal assistant bookings)
-   */
-  calculateExpertFee(bookingAmount: number, expertTier: string = 'standard'): number {
-    const expertRates = {
-      standard: 0.10,   // 10%
-      premium: 0.15,    // 15%
-      concierge: 0.20,  // 20%
-    };
-
-    const rate = expertRates[expertTier as keyof typeof expertRates] || expertRates.standard;
-    return Math.round(bookingAmount * rate * 100) / 100;
   }
 
   /**
@@ -228,7 +242,7 @@ class PricingService {
       }
     }
 
-    const depositAmount = this.calculateDeposit(total);
+    const depositAmount = await this.calculateDeposit(total);
     const balanceAmount = this.calculateBalance(total, depositAmount);
 
     return {

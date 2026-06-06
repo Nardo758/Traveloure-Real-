@@ -1,167 +1,154 @@
+/**
+ * Reset password page (LB-P1).
+ * Reads ?token= from the URL, collects new password, posts { token, newPassword } to server.
+ */
 import { useState } from "react";
-import { useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
+import { useLocation, useSearch, Link } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Lock, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { Lock, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function ResetPasswordPage() {
-  const [, navigate] = useLocation();
+  const [, setLocation] = useLocation();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const token = params.get("token") ?? "";
   const { toast } = useToast();
+
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("token");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [invalidToken, setInvalidToken] = useState(false);
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md w-full text-center space-y-4">
-          <div className="mx-auto h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-            <AlertCircle className="h-6 w-6 text-red-600" />
-          </div>
-          <h1 className="text-xl font-semibold text-gray-900">Invalid reset link</h1>
-          <p className="text-gray-500 text-sm">
-            This password reset link is missing its token. Please request a new one.
-          </p>
-          <Button onClick={() => navigate("/")} className="w-full">
-            Back to home
-          </Button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              Invalid reset link
+            </CardTitle>
+            <CardDescription>
+              This reset link is missing its token. Request a new one from the sign-in page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/">
+              <Button className="w-full" data-testid="button-reset-back-home">Back to sign in</Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  if (success) {
+  if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md w-full text-center space-y-4">
-          <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-            <CheckCircle className="h-6 w-6 text-green-600" />
-          </div>
-          <h1 className="text-xl font-semibold text-gray-900">Password reset!</h1>
-          <p className="text-gray-500 text-sm">
-            Your password has been updated. You can now sign in with your new password.
-          </p>
-          <Button onClick={() => navigate("/")} className="w-full">
-            Go to sign in
-          </Button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-primary" />
+              Password reset
+            </CardTitle>
+            <CardDescription>
+              Your password has been updated and any active sessions have been signed out. Sign in with your new password to continue.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/">
+              <Button className="w-full" data-testid="button-reset-done-signin">Sign in</Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
+  if (invalidToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              Reset link expired
+            </CardTitle>
+            <CardDescription>
+              This reset link is invalid, has expired, or has already been used. The link is only valid for 60 minutes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/">
+              <Button className="w-full" data-testid="button-reset-request-new">Request a new link</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     if (newPassword.length < 8) {
-      setErrorMsg("Password must be at least 8 characters.");
+      toast({ title: "Password too short", description: "Please choose a password of at least 8 characters.", variant: "destructive" });
       return;
     }
     if (newPassword !== confirmPassword) {
-      setErrorMsg("Passwords don't match.");
+      toast({ title: "Passwords don't match", description: "Make sure both fields are the same.", variant: "destructive" });
       return;
     }
-
-    setIsLoading(true);
+    setSubmitting(true);
     try {
-      const response = await fetch("/api/auth/reset-password", {
+      const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, newPassword }),
-        credentials: "include",
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Reset failed");
-      setSuccess(true);
+      if (res.ok) { setDone(true); return; }
+      if (res.status === 400) { setInvalidToken(true); return; }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.message || `Reset failed (${res.status})`);
     } catch (err: any) {
-      setErrorMsg(err.message || "Something went wrong. The link may have expired.");
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't reset password", description: err?.message ?? "Please try again.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setSubmitting(false);
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full space-y-6">
-        <div className="text-center space-y-2">
-          <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-            <Lock className="h-6 w-6 text-primary" />
-          </div>
-          <h1 className="text-2xl font-semibold text-gray-900">Set a new password</h1>
-          <p className="text-gray-500 text-sm">
-            Choose a new password for your Traveloure account.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 bg-white rounded-xl border p-6 shadow-sm">
-          <div className="space-y-2">
-            <Label htmlFor="new-password">New password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="new-password"
-                type="password"
-                placeholder="Min 8 characters"
-                className="pl-9"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={8}
-                data-testid="input-new-password"
-              />
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="w-5 h-5 text-primary" />
+            Reset your password
+          </CardTitle>
+          <CardDescription>
+            Choose a new password. This link expires 60 minutes after it was requested.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reset-new-password">New password</Label>
+              <Input id="reset-new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 8 characters" required minLength={8} autoComplete="new-password" data-testid="input-reset-new-password" />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirm-password">Confirm password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="confirm-password"
-                type="password"
-                placeholder="Repeat your new password"
-                className="pl-9"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                data-testid="input-confirm-password"
-              />
+            <div className="space-y-2">
+              <Label htmlFor="reset-confirm-password">Confirm new password</Label>
+              <Input id="reset-confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your new password" required minLength={8} autoComplete="new-password" data-testid="input-reset-confirm-password" />
             </div>
-          </div>
-
-          {errorMsg && (
-            <p className="text-sm text-red-600 flex items-center gap-1.5" data-testid="text-reset-error">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {errorMsg}
-            </p>
-          )}
-
-          <Button
-            type="submit"
-            className="w-full"
-            size="lg"
-            disabled={isLoading}
-            data-testid="button-reset-password"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating password...
-              </>
-            ) : (
-              "Set new password"
-            )}
-          </Button>
-        </form>
-      </div>
+            <Button type="submit" className="w-full" disabled={submitting} data-testid="button-reset-submit">
+              {submitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating password…</>) : (<><Lock className="mr-2 h-4 w-4" />Update password</>)}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

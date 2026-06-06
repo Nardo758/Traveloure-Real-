@@ -32,7 +32,6 @@ import HowItWorks from "@/pages/how-it-works";
 import Pricing from "@/pages/pricing";
 import About from "@/pages/about";
 import NotFound from "@/pages/not-found";
-import ResetPassword from "@/pages/reset-password";
 import ExpertDashboard from "@/pages/expert/dashboard";
 import ExpertClients from "@/pages/expert/clients";
 import ExpertEarnings from "@/pages/expert/earnings";
@@ -88,6 +87,8 @@ import AdminPayouts from "@/pages/admin/payouts";
 import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import AdminGemPhotoBackfill from "@/pages/admin/gem-photo-backfill";
 import ConciergePage from "@/pages/concierge";
+import ResetPasswordPage from "@/pages/reset-password";
+import VerifyEmailPage from "@/pages/verify-email";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
@@ -225,6 +226,12 @@ function Router() {
       </Route>
       <Route path="/optimize">
         <Redirect to="/concierge?tier=ai" />
+      </Route>
+      <Route path="/reset-password">
+        <ResetPasswordPage />
+      </Route>
+      <Route path="/verify-email">
+        <VerifyEmailPage />
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
@@ -706,9 +713,6 @@ function Router() {
       </Route>
       <Route path="/checkout">
         <Redirect to="/cart" />
-      </Route>
-      <Route path="/reset-password">
-        {() => <ResetPassword />}
       </Route>
       <Route path="/admin">
         <Redirect to="/admin/dashboard" />
