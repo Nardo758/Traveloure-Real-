@@ -79,3 +79,19 @@ export const passwordResetTokens = pgTable(
   },
   (table) => [index("idx_password_reset_user").on(table.userId)],
 );
+
+// Email verification on signup. Same shape as password_reset_tokens — single-use,
+// TTL, sha256 hash only. Sent automatically on register; resend-link from the UI
+// targets POST /api/auth/send-verification.
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: varchar("token_hash", { length: 128 }).notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [index("idx_email_verification_user").on(table.userId)],
+);

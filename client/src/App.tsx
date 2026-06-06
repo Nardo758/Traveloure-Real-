@@ -88,6 +88,7 @@ import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import AdminGemPhotoBackfill from "@/pages/admin/gem-photo-backfill";
 import ConciergePage from "@/pages/concierge";
 import ResetPasswordPage from "@/pages/reset-password";
+import VerifyEmailPage from "@/pages/verify-email";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
@@ -228,6 +229,9 @@ function Router() {
       </Route>
       <Route path="/reset-password">
         <ResetPasswordPage />
+      </Route>
+      <Route path="/verify-email">
+        <VerifyEmailPage />
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
