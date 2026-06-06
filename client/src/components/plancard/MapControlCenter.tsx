@@ -204,7 +204,13 @@ function MapContent({
         const fromActivity = geocodedActivities.find((a) => a.location === tr.from || a.name === tr.fromName) || geocodedActivities[i];
         const toActivity = geocodedActivities.find((a) => a.location === tr.to || a.name === tr.toName) || geocodedActivities[i + 1];
         if (!fromActivity || !toActivity) return null;
-        const style = getModePolylineStyle(tr.mode);
+        // Derive the leg's mode from the persisted leg record (userSelectedMode ??
+        // recommendedMode), NOT from any local component state. tr.mode is the
+        // server-computed equivalent and stays as a final fallback for legs that
+        // lack the explicit fields (e.g. generated-itinerary fallback legs). After
+        // a mode change + /plancard invalidate, this restyles on its own.
+        const activeMode = tr.userSelectedMode ?? tr.recommendedMode ?? tr.mode;
+        const style = getModePolylineStyle(activeMode);
         const midLat = (fromActivity.resolvedLat + toActivity.resolvedLat) / 2;
         const midLng = (fromActivity.resolvedLng + toActivity.resolvedLng) / 2;
         return (
