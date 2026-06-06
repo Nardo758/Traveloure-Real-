@@ -1,10 +1,11 @@
 # LB-P1 Resend Email Delivery — Smoke Test & Verification
 
-## Status: OPERATIONAL SETUP COMPLETE ✅
+## Status: SMOKE TEST PASSED ✅
 
 **Domain verified:** Yes (as of 2026-06-06)  
 **Environment variables set:** RESEND_API_KEY + EMAIL_FROM configured  
-**Code shipped:** commit `ca26a73` (password reset flow) + `e87f61f` (email verification)
+**Code shipped:** commit `ca26a73` (password reset flow) + `e87f61f` (email verification)  
+**Smoke test run:** 2026-06-06 — all 4 tests passed
 
 ---
 
