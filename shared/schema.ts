@@ -4827,6 +4827,23 @@ export type InsertSharedItinerary = z.infer<typeof insertSharedItinerarySchema>;
 export type MapsExportCache = typeof mapsExportCache.$inferSelect;
 export type InsertMapsExportCache = z.infer<typeof insertMapsExportCacheSchema>;
 
+// === Trip Collaborators ===
+
+export const tripCollaborators = pgTable("trip_collaborators", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 20 }).notNull().$type<"owner" | "expert" | "friend">(),
+  invitedBy: varchar("invited_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueTripUser: unique("trip_collaborators_trip_user_unique").on(table.tripId, table.userId),
+}));
+
+export const insertTripCollaboratorSchema = createInsertSchema(tripCollaborators).omit({ id: true, createdAt: true });
+export type TripCollaborator = typeof tripCollaborators.$inferSelect;
+export type InsertTripCollaborator = z.infer<typeof insertTripCollaboratorSchema>;
+
 export const itineraryChanges = pgTable("itinerary_changes", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
