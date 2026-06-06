@@ -618,12 +618,20 @@ interface CartItem {
   };
 }
 
+interface TabControlConfig {
+  priceRange?: { min: number; max: number; step: number; default: number; label?: string };
+  stops?: Array<{ value: string; label: string }>;
+  starRatings?: number[];
+  sortOptions?: Array<{ value: string; label: string }>;
+}
+
 interface TabConfig {
   id: string;
   label: string;
   icon: any;
   category: string | null;
   tabType?: string;
+  controlConfig?: TabControlConfig;
 }
 
 interface ContextField {
@@ -676,6 +684,7 @@ function dbTabsToConfig(tabs: ExperienceTemplateTab[]): TabConfig[] {
     icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
     category: tab.slug,
     tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
+    controlConfig: (tab as any).controlConfig as TabControlConfig | undefined,
   }));
 }
 
@@ -1636,6 +1645,8 @@ export default function ExperienceTemplatePage() {
   // P2/P5: tabType drives which filter panel / component renders for this tab
   const currentTabType = effectiveTabs.find(t => t.id === activeTab)?.tabType
     ?? deriveTabType(activeTab);
+  // P462: DB-driven tab filter control config (replaces hardcoded flight/hotel filter JSX)
+  const activeTabControlConfig = effectiveTabs.find(t => t.id === activeTab)?.controlConfig;
 
   const filteredServices = useMemo(() => {
     if (!services) return [];
@@ -2380,8 +2391,8 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* P3/P5: Collapsible shown only for flight/hotel tabTypes (mutually exclusive with TemplateFiltersPanel below) */}
-          {(currentTabType === "flights" || currentTabType === "hotels") && (
+          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab */}
+          {activeTabControlConfig && (
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
@@ -2393,108 +2404,83 @@ export default function ExperienceTemplatePage() {
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
-                  {currentTabType === "flights" ? (
-                    <>
-                      <div className="flex flex-wrap gap-4">
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Max Price: ${flightMaxPrice}</Label>
-                          <Slider
-                            value={[flightMaxPrice]}
-                            onValueChange={(v) => setFlightMaxPrice(v[0])}
-                            min={100}
-                            max={5000}
-                            step={100}
-                            className="mt-2"
-                            data-testid="slider-flight-price"
-                          />
-                        </div>
-
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Stops</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {[
-                              { value: "any", label: "Any" },
-                              { value: "nonstop", label: "Nonstop" },
-                              { value: "1stop", label: "1 Stop" },
-                            ].map((option) => (
-                              <Button
-                                key={option.value}
-                                variant={flightStops === option.value ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setFlightStops(option.value as "any" | "nonstop" | "1stop")}
-                                className={flightStops === option.value ? "bg-[#FF385C]" : ""}
-                                data-testid={`button-stops-${option.value}`}
-                              >
-                                {option.label}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="min-w-[140px] max-w-[180px]">
-                          <Label className="text-sm font-medium">Sort By</Label>
-                          <Select value={flightSortBy} onValueChange={(v) => setFlightSortBy(v as "price" | "duration" | "departure")}>
-                            <SelectTrigger className="mt-2" data-testid="select-flight-sort">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="price">Lowest Price</SelectItem>
-                              <SelectItem value="duration">Shortest Duration</SelectItem>
-                              <SelectItem value="departure">Earliest Departure</SelectItem>
-                            </SelectContent>
-                          </Select>
+                  <div className="flex flex-wrap gap-4">
+                    {activeTabControlConfig.priceRange && (
+                      <div className="min-w-[200px] flex-1">
+                        <Label className="text-sm font-medium">
+                          {activeTabControlConfig.priceRange.label ?? "Max Price"}: $
+                          {currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice}
+                        </Label>
+                        <Slider
+                          value={[currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice]}
+                          onValueChange={(v) => currentTabType === "flights" ? setFlightMaxPrice(v[0]) : setHotelMaxPrice(v[0])}
+                          min={activeTabControlConfig.priceRange.min}
+                          max={activeTabControlConfig.priceRange.max}
+                          step={activeTabControlConfig.priceRange.step}
+                          className="mt-2"
+                          data-testid={currentTabType === "flights" ? "slider-flight-price" : "slider-hotel-price"}
+                        />
+                      </div>
+                    )}
+                    {activeTabControlConfig.stops && (
+                      <div className="min-w-[200px] flex-1">
+                        <Label className="text-sm font-medium">Stops</Label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {activeTabControlConfig.stops.map((option) => (
+                            <Button
+                              key={option.value}
+                              variant={flightStops === option.value ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setFlightStops(option.value as "any" | "nonstop" | "1stop")}
+                              className={flightStops === option.value ? "bg-[#FF385C]" : ""}
+                              data-testid={`button-stops-${option.value}`}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
                         </div>
                       </div>
-                    </>
-                  ) : currentTabType === "hotels" ? (
-                    <>
-                      <div className="flex flex-wrap gap-4">
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Max Price/Night: ${hotelMaxPrice}</Label>
-                          <Slider
-                            value={[hotelMaxPrice]}
-                            onValueChange={(v) => setHotelMaxPrice(v[0])}
-                            min={50}
-                            max={1000}
-                            step={25}
-                            className="mt-2"
-                            data-testid="slider-hotel-price"
-                          />
-                        </div>
-
-                        <div className="min-w-[200px] flex-1">
-                          <Label className="text-sm font-medium">Star Rating</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {[0, 3, 4, 5].map((stars) => (
-                              <Button
-                                key={stars}
-                                variant={hotelStarRating === stars ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setHotelStarRating(stars)}
-                                className={hotelStarRating === stars ? "bg-[#FF385C]" : ""}
-                                data-testid={`button-stars-${stars}`}
-                              >
-                                {stars === 0 ? "All" : <><Star className="w-3 h-3 mr-1 fill-current" />{stars}+</>}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="min-w-[140px] max-w-[180px]">
-                          <Label className="text-sm font-medium">Sort By</Label>
-                          <Select value={hotelSortBy} onValueChange={(v) => setHotelSortBy(v as "price" | "rating")}>
-                            <SelectTrigger className="mt-2" data-testid="select-hotel-sort">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="price">Lowest Price</SelectItem>
-                              <SelectItem value="rating">Highest Rating</SelectItem>
-                            </SelectContent>
-                          </Select>
+                    )}
+                    {activeTabControlConfig.starRatings && (
+                      <div className="min-w-[200px] flex-1">
+                        <Label className="text-sm font-medium">Star Rating</Label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {activeTabControlConfig.starRatings.map((stars) => (
+                            <Button
+                              key={stars}
+                              variant={hotelStarRating === stars ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setHotelStarRating(stars)}
+                              className={hotelStarRating === stars ? "bg-[#FF385C]" : ""}
+                              data-testid={`button-stars-${stars}`}
+                            >
+                              {stars === 0 ? "All" : <><Star className="w-3 h-3 mr-1 fill-current" />{stars}+</>}
+                            </Button>
+                          ))}
                         </div>
                       </div>
-                    </>
-                  ) : null}
+                    )}
+                    {activeTabControlConfig.sortOptions && (
+                      <div className="min-w-[140px] max-w-[180px]">
+                        <Label className="text-sm font-medium">Sort By</Label>
+                        <Select
+                          value={currentTabType === "flights" ? flightSortBy : hotelSortBy}
+                          onValueChange={(v) => currentTabType === "flights"
+                            ? setFlightSortBy(v as "price" | "duration" | "departure")
+                            : setHotelSortBy(v as "price" | "rating")}
+                        >
+                          <SelectTrigger className="mt-2" data-testid={currentTabType === "flights" ? "select-flight-sort" : "select-hotel-sort"}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeTabControlConfig.sortOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </CollapsibleContent>
