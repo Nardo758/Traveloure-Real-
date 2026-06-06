@@ -2656,6 +2656,7 @@ export const experienceTemplateTabs = pgTable("experience_template_tabs", {
   sortOrder: integer("sort_order").default(0),
   isActive: boolean("is_active").default(true),
   tabType: varchar("tab_type", { length: 50 }).default("venue-search"), // "flights"|"hotels"|"venue-search"|"activity-search"|"transport"
+  controlConfig: jsonb("control_config"), // filter control descriptors for flight/hotel tabs
   createdAt: timestamp("created_at").defaultNow(),
 });
 
