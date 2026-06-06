@@ -314,12 +314,23 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
         // Map service category UUID → booking_fee_configs slug → commission rates
-        const feeCategory = item.service.categoryId
+        // FEE-2: providers get flat 10% commission; query role to apply provider_commission_percent
+        let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        if (item.service.userId) {
+          const [providerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, item.service.userId))
+            .limit(1);
+          if (providerRow?.role === "provider") {
+            feeCategory = "provider_commission_percent";
+          }
+        }
         const itemCategoryRates = await resolveCommissionRates({
           category: feeCategory,
-          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override for experts
         });
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
@@ -338,12 +349,23 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
         // Map service category UUID → booking_fee_configs slug → commission rates
-        const feeCategory2 = item.service.categoryId
+        // FEE-2: providers get flat 10% commission; query role to apply provider_commission_percent
+        let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        if (item.service.userId) {
+          const [providerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, item.service.userId))
+            .limit(1);
+          if (providerRow?.role === "provider") {
+            feeCategory2 = "provider_commission_percent";
+          }
+        }
         const itemCategoryRates2 = await resolveCommissionRates({
           category: feeCategory2,
-          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override for experts
         });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
