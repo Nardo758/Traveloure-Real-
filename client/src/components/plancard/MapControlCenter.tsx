@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from "@vis.gl/react-google-maps";
 import { Polyline } from "@/components/ui/map-polyline";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,10 @@ import {
 } from "lucide-react";
 import { openInMaps } from "@/lib/navigate";
 import {
-  TYPE_COLORS, MODE_COLORS, ModeIcon,
+  TYPE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardActivity, type PlanCardTransport,
 } from "./plancard-types";
-import { getModePolylineStyle } from "@/lib/transport-modes";
+import { getModePolylineStyle, getModeColor } from "@/lib/transport-modes";
 
 interface MapControlCenterProps {
   tripId: string;
@@ -47,85 +48,26 @@ function MapContent({
   tripId: string;
 }) {
   const map = useMap();
-  const [geocodedActivities, setGeocodedActivities] = useState<GeocodedActivity[]>([]);
+  // Pins read coordinates directly from the server response. Coordinates are
+  // resolved-on-write and persisted server-side (plancard GET emits lat/lng), so
+  // the PlanCard never geocodes client-side. Activities without coordinates are
+  // simply not pinned. No second geocode path lives here.
+  const geocodedActivities = useMemo<GeocodedActivity[]>(
+    () =>
+      (activities || [])
+        .filter((a) => a.lat != null && a.lng != null)
+        .map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! })),
+    [activities],
+  );
 
-  useEffect(() => {
-    if (!activities || activities.length === 0) {
-      setGeocodedActivities([]);
-      return;
-    }
-
-    const hasCoords = activities.every((a) => a.lat != null && a.lng != null);
-    if (hasCoords) {
-      setGeocodedActivities(
-        activities.map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! }))
-      );
-      return;
-    }
-
-    if (!map || typeof google === "undefined" || !google.maps) {
-      return;
-    }
-
-    let cancelled = false;
-    const geocoder = new google.maps.Geocoder();
-
-    async function run() {
-      try {
-        const destResult = await geocoder.geocode({ address: destination });
-        const destLat = destResult.results[0]?.geometry.location.lat() || 0;
-        const destLng = destResult.results[0]?.geometry.location.lng() || 0;
-
-        const results: GeocodedActivity[] = [];
-
-        for (let i = 0; i < activities.length; i++) {
-          if (cancelled) return;
-          const activity = activities[i];
-          if (activity.lat != null && activity.lng != null) {
-            results.push({ ...activity, resolvedLat: activity.lat, resolvedLng: activity.lng });
-            continue;
-          }
-
-          try {
-            const searchQuery = `${activity.location}, ${destination}`;
-            const res = await geocoder.geocode({ address: searchQuery });
-            if (res.results[0]) {
-              results.push({
-                ...activity,
-                resolvedLat: res.results[0].geometry.location.lat(),
-                resolvedLng: res.results[0].geometry.location.lng(),
-              });
-            } else {
-              const offset = (i + 1) * 0.003;
-              results.push({
-                ...activity,
-                resolvedLat: destLat + offset * Math.cos(i * 1.2),
-                resolvedLng: destLng + offset * Math.sin(i * 1.2),
-              });
-            }
-          } catch {
-            const offset = (i + 1) * 0.003;
-            results.push({
-              ...activity,
-              resolvedLat: destLat + offset * Math.cos(i * 1.2),
-              resolvedLng: destLng + offset * Math.sin(i * 1.2),
-            });
-          }
-        }
-
-        if (!cancelled) {
-          setGeocodedActivities(results);
-        }
-      } catch {
-        if (!cancelled) {
-          setGeocodedActivities([]);
-        }
-      }
-    }
-
-    run();
-    return () => { cancelled = true; };
-  }, [map, activities, destination]);
+  // Center fallback (a day with no geolocated stops) uses the single server
+  // geocode path — the same GET /api/geocode the Expert Workspace uses.
+  const { data: center } = useQuery<{ lat: number; lng: number }>({
+    queryKey: ["/api/geocode", destination],
+    queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(destination)}`).then((r) => r.json()),
+    enabled: !!destination && geocodedActivities.length === 0,
+    staleTime: Infinity,
+  });
 
   useEffect(() => {
     if (!map || typeof google === "undefined" || !google.maps) return;
@@ -135,17 +77,11 @@ function MapContent({
         bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
       });
       map.fitBounds(bounds, 60);
-    } else if (destination) {
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: destination }).then((result) => {
-        if (result.results[0]) {
-          const loc = result.results[0].geometry.location;
-          map.setCenter({ lat: loc.lat(), lng: loc.lng() });
-          map.setZoom(13);
-        }
-      }).catch(() => {});
+    } else if (center?.lat != null && center?.lng != null) {
+      map.setCenter({ lat: center.lat, lng: center.lng });
+      map.setZoom(13);
     }
-  }, [map, geocodedActivities, destination]);
+  }, [map, geocodedActivities, center]);
 
   const expertNoteActivities = geocodedActivities.filter(a => a.expertNote && a.expertNote.trim().length > 0);
 
@@ -276,7 +212,7 @@ function MapContent({
           >
             <div className="p-1 min-w-[140px]" data-testid={`map-info-window-${pin.id}-${tripId}`}>
               <div className="font-bold text-sm" data-testid={`map-info-name-${pin.id}`}>{pin.name}</div>
-              <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: "#6B7280" }} data-testid={`map-info-location-${pin.id}`}>
+              <div className="text-xs mt-0.5 flex items-center gap-1 text-muted-foreground" data-testid={`map-info-location-${pin.id}`}>
                 <MapPin className="w-3 h-3" /> {pin.location}
               </div>
               <div className="flex gap-2 mt-1 items-center">
@@ -289,7 +225,7 @@ function MapContent({
                   {pin.type}
                 </span>
                 {pin.cost > 0 && (
-                  <span className="text-xs font-semibold" style={{ color: "#16a34a" }} data-testid={`map-info-cost-${pin.id}`}>${pin.cost}</span>
+                  <span className="text-xs font-semibold text-green-600 dark:text-green-400" data-testid={`map-info-cost-${pin.id}`}>${pin.cost}</span>
                 )}
               </div>
               {pin.expertNote && (
@@ -331,6 +267,15 @@ export function MapControlCenter({
 }: MapControlCenterProps) {
   const [layers, setLayers] = useState({ activities: true, transport: true, expertNotes: true });
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
+
+  // Trip-level expert notes blob (readable by owner + assigned expert). Surfaced
+  // as a panel under the notes layer toggle, alongside the per-item note pins.
+  const { data: tripNotes } = useQuery<{ expertNotes: string }>({
+    queryKey: [`/api/trips/${tripId}/expert-notes`],
+    queryFn: () =>
+      fetch(`/api/trips/${tripId}/expert-notes`).then((r) => (r.ok ? r.json() : { expertNotes: "" })),
+    staleTime: 60_000,
+  });
 
   const day = days[selectedDay];
 
@@ -646,8 +591,8 @@ export function MapControlCenter({
                   <span
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
                     style={{
-                      backgroundColor: `${MODE_COLORS[rs.transport.mode] || "#6B7280"}20`,
-                      color: MODE_COLORS[rs.transport.mode] || "#6B7280",
+                      backgroundColor: `${getModeColor(rs.transport.mode)}20`,
+                      color: getModeColor(rs.transport.mode),
                     }}
                     data-testid={`route-leg-${rs.transport.id}-${tripId}`}
                   >
@@ -660,6 +605,20 @@ export function MapControlCenter({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {layers.expertNotes && tripNotes?.expertNotes?.trim() && (
+          <div
+            className="mt-3.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30"
+            data-testid={`expert-notes-panel-${tripId}`}
+          >
+            <div className="flex items-center gap-1.5 mb-1.5 text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wider">
+              <MessageSquare className="w-3.5 h-3.5" /> Expert Notes
+            </div>
+            <p className="text-[13px] text-foreground/80 whitespace-pre-wrap leading-relaxed" data-testid={`expert-notes-panel-body-${tripId}`}>
+              {tripNotes.expertNotes}
+            </p>
           </div>
         )}
       </div>
