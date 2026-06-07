@@ -461,6 +461,15 @@ export const serviceCategories = pgTable("service_categories", {
   priceRange: jsonb("price_range").default({}),
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
+  // Master Integration Brief — Phase 1: billing-aware attributes per SEED_DATA §2.
+  // All nullable; populated by Phase 1.2 reconciliation pass (see audit doc).
+  sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
+  launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
+  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
+  insuranceBand: integer("insurance_band"),                                 // 1 | 2 | 3 (platform_provider only)
+  riskProfile: varchar("risk_profile", { length: 20 }),                     // 'low' | 'moderate' | 'high'
+  requiresBackgroundCheck: boolean("requires_background_check").default(false),
+  affiliatePartnerKey: varchar("affiliate_partner_key", { length: 50 }),    // populated only when sourceType='affiliate'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -5578,6 +5587,54 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
 export type BookingFeeConfig = typeof bookingFeeConfigs.$inferSelect;
 export const insertBookingFeeConfigSchema = createInsertSchema(bookingFeeConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema>;
+
+// ─── Master Integration Brief — Phase 1 (taxonomy + fee_bands) ───────────────
+// fee_bands: single source of truth for rates. Replaces booking_fee_configs.
+// Percent bands store decimals (0.25 = 25 %). Flat bands store USD (49.99 = $49.99).
+export const feeBands = pgTable("fee_bands", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
+  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat'
+  defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
+  minRate: decimal("min_rate", { precision: 10, scale: 4 }),
+  maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
+  displayName: text("display_name"),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type FeeBand = typeof feeBands.$inferSelect;
+export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
+
+// platform_settings: key/value rows for cross-cutting flags.
+// First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
+export const platformSettings = pgTable("platform_settings", {
+  settingKey: varchar("setting_key", { length: 100 }).primaryKey(),
+  settingValue: text("setting_value").notNull(),
+  description: text("description"),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+export const insertPlatformSettingSchema = createInsertSchema(platformSettings).omit({ updatedAt: true });
+export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
+
+// template_category_matrix per SEED_DATA §3.
+// (templateKey, categoryKey) composite PK; strength = 'REQ' | 'REC' | 'OPT'.
+export const templateCategoryMatrix = pgTable("template_category_matrix", {
+  templateKey: varchar("template_key", { length: 50 }).notNull(),
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  strength: varchar("strength", { length: 3 }).notNull(), // 'REQ' | 'REC' | 'OPT'
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  pk: { name: "template_category_matrix_pk", columns: [table.templateKey, table.categoryKey] },
+}));
+export type TemplateCategoryMatrixRow = typeof templateCategoryMatrix.$inferSelect;
+export const insertTemplateCategoryMatrixSchema = createInsertSchema(templateCategoryMatrix).omit({ createdAt: true });
+export type InsertTemplateCategoryMatrixRow = z.infer<typeof insertTemplateCategoryMatrixSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {
