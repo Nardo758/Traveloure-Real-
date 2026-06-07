@@ -7,7 +7,8 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
+import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 
 interface FilterOption {
   label: string;
@@ -107,6 +108,30 @@ async function seedTabWithFilters(experienceTypeId: string, tab: TabDef, sortOrd
         isActive: true,
       });
     }
+  }
+}
+
+// P462 reconcile (Phase 2): attach lean, per-tab selection controls to each
+// tab's control_config (merged, not overwritten). Idempotent and additive —
+// runs on already-existing tabs too (seedTabWithFilters early-returns on those).
+// Scoped by experienceTypeId + slug to avoid cross-template slug collisions.
+async function backfillSelectionControls(experienceTypeId: string, templateSlug: string) {
+  const tabControls = SELECTION_CONTROL_SEED[templateSlug];
+  if (!tabControls) return;
+
+  for (const [tabSlug, selectionControls] of Object.entries(tabControls)) {
+    const [tab] = await db.select().from(experienceTemplateTabs)
+      .where(and(
+        eq(experienceTemplateTabs.experienceTypeId, experienceTypeId),
+        eq(experienceTemplateTabs.slug, tabSlug),
+      ));
+    if (!tab) continue;
+
+    const existingConfig = (tab.controlConfig as Record<string, unknown> | null) ?? {};
+    await db.update(experienceTemplateTabs)
+      .set({ controlConfig: { ...existingConfig, selectionControls } })
+      .where(eq(experienceTemplateTabs.id, tab.id));
+    console.log(`  Selection controls -> ${templateSlug}/${tabSlug} (${selectionControls.length})`);
   }
 }
 
@@ -4734,6 +4759,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(travelId, travelTabs[i], i);
   }
   await seedUniversalFilters(travelId, travelUniversalFilters);
+  await backfillSelectionControls(travelId, "travel");
   console.log("Travel template seeded.");
 
   // Seed Wedding template
@@ -4744,6 +4770,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(weddingId, weddingTabs[i], i);
   }
   await seedUniversalFilters(weddingId, standardUniversalFilters);
+  await backfillSelectionControls(weddingId, "wedding");
   console.log("Wedding template seeded.");
 
   // Seed Date Night template
@@ -4774,6 +4801,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(corporateId, corporateTabs[i], i);
   }
   await seedUniversalFilters(corporateId, standardUniversalFilters);
+  await backfillSelectionControls(corporateId, "corporate-events");
   console.log("Corporate Events template seeded.");
 
   // Seed Retreats template
@@ -4913,4 +4941,326 @@ export async function seedExperienceTemplateTabs() {
   console.log("Sports Event template seeded.");
 
   console.log("Experience template tabs and filters seeding complete.");
+
+  // P4: Seed hero-card config fields (headcountLabel, showKids, showOriginCity, locationLabel)
+  await updateExperienceTypeHeroConfigs();
+  console.log("Experience type hero configs seeded.");
+}
+
+async function updateExperienceTypeHeroConfigs() {
+  type HeroConfig = {
+    headcountLabel?: string;
+    showKids?: boolean;
+    showOriginCity?: string;
+    locationLabel?: string;
+    contextFields?: Array<{ key: string; label: string; placeholder?: string; type?: string }>;
+  };
+
+  const configs: Record<string, HeroConfig> = {
+    "bachelor-bachelorette": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+      contextFields: [
+        { key: "theme", label: "Party theme", placeholder: "e.g. Vegas, Beach, Camping" },
+        { key: "guest_of_honor", label: "Guest of honor name", placeholder: "e.g. Alex" },
+      ],
+    },
+    "anniversary-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+      contextFields: [
+        { key: "years", label: "Years together", placeholder: "e.g. 5" },
+      ],
+    },
+    "date-night": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "wedding": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "optional",
+      locationLabel: "Venue city",
+    },
+    "birthday-party": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "graduation-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "corporate-events": {
+      headcountLabel: "attendee",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    "sports-event": {
+      headcountLabel: "fan",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    "retirement-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "housewarming-party": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "holiday-party": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "career-achievement-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    "farewell-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    // --- Trip / travel templates ---
+    "travel": {
+      headcountLabel: "traveler",
+      showKids: true,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    "boys-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+      contextFields: [
+        { key: "theme", label: "Trip theme", placeholder: "e.g. Golf, Surf, City Break" },
+      ],
+    },
+    "girls-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+      contextFields: [
+        { key: "theme", label: "Trip theme", placeholder: "e.g. Spa, Beach, City Break" },
+      ],
+    },
+    "retreats": {
+      headcountLabel: "attendee",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Retreat destination",
+      contextFields: [
+        { key: "focus", label: "Retreat focus", placeholder: "e.g. Wellness, Team building, Leadership" },
+      ],
+    },
+    "corporate-retreats": {
+      headcountLabel: "attendee",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Retreat destination",
+      contextFields: [
+        { key: "team_size", label: "Team size", placeholder: "e.g. 20" },
+        { key: "focus", label: "Retreat focus", placeholder: "e.g. Strategy, Team building, Leadership" },
+      ],
+    },
+    // --- Celebration / party templates ---
+    "birthday": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "reunions": {
+      headcountLabel: "attendee",
+      showKids: true,
+      showOriginCity: "required",
+      locationLabel: "Reunion city",
+      contextFields: [
+        { key: "reunion_type", label: "Reunion type", placeholder: "e.g. Family, High school, College" },
+      ],
+    },
+    "wedding-anniversaries": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / venue",
+    },
+    // --- Milestone celebration templates ---
+    "proposal": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "Proposal location",
+      contextFields: [
+        { key: "partner_name", label: "Partner name", placeholder: "e.g. Jordan" },
+        { key: "style", label: "Proposal style", placeholder: "e.g. Intimate, Grand, Surprise" },
+      ],
+    },
+    "engagement-party": {
+      headcountLabel: "guest",
+      showKids: false,
+      showOriginCity: "hide",
+      locationLabel: "City / venue",
+      contextFields: [
+        { key: "couple_names", label: "Couple names", placeholder: "e.g. Alex & Jamie" },
+      ],
+    },
+    "baby-shower": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+      contextFields: [
+        { key: "honoree", label: "Mom-to-be name", placeholder: "e.g. Sarah" },
+      ],
+    },
+  };
+
+  for (const [slug, cfg] of Object.entries(configs)) {
+    try {
+      await db
+        .update(experienceTypes)
+        .set({
+          headcountLabel: cfg.headcountLabel,
+          showKids: cfg.showKids,
+          showOriginCity: cfg.showOriginCity,
+          locationLabel: cfg.locationLabel,
+          ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
+        })
+        .where(eq(experienceTypes.slug, slug));
+    } catch {
+      // Row may not exist yet in this environment; skip silently
+    }
+  }
+
+  // Backfill tabType on existing tabs by slug so tabType-registry works
+  // for all templates including DB-only ones added without code changes.
+  const TAB_SLUG_TO_TYPE: Record<string, string> = {
+    // Booking tabs
+    "flights": "flights",
+    "hotels": "hotels",
+    "accommodations": "hotels",
+    "guest-accommodations": "hotels",
+    "romantic-accommodations": "hotels",
+    // Venue / destination tabs
+    "venues": "venue-search",
+    "venue": "venue-search",
+    "destinations": "venue-search",
+    "rehearsal": "venue-search",
+    "special-touches": "venue-search",
+    "photo": "venue-search",
+    "photography": "services",
+    // Activity tabs
+    "daytime-activities": "activities",
+    "activities": "activities",
+    "experiences": "activities",
+    "spa-wellness": "activities",
+    "team-activities": "activities",
+    "wellness": "activities",
+    "pregame": "activities",
+    "entertainment": "nightlife",
+    // Dining/nightlife tabs
+    "nightlife": "nightlife",
+    "dining": "dining",
+    "bars-clubs": "nightlife",
+    "live-music": "nightlife",
+    // Transport tabs
+    "transportation": "transport",
+    "transfers": "transport",
+    // Service/vendor tabs
+    "services": "services",
+    "vendors": "vendors",
+    "party-services": "services",
+    "corporate-services": "services",
+    // Events tab
+    "events": "events",
+    // Planning tool tabs (excluded from content rendering)
+    "planning-tools": "planning-tools",
+    "itinerary-builder": "itinerary-builder",
+    "budget-planning": "planning-tools",
+  };
+
+  // Explicitly deactivate templates that are not yet ready for public access
+  const INACTIVE_SLUGS = ["sports-event"];
+  for (const slug of INACTIVE_SLUGS) {
+    try {
+      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, slug));
+    } catch {
+      // Skip silently if table/column not present
+    }
+  }
+  for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
+    try {
+      await db
+        .update(experienceTemplateTabs)
+        .set({ tabType })
+        .where(eq(experienceTemplateTabs.slug, tabSlug));
+    } catch {
+      // Column may not exist in older environments; skip silently
+    }
+  }
+
+  // Backfill controlConfig for flight/hotel tabs — moves filter control descriptors
+  // out of hardcoded JSX into the DB so each tab owns its filter UI definition.
+  const FLIGHT_CONTROL_CONFIG = {
+    priceRange: { min: 100, max: 5000, step: 100, default: 3000, label: "Max Price" },
+    stops: [
+      { value: "any", label: "Any" },
+      { value: "nonstop", label: "Nonstop" },
+      { value: "1stop", label: "1 Stop" },
+    ],
+    sortOptions: [
+      { value: "price", label: "Lowest Price" },
+      { value: "duration", label: "Shortest Duration" },
+      { value: "departure", label: "Earliest Departure" },
+    ],
+  };
+
+  const HOTEL_CONTROL_CONFIG = {
+    priceRange: { min: 50, max: 1000, step: 25, default: 500, label: "Max Price/Night" },
+    starRatings: [0, 3, 4, 5],
+    sortOptions: [
+      { value: "price", label: "Lowest Price" },
+      { value: "rating", label: "Highest Rating" },
+    ],
+  };
+
+  try {
+    await db
+      .update(experienceTemplateTabs)
+      .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
+      .where(inArray(experienceTemplateTabs.slug, ["flights"]));
+
+    await db
+      .update(experienceTemplateTabs)
+      .set({ controlConfig: HOTEL_CONTROL_CONFIG })
+      .where(inArray(experienceTemplateTabs.slug, [
+        "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
+      ]));
+  } catch {
+    // Column may not exist in older environments; skip silently
+  }
 }

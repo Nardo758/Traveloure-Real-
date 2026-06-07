@@ -1,0 +1,88 @@
+<h2 class="sr-only">A mockup of the Kyoto city feed as one date-aware feed: the hero carries the date and season, April 8 highlights ride up top, and the full city marketplace flows below with date-aware actions.</h2>
+<style>
+.chip{font-size:13px;padding:6px 13px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);background:var(--color-background-primary)}
+.chip.on{background:#E1F5EE;color:#085041;border-color:transparent}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.tag{font-size:11px;padding:2px 8px;border-radius:var(--border-radius-md);font-weight:500}
+.btn{font-size:12px;padding:6px 11px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer}
+.btn-pri{background:#0F6E56;color:#fff;border:none} .btn-aff{background:#185FA5;color:#fff;border:none}
+.ph{display:grid;place-items:center;font-size:22px}
+.lbl{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+.match{font-size:11px;color:var(--color-text-secondary);border-top:0.5px dashed var(--color-border-tertiary);padding-top:7px}
+</style>
+
+<div style="padding:0.5rem 0">
+
+<div style="background:#E1F5EE;border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+  <div>
+    <div style="font-size:22px;font-weight:500;color:#04342C">Kyoto</div>
+    <div style="font-size:13px;color:#0F6E56;margin-top:3px"><i class="ti ti-flower" aria-hidden="true"></i> 9/10 in April · cherry-blossom season · moderate crowds</div>
+    <div style="font-size:12px;color:#0F6E56;margin-top:4px;display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.55);padding:3px 9px;border-radius:999px"><i class="ti ti-calendar" aria-hidden="true"></i> Planning April 8 <i class="ti ti-x" style="font-size:13px" aria-hidden="true"></i></div>
+  </div>
+  <div style="text-align:center;flex:none"><div style="font-size:20px;font-weight:500;color:#0F6E56">88</div><div style="font-size:11px;color:#0F6E56">pulse</div></div>
+</div>
+
+<div class="lbl">On April 8 — pulled to the top</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1.25rem">
+  <div class="card" style="flex:2 1 260px;display:flex;border-color:#9FE1CB">
+    <div class="ph" style="flex:0 0 70px;background:#FBEAF0;color:#72243E"><i class="ti ti-flower"></i></div>
+    <div style="padding:10px 12px;flex:1;min-width:0">
+      <span class="tag" style="background:#E1F5EE;color:#085041"><i class="ti ti-pin" aria-hidden="true"></i> Why you're here</span>
+      <div style="font-size:14px;font-weight:500;margin:5px 0 4px">Cherry blossom (Hanami) season</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-aff">Tickets</button><button class="btn">Add to April 8</button></div>
+    </div>
+  </div>
+  <div class="card" style="flex:1 1 150px;padding:10px 12px">
+    <i class="ti ti-camera" style="font-size:18px;color:#085041" aria-hidden="true"></i>
+    <div style="font-size:13px;font-weight:500;margin:4px 0 2px">Blossom photo shoot</div>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:6px">seasonal</div>
+    <button class="btn btn-pri" style="padding:4px 10px">Book</button>
+  </div>
+</div>
+
+<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:1rem">
+  <span class="chip on">All gems</span><span class="chip">Eat</span><span class="chip">Do</span><span class="chip">Stay</span><span class="chip">Experts</span><span class="chip">Events</span><span class="chip">Photo spots</span>
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <div style="padding:13px 16px;display:flex;gap:12px;align-items:center">
+    <div class="ph" style="width:44px;height:44px;background:#E1F5EE;color:#085041;border-radius:var(--border-radius-md);flex:none"><i class="ti ti-map-pin"></i></div>
+    <div style="flex:1;min-width:0"><div style="display:flex;gap:8px;align-items:center"><span style="font-size:16px;font-weight:500">Arashiyama</span><span class="tag" style="background:#F1EFE8;color:#444441">Neighborhood</span></div>
+    <div style="font-size:12px;color:#0F6E56;margin-top:1px">Trending · 8 things to do</div></div>
+    <button class="btn">Add a day</button>
+  </div>
+  <div style="background:var(--color-background-secondary);border-top:0.5px solid var(--color-border-tertiary);padding:14px 16px">
+    <div class="lbl" style="margin-bottom:10px">In Arashiyama</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card" style="grid-column:span 2;display:flex">
+        <div class="ph" style="flex:0 0 70px;background:#E6F1FB;color:#0C447C"><i class="ti ti-building"></i></div>
+        <div style="padding:11px 13px;flex:1;min-width:0">
+          <span class="tag" style="background:#FAEEDA;color:#633806">Marquee stay</span>
+          <div style="font-size:14px;font-weight:500;margin:5px 0">Suiran riverside ryokan</div>
+          <div class="match" style="display:flex;align-items:center;gap:8px"><span style="flex:1"><i class="ti ti-car" aria-hidden="true"></i> matched: private car · ¥9,000</span><button class="btn btn-pri">Book both</button></div>
+          <div style="display:flex;gap:6px;margin-top:8px"><button class="btn">Add to April 8</button><button class="btn">Ask an expert</button></div>
+        </div>
+      </div>
+      <div class="card" style="display:flex">
+        <div class="ph" style="flex:0 0 58px;background:#E1F5EE;color:#085041"><i class="ti ti-camera"></i></div>
+        <div style="padding:10px 12px;flex:1;min-width:0">
+          <div style="display:flex;gap:5px;flex-wrap:wrap"><span class="tag" style="background:#E1F5EE;color:#085041">Photo spot</span><span class="tag" style="background:#FAEEDA;color:#633806">Trending</span></div>
+          <div style="font-size:14px;font-weight:500;margin:5px 0 6px">Bamboo grove</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-pri">Book shoot</button><button class="btn">Add</button></div>
+        </div>
+      </div>
+      <div class="card" style="display:flex">
+        <div class="ph" style="flex:0 0 58px;background:#FAEEDA;color:#633806"><i class="ti ti-ticket"></i></div>
+        <div style="padding:10px 12px;flex:1;min-width:0">
+          <span class="tag" style="background:#FAEEDA;color:#633806">Attraction</span>
+          <div style="font-size:14px;font-weight:500;margin:5px 0 6px">Tenryū-ji temple</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-pri">Book entry</button><button class="btn">Add</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="font-size:12px;color:var(--color-text-tertiary);text-align:center">Kibune · Gion · experts · complements continue below</div>
+
+</div>

@@ -44,7 +44,8 @@ import {
   Flower2,
   HandHeart,
   Trophy,
-  Umbrella
+  Umbrella,
+  User
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -62,6 +63,33 @@ import { NotificationBell } from "@/components/notification-bell";
 
 const navItems = [
   {
+    name: "Discover",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "BROWSE",
+        items: [
+          { name: "By Location", href: "/discover", icon: MapPin, description: "Explore destinations & trending cities" },
+          { name: "By Date", href: "/discover?tab=events", icon: Calendar, description: "Upcoming events & activities" },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Experts & Services",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "FIND HELP",
+        items: [
+          { name: "Local Experts", href: "/experts?role=local_expert", icon: MapPin, description: "City guides & neighbourhood specialists" },
+          { name: "Travel Advisors", href: "/experts?role=travel_expert", icon: User, description: "Trip planners who handle every detail" },
+          { name: "Service Providers", href: "/discover?tab=services", icon: Building2, description: "Book tours, photography, transport & more" },
+        ],
+      },
+    ],
+  },
+  {
     name: "Experiences",
     icon: ChevronDown,
     sections: [
@@ -78,10 +106,6 @@ const navItems = [
         title: "CELEBRATIONS",
         items: [
           { name: "Birthday Party", href: "/experiences/birthday", icon: Cake, description: "Unforgettable celebrations" },
-          { name: "Holiday Party", href: "/experiences/holiday-party", icon: TreePine, description: "Festive gatherings" },
-          { name: "Housewarming", href: "/experiences/housewarming-party", icon: Home, description: "Welcome home events" },
-          { name: "Farewell Party", href: "/experiences/farewell-party", icon: HandHeart, description: "Send-off celebrations" },
-          { name: "Career Achievement", href: "/experiences/career-achievement-party", icon: Trophy, description: "Celebrate success" },
         ],
       },
       {
@@ -92,8 +116,6 @@ const navItems = [
           { name: "Engagement Party", href: "/experiences/engagement-party", icon: Flower2, description: "Celebrate your love" },
           { name: "Baby Shower", href: "/experiences/baby-shower", icon: Baby, description: "Welcome the new arrival" },
           { name: "Anniversary", href: "/experiences/wedding-anniversaries", icon: Gift, description: "Celebrate your journey" },
-          { name: "Graduation", href: "/experiences/graduation-party", icon: GraduationCap, description: "Honor achievements" },
-          { name: "Retirement", href: "/experiences/retirement-party", icon: Crown, description: "New chapter celebration" },
         ],
       },
       {
@@ -108,29 +130,14 @@ const navItems = [
       },
     ],
   },
-  { name: "Partner With Us", href: "/partner-with-us" },
-  {
-    name: "Discover",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "BROWSE",
-        items: [
-          { name: "By Location", href: "/discover", icon: MapPin, description: "Explore destinations & trending cities" },
-          { name: "By Date", href: "/discover?tab=events", icon: Calendar, description: "Upcoming events & activities" },
-        ],
-      },
-    ],
-  },
   {
     name: "Planning Tools",
     icon: ChevronDown,
     sections: [
       {
-        title: "AI & EXPERTS",
+        title: "TOOLS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
           { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },
@@ -143,13 +150,14 @@ const navItems = [
       },
     ],
   },
-  { name: "Local Experts", href: "/experts" },
+  { name: "Partner With Us", href: "/partner-with-us" },
   { name: "Contact", href: "/contact" },
 ];
 
 const authNavItems = [
   { href: "/dashboard", label: "My Trips", icon: Map },
   { href: "/discover", label: "Discover", icon: Compass },
+  { href: "/concierge", label: "Concierge", icon: Sparkles },
   { href: "/chat", label: "Expert Chat", icon: MessageSquare },
 ];
 
@@ -163,7 +171,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   };
 
   const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+    timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
   };
 
   useEffect(() => {
@@ -213,8 +221,10 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             className={cn(
-              "absolute top-full mt-1 bg-card border border-border rounded-lg shadow-xl z-50",
+              "absolute top-full mt-0 pt-1 bg-card border border-border rounded-lg shadow-xl z-50",
               item.sections.length > 2 
                 ? "left-1/2 -translate-x-1/2 w-[800px]" 
                 : "left-0 w-72"
@@ -331,9 +341,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-72 p-2">
                       {[
-                        { label: "Travel Expert", desc: "Share your destination expertise & guide travellers worldwide", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Trip Planner", desc: "Help travellers design itineraries & craft unforgettable journeys", href: "/become-expert?type=travel_expert", icon: Plane },
                         { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
-                        { label: "Event Planner", desc: "Plan weddings, proposals & celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
+                        { label: "Event Planner", desc: "Plan your event — weddings, proposals & group celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
                         { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
                       ].map(({ label, desc, href, icon: Icon }) => (
                         <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
@@ -465,7 +475,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <div className="flex flex-col gap-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Join as a Partner</p>
                     {[
-                      { label: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Trip Planner", href: "/become-expert?type=travel_expert", icon: Plane },
                       { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
                       { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
                       { label: "Service Provider", href: "/become-provider", icon: Building2 },
@@ -512,7 +522,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span className="font-display font-bold text-xl text-foreground">Traveloure</span>
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
-                Experience personalized travel planning with insider knowledge from travel experts, powered by advanced AI technology.
+                Experience personalized travel planning with insider knowledge from local experts and trip planners, powered by advanced AI technology.
               </p>
               {/* Social Links */}
               <div className="flex items-center gap-3">

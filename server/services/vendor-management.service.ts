@@ -251,6 +251,230 @@ export class VendorManagementService {
   async setFollowUpReminder(id: string, date: Date): Promise<VendorContract | undefined> {
     return this.updateContract(id, { nextFollowUpDate: date });
   }
+
+  async uploadContractDocument(
+    contractId: string,
+    documentType: "contract" | "signed" | "attachment",
+    fileName: string,
+    fileBuffer: Buffer,
+    mimeType: string
+  ): Promise<{ url: string; documentType: string; fileName: string }> {
+    const contract = await this.getContract(contractId);
+    if (!contract) throw new Error("Contract not found");
+
+    const timestamp = Date.now();
+    const sanitizedFileName = fileName.replace(/[^a-z0-9.-]/gi, "_").substring(0, 100);
+    const storagePath = `vendor-documents/${contractId}/${timestamp}-${sanitizedFileName}`;
+
+    // Store in Replit object storage (or can be extended to S3)
+    const storage = require("../storage");
+    const url = await storage.uploadBuffer(storagePath, fileBuffer, mimeType);
+
+    // Update contract with document URL
+    const attachment = { name: fileName, url, uploadedAt: new Date().toISOString(), type: documentType };
+    const currentAttachments = ((contract.attachments as any) || []) as Array<any>;
+    currentAttachments.push(attachment);
+
+    if (documentType === "contract") {
+      await this.updateContract(contractId, { contractDocumentUrl: url });
+    } else if (documentType === "signed") {
+      await this.updateContract(contractId, { signedDocumentUrl: url });
+    }
+
+    await this.updateContract(contractId, { attachments: currentAttachments });
+
+    return { url, documentType, fileName };
+  }
+
+  async sendBulkVendorEmail(
+    tripId: string,
+    contractIds: string[],
+    subject: string,
+    body: string,
+    options?: { includeCalendarInvite?: boolean; eventDate?: Date }
+  ): Promise<{ sent: number; failed: number; failureReasons: string[] }> {
+    const contracts = await Promise.all(contractIds.map(id => this.getContract(id)));
+    const validContracts = contracts.filter((c): c is VendorContract => c !== undefined && c.tripId === tripId);
+
+    let sent = 0;
+    let failed = 0;
+    const failureReasons: string[] = [];
+
+    // Get email service
+    const { emailService } = await import("./email.service");
+
+    for (const contract of validContracts) {
+      try {
+        const vendorEmail = contract.vendorEmail;
+        if (!vendorEmail) {
+          failureReasons.push(`Contract ${contract.id}: No email address on file`);
+          failed++;
+          continue;
+        }
+
+        const emailPayload: any = {
+          to: vendorEmail,
+          subject,
+          body,
+          fromName: "Traveloure Coordination",
+          tags: [`trip-${tripId}`, `vendor-${contract.id}`],
+        };
+
+        // Add calendar invite if requested
+        if (options?.includeCalendarInvite && options.eventDate) {
+          emailPayload.icsContent = this.generateCalendarInvite(
+            contract.vendorName || "Vendor",
+            subject,
+            options.eventDate
+          );
+        }
+
+        // Send email (non-blocking)
+        emailService.sendEmail(emailPayload).catch(err => {
+          logger.warn(`Failed to send email to vendor ${contract.vendorEmail}:`, err.message);
+        });
+
+        // Log communication
+        await this.logCommunication(contract.id, {
+          type: "email",
+          subject,
+          summary: `Bulk email sent${options?.includeCalendarInvite ? " with calendar invite" : ""}`,
+          date: new Date().toISOString(),
+        });
+
+        sent++;
+      } catch (err: any) {
+        failureReasons.push(`Contract ${contract.id}: ${err.message}`);
+        failed++;
+      }
+    }
+
+    return { sent, failed, failureReasons };
+  }
+
+  async generateContactSheet(
+    tripId: string,
+    format: "json" | "csv" | "pdf" = "json"
+  ): Promise<string | Buffer> {
+    const contracts = await this.getContracts(tripId);
+
+    const contactData = contracts.map(c => ({
+      vendorName: c.vendorName,
+      vendorType: c.vendorType,
+      vendorEmail: c.vendorEmail,
+      vendorPhone: c.vendorPhone,
+      vendorAddress: c.vendorAddress,
+      contactPerson: c.contactPerson,
+      website: c.website,
+      contractStatus: c.contractStatus,
+      eventDate: c.eventDate,
+      notes: c.notes,
+    }));
+
+    if (format === "json") {
+      return JSON.stringify(contactData, null, 2);
+    }
+
+    if (format === "csv") {
+      const headers = [
+        "Vendor Name",
+        "Type",
+        "Email",
+        "Phone",
+        "Address",
+        "Contact Person",
+        "Website",
+        "Status",
+        "Event Date",
+        "Notes",
+      ];
+
+      const rows = contactData.map(c => [
+        c.vendorName || "",
+        c.vendorType || "",
+        c.vendorEmail || "",
+        c.vendorPhone || "",
+        c.vendorAddress || "",
+        c.contactPerson || "",
+        c.website || "",
+        c.contractStatus || "",
+        c.eventDate || "",
+        (c.notes || "").replace(/"/g, '""'), // Escape quotes
+      ]);
+
+      const csvContent = [
+        headers.map(h => `"${h}"`).join(","),
+        ...rows.map(r => r.map(f => `"${f}"`).join(",")),
+      ].join("\n");
+
+      return Buffer.from(csvContent, "utf-8");
+    }
+
+    if (format === "pdf") {
+      const PDFDocument = require("pdfkit");
+      const doc = new PDFDocument();
+      let buffers: Buffer[] = [];
+
+      doc.on("data", (chunk: Buffer) => buffers.push(chunk));
+
+      doc.fontSize(20).text("Vendor Contact Sheet", { align: "center" });
+      doc.fontSize(12).text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" });
+      doc.moveDown();
+
+      for (const contact of contactData) {
+        doc.fontSize(12).font("Helvetica-Bold").text(contact.vendorName || "Unknown Vendor");
+        doc.fontSize(10).font("Helvetica");
+        if (contact.vendorType) doc.text(`Type: ${contact.vendorType}`);
+        if (contact.vendorEmail) doc.text(`Email: ${contact.vendorEmail}`);
+        if (contact.vendorPhone) doc.text(`Phone: ${contact.vendorPhone}`);
+        if (contact.contactPerson) doc.text(`Contact: ${contact.contactPerson}`);
+        if (contact.website) doc.text(`Website: ${contact.website}`);
+        if (contact.contractStatus) doc.text(`Status: ${contact.contractStatus}`);
+        doc.moveDown();
+      }
+
+      doc.end();
+
+      return new Promise((resolve, reject) => {
+        doc.on("finish", () => {
+          resolve(Buffer.concat(buffers));
+        });
+        doc.on("error", reject);
+      });
+    }
+
+    throw new Error(`Unsupported format: ${format}`);
+  }
+
+  private generateCalendarInvite(
+    vendorName: string,
+    eventTitle: string,
+    eventDate: Date
+  ): string {
+    const uid = `vendor-${Date.now()}@traveloure.com`;
+    const dtstamp = new Date().toISOString().replace(/[:-]/g, "").split(".")[0] + "Z";
+    const dtstart = eventDate.toISOString().replace(/[:-]/g, "").split(".")[0] + "Z";
+    const dtend = new Date(eventDate.getTime() + 2 * 60 * 60 * 1000)
+      .toISOString()
+      .replace(/[:-]/g, "")
+      .split(".")[0] + "Z";
+
+    return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Traveloure//Vendor Coordination//EN
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${dtstamp}
+DTSTART:${dtstart}
+DTEND:${dtend}
+SUMMARY:${eventTitle}
+DESCRIPTION:Vendor coordination event for ${vendorName}
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`;
+  }
 }
 
 export const vendorManagementService = new VendorManagementService();

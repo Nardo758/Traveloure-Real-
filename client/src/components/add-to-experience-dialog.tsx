@@ -44,6 +44,7 @@ interface ExperienceItem {
   title: string;
   description?: string;
   type: "gem" | "neighborhood" | "hotel" | "activity" | "event";
+  scheduledDate?: string | null;
 }
 
 interface AddToExperienceDialogProps {
@@ -92,6 +93,19 @@ export function AddToExperienceDialog({
   const addToTripMutation = useMutation({
     mutationFn: async (tripId: string) => {
       if (!item) return;
+
+      // Compute dayNumber from scheduledDate and trip startDate when available.
+      // dayNumber is 1-based relative to the trip start date.
+      const trip = trips?.find((t) => t.id === tripId);
+      let dayNumber = 1;
+      if (item.scheduledDate && trip?.startDate) {
+        const tripStart = new Date(trip.startDate + "T00:00:00");
+        const itemDate = new Date(item.scheduledDate + "T00:00:00");
+        const diffMs = itemDate.getTime() - tripStart.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        dayNumber = Math.max(1, diffDays + 1);
+      }
+
       const res = await fetch(`/api/trips/${tripId}/itinerary-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -99,9 +113,10 @@ export function AddToExperienceDialog({
           title: item.title,
           description: item.description || "",
           itemType: item.type || "experience",
-          dayNumber: 1,
+          dayNumber,
           status: "planned",
           notes: `Added from ${item.city || "destination"}`,
+          ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
         }),
       });
       if (!res.ok) throw new Error("Failed to add item");

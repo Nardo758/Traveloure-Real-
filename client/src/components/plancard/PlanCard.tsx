@@ -11,7 +11,7 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
-  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
+  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
@@ -19,7 +19,9 @@ import { DaySelector } from "./DaySelector";
 import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { TransportSection } from "./TransportSection";
+import { EscalationCTA } from "./EscalationCTA";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -703,14 +705,14 @@ function PlanCardSummary({
                       >
                         <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
                         {isStale ? "Re-optimize?" : "AI Optimized"}
-                        {!isStale && optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+                        {!isStale && optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
                           <span style={{ color: "#2C7A44", fontWeight: 600 }}>
-                            · ${Math.round(optimizationDelta.savings)} saved
+                            · ${Math.round(optimizationDeltaFromData.savings as number)} saved
                           </span>
                         )}
-                        {!isStale && optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+                        {!isStale && optimizationDeltaFromData?.starRatingDelta != null && (optimizationDeltaFromData.starRatingDelta as number) > 0 && (
                           <span style={{ color: "#B07C00", fontWeight: 600 }}>
-                            · +{optimizationDelta.starRatingDelta.toFixed(1)}★
+                            · +{(optimizationDeltaFromData.starRatingDelta as number).toFixed(1)}★
                           </span>
                         )}
                         <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
@@ -847,7 +849,7 @@ function PlanCardSummary({
         onClose={() => setShowPolishDialog(false)}
         trip={trip}
         optimizationScore={optimizationScore}
-        optimizationDelta={optimizationDelta}
+        optimizationDelta={optimizationDeltaFromData}
       />
     </>
   );
@@ -908,6 +910,27 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const stats = plancardData?.stats || {};
   const day = days[selectedDay];
 
+  // Map the day's transports into the leg shape the activities-view picker reads.
+  // Ordered by legOrder so legs[i] is the connector after activity i.
+  const dayLegs: InlineTransportLegData[] = (day?.transports ?? [])
+    .map((tr, i) => ({
+      id: tr.id,
+      legOrder: tr.legOrder ?? i,
+      fromName: tr.fromName ?? tr.from,
+      toName: tr.toName ?? tr.to,
+      recommendedMode: tr.recommendedMode ?? tr.mode,
+      userSelectedMode: tr.userSelectedMode ?? null,
+      distanceDisplay: tr.distanceDisplay ?? "",
+      estimatedDurationMinutes: tr.estimatedDurationMinutes ?? tr.duration ?? 0,
+      estimatedCostUsd: tr.estimatedCostUsd ?? tr.cost ?? null,
+      alternativeModes: tr.alternativeModes,
+      fromLat: tr.fromLat ?? null,
+      fromLng: tr.fromLng ?? null,
+      toLat: tr.toLat ?? null,
+      toLng: tr.toLng ?? null,
+    }))
+    .sort((a, b) => a.legOrder - b.legOrder);
+
   const optimizationScore = score?.optimizationScore;
   const shareToken = score?.shareToken;
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
@@ -947,8 +970,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       ? `$${Math.round(Number(trip.budget) / trip.numberOfTravelers).toLocaleString()}/person`
       : null);
 
-  const isViewer = role === "viewer";
-  const isOwner = role === "owner";
+  const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
+  const isViewer = effectiveRole === "viewer" || effectiveRole === "friend";
+  const isOwner = effectiveRole === "owner";
 
   return (
     <motion.div
@@ -1019,28 +1043,22 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
-          <button
+          <Button
             onClick={() => setViewMode("card")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
-              viewMode === "card"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
+            variant={viewMode === "card" ? "default" : "secondary"}
+            className="flex-1"
             data-testid={`btn-card-view-${trip.id}`}
           >
-            <LayoutList className="w-4 h-4" /> Card View
-          </button>
-          <button
+            <LayoutList className="w-4 h-4 mr-2" /> Card View
+          </Button>
+          <Button
             onClick={() => setViewMode("map")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
-              viewMode === "map"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
+            variant={viewMode === "map" ? "default" : "secondary"}
+            className="flex-1"
             data-testid={`btn-map-view-${trip.id}`}
           >
-            <MapIcon className="w-4 h-4" /> Map Control Center
-          </button>
+            <MapIcon className="w-4 h-4 mr-2" /> Map Control Center
+          </Button>
         </div>
 
         {viewMode === "card" ? (
@@ -1065,6 +1083,27 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               totalCost={totalCostDisplay}
               perPerson={perPersonDisplay}
             />
+
+            {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
+                Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
+            {!isViewer && stage === "full" && (
+              <div className="px-5">
+                <EscalationCTA
+                  tripId={trip.id}
+                  destination={trip.destination}
+                  eventType={(trip as any).eventType}
+                  planSnapshot={{
+                    days: days.map(d => ({
+                      day: d.day,
+                      date: d.date,
+                      activityCount: d.activities?.length ?? 0,
+                    })),
+                    totalActivities,
+                    totalCost: totalCostDisplay,
+                  }}
+                />
+              </div>
+            )}
 
             <DaySelector
               tripId={trip.id}
@@ -1104,6 +1143,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 tripId={trip.id}
                 day={day}
                 templateConfig={templateConfig}
+                legs={dayLegs}
               />
             )}
 
@@ -1147,6 +1187,20 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
+            {/* CON-A.P6 / D8: Concierge entry slot on every PlanCard. Soft, always visible. */}
+            <Link
+              href={`/concierge?intent=${encodeURIComponent(`Help me with my ${trip.destination} trip`)}`}
+              className="flex-shrink-0"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-concierge-${trip.id}`}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                Concierge
+              </Button>
+            </Link>
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"

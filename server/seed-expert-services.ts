@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { expertServiceCategories, expertServiceOfferings, expertCustomServices, users, localExpertForms } from "@shared/schema";
+import { expertServiceCategories, expertServiceOfferings, users, localExpertForms } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const expertServiceData = [
@@ -205,72 +205,10 @@ const mockCustomServices = [
 ];
 
 export async function seedCustomServices() {
-  console.log("Seeding mock custom services for testing...");
-
-  // Find the first user to use as the expert (or create test data for the logged-in user)
-  const existingUsers = await db.select().from(users).limit(1);
-  
-  if (existingUsers.length === 0) {
-    console.log("No users found. Skipping custom services seed.");
-    return;
-  }
-
-  const expertId = existingUsers[0].id;
-  console.log(`Using user ${expertId} as expert for custom services`);
-
-  // Check if ESO already has expert-owned rows for this user (ESO is now canonical)
-  const existingEsoServices = await db
-    .select({ id: expertServiceOfferings.id })
-    .from(expertServiceOfferings)
-    .where(eq(expertServiceOfferings.expertId, expertId))
-    .limit(1);
-
-  if (existingEsoServices.length > 0) {
-    console.log("Custom services already exist for this user (ESO). Skipping seed.");
-    return;
-  }
-
-  // Resolve a fallback category for seeds without a specific category
-  const fallbackCategory = await db
-    .select({ id: expertServiceCategories.id })
-    .from(expertServiceCategories)
-    .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-    .then(r => r[0]);
-
-  // Write ONLY to expert_service_offerings (ESO) — expert_custom_services is legacy
-  for (const service of mockCustomServices) {
-    // Look up the category by name, fall back to "Itinerary Planning"
-    const catRow = await db
-      .select({ id: expertServiceCategories.id })
-      .from(expertServiceCategories)
-      .where(eq(expertServiceCategories.name, service.categoryName))
-      .then(r => r[0]);
-    const categoryId = catRow?.id ?? fallbackCategory?.id;
-    if (!categoryId) continue;
-
-    await db.insert(expertServiceOfferings).values({
-      categoryId,
-      name:               service.title,
-      description:        service.description,
-      price:              service.price,
-      isDefault:          false,
-      sortOrder:          400,
-      expertId,
-      categoryName:       service.categoryName,
-      duration:           service.duration,
-      deliverables:       service.deliverables,
-      cancellationPolicy: service.cancellationPolicy,
-      leadTime:           service.leadTime,
-      status:             service.status,
-      submittedAt:        service.status !== "draft" ? new Date() : null,
-      reviewedAt:         (service.status === "approved" || service.status === "rejected") ? new Date() : null,
-      rejectionReason:    (service as any).rejectionReason || null,
-      isActive:           true,
-    });
-    console.log(`  → Created custom service in ESO: ${service.title} (${service.status})`);
-  }
-
-  console.log("Mock custom services seeding complete.");
+  // Migration 013 dropped expert_id and all workflow columns from expert_service_offerings.
+  // Expert-owned services are now managed via provider_services (migration 012).
+  // This seed function is no longer applicable — skip gracefully.
+  console.log("Skipping mock custom services seed (ESO workflow columns removed in migration 013).");
 }
 
 // Mock experts data for testing with rich profile information

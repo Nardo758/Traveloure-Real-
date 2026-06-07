@@ -19,38 +19,10 @@ import {
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
 
-const creditPackages = [
-  {
-    credits: 10,
-    price: 9.99,
-    bonus: 0,
-    popular: false
-  },
-  {
-    credits: 25,
-    price: 19.99,
-    bonus: 5,
-    popular: false
-  },
-  {
-    credits: 50,
-    price: 34.99,
-    bonus: 15,
-    popular: true
-  },
-  {
-    credits: 100,
-    price: 59.99,
-    bonus: 40,
-    popular: false
-  },
-  {
-    credits: 250,
-    price: 129.99,
-    bonus: 125,
-    popular: false
-  }
-];
+// LB-P5a: canonical credit packages live in @shared/credit-packages.
+// The previous 5-package ladder here disagreed with the other 3 consumers; the
+// canonical 4 (50/100/250/500 at $49/89/199/349) is now authoritative.
+import { CREDIT_PACKAGES as creditPackages } from "@shared/credit-packages";
 
 const plans = [
   {
@@ -253,9 +225,9 @@ export default function PricingPage() {
                   <CardContent className="p-4 pt-6">
                     <div className="text-3xl font-bold text-primary mb-1">{pkg.credits}</div>
                     <div className="text-sm text-muted-foreground mb-2">credits</div>
-                    {pkg.bonus > 0 && (
+                    {pkg.savings && (
                       <Badge variant="outline" className="text-xs mb-2">
-                        +{pkg.bonus} bonus
+                        {pkg.savings}
                       </Badge>
                     )}
                     <div className="text-xl font-semibold text-[#111827] dark:text-white">

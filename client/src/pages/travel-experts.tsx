@@ -168,12 +168,12 @@ export default function TravelExpertsPage() {
   const steps = isLocalExpert ? localExpertSteps : defaultSteps;
 
   const expertTypeTitles: Record<string, string> = {
-    travel_expert: "Travel Expert",
+    travel_expert: "Trip Planner",
     local_expert: "Local Expert",
     event_planner: "Event Planner",
     executive_assistant: "Executive Assistant",
   };
-  const expertTypeTitle = expertTypeTitles[expertTypeFromUrl] || "Travel Expert";
+  const expertTypeTitle = expertTypeTitles[expertTypeFromUrl] || "Trip Planner";
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -1375,7 +1375,7 @@ export default function TravelExpertsPage() {
                       rel="noopener noreferrer" 
                       className="text-[#FF385C] underline"
                     >
-                      {influencerFromUrl ? "Influencer Program Terms" : "Travel Expert Terms"}
+                      {influencerFromUrl ? "Influencer Program Terms" : expertTypeTitle + " Terms"}
                     </a>{" "}
                     and{" "}
                     <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">

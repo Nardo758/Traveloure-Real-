@@ -28,7 +28,7 @@ const PROVIDER_ROLES = ["service_provider"];
 
 function getRoleLabel(role: string): string {
   const labels: Record<string, string> = {
-    travel_expert: "Travel Expert",
+    travel_expert: "Trip Planner",
     local_expert: "Local Expert",
     event_planner: "Event Planner",
     service_provider: "Provider",

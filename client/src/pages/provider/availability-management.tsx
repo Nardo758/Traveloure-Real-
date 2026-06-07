@@ -129,10 +129,10 @@ export default function AvailabilityManagement() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900" data-testid="text-title">
+            <h2 className="text-xl font-semibold text-console-darkest" data-testid="text-title">
               Availability Management
             </h2>
-            <p className="text-gray-600 mt-1">Set your work hours, blackout dates, and booking rules</p>
+            <p className="text-console-dark mt-1">Set your work hours, blackout dates, and booking rules</p>
           </div>
           <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-sync-calendar">
             <Calendar className="w-4 h-4 mr-2" /> Sync Calendar
@@ -178,33 +178,33 @@ export default function AvailabilityManagement() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-console-dark mb-2">
                         Start Time
                       </label>
                       <input
                         type="time"
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="w-full px-3 py-2 border border-console-light rounded-lg"
                         data-testid="input-start-time"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-console-dark mb-2">
                         End Time
                       </label>
                       <input
                         type="time"
                         value={endTime}
                         onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="w-full px-3 py-2 border border-console-light rounded-lg"
                         data-testid="input-end-time"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-console-dark mb-2">
                       Max Bookings Per Day
                     </label>
                     <input
@@ -212,7 +212,7 @@ export default function AvailabilityManagement() {
                       min="1"
                       value={maxBookings}
                       onChange={(e) => setMaxBookings(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 border border-console-light rounded-lg"
                       data-testid="input-max-bookings"
                     />
                   </div>
@@ -261,34 +261,34 @@ export default function AvailabilityManagement() {
                     <p className="font-medium text-sm text-blue-900">New Blackout Date</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-600 mb-1">Start Date</label>
+                        <label className="block text-xs text-console-dark mb-1">Start Date</label>
                         <input
                           type="date"
                           value={blackoutStart}
                           onChange={(e) => setBlackoutStart(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          className="w-full px-3 py-2 border border-console-light rounded-lg text-sm"
                           data-testid="input-blackout-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-600 mb-1">End Date</label>
+                        <label className="block text-xs text-console-dark mb-1">End Date</label>
                         <input
                           type="date"
                           value={blackoutEnd}
                           onChange={(e) => setBlackoutEnd(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          className="w-full px-3 py-2 border border-console-light rounded-lg text-sm"
                           data-testid="input-blackout-end"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">Reason</label>
+                      <label className="block text-xs text-console-dark mb-1">Reason</label>
                       <input
                         type="text"
                         value={blackoutReason}
                         onChange={(e) => setBlackoutReason(e.target.value)}
                         placeholder="e.g. Vacation, maintenance..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        className="w-full px-3 py-2 border border-console-light rounded-lg text-sm"
                         data-testid="input-blackout-reason"
                       />
                     </div>
@@ -313,17 +313,17 @@ export default function AvailabilityManagement() {
                   (blackoutDates || []).map((blackout) => (
                     <div
                       key={blackout.id}
-                      className="p-4 border border-gray-200 rounded-lg flex items-start justify-between"
+                      className="p-4 border border-console-light rounded-lg flex items-start justify-between"
                       data-testid={`card-blackout-${blackout.id}`}
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <AlertCircle className="w-5 h-5 text-red-500" />
                           <div>
-                            <p className="font-semibold text-gray-900">
+                            <p className="font-semibold text-console-darkest">
                               {new Date(blackout.startDate).toLocaleDateString()} - {new Date(blackout.endDate).toLocaleDateString()}
                             </p>
-                            <p className="text-sm text-gray-600 mt-1">{blackout.reason}</p>
+                            <p className="text-sm text-console-dark mt-1">{blackout.reason}</p>
                           </div>
                         </div>
                       </div>
@@ -343,8 +343,8 @@ export default function AvailabilityManagement() {
                   ))
                 ) : (
                   <div className="text-center py-8">
-                    <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">No blackout dates scheduled</p>
+                    <Calendar className="w-12 h-12 text-console-light mx-auto mb-3" />
+                    <p className="text-console-mid">No blackout dates scheduled</p>
                     <Button variant="outline" className="mt-4" onClick={() => setShowBlackoutForm(true)} data-testid="button-add-first-blackout">
                       <Plus className="w-4 h-4 mr-1" /> Add Your First Blackout Date
                     </Button>
@@ -365,7 +365,7 @@ export default function AvailabilityManagement() {
                   (availabilityRules || []).map((rule) => (
                     <div
                       key={rule.id}
-                      className="p-4 border border-gray-200 rounded-lg"
+                      className="p-4 border border-console-light rounded-lg"
                       data-testid={`card-rule-${rule.id}`}
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -373,8 +373,8 @@ export default function AvailabilityManagement() {
                           <div className="flex items-center gap-2">
                             <Clock className="w-5 h-5 text-blue-600" />
                             <div>
-                              <p className="font-semibold text-gray-900">{rule.dayOfWeek}</p>
-                              <p className="text-sm text-gray-600 mt-1">
+                              <p className="font-semibold text-console-darkest">{rule.dayOfWeek}</p>
+                              <p className="text-sm text-console-dark mt-1">
                                 {rule.startTime} - {rule.endTime} • Max {rule.maxBookingsPerDay} bookings
                               </p>
                             </div>
@@ -400,8 +400,8 @@ export default function AvailabilityManagement() {
                   ))
                 ) : (
                   <div className="text-center py-8">
-                    <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">No custom booking rules. Create them via the Weekly Schedule tab.</p>
+                    <AlertCircle className="w-12 h-12 text-console-light mx-auto mb-3" />
+                    <p className="text-console-mid">No custom booking rules. Create them via the Weekly Schedule tab.</p>
                   </div>
                 )}
               </CardContent>
