@@ -5586,6 +5586,58 @@ export type TemplateCategoryMatrixRow = typeof templateCategoryMatrix.$inferSele
 export const insertTemplateCategoryMatrixSchema = createInsertSchema(templateCategoryMatrix).omit({ createdAt: true });
 export type InsertTemplateCategoryMatrixRow = z.infer<typeof insertTemplateCategoryMatrixSchema>;
 
+// ─── Master Integration Brief — Phase 2 (offering types catalogs) ────────────
+// Three "expert offering" concepts coexist in this codebase. Their roles:
+//   expertOfferingTypes      = THE TYPE CATALOG (read-only vocabulary, this Phase 2 addition).
+//                              Feeds /earn, ask-an-expert picker, expert profiles.
+//   expertSelectedServices   = THE EXPERT'S CHOSEN INSTANCES (their selected templates).
+//   expertServiceOfferings   = LEGACY template catalog (kept around for back-compat,
+//                              not a write target per CLAUDE.md / migration 013).
+// Forward direction (NOT Phase 2 scope): eventually expertSelectedServices should
+// reference expertOfferingTypes so this catalog becomes the selection vocabulary.
+//
+// serviceOfferingTypes is the provider-side equivalent — the read-only catalog
+// of named offerings (Airport Driver, Tea Ceremony Host, …) keyed to
+// service_categories.category_key. Does NOT write bookings (canonical = provider_services).
+
+export const serviceOfferingTypes = pgTable("service_offering_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  offeringTypeKey: varchar("offering_type_key", { length: 100 }).notNull().unique(),
+  // Soft reference to service_categories.category_key (enforced by Phase 2 completeness gate).
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  displayName: text("display_name").notNull(),
+  tagline: text("tagline"),
+  isSurprising: boolean("is_surprising").notNull().default(false),
+  // Array of market slugs (e.g. ['kyoto', 'edinburgh']). NULL = universal.
+  marketScoped: text("market_scoped").array(),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type ServiceOfferingType = typeof serviceOfferingTypes.$inferSelect;
+export const insertServiceOfferingTypeSchema = createInsertSchema(serviceOfferingTypes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertServiceOfferingType = z.infer<typeof insertServiceOfferingTypeSchema>;
+
+export const expertOfferingTypes = pgTable("expert_offering_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  offeringTypeKey: varchar("offering_type_key", { length: 100 }).notNull().unique(),
+  // Enum: advisory | planning | coordination | live_support | specialized (CHECK at DB level).
+  serviceTier: varchar("service_tier", { length: 20 }).notNull(),
+  displayName: text("display_name").notNull(),
+  tagline: text("tagline"),
+  // Array: chat | written | video | live_text | done_for_you (CHECK at DB level via gate).
+  deliveryFormats: text("delivery_formats").array().notNull().default([]),
+  isSurprising: boolean("is_surprising").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type ExpertOfferingType = typeof expertOfferingTypes.$inferSelect;
+export const insertExpertOfferingTypeSchema = createInsertSchema(expertOfferingTypes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertExpertOfferingType = z.infer<typeof insertExpertOfferingTypeSchema>;
+
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
