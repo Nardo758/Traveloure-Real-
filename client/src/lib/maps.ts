@@ -4,6 +4,20 @@
  * {0,0} null-island fallback bug can never creep back in.
  */
 
+// ── Apple route-stop limit ───────────────────────────────────────────────────
+
+/**
+ * Apple Maps deep links support only saddr→daddr (a single origin and
+ * destination, no intermediate waypoints). A route with more stops than this
+ * must escape to Google, which carries the full waypoint chain. Single source
+ * for the escape-hatch rule — every caller asks this, none hard-codes ">2".
+ */
+export const APPLE_MAX_ROUTE_STOPS = 2;
+
+export function exceedsAppleRouteLimit(stopCount: number): boolean {
+  return stopCount > APPLE_MAX_ROUTE_STOPS;
+}
+
 // ── Coordinate guard ────────────────────────────────────────────────────────
 
 /** Returns true only when lat/lng are real, finite, non-zero coordinates. */
@@ -211,10 +225,9 @@ export function buildAppleMapsDeepLink(places: Place[], mode?: TransportMode): s
  */
 export function buildMapsDeepLink({ places, mode, platform }: MapsDeepLinkOptions): string {
   const resolved = platform ?? detectClientPlatform();
-  // Google escape hatch: Apple Maps URLs support only saddr→daddr (no
-  // intermediate waypoints), so a >2-stop route on Apple would silently drop the
-  // middle stops. Route it through Google, which carries the full waypoint chain.
-  if (resolved === "apple" && places.length > 2) {
+  // Google escape hatch (see exceedsAppleRouteLimit): a multi-stop route on
+  // Apple would silently drop the middle stops, so route it through Google.
+  if (resolved === "apple" && exceedsAppleRouteLimit(places.length)) {
     return buildGoogleMapsDeepLink(places, mode);
   }
   return resolved === "apple"
