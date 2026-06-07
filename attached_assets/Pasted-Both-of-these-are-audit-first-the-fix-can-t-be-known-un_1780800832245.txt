@@ -1,0 +1,18 @@
+Both of these are audit-first — the fix can't be known until you've looked, and the migration one is actively dangerous to "fix" blind. Here's the trap to avoid: prod is behind on migrations, and the pending set includes raw DROP TABLE migrations (013 drops expert_custom_services). If anyone "catches prod up" by running pending migrations in order, 013 drops the 12 rows you just protected — unless 012 runs first and migrates them. And note the schema.ts restoration only stops Drizzle-push from dropping those tables; it does not protect against a raw DROP inside a migration file. So the migration fix is a careful, ordered, selective catch-up, and step one is mapping exactly what prod is missing.
+Same discipline as the save you just made: right environment, read-only first. Here's the prompt for both:
+
+Two follow-up items — read-only audits only. Change nothing, run no migrations. Capture each as a tracked GitHub issue with findings + plan so they persist.
+Item 1 — prod migration drift (READ-ONLY, against the PRODUCTION database — the prod replica/DATABASE_URL the deploy uses, NOT the dev/workspace DB):
+
+Read prod's migration-tracking ledger (whatever run-migrations.ts records applied migrations in) and diff against the migration files on disk. Output the exact list of migrations NOT applied to prod.
+For each unapplied one, note what it does — flag any that MOVE/copy data (like 012 → provider_services) or DROP tables/columns (like 013).
+Reconcile the duplicate 024/025 ordinals: which actually applied on prod, do they conflict?
+Produce a safe, ordered catch-up plan: data-preserving migrations before destructive ones (012 must run and migrate the 12 expert_custom_services rows before 013 can drop the table). Do NOT bulk-apply or run anything — plan only. Call out that running 013 before 012 destroys the restored data.
+
+Item 2 — platform_settings config (READ-ONLY code audit):
+
+Confirm definitively whether ANY code reads platform_settings (you reported zero — verify with a full grep, including through storage abstractions).
+Trace where the live fee/commission values actually come from at runtime: hardcoded constants, the platform_deposit_rate column from migration 023, or another table?
+Conclude which case it is: (a) platform_settings is superseded dead config (live values come from elsewhere — show where, and whether they match the 13 rows), or (b) the "admin-configurable fees" principle isn't wired — fees are hardcoded and this table is unread. Report the specific code paths either way.
+
+Then: open one GitHub issue per item with findings + proposed fix. No code/schema/DB changes this pass — the fix follows from what the audits surface.
