@@ -396,18 +396,562 @@ const ANNIVERSARY_PRESETS: TemplatePresets = {
   ],
 };
 
+// Bachelor/Bachelorette party: group coordination across multiple days
+const BACHELOR_BACHELORETTE_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "group_dinner",
+      label: "Welcome Dinner",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "19:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Group kick-off dinner on arrival",
+    },
+    {
+      anchorType: "daytime_activity",
+      label: "Daytime Activity",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "10:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Adventure activity (golf, water sports, etc.)",
+    },
+    {
+      anchorType: "nightlife",
+      label: "Main Event Night",
+      defaultBufferBefore: 60,
+      defaultBufferAfter: 180,
+      defaultTimeOfDay: "21:00",
+      dayOffset: 1,
+      isImmovable: true,
+      description: "Main celebration night with VIP reservations",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Farewell Brunch",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "11:00",
+      dayOffset: 2,
+      isImmovable: false,
+      description: "Final group meal before departure",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "23:00",
+      mustReturnToHotel: false,
+      reason: "Arrival day — acclimate and socialize",
+    },
+    {
+      dayOffset: 1,
+      latestActivityEnd: "23:59",
+      earliestActivityStart: "09:00",
+      mustReturnToHotel: false,
+      reason: "Main party day — full energy, late night allowed",
+    },
+    {
+      dayOffset: 2,
+      latestActivityEnd: "14:00",
+      mustReturnToHotel: false,
+      reason: "Departure day — brunch then leave",
+    },
+  ],
+};
+
+// Boys Trip: adventure and group activities
+const BOYS_TRIP_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "hotel_checkin",
+      label: "Hotel Check-in",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "15:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Arrival and hotel check-in",
+    },
+    {
+      anchorType: "daytime_activity",
+      label: "First Day Adventure",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 90,
+      defaultTimeOfDay: "14:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Sports or outdoor activity after arrival",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Dinner",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "19:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Group dinner at established restaurant",
+    },
+    {
+      anchorType: "hotel_checkout",
+      label: "Check-out",
+      defaultBufferBefore: 60,
+      defaultBufferAfter: 0,
+      defaultTimeOfDay: "11:00",
+      dayOffset: -1,
+      isImmovable: false,
+      description: "Final day check-out",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "23:30",
+      earliestActivityStart: "14:00",
+      mustReturnToHotel: false,
+      reason: "Arrival day — limited time after check-in",
+    },
+  ],
+};
+
+// Girls Trip: wellness and social activities
+const GIRLS_TRIP_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "hotel_checkin",
+      label: "Hotel Check-in",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "15:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Arrival and hotel check-in",
+    },
+    {
+      anchorType: "spa_booking",
+      label: "Spa Day",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "10:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Full spa experience or massages",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Group Dinner",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "19:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Nice dinner reservation",
+    },
+    {
+      anchorType: "hotel_checkout",
+      label: "Check-out",
+      defaultBufferBefore: 60,
+      defaultBufferAfter: 0,
+      defaultTimeOfDay: "11:00",
+      dayOffset: -1,
+      isImmovable: false,
+      description: "Final day check-out",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "22:00",
+      earliestActivityStart: "15:00",
+      mustReturnToHotel: false,
+      reason: "Arrival day — settle in",
+    },
+    {
+      dayOffset: 1,
+      latestActivityEnd: "23:00",
+      mustReturnToHotel: false,
+      reason: "Main day — spa and dinner",
+    },
+  ],
+};
+
+// Anniversary Trip: romantic getaway
+const ANNIVERSARY_TRIP_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "hotel_checkin",
+      label: "Romantic Hotel Check-in",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "15:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Check into romantic suite or resort",
+    },
+    {
+      anchorType: "pre_booked_tour",
+      label: "Couples Experience",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "16:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Couples massage, wine tasting, or private tour",
+    },
+    {
+      anchorType: "dinner_reservation",
+      label: "Anniversary Dinner",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "19:00",
+      dayOffset: 0,
+      isImmovable: true,
+      description: "Special romantic anniversary dinner",
+    },
+    {
+      anchorType: "photographer_arrival",
+      label: "Romantic Photos",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 45,
+      defaultTimeOfDay: "17:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Sunset or scenic couple photos",
+    },
+    {
+      anchorType: "hotel_checkout",
+      label: "Check-out",
+      defaultBufferBefore: 60,
+      defaultBufferAfter: 0,
+      defaultTimeOfDay: "11:00",
+      dayOffset: -1,
+      isImmovable: false,
+      description: "Final day departure",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "23:00",
+      earliestActivityStart: "15:00",
+      mustReturnToHotel: false,
+      reason: "Romantic evening — no late-night activities",
+    },
+    {
+      dayOffset: 1,
+      latestActivityEnd: "21:00",
+      mustReturnToHotel: false,
+      reason: "Final day — leisure pace",
+    },
+  ],
+};
+
+// Sports Event: ticket anchor and group logistics
+const SPORTS_EVENT_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "event_time",
+      label: "Game/Event Start",
+      defaultBufferBefore: 120,
+      defaultBufferAfter: 180,
+      defaultTimeOfDay: "14:00",
+      dayOffset: 0,
+      isImmovable: true,
+      description: "Main sporting event — arrive 2 hours early for parking/seating",
+    },
+    {
+      anchorType: "pre_event_gathering",
+      label: "Pre-Game Gathering",
+      defaultBufferBefore: 60,
+      defaultBufferAfter: 30,
+      defaultTimeOfDay: "12:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Meet up with group, tailgate or bar visit",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Post-Event Celebration",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "19:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Dinner or celebration after game",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "23:59",
+      earliestActivityStart: "10:00",
+      mustReturnToHotel: false,
+      reason: "Full sports day — early morning to late night",
+    },
+  ],
+};
+
+// Retreats: wellness and structured activities
+const RETREATS_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "hotel_checkin",
+      label: "Arrival & Welcome",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "15:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Check-in and orientation",
+    },
+    {
+      anchorType: "custom",
+      label: "Morning Yoga",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 90,
+      defaultTimeOfDay: "07:00",
+      dayOffset: 1,
+      isImmovable: true,
+      description: "Daily morning yoga or meditation session",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Group Meals",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 90,
+      defaultTimeOfDay: "12:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Healthy group lunch",
+    },
+    {
+      anchorType: "custom",
+      label: "Wellness Workshop",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 90,
+      defaultTimeOfDay: "14:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Afternoon wellness workshop or activity",
+    },
+    {
+      anchorType: "hotel_checkout",
+      label: "Departure",
+      defaultBufferBefore: 60,
+      defaultBufferAfter: 0,
+      defaultTimeOfDay: "11:00",
+      dayOffset: -1,
+      isImmovable: false,
+      description: "Final day check-out",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "21:00",
+      mustReturnToHotel: true,
+      reason: "Arrival day — early evening mandatory retreat",
+    },
+    {
+      dayOffset: 1,
+      latestActivityEnd: "21:00",
+      earliestActivityStart: "07:00",
+      mustReturnToHotel: false,
+      reason: "Full retreat day — structured schedule",
+    },
+  ],
+};
+
+// Wedding Anniversaries: party celebration
+const WEDDING_ANNIVERSARIES_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "custom",
+      label: "Venue Arrival",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 15,
+      defaultTimeOfDay: "17:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Arrival at party venue for setup/photos",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Anniversary Celebration",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "18:00",
+      dayOffset: 0,
+      isImmovable: true,
+      description: "Main anniversary celebration with guests",
+    },
+    {
+      anchorType: "photographer_arrival",
+      label: "Photos",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "17:30",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Formal anniversary couple photos",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "22:00",
+      mustReturnToHotel: false,
+      reason: "Party evening — celebration timing",
+    },
+  ],
+};
+
+// Party templates (baby shower, graduation, engagement, housewarming, retirement, career, farewell, holiday)
+const PARTY_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "venue_setup",
+      label: "Venue Setup",
+      defaultBufferBefore: 120,
+      defaultBufferAfter: 30,
+      defaultTimeOfDay: "14:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Early arrival for setup and decorations",
+    },
+    {
+      anchorType: "custom",
+      label: "Guest Arrival",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 30,
+      defaultTimeOfDay: "15:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Guest arrival window",
+    },
+    {
+      anchorType: "custom",
+      label: "Main Activity/Cake",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 30,
+      defaultTimeOfDay: "16:00",
+      dayOffset: 0,
+      isImmovable: true,
+      description: "Cake cutting, toasts, main celebration moment",
+    },
+    {
+      anchorType: "custom",
+      label: "Dinner/Refreshments",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "17:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Catered meal or refreshments",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "20:00",
+      mustReturnToHotel: false,
+      reason: "Party afternoon/evening",
+    },
+  ],
+};
+
+// Reunions: group gathering with flexible schedule
+const REUNIONS_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "hotel_checkin",
+      label: "Check-in",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "15:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Hotel arrival and check-in",
+    },
+    {
+      anchorType: "group_dinner",
+      label: "Welcome Dinner",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "19:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Opening group dinner and socializing",
+    },
+    {
+      anchorType: "daytime_activity",
+      label: "Group Activities",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "10:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Games, tours, or group excursion",
+    },
+    {
+      anchorType: "custom",
+      label: "Closing Gathering",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "17:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Final evening gathering before departure",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "22:00",
+      mustReturnToHotel: false,
+      reason: "Arrival day — welcome dinner",
+    },
+    {
+      dayOffset: 1,
+      latestActivityEnd: "22:00",
+      mustReturnToHotel: false,
+      reason: "Reunion day — full schedule with activities",
+    },
+  ],
+};
+
 const TEMPLATE_PRESETS: Record<string, TemplatePresets> = {
   wedding: WEDDING_PRESETS,
   proposal: PROPOSAL_PRESETS,
   travel: TRAVEL_PRESETS,
   vacation: TRAVEL_PRESETS,
   birthday: BIRTHDAY_PRESETS,
-  corporate: CORPORATE_PRESETS,
+  "corporate-events": CORPORATE_PRESETS,
   date_night: DATE_NIGHT_PRESETS,
   "date-night": DATE_NIGHT_PRESETS,
+  "anniversary-trip": ANNIVERSARY_TRIP_PRESETS,
   anniversary: ANNIVERSARY_PRESETS,
   honeymoon: TRAVEL_PRESETS,
   adventure: TRAVEL_PRESETS,
+  "bachelor-bachelorette": BACHELOR_BACHELORETTE_PRESETS,
+  "boys-trip": BOYS_TRIP_PRESETS,
+  "girls-trip": GIRLS_TRIP_PRESETS,
+  "sports-event": SPORTS_EVENT_PRESETS,
+  retreats: RETREATS_PRESETS,
+  "wedding-anniversaries": WEDDING_ANNIVERSARIES_PRESETS,
+  "baby-shower": PARTY_PRESETS,
+  "graduation-party": PARTY_PRESETS,
+  "engagement-party": PARTY_PRESETS,
+  "housewarming-party": PARTY_PRESETS,
+  "retirement-party": PARTY_PRESETS,
+  "career-achievement-party": PARTY_PRESETS,
+  "farewell-party": PARTY_PRESETS,
+  "holiday-party": PARTY_PRESETS,
+  reunions: REUNIONS_PRESETS,
 };
 
 /**

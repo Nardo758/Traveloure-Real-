@@ -10,8 +10,9 @@
  */
 
 import { db } from "../db";
-import { transportBookingOptions, transportLegs, itineraryVariants } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { transportBookingOptions, transportLegs, itineraryVariants, providerServices, bookingFeeConfigs } from "@shared/schema";
+import { eq, and, ilike, sql } from "drizzle-orm";
+import { getTravelpayoutsToken } from "./travelpayouts/travelpayouts-client";
 
 export interface TransportBookingOption {
   transportLegId?: string;
@@ -29,7 +30,7 @@ export interface TransportBookingOption {
   currency?: string;
   estimatedMinutes?: number;
   estimatedMinutesHigh?: number;
-  providerId?: number;
+  providerId?: string;
   externalUrl?: string;
   affiliateCode?: string;
   deepLinkScheme?: string;
@@ -41,6 +42,8 @@ export interface TransportBookingOption {
   reviewCount?: number;
   sortOrder?: number;
   isRecommended?: boolean;
+  revenueType?: "platform_commission" | "affiliate_margin";
+  revenueRate?: number;
 }
 
 /**
@@ -87,11 +90,12 @@ export async function populateBookingOptionsForLeg(
       priceCentsHigh: price * 100,
       currency: "USD",
       estimatedMinutes: leg.estimatedDurationMinutes,
-      providerId: provider.id,
       rating: provider.ratingAvg,
       reviewCount: provider.reviewCount,
       isRecommended: true,
       sortOrder: 0,
+      revenueType: "platform_commission",
+      revenueRate: provider.commissionRate,
     });
   }
 
@@ -124,6 +128,8 @@ export async function populateBookingOptionsForLeg(
       rating: affiliate.rating,
       reviewCount: affiliate.reviewCount,
       sortOrder: 1,
+      revenueType: "affiliate_margin",
+      revenueRate: affiliate.revenueRate,
     });
   }
 
@@ -257,11 +263,99 @@ async function populateMultiDayPasses(
 }
 
 // ============================================================================
-// Helper Functions
+// Fee resolution — reads from booking_fee_configs; falls back to spec defaults.
+// All defaults are admin-editable via the Fee Config admin UI once the
+// 031_transport_commerce_fee_config migration has run.
+// ============================================================================
+
+const TRANSPORT_COMMISSION_DEFAULT = 0.10; // 10% — within spec range 4-12%
+const AFFILIATE_MARGIN_DEFAULTS: Record<string, number> = {
+  "12go": 0.12,
+  omio: 0.08,
+  discovercars: 0.10,
+  kiwi: 0.06,
+};
+
+async function resolveTransportCommissionRate(): Promise<number> {
+  try {
+    const rows = await db
+      .select({ rate: bookingFeeConfigs.platformFeePercent })
+      .from(bookingFeeConfigs)
+      .where(and(
+        eq(bookingFeeConfigs.category, "platform_transport_commission"),
+        eq(bookingFeeConfigs.isActive, true),
+      ))
+      .limit(1);
+    const val = rows[0]?.rate;
+    if (val !== null && val !== undefined) return parseFloat(String(val)) / 100;
+  } catch {
+    // booking_fee_configs not yet on this DB; use approved default
+  }
+  return TRANSPORT_COMMISSION_DEFAULT;
+}
+
+async function resolveAffiliateMarginRate(partner: string): Promise<number> {
+  try {
+    const rows = await db
+      .select({ rate: bookingFeeConfigs.platformFeePercent })
+      .from(bookingFeeConfigs)
+      .where(and(
+        eq(bookingFeeConfigs.category, `affiliate_margin_${partner}`),
+        eq(bookingFeeConfigs.isActive, true),
+      ))
+      .limit(1);
+    const val = rows[0]?.rate;
+    if (val !== null && val !== undefined) return parseFloat(String(val)) / 100;
+  } catch {
+    // booking_fee_configs not yet on this DB; use approved default
+  }
+  return AFFILIATE_MARGIN_DEFAULTS[partner] ?? 0.08;
+}
+
+// ============================================================================
+// Affiliate URL builders
+// ============================================================================
+
+function buildTwelveGoUrl(fromName: string, toName: string, token: string | null): string {
+  const f = encodeURIComponent(fromName.toLowerCase().replace(/\s+/g, "-"));
+  const t = encodeURIComponent(toName.toLowerCase().replace(/\s+/g, "-"));
+  const ref = token ? `?z=${token}` : "";
+  return `https://12go.asia/en/travel/${f}/${t}${ref}`;
+}
+
+function buildOmioUrl(fromName: string, toName: string, token: string | null): string {
+  const f = encodeURIComponent(fromName);
+  const t = encodeURIComponent(toName);
+  const ref = token ? `&ref=${token}` : "";
+  return `https://www.omio.com/results/${f}/${t}?sortBy=best${ref}`;
+}
+
+function buildDiscoverCarsUrl(destination: string, token: string | null): string {
+  const loc = encodeURIComponent(destination);
+  const today = new Date();
+  const nextWeek = new Date(today.getTime() + 7 * 86_400_000);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  const aff = token ? `&affiliate_id=${token}` : "";
+  return `https://www.discovercars.com/car-hire/${loc}?pickup_date=${fmt(today)}&dropoff_date=${fmt(nextWeek)}${aff}`;
+}
+
+function buildKiwiUrl(fromName: string, toName: string, token: string | null): string {
+  const f = encodeURIComponent(fromName);
+  const t = encodeURIComponent(toName);
+  const ref = token ? `&source=${token}` : "";
+  return `https://www.kiwi.com/en/search/results/${f}/${t}${ref}`;
+}
+
+// ============================================================================
+// Phase 1 — Platform resolver
+// Queries provider_services for active transport providers matching the
+// destination and leg mode, reads commission from booking_fee_configs.
 // ============================================================================
 
 /**
- * Finds transport service providers in destination
+ * Finds Traveloure platform transport providers for a leg.
+ * Only private/charter modes (taxi, car, shuttle, private_driver) map to
+ * platform providers — transit/walk/bicycle are not bookable here.
  */
 async function findTransportProviders(
   destination: string,
@@ -271,13 +365,90 @@ async function findTransportProviders(
   toLat: number,
   toLng: number
 ): Promise<any[]> {
-  // TODO: Query service_providers table filtered by destination and service_type = "transport"
-  // For now, return empty array (should be seeded with test data)
-  return [];
+  const PLATFORM_MODES = ["taxi", "car", "shuttle", "private_driver", "transfer", "rideshare"];
+  const m = mode.toLowerCase();
+  if (!PLATFORM_MODES.some((pm) => m.includes(pm))) return [];
+
+  const commissionRate = await resolveTransportCommissionRate();
+  const destLower = destination.toLowerCase();
+
+  // Primary query: active providers whose location matches the destination
+  const locationRows = await db
+    .select({
+      id: providerServices.id,
+      businessName: providerServices.serviceName,
+      serviceDescription: providerServices.shortDescription,
+      price: providerServices.price,
+      priceType: providerServices.priceType,
+      location: providerServices.location,
+      serviceRadius: providerServices.serviceRadius,
+      ratingAvg: providerServices.averageRating,
+      reviewCount: providerServices.reviewCount,
+      bookingsCount: providerServices.bookingsCount,
+    })
+    .from(providerServices)
+    .where(
+      and(
+        eq(providerServices.status, "active"),
+        ilike(providerServices.location, `%${destLower}%`),
+      )
+    )
+    .limit(8);
+
+  // Secondary query: providers tagged for transport (content_affinity_tags array)
+  let tagRows: any[] = [];
+  try {
+    const res = await db.execute(sql`
+      SELECT id,
+             service_name        AS "businessName",
+             short_description   AS "serviceDescription",
+             price,
+             price_type          AS "priceType",
+             location,
+             service_radius      AS "serviceRadius",
+             CAST(average_rating AS float) AS "ratingAvg",
+             review_count        AS "reviewCount",
+             bookings_count      AS "bookingsCount"
+      FROM provider_services
+      WHERE status = 'active'
+        AND (
+          content_affinity_tags @> ARRAY['transport']::text[]
+          OR content_affinity_tags @> ARRAY['airport_transfer']::text[]
+          OR content_affinity_tags @> ARRAY['private_driver']::text[]
+          OR service_type = 'transportation'
+        )
+        AND location ILIKE ${'%' + destLower + '%'}
+      ORDER BY bookings_count DESC NULLS LAST
+      LIMIT 5
+    `);
+    tagRows = res.rows as any[];
+  } catch {
+    // content_affinity_tags column may be absent on older dev DBs; ignore
+  }
+
+  // Merge, deduplicate by id, attach commission rate
+  const seen = new Set<string>();
+  return [...locationRows, ...tagRows]
+    .filter((r) => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    })
+    .map((r) => ({ ...r, commissionRate }));
 }
 
+// ============================================================================
+// Phase 2 — Affiliate resolver
+// Builds deep-link options for 12Go, Omio, DiscoverCars, and Kiwi.
+// Margin rates are read from booking_fee_configs — no literals in this block.
+// ============================================================================
+
 /**
- * Finds affiliate transport options from partner catalogs
+ * Builds affiliate booking options for a transport leg.
+ * Partner selection is mode-aware:
+ *   train/bus/transit/ferry/shuttle → 12Go + Omio
+ *   car/taxi/shuttle/drive          → DiscoverCars
+ *   flight (>100 km)                → Kiwi
  */
 async function findAffiliateTransportOptions(
   destination: string,
@@ -286,26 +457,94 @@ async function findAffiliateTransportOptions(
   distanceMeters: number,
   travelers: number
 ): Promise<any[]> {
-  // TODO: Query affiliate partner data/APIs
-  // Partners: 12Go, Viator, GetYourGuide, Klook, Booking.com
-  return [
-    // Example structure:
-    // {
-    //   partner: "12go",
-    //   title: "RER B + Metro",
-    //   description: "Train to Châtelet + walk",
-    //   modeType: "transit",
-    //   priceDisplay: "$12 per person",
-    //   priceCentsLow: 1200,
-    //   pricePerPerson: true,
-    //   currency: "USD",
-    //   estimatedMinutes: 65,
-    //   urlWithAffiliate: "https://12go.asia/en/travel/...",
-    //   affiliateCode: "traveloure",
-    //   rating: 4.6,
-    //   reviewCount: 8234,
-    // }
-  ];
+  const token = getTravelpayoutsToken();
+  const results: any[] = [];
+
+  // 12Go — trains, buses, ferries, shuttles (strong Asia + global coverage)
+  const go12Margin = await resolveAffiliateMarginRate("12go");
+  results.push({
+    partner: "12go",
+    title: `${fromName} → ${toName}`,
+    description: "Book trains, buses & ferries with 12Go",
+    modeType: "transit",
+    priceDisplay: "From $5",
+    priceCentsLow: 500,
+    priceCentsHigh: null,
+    pricePerPerson: true,
+    currency: "USD",
+    estimatedMinutes: null,
+    urlWithAffiliate: buildTwelveGoUrl(fromName, toName, token),
+    affiliateCode: token ?? "traveloure",
+    rating: 4.5,
+    reviewCount: 50000,
+    revenueRate: go12Margin,
+  });
+
+  // Omio — trains, buses, coaches (Europe + global)
+  const omioMargin = await resolveAffiliateMarginRate("omio");
+  results.push({
+    partner: "omio",
+    title: `${fromName} → ${toName}`,
+    description: "Compare trains, buses & coaches with Omio",
+    modeType: "train",
+    priceDisplay: "Compare prices",
+    priceCentsLow: null,
+    priceCentsHigh: null,
+    pricePerPerson: true,
+    currency: "EUR",
+    estimatedMinutes: null,
+    urlWithAffiliate: buildOmioUrl(fromName, toName, token),
+    affiliateCode: token ?? "traveloure",
+    rating: 4.3,
+    reviewCount: 120000,
+    revenueRate: omioMargin,
+  });
+
+  // DiscoverCars — car rental for journeys likely to need a vehicle
+  if (distanceMeters > 5_000) {
+    const dcMargin = await resolveAffiliateMarginRate("discovercars");
+    results.push({
+      partner: "discovercars",
+      title: `Rent a car in ${destination}`,
+      description: "Compare 500+ rental providers with DiscoverCars",
+      modeType: "car",
+      priceDisplay: "From $25/day",
+      priceCentsLow: 2_500,
+      priceCentsHigh: null,
+      pricePerPerson: false,
+      currency: "USD",
+      estimatedMinutes: null,
+      urlWithAffiliate: buildDiscoverCarsUrl(destination, token),
+      affiliateCode: token ?? "traveloure",
+      rating: 4.4,
+      reviewCount: 75000,
+      revenueRate: dcMargin,
+    });
+  }
+
+  // Kiwi — flights for long-distance legs (>100 km)
+  if (distanceMeters > 100_000) {
+    const kiwiMargin = await resolveAffiliateMarginRate("kiwi");
+    results.push({
+      partner: "kiwi",
+      title: `${fromName} → ${toName}`,
+      description: "Search flights with Kiwi.com",
+      modeType: "flight",
+      priceDisplay: "From $50",
+      priceCentsLow: 5_000,
+      priceCentsHigh: null,
+      pricePerPerson: true,
+      currency: "USD",
+      estimatedMinutes: null,
+      urlWithAffiliate: buildKiwiUrl(fromName, toName, token),
+      affiliateCode: token ?? "traveloure",
+      rating: 4.2,
+      reviewCount: 200000,
+      revenueRate: kiwiMargin,
+    });
+  }
+
+  return results;
 }
 
 /**
@@ -389,12 +628,20 @@ function estimateRidesharePrice(app: any, distanceMeters: number): { low: number
 }
 
 /**
- * Calculates provider price for distance
+ * Calculates provider price for a leg distance.
+ * - fixed price: returned directly
+ * - variable price: treated as per-km rate
+ * - no price set: estimated at $2/km, $5 minimum
  */
 function calculateProviderPrice(provider: any, distanceMeters: number): number {
-  // TODO: Use provider's pricing formula
-  // For now, simple formula: base fee + distance-based pricing
-  return 25; // Placeholder
+  const distanceKm = distanceMeters / 1000;
+  if (provider.price && provider.priceType === "fixed") {
+    return Math.round(parseFloat(String(provider.price)) * 100) / 100;
+  }
+  if (provider.price && provider.priceType === "variable") {
+    return Math.max(5, Math.round(parseFloat(String(provider.price)) * distanceKm * 100) / 100);
+  }
+  return Math.max(5, Math.round(distanceKm * 2 * 100) / 100);
 }
 
 /**

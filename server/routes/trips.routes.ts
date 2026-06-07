@@ -33,7 +33,6 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
-  expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   optimizationFees,
