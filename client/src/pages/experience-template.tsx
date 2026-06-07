@@ -2419,8 +2419,14 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab */}
-          {activeTabControlConfig && (
+          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab.
+              Gated to flight/hotel tabs only: every control here (priceRange/stops/starRatings/
+              sortOptions) reads activeTabControlConfig and writes flight/hotel state
+              (flightMaxPrice/hotelMaxPrice, flightStops, hotelStarRating, flight/hotelSortBy),
+              so it is inert on other tabs. Without this guard it co-rendered with the
+              SelectionControlsPanel below on seeded tabs — the filter-doubling bug. Non-flight/
+              hotel tabs get their (working) sort control in the selection-controls block below. */}
+          {activeTabControlConfig && (currentTabType === "flights" || currentTabType === "hotels") && (
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
@@ -2536,6 +2542,24 @@ export default function ExperienceTemplatePage() {
                   onClearFilters={templateFilters.onClearFilters}
                 />
               )}
+              {/* Sort control for non-flight/hotel tabs. The flight/hotel "Sort By" lives in the
+                  Collapsible above and only sets flight/hotelSortBy; this drives the generic
+                  `sortBy` that actually orders the filteredServices list (price/rating), which
+                  previously had no UI on these tabs. */}
+              <div className="mt-4 flex items-center gap-2">
+                <Label className="text-sm font-medium">Sort By</Label>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-[200px]" data-testid="select-template-sort">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="popular">Most Popular</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    <SelectItem value="rating">Highest Rated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
