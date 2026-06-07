@@ -70,8 +70,6 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
-<<<<<<< HEAD
-=======
 type CoverPhotoCredit = { name: string; url: string } | null;
 
 function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
@@ -90,28 +88,20 @@ function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
   );
 }
 
-
->>>>>>> origin/main
 function HeroSection({
   city,
   heroData,
   scheduledDate,
   onDismissDate,
   coverPhotoUrl,
-<<<<<<< HEAD
-=======
   coverPhotoCredit,
->>>>>>> origin/main
 }: {
   city: string;
   heroData: any;
   scheduledDate: string | null;
   onDismissDate: () => void;
   coverPhotoUrl?: string | null;
-<<<<<<< HEAD
-=======
   coverPhotoCredit?: CoverPhotoCredit;
->>>>>>> origin/main
 }) {
   const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
@@ -190,18 +180,11 @@ function HeroSection({
               <span className="text-[11px] text-green-400">pulse</span>
             </div>
           )}
-<<<<<<< HEAD
-=======
           <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
->>>>>>> origin/main
         </div>
       );
     }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/main
     return (
       <div
         className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
@@ -290,18 +273,11 @@ function HeroSection({
             </span>
           </div>
         )}
-<<<<<<< HEAD
-=======
         <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
->>>>>>> origin/main
       </div>
     );
   }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/main
   return (
     <div
       className="relative rounded-xl overflow-hidden px-6 py-6"
@@ -1050,19 +1026,13 @@ export default function DiscoverLocationPage() {
       const sorted = [...allGems]
         .filter((g: any) => !!g.imageUrl)
         .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
-<<<<<<< HEAD
-      if (sorted.length > 0) return sorted[0].imageUrl as string;
-=======
       if (sorted.length > 0) {
         return sorted[0].imageUrl as string;
       }
->>>>>>> origin/main
     }
     return CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
   })();
 
-<<<<<<< HEAD
-=======
   const coverPhotoCredit: CoverPhotoCredit = (() => {
     if (allGems.length > 0) {
       const sorted = [...allGems]
@@ -1076,8 +1046,6 @@ export default function DiscoverLocationPage() {
     return null;
   })();
 
-
->>>>>>> origin/main
   if (!city) {
     return (
       <Layout>
@@ -1145,10 +1113,7 @@ export default function DiscoverLocationPage() {
               scheduledDate={scheduledDate}
               onDismissDate={handleDismissDate}
               coverPhotoUrl={coverPhotoUrl}
-<<<<<<< HEAD
-=======
               coverPhotoCredit={coverPhotoCredit}
->>>>>>> origin/main
             />
 
             {/* ── Stats row ─────────────────────────────────────────── */}
