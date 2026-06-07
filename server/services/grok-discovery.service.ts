@@ -109,7 +109,6 @@ class GrokDiscoveryService {
           const result = await this.discoverCategoryGems(destination, category, maxGems);
           
           for (const gem of result.gems) {
-<<<<<<< HEAD
             const existingRows = await db
               .select({ imageUrl: aiDiscoveredGems.imageUrl })
               .from(aiDiscoveredGems)
@@ -130,14 +129,6 @@ class GrokDiscoveryService {
                   result.destination,
                   gem.imageSearchTerms ?? []
                 );
-
-=======
-            const imageUrl = await this.fetchGemPhoto(
-              gem.name,
-              result.destination,
-              gem.imageSearchTerms ?? []
-            );
->>>>>>> origin/main
             await this.saveGem({
               destination: result.destination,
               country: result.country,
