@@ -1,5 +1,6 @@
 import { travelPulseService } from "./travelpulse.service";
 import { serviceRecommendationEngine } from "./recommendation.service";
+import { refreshDestinationTrends } from "./destination-trends.service";
 
 const DAILY_REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const INITIAL_DELAY = 5 * 60 * 1000; // 5 minutes after server start
@@ -134,6 +135,16 @@ export class TravelPulseScheduler {
         await new Promise((resolve) => setTimeout(resolve, PER_CITY_RATE_LIMIT_MS));
       }
 
+      // Compute destination trends from accumulated booking/search data (Phase 4)
+      let trendsComputed = 0;
+      try {
+        const trendsResult = await refreshDestinationTrends();
+        trendsComputed = trendsResult.computed;
+        console.log(`[TravelPulse Scheduler] Destination trends refreshed: ${trendsComputed} countries`);
+      } catch (err: any) {
+        console.error("[TravelPulse Scheduler] Trend computation failed:", err?.message ?? err);
+      }
+
       // Update feedback loop observability stats
       this.feedbackLoop.lastRunAt = new Date();
       this.feedbackLoop.totalSignalsProcessed += demandSignalsGenerated;
@@ -141,7 +152,7 @@ export class TravelPulseScheduler {
       this.feedbackLoop.citiesProcessed += batch.length;
 
       console.log(
-        `[TravelPulse Scheduler] Daily refresh complete: ${refreshed} AI updated, ${errors} AI errors, ${demandSignalsGenerated} demand signals generated, ${demandSignalErrors} demand-signal errors`,
+        `[TravelPulse Scheduler] Daily refresh complete: ${refreshed} AI updated, ${errors} AI errors, ${demandSignalsGenerated} demand signals generated, ${demandSignalErrors} demand-signal errors, ${trendsComputed} destination trends computed`,
       );
       console.log(
         `[TravelPulse Scheduler] Feedback loop stats — last run: ${this.feedbackLoop.lastRunAt.toISOString()}, total signals processed: ${this.feedbackLoop.totalSignalsProcessed}, total cycles: ${this.feedbackLoop.totalRunCount}, cities processed (lifetime): ${this.feedbackLoop.citiesProcessed}`,

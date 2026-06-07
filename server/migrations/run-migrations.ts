@@ -6,12 +6,18 @@
  */
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname_local = dirname(__filename);
+// CJS-safe dirname: import.meta.url is undefined in the production CJS bundle.
+const __dirname_local = (() => {
+  try {
+    const { fileURLToPath } = require("url");
+    return dirname(fileURLToPath(import.meta.url));
+  } catch {
+    return join(process.cwd(), "server", "migrations");
+  }
+})();
 
 const MIGRATION_FILES = [
   "006_eso_canonicalization.sql",
@@ -42,6 +48,8 @@ const MIGRATION_FILES = [
   "028_service_bookings_insurance_fee.sql",
   "029_review_moderation.sql",
   "030_restore_expert_service_categories.sql",
+  "031_phase1_scaffold_fee_bands.sql",
+  "036_transport_commerce_fee_config.sql",
 ];
 
 export async function runMigrations(): Promise<void> {

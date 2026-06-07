@@ -83,14 +83,16 @@ import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
-import { matchesCategory } from "@shared/constants/providerCategories";
+import { filterServices, sortServices } from "@shared/service-filter";
+import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
+import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
+import { CompactFilterBar } from "@/components/compact-filter-bar";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
-import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
@@ -101,10 +103,6 @@ import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
-import { TransferCard } from "@/components/travelpayouts/TransferCard";
-import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportCard";
-import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
-import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 
@@ -374,209 +372,6 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
   );
 }
 
-function TravelpayoutsTransport({ destination }: { destination: string }) {
-  const [transferFrom, setTransferFrom] = useState("");
-  const [transferTo, setTransferTo] = useState(destination);
-  const [transferSearched, setTransferSearched] = useState(false);
-
-  useEffect(() => { setTransferTo(destination); }, [destination]);
-
-  const transfersQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/transfers", transferFrom, transferTo],
-    enabled: !!transferFrom && !!transferTo && transferSearched,
-    queryFn: async () => {
-      const params = new URLSearchParams({ from: transferFrom, to: transferTo });
-      const res = await fetch(`/api/catalog/transfers?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Transfers fetch failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const groundQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/ground-transport", destination],
-    enabled: !!destination,
-    queryFn: async () => {
-      const params = new URLSearchParams({ destination });
-      const res = await fetch(`/api/catalog/ground-transport?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Ground transport fetch failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const transfers = transfersQuery.data?.items || [];
-  const ground = groundQuery.data?.items || [];
-
-  if (!destination) return null;
-
-  return (
-    <div className="mt-6 space-y-6">
-      {/* GetTransfer — requires pickup + dropoff */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
-          Private Transfers via GetTransfer
-        </h3>
-        <div className="flex gap-2 mb-3">
-          <input
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="From (e.g. airport, hotel)"
-            value={transferFrom}
-            onChange={e => setTransferFrom(e.target.value)}
-            data-testid="input-transfer-from"
-          />
-          <input
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="To"
-            value={transferTo}
-            onChange={e => setTransferTo(e.target.value)}
-            data-testid="input-transfer-to"
-          />
-          <Button
-            size="sm"
-            onClick={() => setTransferSearched(true)}
-            disabled={!transferFrom || !transferTo}
-            data-testid="button-search-transfers"
-          >
-            Search
-          </Button>
-        </div>
-        {transfersQuery.isLoading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
-            ))}
-          </div>
-        )}
-        {transfersQuery.isError && (
-          <p className="text-xs text-destructive">Could not load transfer options. Please try again.</p>
-        )}
-        {!transfersQuery.isLoading && !transfersQuery.isError && transfers.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {transfers.slice(0, 6).map(item => (
-              <TransferCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
-        {transferSearched && !transfersQuery.isLoading && !transfersQuery.isError && transfers.length === 0 && (
-          <p className="text-xs text-muted-foreground">No transfers found for this route.</p>
-        )}
-      </div>
-
-      {/* Omio ground transport */}
-      {(groundQuery.isLoading || ground.length > 0 || groundQuery.isError) && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
-            Trains & Buses via Omio
-          </h3>
-          {groundQuery.isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
-              ))}
-            </div>
-          )}
-          {groundQuery.isError && (
-            <p className="text-xs text-destructive">Could not load ground transport options.</p>
-          )}
-          {!groundQuery.isLoading && ground.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {ground.slice(0, 6).map(item => (
-                <GroundTransportCard key={item.id} item={item} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DiscoverCarsWidget({ destination }: { destination: string }) {
-  const today = new Date();
-  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
-
-  const carsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/cars", destination],
-    enabled: !!destination,
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        location: destination,
-        pickup: fmt(today),
-        dropoff: fmt(nextWeek),
-        limit: "4",
-      });
-      const res = await fetch(`/api/catalog/cars?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch car rentals");
-      return res.json();
-    },
-  });
-
-  const cars = carsQuery.data?.items || [];
-  if (carsQuery.isLoading) return (
-    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {Array.from({ length: 2 }).map((_, i) => (
-        <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
-      ))}
-    </div>
-  );
-  if (carsQuery.isError || cars.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
-        Need a car? — DiscoverCars
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {cars.slice(0, 4).map(item => (
-          <CarRentalCard key={item.id} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TravelpayoutsNomad({ destination }: { destination: string }) {
-  const nomadQuery = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: ["/api/catalog/nomad", destination],
-    enabled: !!destination,
-    queryFn: async () => {
-      const params = new URLSearchParams({ cities: destination, limit: "6" });
-      const res = await fetch(`/api/catalog/nomad?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Nomad routes fetch failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const routes = nomadQuery.data?.items || [];
-  if (nomadQuery.isLoading) return (
-    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
-      ))}
-    </div>
-  );
-  if (nomadQuery.isError) return (
-    <p className="mt-4 text-xs text-destructive">Could not load nomad routes.</p>
-  );
-  if (routes.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-violet-500" />
-        Multi-city routes via Kiwi.com Nomad
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {routes.slice(0, 6).map(item => (
-          <NomadRouteCard key={item.id} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 interface CartItem {
   id: string;
@@ -623,6 +418,8 @@ interface TabControlConfig {
   stops?: Array<{ value: string; label: string }>;
   starRatings?: number[];
   sortOptions?: Array<{ value: string; label: string }>;
+  // P462 reconcile: lean per-tab selection controls (replace the inert facet wall)
+  selectionControls?: SelectionControl[];
 }
 
 interface TabConfig {
@@ -677,15 +474,22 @@ function deriveTabType(slug: string): string {
   return "venue-search";
 }
 
-function dbTabsToConfig(tabs: ExperienceTemplateTab[]): TabConfig[] {
-  return tabs.map((tab) => ({
-    id: tab.slug,
-    label: tab.name,
-    icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
-    category: tab.slug,
-    tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
-    controlConfig: (tab as any).controlConfig as TabControlConfig | undefined,
-  }));
+function dbTabsToConfig(tabs: ExperienceTemplateTab[], templateSlug: string): TabConfig[] {
+  return tabs.map((tab) => {
+    const controlConfig = (tab as any).controlConfig as TabControlConfig | undefined;
+    const seededSelectionControls = SELECTION_CONTROL_SEED[templateSlug]?.[tab.slug];
+
+    return {
+      id: tab.slug,
+      label: tab.name,
+      icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
+      category: tab.slug,
+      tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
+      controlConfig: seededSelectionControls && !(controlConfig?.selectionControls?.length)
+        ? { ...controlConfig, selectionControls: seededSelectionControls }
+        : controlConfig,
+    };
+  });
 }
 
 const slugAliases: Record<string, string> = {
@@ -1074,10 +878,6 @@ export default function ExperienceTemplatePage() {
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
   
-  // Template-based filters (DB-driven — now enabled for all templates)
-  const templateFilters = useTemplateFilters();
-  // P3: All templates with a DB record get TemplateFiltersPanel (gate removed)
-  const hasTemplateTabs = !!experienceType?.id;
   
   // Wedding mode state (planning vs guest activities)
   const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
@@ -1085,7 +885,7 @@ export default function ExperienceTemplatePage() {
   // P5: effectiveTabs — DB is the single source of truth; experienceConfigs no longer drives structure
   const effectiveTabs = useMemo(() => {
     if (!dbTabs || dbTabs.length === 0) return [];
-    const allTabs = dbTabsToConfig(dbTabs);
+    const allTabs = dbTabsToConfig(dbTabs, slug);
     // Wedding guest-mode: filter to guest-relevant tabTypes only (DB-driven)
     if (slug === "wedding" && weddingMode === "guest") {
       const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events", "hotels", "venue-search"]);
@@ -1098,11 +898,11 @@ export default function ExperienceTemplatePage() {
   // P5: Reset activeTab when dbTabs loads and current tab isn't present
   useEffect(() => {
     if (!dbTabs || dbTabs.length === 0) return;
-    const tabIds = dbTabsToConfig(dbTabs).map((t) => t.id);
+    const tabIds = dbTabsToConfig(dbTabs, slug).map((t) => t.id);
     if (!tabIds.includes(activeTab)) {
       setActiveTab(tabIds[0] ?? "venue");
     }
-  }, [dbTabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dbTabs, slug]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Track whether we've done initial hydration
   const hasHydratedRef = useRef(false);
@@ -1648,61 +1448,69 @@ export default function ExperienceTemplatePage() {
   // P462: DB-driven tab filter control config (replaces hardcoded flight/hotel filter JSX)
   const activeTabControlConfig = effectiveTabs.find(t => t.id === activeTab)?.controlConfig;
 
+  // P462 reconcile (Phase 3): per-tab selection controls. Selecting options
+  // resolves to the #462 working keys (priceRange / minRating / tags) and drives
+  // the same filteredServices memo — the selection panel is the source of truth
+  // for those keys on tabs that have controls.
+  const [selectionState, setSelectionState] = useState<Record<string, string[]>>({});
+
+  const applySelections = (controls: SelectionControl[], next: Record<string, string[]>) => {
+    const opts: SelectionOption[] = [];
+    for (const c of controls) {
+      for (const id of next[c.id] ?? []) {
+        const o = c.options.find(x => x.id === id);
+        if (o) opts.push(o);
+      }
+    }
+    const q = resolveSelectionsToFilterQuery(opts);
+    setPriceRange(q.priceRange ?? [0, 500]);
+    setMinRating(q.minRating ?? 0);
+    setSelectedFilters(q.tags ?? []);
+  };
+
+  const handleSelectionToggle = (control: SelectionControl, optionId: string) => {
+    const controls = activeTabControlConfig?.selectionControls ?? [];
+    const cur = selectionState[control.id] ?? [];
+    const nextIds = control.type === "single_select"
+      ? (cur.includes(optionId) ? [] : [optionId])
+      : (cur.includes(optionId) ? cur.filter(i => i !== optionId) : [...cur, optionId]);
+    const next = { ...selectionState, [control.id]: nextIds };
+    setSelectionState(next);
+    applySelections(controls, next);
+  };
+
+  const handleSelectionClear = () => {
+    setSelectionState({});
+    setPriceRange([0, 500]);
+    setMinRating(0);
+    setSelectedFilters([]);
+  };
+
+  // Clear refinements when switching tabs (skip first mount to preserve any
+  // restored saved-trip settings).
+  const didMountTabRef = useRef(false);
+  useEffect(() => {
+    if (!didMountTabRef.current) { didMountTabRef.current = true; return; }
+    setSelectionState({});
+    setPriceRange([0, 500]);
+    setMinRating(0);
+    setSelectedFilters([]);
+  }, [activeTab]);
+
   const filteredServices = useMemo(() => {
     if (!services) return [];
-    
-    let filtered = [...services];
 
-    if (currentTabCategory) {
-      filtered = filtered.filter(s => 
-        matchesCategory(
-          s.serviceType || "",
-          s.serviceName,
-          s.description || "",
-          currentTabCategory
-        )
-      );
-    }
+    // #462 filter predicate (extracted to shared/service-filter for unit-testing
+    // and reuse by the selection-controls reconcile). Behavior unchanged.
+    let filtered = filterServices([...services], {
+      category: currentTabCategory || undefined,
+      searchQuery: searchQuery || undefined,
+      priceRange,
+      minRating,
+      tags: selectedFilters.length > 0 ? selectedFilters : undefined,
+    });
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(s => 
-        s.serviceName.toLowerCase().includes(query) ||
-        (s.shortDescription?.toLowerCase().includes(query)) ||
-        (s.description?.toLowerCase().includes(query))
-      );
-    }
-
-    if (priceRange[0] > 0 || priceRange[1] < 500) {
-      filtered = filtered.filter(s => {
-        const price = Number(s.price) || 0;
-        return price >= priceRange[0] && (priceRange[1] >= 500 || price <= priceRange[1]);
-      });
-    }
-
-    if (minRating > 0) {
-      filtered = filtered.filter(s => (Number(s.averageRating) || 0) >= minRating);
-    }
-
-    if (selectedFilters.length > 0) {
-      filtered = filtered.filter(s => {
-        const desc = (s.description || "").toLowerCase();
-        const name = s.serviceName.toLowerCase();
-        return selectedFilters.some(f => 
-          desc.includes(f.toLowerCase()) || name.includes(f.toLowerCase())
-        );
-      });
-    }
-
-    if (sortBy === "price-low") {
-      filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
-    } else if (sortBy === "price-high") {
-      filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
-    } else if (sortBy === "rating") {
-      filtered.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
-    }
-
-    return filtered;
+    return sortServices(filtered, sortBy);
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
@@ -2220,7 +2028,7 @@ export default function ExperienceTemplatePage() {
                   size="sm"
                   onClick={() => {
                     setWeddingMode("planning");
-                    setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
+                    setActiveTab(dbTabsToConfig(dbTabs, slug)[0]?.id ?? "venues");
                   }}
                   className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-planning"
@@ -2233,7 +2041,7 @@ export default function ExperienceTemplatePage() {
                   onClick={() => {
                     setWeddingMode("guest");
                     const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
-                    const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                    const firstGuest = dbTabsToConfig(dbTabs, slug).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
                     setActiveTab(firstGuest?.id ?? "activities");
                   }}
                   className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
@@ -2387,12 +2195,17 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
-              {destination && <TravelpayoutsTransport destination={destination} />}
             </div>
           )}
 
-          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab */}
-          {activeTabControlConfig && (
+          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab.
+              Gated to flight/hotel tabs only: every control here (priceRange/stops/starRatings/
+              sortOptions) reads activeTabControlConfig and writes flight/hotel state
+              (flightMaxPrice/hotelMaxPrice, flightStops, hotelStarRating, flight/hotelSortBy),
+              so it is inert on other tabs. Without this guard it co-rendered with the
+              compact filter bar below on seeded tabs — the filter-doubling bug. Non-flight/
+              hotel tabs get their controls + sort from the CompactFilterBar below. */}
+          {activeTabControlConfig && (currentTabType === "flights" || currentTabType === "hotels") && (
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
@@ -2487,17 +2300,22 @@ export default function ExperienceTemplatePage() {
           </Collapsible>
           )}
 
-          {/* P3: TemplateFiltersPanel — DB-driven filters; hidden on flight/hotel tabs (those use the Collapsible above) */}
+          {/* P462 reconcile: ONE compact filter bar per non-flight/hotel tab — the
+              tab's seeded selection controls + Sort, in a single horizontal row.
+              Replaces the prior split (SelectionControlsPanel + separate Sort) and
+              the inert TemplateFiltersPanel facet wall (deleted). flights/hotels keep
+              their own Collapsible (Block A) above. The bar renders even with no
+              seeded controls (Sort still applies); tabs needing a new dimension get
+              it seeded as a selection control, not as a facet. */}
           {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
-            <div className="mb-6">
-              <TemplateFiltersPanel
-                experienceTypeId={experienceType.id}
-                activeTab={activeTab}
-                selectedFilters={templateFilters.selectedFilters}
-                onFilterChange={templateFilters.onFilterChange}
-                onClearFilters={templateFilters.onClearFilters}
-              />
-            </div>
+            <CompactFilterBar
+              controls={activeTabControlConfig?.selectionControls ?? []}
+              selected={selectionState}
+              onToggle={handleSelectionToggle}
+              onClear={handleSelectionClear}
+              sortValue={sortBy}
+              onSortChange={setSortBy}
+            />
           )}
 
           {/* P5: tabType-registry driven — any tab with tabType "flights" renders FlightSearch */}
@@ -2552,10 +2370,6 @@ export default function ExperienceTemplatePage() {
                 }}
               />
             </div>
-          )}
-
-          {currentTabType === "flights" && destination && (
-            <TravelpayoutsNomad destination={destination} />
           )}
 
           {currentTabType === "flights" && destination && (
@@ -2630,7 +2444,6 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
-              {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
           )}
 
@@ -3269,7 +3082,7 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   setWeddingMode("planning");
-                  setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
+                  setActiveTab(dbTabsToConfig(dbTabs, slug)[0]?.id ?? "venues");
                 }}
                 className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
               >
@@ -3281,7 +3094,7 @@ export default function ExperienceTemplatePage() {
                 onClick={() => {
                   setWeddingMode("guest");
                   const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
-                  const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                  const firstGuest = dbTabsToConfig(dbTabs, slug).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
                   setActiveTab(firstGuest?.id ?? "activities");
                 }}
                 className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}

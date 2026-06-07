@@ -118,8 +118,8 @@ function MapContent({
                   className="px-1.5 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap shadow-md border"
                   style={{
                     backgroundColor: "hsl(var(--card))",
-                    borderColor: style.strokeColor,
-                    color: style.strokeColor,
+                    borderColor: style.strokeColor ?? undefined,
+                    color: style.strokeColor ?? undefined,
                   }}
                   data-testid={`map-route-duration-${tr.id}`}
                 >

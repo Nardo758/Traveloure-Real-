@@ -10,7 +10,6 @@ import {
   wallets,
   expertServiceCategories,
   expertServiceOfferings,
-  expertSelectedServices,
   expertSpecializations,
   influencerCuratedContent,
   trips,

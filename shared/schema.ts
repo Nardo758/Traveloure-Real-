@@ -461,6 +461,15 @@ export const serviceCategories = pgTable("service_categories", {
   priceRange: jsonb("price_range").default({}),
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
+  // Master Integration Brief — Phase 1: billing-aware attributes per SEED_DATA §2.
+  // All nullable; populated by Phase 1.2 reconciliation pass (see audit doc).
+  sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
+  launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
+  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
+  insuranceBand: integer("insurance_band"),                                 // 1 | 2 | 3 (platform_provider only)
+  riskProfile: varchar("risk_profile", { length: 20 }),                     // 'low' | 'moderate' | 'high'
+  requiresBackgroundCheck: boolean("requires_background_check").default(false),
+  affiliatePartnerKey: varchar("affiliate_partner_key", { length: 50 }),    // populated only when sourceType='affiliate'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -605,6 +614,31 @@ export const customVenues = pgTable("custom_venues", {
   imageUrl: text("image_url"),
   source: varchar("source", { length: 20 }).default("custom"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Activity Bookings (Viator/external provider bookings) ===
+// NOTE: This table exists in production with real user booking data (including live
+// Stripe PaymentIntents). Kept in schema so Drizzle does not propose DROP TABLE.
+// The one real prod booking (Segway Paris, user 79cdafd1) must not be lost.
+// Future work: migrate real rows to service_bookings and remove this table.
+
+export const activityBookings = pgTable("activity_bookings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  productCode: varchar("product_code", { length: 255 }),
+  productTitle: text("product_title").notNull(),
+  imageUrl: text("image_url"),
+  priceAmount: decimal("price_amount").notNull(),
+  priceCurrency: varchar("price_currency", { length: 10 }).default("USD").notNull(),
+  bookingUrl: text("booking_url"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  productOptionCode: varchar("product_option_code", { length: 100 }),
+  providerBookingRef: varchar("provider_booking_ref", { length: 100 }),
+  travelDate: varchar("travel_date", { length: 20 }),
+  travelerCount: integer("traveler_count").default(1),
 });
 
 // === Service Bookings ===
@@ -1054,15 +1088,6 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   // All ESO rows are platform templates; expert-owned services live in provider_services.
 });
 
-// Link experts to their selected service offerings
-export const expertSelectedServices = pgTable("expert_selected_services", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  serviceOfferingId: varchar("service_offering_id").notNull().references(() => expertServiceOfferings.id, { onDelete: "cascade" }),
-  customPrice: decimal("custom_price", { precision: 10, scale: 2 }), // Allow experts to set custom pricing
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
 
 // Expert specializations (Budget, Luxury, Adventure, etc.)
 export const expertSpecializationEnum = [
@@ -1079,10 +1104,39 @@ export const expertSpecializations = pgTable("expert_specializations", {
 });
 
 // === Expert Custom Services (user-submitted offerings) ===
-// NOTE: The expert_custom_services DB table was dropped in migration 013.
-// Storage methods now proxy to provider_services. The type and schema are
-// defined manually so downstream code compiles without a live pgTable.
+// NOTE: The expert_custom_services DB table exists in production and holds data
+// that was NOT migrated by migration 012 before prod was deployed. The pgTable
+// definition is kept here so Drizzle does not propose DROP TABLE on publish.
+// Once migration 012 is confirmed to have run on prod and data is in
+// provider_services, this table definition can be removed in a future migration.
 export const expertCustomServicesStatusEnum = ["draft", "submitted", "approved", "rejected"] as const;
+
+export const expertCustomServices = pgTable("expert_custom_services", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  categoryName: varchar("category_name", { length: 100 }),
+  existingCategoryId: varchar("existing_category_id"),
+  price: decimal("price").notNull(),
+  duration: varchar("duration", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }),
+  imageUrl: text("image_url"),
+  galleryImages: jsonb("gallery_images").default([]),
+  experienceTypes: jsonb("experience_types").default([]),
+  status: varchar("status", { length: 20 }).default("draft"),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by"),
+  rejectionReason: text("rejection_reason"),
+  isActive: boolean("is_active").default(true),
+  bookingsCount: integer("bookings_count").default(0),
+  averageRating: decimal("average_rating").default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 // === Influencer Referral Tracking ===
 export const influencerReferralStatusEnum = ["pending", "converted", "paid", "expired"] as const;
@@ -1314,15 +1368,12 @@ export type InsertExpertExperienceType = z.infer<typeof insertExpertExperienceTy
 // Expert Service Categories & Offerings schemas and types
 export const insertExpertServiceCategorySchema = createInsertSchema(expertServiceCategories).omit({ id: true, createdAt: true });
 export const insertExpertServiceOfferingSchema = createInsertSchema(expertServiceOfferings).omit({ id: true, createdAt: true });
-export const insertExpertSelectedServiceSchema = createInsertSchema(expertSelectedServices).omit({ id: true, createdAt: true });
 export const insertExpertSpecializationSchema = createInsertSchema(expertSpecializations).omit({ id: true, createdAt: true });
 
 export type ExpertServiceCategory = typeof expertServiceCategories.$inferSelect;
 export type InsertExpertServiceCategory = z.infer<typeof insertExpertServiceCategorySchema>;
 export type ExpertServiceOffering = typeof expertServiceOfferings.$inferSelect;
 export type InsertExpertServiceOffering = z.infer<typeof insertExpertServiceOfferingSchema>;
-export type ExpertSelectedService = typeof expertSelectedServices.$inferSelect;
-export type InsertExpertSelectedService = z.infer<typeof insertExpertSelectedServiceSchema>;
 export type ExpertSpecialization = typeof expertSpecializations.$inferSelect;
 export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializationSchema>;
 
@@ -4001,6 +4052,19 @@ export type InsertProviderEarning = z.infer<typeof insertProviderEarningSchema>;
 export type ProviderPayout = typeof providerPayouts.$inferSelect;
 export type InsertProviderPayout = z.infer<typeof insertProviderPayoutSchema>;
 
+// === Platform Settings (key-value config store) ===
+// NOTE: This table exists in production with 13 rows of live configuration
+// (commission rate ranges, feature flags, support_email, timezone, etc.).
+// Kept in schema so Drizzle does not propose DROP TABLE on publish.
+// No code currently reads this table — config was migrated to per-feature
+// columns/tables — but the rows must be preserved until explicitly deprecated.
+
+export const platformSettings = pgTable("platform_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // === Platform Revenue Tracking ===
 
 // Revenue source types for platform earnings
@@ -5523,6 +5587,54 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
 export type BookingFeeConfig = typeof bookingFeeConfigs.$inferSelect;
 export const insertBookingFeeConfigSchema = createInsertSchema(bookingFeeConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema>;
+
+// ─── Master Integration Brief — Phase 1 (taxonomy + fee_bands) ───────────────
+// fee_bands: single source of truth for rates. Replaces booking_fee_configs.
+// Percent bands store decimals (0.25 = 25 %). Flat bands store USD (49.99 = $49.99).
+export const feeBands = pgTable("fee_bands", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
+  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat'
+  defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
+  minRate: decimal("min_rate", { precision: 10, scale: 4 }),
+  maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
+  displayName: text("display_name"),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type FeeBand = typeof feeBands.$inferSelect;
+export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
+
+// platform_settings: key/value rows for cross-cutting flags.
+// First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
+export const platformSettingsTable = pgTable("platform_settings", {
+  settingKey: varchar("setting_key", { length: 100 }).primaryKey(),
+  settingValue: text("setting_value").notNull(),
+  description: text("description"),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type PlatformSetting = typeof platformSettingsTable.$inferSelect;
+export const insertPlatformSettingSchema = createInsertSchema(platformSettingsTable).omit({ updatedAt: true });
+export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
+
+// template_category_matrix per SEED_DATA §3.
+// (templateKey, categoryKey) composite PK; strength = 'REQ' | 'REC' | 'OPT'.
+export const templateCategoryMatrix = pgTable("template_category_matrix", {
+  templateKey: varchar("template_key", { length: 50 }).notNull(),
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  strength: varchar("strength", { length: 3 }).notNull(), // 'REQ' | 'REC' | 'OPT'
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  pk: { name: "template_category_matrix_pk", columns: [table.templateKey, table.categoryKey] },
+}));
+export type TemplateCategoryMatrixRow = typeof templateCategoryMatrix.$inferSelect;
+export const insertTemplateCategoryMatrixSchema = createInsertSchema(templateCategoryMatrix).omit({ createdAt: true });
+export type InsertTemplateCategoryMatrixRow = z.infer<typeof insertTemplateCategoryMatrixSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {

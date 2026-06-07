@@ -19,7 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNotNull } from "drizzle-orm";
 import { createTransportBookingCheckout } from "../services/stripe.service";
-import { populateBookingOptionsForVariant } from "../services/transport-booking-options.service";
+import { populateBookingOptionsForVariant, populateBookingOptionsForLeg } from "../services/transport-booking-options.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
@@ -207,6 +207,52 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     res.status(500).json({ error: "Failed to fetch transport hub" });
   }
 });
+
+/**
+ * GET /api/transport-legs/:legId/options
+ *
+ * Returns booking options for a single transport leg.
+ * If no options exist yet (newly created leg), populates them on the fly
+ * from the live resolvers (platform + affiliate) then returns the result.
+ * Revenue metadata (revenueType, revenueRate) is appended at read time from
+ * booking_fee_configs so the UI can display accurate commission information.
+ */
+router.get(
+  "/api/transport-legs/:legId/options",
+  isAuthenticated,
+  async (req, res) => {
+    try {
+      const { legId } = req.params;
+
+      const leg = await db.query.transportLegs.findFirst({
+        where: eq(transportLegs.id, legId),
+      });
+      if (!leg) return res.status(404).json({ error: "Transport leg not found" });
+
+      let options = await db
+        .select()
+        .from(transportBookingOptions)
+        .where(eq(transportBookingOptions.transportLegId, legId))
+        .orderBy(transportBookingOptions.sortOrder);
+
+      // If no options exist, populate them now (lazy / on-demand)
+      if (options.length === 0) {
+        const destination = (leg.destinationProfile as string | null) || leg.toName.split(",")[0];
+        await populateBookingOptionsForLeg(legId, destination, 1);
+        options = await db
+          .select()
+          .from(transportBookingOptions)
+          .where(eq(transportBookingOptions.transportLegId, legId))
+          .orderBy(transportBookingOptions.sortOrder);
+      }
+
+      res.json({ legId, options });
+    } catch (err) {
+      console.error("[transport-legs/:legId/options]", err);
+      res.status(500).json({ error: "Failed to load booking options" });
+    }
+  }
+);
 
 /**
  * POST /api/transport-booking-options/:optionId/book
