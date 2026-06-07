@@ -13,6 +13,9 @@ import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
+import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
+import { seedTripOwnership } from "./seeds/trip-ownership.seed";
+import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -231,6 +234,24 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
   }
 
+  try {
+    const roleTplResult = await seedRoleScopedTemplates();
+    if (roleTplResult.inserted > 0) {
+      logger.info({ count: roleTplResult.inserted }, "Seeded role-scoped expert service templates");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed role-scoped templates");
+  }
+
+  try {
+    const ownershipResult = await seedTripOwnership();
+    if (ownershipResult.inserted > 0) {
+      logger.info({ count: ownershipResult.inserted }, "Seeded trip owner collaborator rows");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed trip ownership collaborators");
+  }
+
   seedingDurationMs = Date.now() - seedingStartTime;
   seedingComplete = true;
   logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
@@ -292,10 +313,23 @@ async function runDatabaseSeeding() {
           .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
       }).catch(() => {});
 
-      // Run database seeding in background AFTER server is listening
-      runDatabaseSeeding().catch(err => {
-        logger.error({ err }, "Background seeding failed");
-      });
+      // Run database seeding in background AFTER server is listening,
+      // then fire-and-forget gem photo backfill so no gems are left without images
+      runDatabaseSeeding()
+        .then(() => {
+          grokDiscoveryService.backfillGemPhotos()
+            .then(({ processed, updated, failed }) => {
+              if (processed > 0) {
+                logger.info({ processed, updated, failed }, "Gem photo backfill complete");
+              }
+            })
+            .catch(err => {
+              logger.error({ err }, "Gem photo backfill failed");
+            });
+        })
+        .catch(err => {
+          logger.error({ err }, "Background seeding failed");
+        });
     },
   );
 })();
