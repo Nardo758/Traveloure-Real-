@@ -463,6 +463,11 @@ export const serviceCategories = pgTable("service_categories", {
   sortOrder: integer("sort_order").default(0),
   // Master Integration Brief — Phase 1: billing-aware attributes per SEED_DATA §2.
   // All nullable; populated by Phase 1.2 reconciliation pass (see audit doc).
+  // categoryKey is the brief's stable join key — distinct from the legacy slug,
+  // so existing FKs and string-literal references stay valid. Brief integrations
+  // (service_offering_types, template_category_matrix, neighborhood_coverage_target,
+  // fee resolver) join on categoryKey, never on the legacy slug.
+  categoryKey: varchar("category_key", { length: 100 }),                    // brief's join key; unique when non-null
   sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
   launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
   commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
