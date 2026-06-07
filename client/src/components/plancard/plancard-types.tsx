@@ -72,8 +72,9 @@ export function getTemplateConfig(eventType: string | null | undefined): Templat
   return TEMPLATES.travel;
 }
 
-export function getDestinationPhotoUrl(destination: string): string {
-  const seed = destination
+export function getDestinationPhotoUrl(destination: string | undefined | null): string {
+  const safe = destination || "travel";
+  const seed = safe
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
@@ -125,6 +126,24 @@ export interface PlanCardTransport {
   suggestedBy?: string;
   partnerName?: string;
   bookingSource?: "platform" | "affiliate";
+  // Per-leg mode-selection fields (feed the TransportConnector picker)
+  legOrder?: number;
+  recommendedMode?: string;
+  userSelectedMode?: string | null;
+  alternativeModes?: Array<{
+    mode: string;
+    durationMinutes: number;
+    costUsd: number | null;
+    energyCost?: number;
+    reason?: string;
+  }>;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+  distanceDisplay?: string;
+  estimatedDurationMinutes?: number;
+  estimatedCostUsd?: number | null;
 }
 
 export interface PlanCardDay {
@@ -174,6 +193,7 @@ export interface OptimizationDelta {
 }
 
 export interface PlanCardData {
+  tripRole?: PlanCardRole;
   days: PlanCardDay[];
   changeLog: PlanCardChange[];
   metrics: PlanCardMetrics;
@@ -193,7 +213,7 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
-export type PlanCardRole = "owner" | "expert" | "viewer";
+export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
 export type PlanCardStage = "summary" | "full";
 
 export interface PlanCardProps {
