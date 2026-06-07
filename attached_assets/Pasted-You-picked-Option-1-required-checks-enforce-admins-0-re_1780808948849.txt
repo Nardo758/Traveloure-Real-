@@ -1,0 +1,46 @@
+You picked **Option 1 — required checks + `enforce_admins`, 0 reviews**. Right call for a solo maintainer. Let me check whether `gh` happens to be available in this shell (if so I'll apply it directly; the environment says it isn't, but it's worth a cheap verification):
+
+Confirmed: no `gh`, no token, and there's no branch-protection MCP tool — so I can't apply step 2 from here. Here's the full status and the one command you need to run.
+
+## Status of all 5
+
+| # | Step | Status |
+|---|------|--------|
+| 1 | Merge #34 | ✅ **Done** — squashed to main (`5fe0e4f`); also repairs the gate |
+| 2 | Branch protection | ⏳ **Command ready** (below) — I can't run it (no `gh`/token/MCP tool) |
+| 3 | Publish main | ⏳ **Yours** — Replit Publish; I can't trigger a deploy |
+| 4 | `workflow_dispatch` e2e | ⏳ **Yours** — 403 for this integration; I'll verify the flip |
+| 5 | Gate history check | ✅ **Clean** — #31's dup was the last; my fix removed it |
+
+## Step 2 — run this on the now-repaired main (Option 1: checks + `enforce_admins`, 0 reviews)
+
+```bash
+gh api --method PUT repos/Nardo758/Traveloure-Real-/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": false,
+    "contexts": [
+      "build (vite + esbuild bundle)",
+      "verify-selection-controls (logic gate)",
+      "lockfile-purity (no replit.local)"
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+JSON
+```
+
+Verify it took:
+```bash
+gh api repos/Nardo758/Traveloure-Real-/branches/main/protection \
+  --jq '{checks:.required_status_checks.contexts, admins:.enforce_admins.enabled, reviews:.required_pull_request_reviews}'
+```
+Expect the 3 contexts, `admins: true`, `reviews: null`. Note `strict:false` — I left "require up-to-date before merge" off because main moves fast with parallel sessions; flip it to `true` later if you want to force rebases. If any context name doesn't match exactly, GitHub's "Status checks" search box (Settings → Branches) autocompletes the real names.
+
+## Steps 3 & 4 — sequence
+1. **Publish** from Replit so the deploy is current.
+2. Then **Run workflow** on *Selection Controls Gate* (Actions tab → Run workflow → `main`) — that re-runs `e2e-selection-controls` against the live deploy. (It'll also run on the next push to main.)
+
+#34 is merged, so its PR subscription is terminal and the post-publish e2e runs on **main**, not a PR — so it won't auto-wake me. **Ping me once you've published + kicked the e2e** (or just say "check it") and I'll confirm `e2e-selection-controls` flips green and that all four gate jobs are passing on the live deploy. That closes out the list.
