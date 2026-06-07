@@ -10,7 +10,7 @@
 //       facet wall.
 // The remaining (UI-wiring) half of the Phase 3 gate is verified in Replit.
 
-import { filterServices, type FilterableService, type ServiceFilterCriteria } from "../shared/service-filter";
+import { filterServices, sortServices, type FilterableService, type ServiceFilterCriteria } from "../shared/service-filter";
 import { resolveSelectionsToFilterQuery, type SelectionOption } from "../shared/selection-controls";
 import { SELECTION_CONTROL_SEED } from "../shared/selection-control-seed";
 
@@ -99,6 +99,35 @@ const premium = SELECTION_CONTROL_SEED.travel.activities[0].options.find((o) => 
 const prem = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([premium])));
 check("budget $150+ honors 0–500 sentinel (keeps high-priced; drops $80)",
   prem.length === 3 && !prem.some((r) => r.serviceName.startsWith("Tokyo Street Food")));
+
+// --- Sort behavior (the new non-flight/hotel Sort dropdown is wired to this) --
+// The dropdown emits "price-low"/"price-high"/"rating"/"popular"; sortServices
+// must actually reorder for the first three and no-op on the default. Without
+// this, a value-string drift (e.g. price-asc vs price-low) silently dead-wires
+// the control — the wired-but-dead pattern the reconcile just removed.
+const priceLow = sortServices(TRAVEL, "price-low").map((s) => Number(s.price));
+check("sort price-low → ascending price",
+  eq(priceLow, [...priceLow].sort((a, b) => a - b)) && priceLow[0] === 80,
+  JSON.stringify(priceLow));
+
+const priceHigh = sortServices(TRAVEL, "price-high").map((s) => Number(s.price));
+check("sort price-high → descending price",
+  eq(priceHigh, [...priceHigh].sort((a, b) => b - a)) && priceHigh[0] === 2499,
+  JSON.stringify(priceHigh));
+
+const byRating = sortServices(TRAVEL, "rating").map((s) => Number(s.averageRating));
+check("sort rating → highest-rated first (non-increasing)",
+  byRating.every((r, i) => i === 0 || r <= byRating[i - 1]) && byRating[0] === 4.9,
+  JSON.stringify(byRating));
+
+check("sort popular/unknown → no-op (preserves input order)",
+  eq(sortServices(TRAVEL, "popular"), TRAVEL) && eq(sortServices(TRAVEL, "bogus"), TRAVEL));
+
+check("sortServices returns a copy (does not mutate input)", (() => {
+  const before = TRAVEL.map((s) => s.serviceName);
+  sortServices(TRAVEL, "price-low");
+  return eq(TRAVEL.map((s) => s.serviceName), before);
+})());
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) throw new Error(`${fail} selection-control verification(s) failed`);
