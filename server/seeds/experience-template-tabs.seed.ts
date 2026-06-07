@@ -175,6 +175,73 @@ async function seedUniversalFilters(experienceTypeId: string, filters: Universal
 // ============ BACHELOR/BACHELORETTE PARTY TEMPLATE ============
 const bachelorTabs: TabDef[] = [
   {
+    name: "Group Details",
+    slug: "group_details",
+    description: "Group size, attendees, budget split, payment coordination (foundation of group trip)",
+    icon: "Users",
+    filters: [
+      {
+        name: "Group Size",
+        slug: "group_size",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "4-8 people", value: "4-8" },
+          { label: "8-12 people", value: "8-12" },
+          { label: "12-20 people", value: "12-20" },
+          { label: "20+ people", value: "20+" },
+        ]
+      },
+      {
+        name: "RSVP & Attendee Tracking",
+        slug: "rsvp_tracking",
+        filterType: "single_select",
+        icon: "CheckCircle",
+        options: [
+          { label: "RSVPs Collected", value: "rsvps_collected" },
+          { label: "Final Count Locked", value: "final_count" },
+          { label: "Waitlist Managed", value: "waitlist" },
+        ]
+      },
+      {
+        name: "Per-Person Budget",
+        slug: "per_person_budget",
+        filterType: "single_select",
+        icon: "DollarSign",
+        options: [
+          { label: "$300-600", value: "300-600", minValue: 300, maxValue: 600 },
+          { label: "$600-1000", value: "600-1000", minValue: 600, maxValue: 1000 },
+          { label: "$1000-2000", value: "1000-2000", minValue: 1000, maxValue: 2000 },
+          { label: "$2000+", value: "2000+", minValue: 2000 },
+        ]
+      },
+      {
+        name: "Payment & Cost-Split Method",
+        slug: "cost_split_method",
+        filterType: "single_select",
+        icon: "CreditCard",
+        options: [
+          { label: "Venmo/Split (Peer-to-Peer)", value: "peer_to_peer" },
+          { label: "Organizer Collects & Settles", value: "organizer_collects" },
+          { label: "Payment App (Splitwise/etc)", value: "payment_app" },
+          { label: "Group Payment Link", value: "group_link" },
+        ]
+      },
+      {
+        name: "Deposit Schedule",
+        slug: "deposit_schedule",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Full Payment Upfront", value: "full_upfront" },
+          { label: "50% Deposit Now, 50% Later", value: "split_50_50" },
+          { label: "Monthly Installments", value: "installments" },
+          { label: "Final Payment Before Event", value: "final_only" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Destinations",
     slug: "destinations",
     description: "Travel feasibility assessment & airport logistics",
@@ -2065,9 +2132,74 @@ const travelUniversalFilters: UniversalFilterDef[] = [
 // ============ WEDDING TEMPLATE ============
 const weddingTabs: TabDef[] = [
   {
+    name: "Ceremony",
+    slug: "ceremony",
+    description: "Ceremony venue, officiant, date anchor, and vendor timing sequencing",
+    icon: "Church",
+    filters: [
+      {
+        name: "Ceremony Type",
+        slug: "ceremony_type",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Religious", value: "religious" },
+          { label: "Civil/Registry", value: "civil" },
+          { label: "Non-Denominational", value: "nondenominational" },
+          { label: "Outdoor/Private", value: "outdoor_private" },
+        ]
+      },
+      {
+        name: "Ceremony Date (Immovable Anchor)",
+        slug: "ceremony_date",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Date Set", value: "set" },
+          { label: "Date TBD (Plan Accordingly)", value: "tbd" },
+        ]
+      },
+      {
+        name: "Marriage License Lead Time",
+        slug: "license_lead_time",
+        filterType: "single_select",
+        icon: "FileText",
+        options: [
+          { label: "< 7 days", value: "under_7" },
+          { label: "7-30 days", value: "7_30" },
+          { label: "30-60 days", value: "30_60" },
+          { label: "60+ days (International)", value: "60_plus" },
+        ]
+      },
+      {
+        name: "Officiant",
+        slug: "officiant",
+        filterType: "multi_select",
+        icon: "User",
+        options: [
+          { label: "Religious Leader", value: "religious_leader" },
+          { label: "Civil Registrar", value: "civil_registrar" },
+          { label: "Friend/Family (Legal)", value: "friend_family" },
+        ]
+      },
+      {
+        name: "Vendor Sequencing Awareness",
+        slug: "vendor_sequencing",
+        filterType: "multi_select",
+        icon: "CheckCircle",
+        options: [
+          { label: "Hair/Makeup (must finish before ceremony)", value: "hair_makeup_timing" },
+          { label: "Photographer (pre-ceremony positioning)", value: "photo_pre_ceremony" },
+          { label: "Florist (bouquets, aisle setup)", value: "florist_timing" },
+          { label: "Music (processional timing)", value: "music_timing" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Venues",
     slug: "venues",
-    description: "Wedding ceremony and reception venue selection",
+    description: "Reception venue selection (ceremony is separate anchor above)",
     icon: "Building2",
     filters: [
       {
@@ -2268,6 +2400,50 @@ const weddingTabs: TabDef[] = [
       },
     ]
   },
+  {
+    name: "Contingency & Risk",
+    slug: "contingency_risk",
+    description: "Weather backup plans, vendor cancellation protocols, emergency contacts (richer anchoring)",
+    icon: "AlertCircle",
+    filters: [
+      {
+        name: "Weather Backup Plan",
+        slug: "weather_backup",
+        filterType: "multi_select",
+        icon: "Cloud",
+        options: [
+          { label: "Indoor Alternative Space Available", value: "indoor_backup" },
+          { label: "Tent/Cover Rental (Outdoor)", value: "tent_backup" },
+          { label: "Date Postponement Plan", value: "date_postponement" },
+          { label: "Weather Insurance", value: "weather_insurance" },
+        ]
+      },
+      {
+        name: "Vendor Cancellation Protocol",
+        slug: "vendor_cancellation",
+        filterType: "multi_select",
+        icon: "AlertTriangle",
+        options: [
+          { label: "Backup Photographer", value: "backup_photo" },
+          { label: "Backup Caterer", value: "backup_catering" },
+          { label: "Backup Florist", value: "backup_floral" },
+          { label: "Backup DJ/Musicians", value: "backup_music" },
+        ]
+      },
+      {
+        name: "Key Contingencies",
+        slug: "key_contingencies",
+        filterType: "multi_select",
+        icon: "CheckCircle",
+        options: [
+          { label: "Officiant Backup (Second Officiant Name/Contact)", value: "officiant_backup" },
+          { label: "Transportation Backup (If Vendor No-Show)", value: "transport_backup" },
+          { label: "Accommodation Overflow Plan", value: "accommodation_backup" },
+          { label: "Emergency Day-Of Coordinator Contact", value: "coordinator_backup" },
+        ]
+      },
+    ]
+  },
 ];
 
 // ============ DATE NIGHT TEMPLATE ============
@@ -2409,6 +2585,60 @@ const dateNightTabs: TabDef[] = [
 
 // ============ BIRTHDAY TEMPLATE ============
 const birthdayTabs: TabDef[] = [
+  {
+    name: "Birthday Person",
+    slug: "birthday_person",
+    description: "Birthday celebrant availability, preferences, and constraints",
+    icon: "User",
+    filters: [
+      {
+        name: "Preferred Date/Time",
+        slug: "preferred_date",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Exact Date (Immovable)", value: "exact_date" },
+          { label: "Weekend Flexible", value: "weekend_flexible" },
+          { label: "Evening Only", value: "evening_only" },
+        ]
+      },
+      {
+        name: "Mobility/Accessibility Needs",
+        slug: "accessibility",
+        filterType: "multi_select",
+        icon: "Wheelchair",
+        options: [
+          { label: "Wheelchair Accessible", value: "wheelchair" },
+          { label: "Parking Near Venue", value: "parking" },
+          { label: "Limited Standing Time", value: "limited_standing" },
+          { label: "Dietary Restrictions", value: "dietary" },
+        ]
+      },
+      {
+        name: "Party Preferences",
+        slug: "preferences",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "No Surprises (Prefers Planning Input)", value: "no_surprise" },
+          { label: "Surprise Allowed", value: "surprise_ok" },
+          { label: "Small Gathering Preferred", value: "small" },
+          { label: "Large Celebration Preferred", value: "large" },
+        ]
+      },
+      {
+        name: "Activity Comfort Level",
+        slug: "activity_comfort",
+        filterType: "single_select",
+        icon: "Zap",
+        options: [
+          { label: "Low-Key/Relaxed", value: "lowkey" },
+          { label: "Active/High Energy", value: "active" },
+          { label: "Games/Entertainment Heavy", value: "entertainment" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
@@ -2554,6 +2784,116 @@ const birthdayTabs: TabDef[] = [
 
 // ============ CORPORATE EVENTS TEMPLATE ============
 const corporateTabs: TabDef[] = [
+  {
+    name: "Approval & Budget",
+    slug: "approval_budget",
+    description: "Budget approval, PO/invoicing, multi-stakeholder sign-off (corporate non-negotiable)",
+    icon: "DollarSign",
+    filters: [
+      {
+        name: "Approval Status",
+        slug: "approval_status",
+        filterType: "single_select",
+        icon: "CheckCircle",
+        options: [
+          { label: "Budget Pre-Approved", value: "pre_approved" },
+          { label: "Approval Pending", value: "pending" },
+          { label: "Requires C-Suite Sign-Off", value: "executive" },
+        ]
+      },
+      {
+        name: "Budget Type",
+        slug: "budget_type",
+        filterType: "single_select",
+        icon: "DollarSign",
+        options: [
+          { label: "Fixed Budget", value: "fixed" },
+          { label: "Flexible Budget", value: "flexible" },
+          { label: "Cost-Plus", value: "cost_plus" },
+        ]
+      },
+      {
+        name: "PO/Invoicing Requirements",
+        slug: "po_invoicing",
+        filterType: "multi_select",
+        icon: "FileText",
+        options: [
+          { label: "PO Required Before Booking", value: "po_required" },
+          { label: "Invoice Upon Confirmation", value: "invoice_confirmation" },
+          { label: "Payment Terms (Net 30/60)", value: "net_terms" },
+          { label: "Tax ID/Vendor Registration", value: "vendor_registration" },
+        ]
+      },
+      {
+        name: "Stakeholder Approvals",
+        slug: "stakeholders",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Finance/Accounting", value: "finance" },
+          { label: "Department Head", value: "dept_head" },
+          { label: "Executive Team", value: "executive" },
+          { label: "HR/Compliance", value: "hr_compliance" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Agenda & Schedule",
+    slug: "agenda_schedule",
+    description: "Session schedule, timing anchors, A/V requirements (the hard anchor)",
+    icon: "Clock",
+    filters: [
+      {
+        name: "Schedule Type",
+        slug: "schedule_type",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Keynote + Sessions (Full Day)", value: "full_day" },
+          { label: "Half-Day Workshop", value: "half_day" },
+          { label: "Multi-Day Conference", value: "multi_day" },
+        ]
+      },
+      {
+        name: "Session Timing Anchor",
+        slug: "session_anchor",
+        filterType: "multi_select",
+        icon: "Zap",
+        options: [
+          { label: "Opening Keynote (Hard Time)", value: "keynote_anchor" },
+          { label: "Breakout Sessions (Flexible)", value: "breakout" },
+          { label: "Lunch (Fixed Time)", value: "lunch_anchor" },
+          { label: "Closing Session (Hard Time)", value: "closing_anchor" },
+        ]
+      },
+      {
+        name: "AV/Tech Requirements (Non-Negotiable)",
+        slug: "av_requirements",
+        filterType: "multi_select",
+        icon: "Monitor",
+        options: [
+          { label: "Projector + Screen Required", value: "projector_required" },
+          { label: "Livestream/Hybrid Capable", value: "livestream_required" },
+          { label: "Video Conferencing Room Setup", value: "videoconf_required" },
+          { label: "Stage/PA System", value: "stage_pa_required" },
+          { label: "Tech Support On-Site", value: "tech_support_required" },
+        ]
+      },
+      {
+        name: "Break Structure",
+        slug: "breaks",
+        filterType: "multi_select",
+        icon: "Coffee",
+        options: [
+          { label: "Coffee Breaks (2x daily)", value: "coffee_breaks" },
+          { label: "Lunch (1-1.5 hr)", value: "lunch_break" },
+          { label: "Afternoon Break", value: "afternoon_break" },
+          { label: "Networking Time", value: "networking_time" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
@@ -2717,6 +3057,59 @@ const corporateTabs: TabDef[] = [
           { label: "Mid-Range", value: "midrange" },
           { label: "Upscale", value: "upscale" },
           { label: "Luxury", value: "luxury" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Contingency & Failsafe",
+    slug: "contingency_failsafe",
+    description: "Speaker no-show protocol, A/V failure backup, overflow capacity, approval chain backup",
+    icon: "AlertCircle",
+    filters: [
+      {
+        name: "Speaker/Presenter Backup",
+        slug: "speaker_backup",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Backup Speaker Identified", value: "backup_speaker" },
+          { label: "Pre-Recorded Session Available", value: "prerecorded" },
+          { label: "Internal Replacement Plan", value: "internal_replacement" },
+        ]
+      },
+      {
+        name: "AV/Tech Failure Backup",
+        slug: "av_backup",
+        filterType: "multi_select",
+        icon: "Zap",
+        options: [
+          { label: "Backup Projector/Screen", value: "backup_projector" },
+          { label: "Backup Internet/WiFi", value: "backup_internet" },
+          { label: "Backup Video Conferencing Capability", value: "backup_videoconf" },
+          { label: "On-Site Tech Support Team", value: "onsite_tech" },
+        ]
+      },
+      {
+        name: "Capacity & Overflow",
+        slug: "capacity_overflow",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Overflow Breakout Room", value: "overflow_room" },
+          { label: "Livestream to Remote", value: "livestream_remote" },
+          { label: "Virtual Attendance Option", value: "virtual_option" },
+        ]
+      },
+      {
+        name: "Approval Chain Backup",
+        slug: "approval_backup",
+        filterType: "multi_select",
+        icon: "FileText",
+        options: [
+          { label: "Secondary Approver Identified", value: "secondary_approver" },
+          { label: "Pre-Authorization Limits Set", value: "preauth_limits" },
+          { label: "Emergency Spending Authority", value: "emergency_authority" },
         ]
       },
     ]
@@ -2931,6 +3324,62 @@ const standardUniversalFilters: UniversalFilterDef[] = [
 // ============ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ============
 const weddingAnniversariesTabs: TabDef[] = [
   {
+    name: "Anniversary Date",
+    slug: "anniversary_date",
+    description: "Anniversary date and milestone (immovable anchor - sentimental)",
+    icon: "Heart",
+    filters: [
+      {
+        name: "Anniversary Milestone",
+        slug: "milestone",
+        filterType: "single_select",
+        icon: "Heart",
+        options: [
+          { label: "1st Anniversary (Paper)", value: "1st" },
+          { label: "5th Anniversary (Wood)", value: "5th" },
+          { label: "10th Anniversary (Tin)", value: "10th" },
+          { label: "25th Anniversary (Silver)", value: "25th" },
+          { label: "50th Anniversary (Gold)", value: "50th" },
+          { label: "Other Milestone", value: "other" },
+        ]
+      },
+      {
+        name: "Celebration Date",
+        slug: "celebration_date",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Exact Anniversary Date (Immovable)", value: "exact_date" },
+          { label: "Weekend Near Anniversary", value: "weekend_near" },
+          { label: "Flexible Timing", value: "flexible" },
+        ]
+      },
+      {
+        name: "Couple's Celebration Style",
+        slug: "celebration_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Intimate (Just the Couple)", value: "intimate" },
+          { label: "Small Gathering (Family/Close Friends)", value: "small" },
+          { label: "Larger Celebration (Extended Friends)", value: "large" },
+        ]
+      },
+      {
+        name: "Celebration Focus",
+        slug: "celebration_focus",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Romantic Dinner", value: "romantic_dinner" },
+          { label: "Renewal of Vows", value: "vows_renewal" },
+          { label: "Trip/Getaway", value: "trip" },
+          { label: "Party with Loved Ones", value: "party" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Venues",
     slug: "venues",
     description: "Anniversary celebration venues",
@@ -3002,6 +3451,58 @@ const weddingAnniversariesTabs: TabDef[] = [
 // ============ PROPOSAL TEMPLATE ============
 const proposalTabs: TabDef[] = [
   {
+    name: "Plan Secrecy",
+    slug: "plan_secrecy",
+    description: "Enforce secrecy: hide the plan from your partner (THE defining requirement)",
+    icon: "Lock",
+    filters: [
+      {
+        name: "Plan Visibility",
+        slug: "plan_visibility",
+        filterType: "single_select",
+        icon: "Eye",
+        options: [
+          { label: "Hidden from Partner (Secret)", value: "hidden" },
+          { label: "Collaborator Access Only", value: "collaborators_only" },
+        ]
+      },
+      {
+        name: "Collaborators (People who can see the plan)",
+        slug: "collaborators",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Best Friend", value: "best_friend" },
+          { label: "Wedding Planner/Coordinator", value: "coordinator" },
+          { label: "Family Member", value: "family" },
+          { label: "Proposal Specialist", value: "specialist" },
+        ]
+      },
+      {
+        name: "Hidden Photographer Coordination",
+        slug: "hidden_photographer",
+        filterType: "single_select",
+        icon: "Camera",
+        options: [
+          { label: "Photographer positioned secretly", value: "secret_positioning" },
+          { label: "Photographer briefed on timing", value: "briefed" },
+          { label: "Photographer hidden from partner", value: "hidden_from_partner" },
+        ]
+      },
+      {
+        name: "Moment Secrecy Level",
+        slug: "moment_secrecy",
+        filterType: "single_select",
+        icon: "Zap",
+        options: [
+          { label: "Complete surprise (partner unaware)", value: "complete_surprise" },
+          { label: "Location surprise (timing unknown)", value: "location_surprise" },
+          { label: "Ring surprise (rest known)", value: "ring_surprise" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Locations",
     slug: "locations",
     description: "Find the perfect proposal spot",
@@ -3059,6 +3560,47 @@ const proposalTabs: TabDef[] = [
 
 // ============ BOYS TRIP TEMPLATE ============
 const boysTripTabs: TabDef[] = [
+  {
+    name: "Group Details",
+    slug: "group_details",
+    description: "Group size, attendees, budget split, payment coordination",
+    icon: "Users",
+    filters: [
+      {
+        name: "Group Size",
+        slug: "group_size",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "4-8 people", value: "4-8" },
+          { label: "8-12 people", value: "8-12" },
+          { label: "12-20 people", value: "12-20" },
+        ]
+      },
+      {
+        name: "Per-Person Budget",
+        slug: "per_person_budget",
+        filterType: "single_select",
+        icon: "DollarSign",
+        options: [
+          { label: "$300-600", value: "300-600", minValue: 300, maxValue: 600 },
+          { label: "$600-1000", value: "600-1000", minValue: 600, maxValue: 1000 },
+          { label: "$1000+", value: "1000+", minValue: 1000 },
+        ]
+      },
+      {
+        name: "Cost-Split Method",
+        slug: "cost_split",
+        filterType: "single_select",
+        icon: "CreditCard",
+        options: [
+          { label: "Venmo/PayPal Split", value: "peer" },
+          { label: "Organizer Collects", value: "organizer" },
+          { label: "Splitwise/Payment App", value: "app" },
+        ]
+      },
+    ]
+  },
   {
     name: "Activities",
     slug: "activities",
@@ -3128,6 +3670,47 @@ const boysTripTabs: TabDef[] = [
 // ============ GIRLS TRIP TEMPLATE ============
 const girlsTripTabs: TabDef[] = [
   {
+    name: "Group Details",
+    slug: "group_details",
+    description: "Group size, attendees, budget split, payment coordination",
+    icon: "Users",
+    filters: [
+      {
+        name: "Group Size",
+        slug: "group_size",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "4-8 people", value: "4-8" },
+          { label: "8-12 people", value: "8-12" },
+          { label: "12-20 people", value: "12-20" },
+        ]
+      },
+      {
+        name: "Per-Person Budget",
+        slug: "per_person_budget",
+        filterType: "single_select",
+        icon: "DollarSign",
+        options: [
+          { label: "$300-600", value: "300-600", minValue: 300, maxValue: 600 },
+          { label: "$600-1000", value: "600-1000", minValue: 600, maxValue: 1000 },
+          { label: "$1000+", value: "1000+", minValue: 1000 },
+        ]
+      },
+      {
+        name: "Cost-Split Method",
+        slug: "cost_split",
+        filterType: "single_select",
+        icon: "CreditCard",
+        options: [
+          { label: "Venmo/PayPal Split", value: "peer" },
+          { label: "Organizer Collects", value: "organizer" },
+          { label: "Splitwise/Payment App", value: "app" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Activities",
     slug: "activities",
     description: "Fun group experiences",
@@ -3192,6 +3775,60 @@ const girlsTripTabs: TabDef[] = [
 
 // ============ REUNIONS TEMPLATE ============
 const reunionsTabs: TabDef[] = [
+  {
+    name: "Attendee Coordination",
+    slug: "attendee_coordination",
+    description: "Multi-party RSVP tracking, origin coordination, travel accommodation grouping",
+    icon: "Users",
+    filters: [
+      {
+        name: "RSVP Status",
+        slug: "rsvp_status",
+        filterType: "single_select",
+        icon: "CheckCircle",
+        options: [
+          { label: "RSVP Sent", value: "rsvp_sent" },
+          { label: "Responses Tracking", value: "responses_tracking" },
+          { label: "Final Count Locked", value: "final_count_locked" },
+        ]
+      },
+      {
+        name: "Travel Origin Tracking",
+        slug: "travel_origin",
+        filterType: "multi_select",
+        icon: "MapPin",
+        options: [
+          { label: "Local (< 50 miles)", value: "local" },
+          { label: "Regional (50-300 miles)", value: "regional" },
+          { label: "Domestic (300+ miles)", value: "domestic" },
+          { label: "International", value: "international" },
+        ]
+      },
+      {
+        name: "Group Accommodation Needs",
+        slug: "group_accommodation",
+        filterType: "multi_select",
+        icon: "Building",
+        options: [
+          { label: "Room Block Reserved", value: "room_block" },
+          { label: "Airport Shuttle Arranged", value: "shuttle" },
+          { label: "Travel Reimbursement Info", value: "reimbursement" },
+          { label: "Carpooling Coordination", value: "carpooling" },
+        ]
+      },
+      {
+        name: "Dietary/Special Requirements",
+        slug: "special_requirements",
+        filterType: "multi_select",
+        icon: "Utensils",
+        options: [
+          { label: "Dietary Restrictions Collected", value: "dietary" },
+          { label: "Mobility Accessibility Noted", value: "accessibility" },
+          { label: "Pet/Family Needs", value: "family_needs" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
@@ -3262,6 +3899,60 @@ const reunionsTabs: TabDef[] = [
 // ============ BABY SHOWER TEMPLATE ============
 const babyShowerTabs: TabDef[] = [
   {
+    name: "Expectant Mom",
+    slug: "expectant_mom",
+    description: "Pregnant guest accessibility, comfort, and health considerations (critical for baby shower)",
+    icon: "Baby",
+    filters: [
+      {
+        name: "Pregnancy Stage",
+        slug: "pregnancy_stage",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Early Pregnancy (< 20 weeks)", value: "early" },
+          { label: "Mid Pregnancy (20-28 weeks)", value: "mid" },
+          { label: "Late Pregnancy (28+ weeks)", value: "late" },
+        ]
+      },
+      {
+        name: "Comfort Needs",
+        slug: "comfort_needs",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Comfortable Seating Required", value: "seating" },
+          { label: "Climate Control (Temperature Sensitive)", value: "climate" },
+          { label: "Frequent Restroom Access Nearby", value: "restroom" },
+          { label: "Dietary Restrictions (Pregnancy-Related)", value: "dietary" },
+        ]
+      },
+      {
+        name: "Activity Preferences",
+        slug: "activity_preferences",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "No Standing Games", value: "no_standing" },
+          { label: "No Alcohol Focus", value: "no_alcohol" },
+          { label: "Low-Energy Games OK", value: "low_energy" },
+          { label: "Can Participate Actively", value: "active" },
+        ]
+      },
+      {
+        name: "Timing Constraints",
+        slug: "timing_constraints",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Morning Only (Nausea-Friendly)", value: "morning" },
+          { label: "Afternoon Only", value: "afternoon" },
+          { label: "Shorter Duration (2 hrs max)", value: "short_duration" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Venues",
     slug: "venues",
     description: "Baby shower venues",
@@ -3315,6 +4006,49 @@ const babyShowerTabs: TabDef[] = [
 // ============ GRADUATION PARTY TEMPLATE ============
 const graduationTabs: TabDef[] = [
   {
+    name: "Graduate",
+    slug: "graduate",
+    description: "Graduate's preferences, availability, and celebration comfort level",
+    icon: "GraduationCap",
+    filters: [
+      {
+        name: "Celebration Style Preference",
+        slug: "celebration_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Surprise (Prefers Not To Know)", value: "surprise" },
+          { label: "Involved in Planning", value: "involved" },
+          { label: "Small/Low-Key Preferred", value: "low_key" },
+          { label: "Big Celebration Desired", value: "big_celebration" },
+        ]
+      },
+      {
+        name: "Available Dates",
+        slug: "available_dates",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Graduation Day Celebration", value: "grad_day" },
+          { label: "Weekend After", value: "weekend_after" },
+          { label: "Flexible (Next Few Weeks)", value: "flexible" },
+        ]
+      },
+      {
+        name: "Guest of Honor Priorities",
+        slug: "priorities",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Celebrate with Close Friends/Family", value: "close_people" },
+          { label: "Entertainment/DJ Required", value: "entertainment" },
+          { label: "Special Cake/Dessert Importance", value: "cake" },
+          { label: "Photo Moments/Memories", value: "photos" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Venues",
     slug: "venues",
     description: "Celebration venues",
@@ -3366,6 +4100,37 @@ const graduationTabs: TabDef[] = [
 
 // ============ ENGAGEMENT PARTY TEMPLATE ============
 const engagementTabs: TabDef[] = [
+  {
+    name: "Couple",
+    slug: "couple",
+    description: "Engaged couple's preferences and celebration vision",
+    icon: "Heart",
+    filters: [
+      {
+        name: "Celebration Style",
+        slug: "celebration_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Intimate (Close Friends/Family)", value: "intimate" },
+          { label: "Medium (50-100 guests)", value: "medium" },
+          { label: "Large Celebration", value: "large" },
+        ]
+      },
+      {
+        name: "Couple Preferences",
+        slug: "couple_preferences",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Couple Wants to Participate Actively", value: "active" },
+          { label: "Low-Key Preferred", value: "lowkey" },
+          { label: "Games/Entertainment Focus", value: "entertainment" },
+          { label: "Food/Dining Focus", value: "dining" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
@@ -3420,6 +4185,48 @@ const engagementTabs: TabDef[] = [
 // ============ HOUSEWARMING PARTY TEMPLATE ============
 const housewarmingTabs: TabDef[] = [
   {
+    name: "Homeowners",
+    slug: "homeowners",
+    description: "New homeowners' preferences and comfort with guests touring the space",
+    icon: "Home",
+    filters: [
+      {
+        name: "Space Comfort Level",
+        slug: "space_comfort",
+        filterType: "single_select",
+        icon: "Home",
+        options: [
+          { label: "Okay with Full House Tours", value: "full_tours" },
+          { label: "Prefer Limited Space Access", value: "limited_access" },
+          { label: "Main Areas Only", value: "main_areas_only" },
+        ]
+      },
+      {
+        name: "Party Style Preference",
+        slug: "party_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Open House/Casual", value: "casual" },
+          { label: "Structured Gathering", value: "structured" },
+          { label: "Daytime/Brunch Preferred", value: "daytime" },
+        ]
+      },
+      {
+        name: "Guest of Honor Preferences",
+        slug: "preferences",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Garden/Outdoor Space Important", value: "outdoor" },
+          { label: "Kitchen Tour Highlight", value: "kitchen_tour" },
+          { label: "Games/Entertainment Okay", value: "entertainment" },
+          { label: "Keep it Intimate", value: "intimate" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Catering",
     slug: "catering",
     description: "Food and drinks",
@@ -3471,6 +4278,47 @@ const housewarmingTabs: TabDef[] = [
 
 // ============ RETIREMENT PARTY TEMPLATE ============
 const retirementTabs: TabDef[] = [
+  {
+    name: "Retiree",
+    slug: "retiree",
+    description: "Retiree's preferences, comfort level, and participation in celebration",
+    icon: "PartyPopper",
+    filters: [
+      {
+        name: "Celebration Style",
+        slug: "celebration_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Large Gathering (Colleagues Included)", value: "large" },
+          { label: "Close Friends/Family Only", value: "close" },
+          { label: "Intimate Dinner", value: "intimate" },
+        ]
+      },
+      {
+        name: "Comfort with Tributes",
+        slug: "tributes",
+        filterType: "single_select",
+        icon: "Heart",
+        options: [
+          { label: "Enjoys Speeches/Tributes", value: "enjoys_tributes" },
+          { label: "Prefers Minimal Speeches", value: "minimal_speeches" },
+          { label: "Very Private Preference", value: "very_private" },
+        ]
+      },
+      {
+        name: "Participation Preference",
+        slug: "participation",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Wants to Make a Speech", value: "speech" },
+          { label: "Prefers to be Celebrated Quietly", value: "quiet" },
+          { label: "Games/Entertainment Okay", value: "entertainment" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
@@ -3525,6 +4373,36 @@ const retirementTabs: TabDef[] = [
 // ============ CAREER ACHIEVEMENT PARTY TEMPLATE ============
 const careerAchievementTabs: TabDef[] = [
   {
+    name: "Achiever",
+    slug: "achiever",
+    description: "Person being honored's preferences and comfort level with celebration",
+    icon: "Trophy",
+    filters: [
+      {
+        name: "Celebration Type",
+        slug: "celebration_type",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Office/Workplace Gathering", value: "office" },
+          { label: "Off-Site Celebration", value: "offsite" },
+          { label: "Intimate Dinner", value: "dinner" },
+        ]
+      },
+      {
+        name: "Public Recognition Comfort",
+        slug: "recognition_comfort",
+        filterType: "single_select",
+        icon: "Heart",
+        options: [
+          { label: "Enjoys Public Recognition", value: "enjoys_public" },
+          { label: "Prefers Low-Key Recognition", value: "lowkey" },
+          { label: "Very Private Preference", value: "private" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Venues",
     slug: "venues",
     description: "Celebration venues",
@@ -3564,6 +4442,48 @@ const careerAchievementTabs: TabDef[] = [
 
 // ============ FAREWELL PARTY TEMPLATE ============
 const farewellTabs: TabDef[] = [
+  {
+    name: "Person Leaving",
+    slug: "person_leaving",
+    description: "Person being honored's preferences for their farewell celebration",
+    icon: "HandHeart",
+    filters: [
+      {
+        name: "Celebration Style",
+        slug: "celebration_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Large Gathering (Colleagues/Community)", value: "large" },
+          { label: "Close Friends/Colleagues", value: "close" },
+          { label: "Intimate Dinner", value: "intimate" },
+        ]
+      },
+      {
+        name: "Memories/Tributes Comfort",
+        slug: "tributes",
+        filterType: "single_select",
+        icon: "Heart",
+        options: [
+          { label: "Loves Stories/Memories Shared", value: "loves_tributes" },
+          { label: "Prefers Minimal Tributes", value: "minimal" },
+          { label: "Very Private", value: "private" },
+        ]
+      },
+      {
+        name: "Keepsake Preference",
+        slug: "keepsake",
+        filterType: "multi_select",
+        icon: "Gift",
+        options: [
+          { label: "Memory Book/Letters", value: "memory_book" },
+          { label: "Group Photo", value: "group_photo" },
+          { label: "Video Compilation", value: "video" },
+          { label: "Donations in Their Honor", value: "donation" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",
@@ -3616,6 +4536,47 @@ const farewellTabs: TabDef[] = [
 
 // ============ HOLIDAY PARTY TEMPLATE ============
 const holidayPartyTabs: TabDef[] = [
+  {
+    name: "Host Preferences",
+    slug: "host_preferences",
+    description: "Host/organizer's holiday celebration vision and comfort level",
+    icon: "Sparkles",
+    filters: [
+      {
+        name: "Holiday Type",
+        slug: "holiday_type",
+        filterType: "single_select",
+        icon: "TreePine",
+        options: [
+          { label: "Christmas/Winter Themed", value: "christmas" },
+          { label: "New Year Celebration", value: "new_year" },
+          { label: "Generic Holiday/End-of-Year", value: "generic" },
+        ]
+      },
+      {
+        name: "Party Style",
+        slug: "party_style",
+        filterType: "single_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Formal/Elegant", value: "formal" },
+          { label: "Casual/Relaxed", value: "casual" },
+          { label: "Family-Friendly", value: "family" },
+        ]
+      },
+      {
+        name: "Guest Count Comfort",
+        slug: "guest_count",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Intimate (20-30)", value: "intimate" },
+          { label: "Medium (30-75)", value: "medium" },
+          { label: "Large (75+)", value: "large" },
+        ]
+      },
+    ]
+  },
   {
     name: "Venues",
     slug: "venues",

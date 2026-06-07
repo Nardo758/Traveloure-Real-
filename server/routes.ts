@@ -10097,14 +10097,14 @@ Respond with this exact JSON structure:
             crowdLevel: city.crowdLevel,
             currentHighlight: city.currentHighlight,
             highlightEmoji: city.highlightEmoji,
-            // Seasonal data for this month
-            seasonalRating: season.rating,
-            weatherDescription: season.weatherDescription,
-            averageTemp: season.averageTemp,
-            rainfall: season.rainfall,
-            seasonCrowdLevel: season.crowdLevel,
-            priceLevel: season.priceLevel,
-            highlights: season.highlights || [],
+            // Seasonal data for this month (if available)
+            seasonalRating: season?.rating || null,
+            weatherDescription: season?.weatherDescription || null,
+            averageTemp: season?.averageTemp || null,
+            rainfall: season?.rainfall || null,
+            seasonCrowdLevel: season?.crowdLevel || null,
+            priceLevel: season?.priceLevel || null,
+            highlights: season?.highlights || [],
             // Events this month
             events: events.map(e => ({
               id: e.id,
@@ -10141,22 +10141,40 @@ Respond with this exact JSON structure:
       };
       
       filteredCities.sort((a: typeof citiesWithSeasons[0], b: typeof citiesWithSeasons[0]) => {
-        const aRating = ratingOrder[a.seasonalRating] ?? 2;
-        const bRating = ratingOrder[b.seasonalRating] ?? 2;
+        const aRating = a.seasonalRating ? ratingOrder[a.seasonalRating] ?? 2 : 2;
+        const bRating = b.seasonalRating ? ratingOrder[b.seasonalRating] ?? 2 : 2;
         if (aRating !== bRating) return aRating - bRating;
         // Secondary sort by pulse score
         return (b.pulseScore || 0) - (a.pulseScore || 0);
       });
       
-      // Group by rating for easier display
+      // Group by rating for easier display (null ratings go to "events-only")
       type CityWithSeason = typeof citiesWithSeasons[0];
       const grouped = {
         best: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "best" || c.seasonalRating === "excellent"),
         good: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "good"),
-        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average" || !c.seasonalRating),
+        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average"),
+        eventsOnly: filteredCities.filter((c: CityWithSeason) => !c.seasonalRating),
         avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
       };
       
+      // Layer 3 (Book Around It): Fetch time-relevant matches for top destinations
+      // Only fetch for top 5 cities to avoid performance hit; include top-rated cities
+      const topCitiesForMatching = filteredCities.slice(0, 5);
+      const { resolveTimeRelevantMatches } = await import("../services/content-matching.service");
+
+      const timeRelevantMatchesPerCity = await Promise.all(
+        topCitiesForMatching.map(city =>
+          resolveTimeRelevantMatches(city.cityName, city.country, month, 3).catch(() => ({
+            city: city.cityName,
+            country: city.country,
+            month,
+            providers: [],
+            experts: [],
+          }))
+        )
+      );
+
       res.json({
         month,
         monthName: new Date(2024, month - 1).toLocaleString("default", { month: "long" }),
@@ -10175,6 +10193,8 @@ Respond with this exact JSON structure:
           startMonth: e.startMonth,
           endMonth: e.endMonth,
         })),
+        // Layer 3: Time-relevant services/experiences for top destinations
+        timeRelevantMatches: timeRelevantMatchesPerCity,
       });
     } catch (error: any) {
       console.error("Error getting global calendar:", error);
