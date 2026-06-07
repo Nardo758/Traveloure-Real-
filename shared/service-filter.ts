@@ -73,3 +73,20 @@ export function filterServices<T extends FilterableService>(
 
   return filtered;
 }
+
+// Pure extraction of the post-filter sort applied in experience-template.tsx,
+// lifted verbatim from the `filteredServices` useMemo so the reorder behavior
+// is unit-testable (the new non-flight/hotel Sort dropdown is wired to this via
+// `sortBy`). Returns a sorted COPY; unknown/"popular" is a no-op (backend order).
+// The `sortBy` strings here MUST match the dropdown's SelectItem values.
+export function sortServices<T extends FilterableService>(services: T[], sortBy: string): T[] {
+  const out = [...services];
+  if (sortBy === "price-low") {
+    out.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+  } else if (sortBy === "price-high") {
+    out.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+  } else if (sortBy === "rating") {
+    out.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
+  }
+  return out;
+}
