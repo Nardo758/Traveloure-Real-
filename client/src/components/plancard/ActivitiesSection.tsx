@@ -589,6 +589,7 @@ export function ActivitiesSection({
                   lat: upNextActivity!.lat,
                   lng: upNextActivity!.lng,
                   name: upNextActivity!.name,
+                  mapsUrl: upNextActivity!.mapsUrl,
                 },
                 mode: upNextMode,
               })

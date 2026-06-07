@@ -34,6 +34,8 @@ export interface NavigateDestination {
   lng?: number;
   name: string;
   placeId?: string;
+  /** Provider-canonical Maps URL; takes precedence for single-destination nav. */
+  mapsUrl?: string;
 }
 
 export interface NavigateOrigin {
@@ -46,7 +48,7 @@ export interface NavigateParams {
   destination?: NavigateDestination;
   origin?: NavigateOrigin;
   mode?: TraveloureMode;
-  waypoints?: Array<{ lat?: number; lng?: number; name: string }>;
+  waypoints?: Array<{ lat?: number; lng?: number; name: string; mapsUrl?: string }>;
   app?: "google" | "apple" | "waze";
 }
 
@@ -108,11 +110,11 @@ export function normalizeMode(mode?: TraveloureMode): NormalizedMode {
 /** Convert NavigateParams into an ordered Place[] for the unified builder. */
 function paramsToPlaces(params: NavigateParams): Place[] {
   if (params.waypoints && params.waypoints.length > 0) {
-    return params.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name }));
+    return params.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name, mapsUrl: w.mapsUrl }));
   }
   const places: Place[] = [];
   if (params.origin) places.push({ lat: params.origin.lat, lng: params.origin.lng, name: params.origin.name });
-  if (params.destination) places.push({ lat: params.destination.lat, lng: params.destination.lng, name: params.destination.name, placeId: params.destination.placeId });
+  if (params.destination) places.push({ lat: params.destination.lat, lng: params.destination.lng, name: params.destination.name, placeId: params.destination.placeId, mapsUrl: params.destination.mapsUrl });
   return places;
 }
 

@@ -105,6 +105,12 @@ export interface Place {
   lng?: number | null;
   name: string;
   placeId?: string;
+  /**
+   * Explicit, provider-canonical Maps URL for this stop (e.g. a Google place
+   * link derived from googlePlaceId). When present on a single-destination
+   * navigation it takes precedence over a synthesized lat/lng URL.
+   */
+  mapsUrl?: string;
 }
 
 export interface MapsDeepLinkOptions {
@@ -132,6 +138,9 @@ export function detectClientPlatform(): "apple" | "google" {
  */
 export function buildGoogleMapsDeepLink(places: Place[], mode?: TransportMode): string {
   if (places.length === 0) return "";
+  // stop.mapsUrl precedence: a single destination that carries an explicit,
+  // provider-canonical link opens that exact place instead of a coordinate URL.
+  if (places.length === 1 && places[0].mapsUrl) return places[0].mapsUrl!;
   const travelMode = GOOGLE_TRAVEL_MODES[mode ?? ""] || "driving";
   const base = "https://www.google.com/maps/dir/?api=1";
   const sp = new URLSearchParams();
@@ -202,6 +211,12 @@ export function buildAppleMapsDeepLink(places: Place[], mode?: TransportMode): s
  */
 export function buildMapsDeepLink({ places, mode, platform }: MapsDeepLinkOptions): string {
   const resolved = platform ?? detectClientPlatform();
+  // Google escape hatch: Apple Maps URLs support only saddr→daddr (no
+  // intermediate waypoints), so a >2-stop route on Apple would silently drop the
+  // middle stops. Route it through Google, which carries the full waypoint chain.
+  if (resolved === "apple" && places.length > 2) {
+    return buildGoogleMapsDeepLink(places, mode);
+  }
   return resolved === "apple"
     ? buildAppleMapsDeepLink(places, mode)
     : buildGoogleMapsDeepLink(places, mode);
