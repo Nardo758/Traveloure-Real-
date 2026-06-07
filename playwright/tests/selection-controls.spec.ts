@@ -38,6 +38,11 @@ test.describe('Selection controls (P462) — render / narrow / parity / tab-isol
     const photography = page.getByTestId('selection-vendor-focus-focus-photography');
     await expect(photography).toBeVisible();
 
+    // Gate gap that let the filter-doubling bug ship: the OLD facet wall (the
+    // "Filters & Sort" Collapsible) must NOT co-render on a seeded selection-
+    // controls tab. Present-only checks can't catch a duplicate; assert absence.
+    await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
+
     const before = await providerCount(page);
     expect(before, 'expected wedding vendors in Kyoto to assert narrowing').toBeGreaterThan(1);
 
