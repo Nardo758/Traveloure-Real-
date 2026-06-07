@@ -36,7 +36,6 @@ import {
   seasonalOpportunities,
   travelPulseTrending,
   providerServices,
-  expertSelectedServices,
   expertServiceOfferings,
   users,
   HotelCache,
@@ -793,20 +792,7 @@ class RecommendationService {
   private async getExpertExistingServices(expertId: string): Promise<Set<string>> {
     const services = new Set<string>();
 
-    const selectedServices = await db
-      .select({
-        name: expertServiceOfferings.name,
-      })
-      .from(expertSelectedServices)
-      .innerJoin(expertServiceOfferings, eq(expertSelectedServices.serviceOfferingId, expertServiceOfferings.id))
-      .where(eq(expertSelectedServices.expertId, expertId));
-
-    for (const service of selectedServices) {
-      const normalized = this.normalizeServiceType(service.name);
-      services.add(normalized);
-    }
-
-    // expert_custom_services table dropped in migration 013; approved services
+    // expert_selected_services table dropped in migration 013; approved services
     // now live in provider_services with approvalStatus = 'approved'.
     const customServices = await db
       .select({ serviceName: providerServices.serviceName })
