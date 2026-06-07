@@ -26,8 +26,12 @@ import {
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
-// LB-P5a: canonical credit packages live in @shared/credit-packages.
-import { CREDIT_PACKAGES as creditPackages } from "@shared/credit-packages";
+const creditPackages = [
+  { id: 1, credits: 50, price: 49, popular: false },
+  { id: 2, credits: 100, price: 89, popular: true, savings: "11%" },
+  { id: 3, credits: 250, price: 199, popular: false, savings: "20%" },
+  { id: 4, credits: 500, price: 349, popular: false, savings: "30%" },
+];
 
 const transactions = [
   {

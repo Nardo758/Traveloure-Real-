@@ -10,11 +10,11 @@ import {
   MapPin,
   FileText,
   Clock,
-  ArrowRight,
-  Plane,
-  PartyPopper,
+  ArrowRight
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
 
 interface ServiceTemplate {
@@ -31,53 +31,29 @@ interface ServiceTemplate {
   isActive: boolean;
   sortOrder: number | null;
   createdAt: string;
-  targetRoles: string[];
-  roleBadge: string | null;
 }
 
-const ROLE_BADGE_STYLE: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
-  "Local Expert": {
-    bg: "bg-emerald-50 border-emerald-200",
-    text: "text-emerald-700",
-    icon: <MapPin className="w-3 h-3" />,
-  },
-  "Travel Advisor": {
-    bg: "bg-blue-50 border-blue-200",
-    text: "text-blue-700",
-    icon: <Plane className="w-3 h-3" />,
-  },
-  "Event Planner": {
-    bg: "bg-purple-50 border-purple-200",
-    text: "text-purple-700",
-    icon: <PartyPopper className="w-3 h-3" />,
-  },
-};
-
 export default function ServiceTemplates() {
+  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
-    queryKey: ["/api/expert/service-templates"],
+    queryKey: ["/api/service-templates"],
   });
 
-  const handleUseTemplate = (template: ServiceTemplate) => {
-    const params = new URLSearchParams();
-    if (template.title) params.set("tpl_name", template.title);
-    if (template.description) params.set("tpl_desc", template.description);
-    if (template.suggestedPrice) params.set("tpl_price", template.suggestedPrice);
-    if (template.deliveryTimeframe) params.set("tpl_duration", template.deliveryTimeframe);
-    if (template.deliveryMethod) params.set("tpl_delivery", template.deliveryMethod);
-    const included = template.whatIncluded;
-    if (included) {
-      const items = Array.isArray(included)
-        ? (included as string[])
-        : typeof included === "string"
-          ? [included]
-          : [];
-      if (items.length > 0) params.set("tpl_included", JSON.stringify(items));
-    }
-    navigate(`/expert/services/new?${params.toString()}`);
-  };
+  const createFromTemplateMutation = useMutation({
+    mutationFn: async (template: ServiceTemplate) => {
+      return apiRequest("POST", `/api/expert/services/from-template/${template.id}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      toast({ title: "Service created from template. You can now customize it." });
+      navigate("/expert/services");
+    },
+    onError: () => {
+      toast({ title: "Failed to create service", variant: "destructive" });
+    },
+  });
 
   const getDeliveryIcon = (method: string | null) => {
     switch (method) {
@@ -128,7 +104,7 @@ export default function ServiceTemplates() {
               Service Templates
             </h1>
             <p className="text-gray-600">
-              Start with a pre-built template matched to your expert role and customize it
+              Start with a pre-built template and customize it for your expertise
             </p>
           </div>
           <Link href="/expert/services/new">
@@ -153,72 +129,59 @@ export default function ServiceTemplates() {
               </Card>
             ))
           ) : (
-            templates.map((template) => {
-              const roleStyle = template.roleBadge
-                ? ROLE_BADGE_STYLE[template.roleBadge]
-                : null;
-              return (
-                <Card key={template.id} className="border-gray-200 hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center text-[#FF385C]">
+            templates.map((template) => (
+              <Card key={template.id} className="border-gray-200 hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
+                      {getDeliveryIcon(template.deliveryMethod)}
+                    </div>
+                    {template.suggestedPrice && (
+                      <Badge variant="outline" className="font-medium">
+                        ${template.suggestedPrice}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardTitle className="text-lg mt-3">{template.title}</CardTitle>
+                  <CardDescription className="line-clamp-2">
+                    {template.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                    {template.deliveryMethod && (
+                      <span className="flex items-center gap-1">
                         {getDeliveryIcon(template.deliveryMethod)}
-                      </div>
-                      {template.suggestedPrice && (
-                        <Badge variant="outline" className="font-medium">
-                          ${template.suggestedPrice}
-                        </Badge>
-                      )}
-                    </div>
-                    <CardTitle className="text-lg mt-3">{template.title}</CardTitle>
-                    {template.roleBadge && roleStyle && (
-                      <div
-                        className={`inline-flex items-center gap-1.5 self-start px-2 py-0.5 rounded-full border text-xs font-medium ${roleStyle.bg} ${roleStyle.text}`}
-                        data-testid={`badge-role-${template.id}`}
-                      >
-                        {roleStyle.icon}
-                        {template.roleBadge}
-                      </div>
+                        {getDeliveryLabel(template.deliveryMethod)}
+                      </span>
                     )}
-                    <CardDescription className="line-clamp-2">
-                      {template.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                      {template.deliveryMethod && (
-                        <span className="flex items-center gap-1">
-                          {getDeliveryIcon(template.deliveryMethod)}
-                          {getDeliveryLabel(template.deliveryMethod)}
-                        </span>
-                      )}
-                      {template.deliveryTimeframe && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {template.deliveryTimeframe}
-                        </span>
-                      )}
-                    </div>
-
-                    {formatWhatIncluded(template.whatIncluded) && (
-                      <div className="text-sm text-gray-600">
-                        <p className="font-medium text-gray-900 mb-1">Includes:</p>
-                        <p className="line-clamp-2">{formatWhatIncluded(template.whatIncluded)}</p>
-                      </div>
+                    {template.deliveryTimeframe && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        {template.deliveryTimeframe}
+                      </span>
                     )}
+                  </div>
 
-                    <Button
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                      onClick={() => handleUseTemplate(template)}
-                      data-testid={`button-use-template-${template.id}`}
-                    >
-                      Use This Template
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })
+                  {formatWhatIncluded(template.whatIncluded) && (
+                    <div className="text-sm text-gray-600">
+                      <p className="font-medium text-gray-900 mb-1">Includes:</p>
+                      <p className="line-clamp-2">{formatWhatIncluded(template.whatIncluded)}</p>
+                    </div>
+                  )}
+
+                  <Button
+                    className="w-full bg-[#FF385C] "
+                    onClick={() => createFromTemplateMutation.mutate(template)}
+                    disabled={createFromTemplateMutation.isPending}
+                    data-testid={`button-use-template-${template.id}`}
+                  >
+                    {createFromTemplateMutation.isPending ? "Creating..." : "Use This Template"}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
           )}
         </div>
 
@@ -228,7 +191,7 @@ export default function ServiceTemplates() {
             <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>
             <p className="text-gray-600 mb-4">Create your service from scratch instead</p>
             <Link href="/expert/services/new">
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-create-service">
+              <Button className="bg-[#FF385C] " data-testid="button-create-service">
                 Create Service
               </Button>
             </Link>

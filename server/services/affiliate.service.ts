@@ -1,13 +1,6 @@
 /**
  * Affiliate Service
- * Generate and track affiliate links for external bookings.
- *
- * LB-P4a: commission rates resolve from affiliate_partners.commission_rate
- * (admin-editable) at link-creation time, with the in-memory partners[] map
- * acting as a fallback when no DB row exists or the column is null. The admin
- * UI at client/src/pages/admin/affiliate-partners.tsx stores the value as a
- * percent (e.g. 5.00 = 5%); this service converts to a fraction (÷100) for
- * use in revenue math.
+ * Generate and track affiliate links for external bookings
  */
 
 import { db } from '../db';
@@ -24,11 +17,6 @@ export interface AffiliateAttribution {
   agentType?: "grok" | "claude" | "system" | null;
   sessionId?: string;
 }
-
-// 60-second in-memory cache for the DB lookup. Affiliate rate changes are
-// admin-driven (rare) — short TTL keeps freshness without per-link load.
-const COMMISSION_CACHE_TTL_MS = 60_000;
-const commissionCache = new Map<string, { value: number | null; expiresAt: number }>();
 
 class AffiliateService {
   // Affiliate partner configurations
@@ -102,47 +90,14 @@ class AffiliateService {
       // Track link generation
       await this.trackLinkGeneration(partner, itemType, destination, attribution);
 
-      const partnerCfg = this.partners[partner as keyof typeof this.partners];
-      const commission = await this.resolveCommission(partnerCfg.name, partnerCfg.commission);
-
       return {
         url,
-        partner: partnerCfg.name,
-        commission,
+        partner: this.partners[partner as keyof typeof this.partners].name,
+        commission: this.partners[partner as keyof typeof this.partners].commission,
       };
     } catch (error) {
       console.error('Affiliate link generation error:', error);
       return null;
-    }
-  }
-
-  /**
-   * LB-P4a: resolve a partner's commission rate from affiliate_partners.commission_rate
-   * (admin-editable) first, falling back to the in-memory map if no row / null.
-   * DB stores percent (5.00 = 5%); this method returns a fraction (0.05).
-   */
-  private async resolveCommission(partnerName: string, fallback: number): Promise<number> {
-    const cached = commissionCache.get(partnerName);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.value ?? fallback;
-    }
-    try {
-      const result = await db.execute(sql`
-        SELECT CAST(commission_rate AS FLOAT) AS commission_rate
-        FROM affiliate_partners
-        WHERE name = ${partnerName}
-        LIMIT 1
-      `);
-      const row = result.rows?.[0] as { commission_rate: number | null } | undefined;
-      const value = row?.commission_rate !== undefined && row?.commission_rate !== null
-        ? Number(row.commission_rate) / 100
-        : null;
-      commissionCache.set(partnerName, { value, expiresAt: Date.now() + COMMISSION_CACHE_TTL_MS });
-      return value ?? fallback;
-    } catch (err) {
-      // DB unavailable — fall through to the in-memory fallback.
-      console.warn(`[affiliate] commission lookup failed for ${partnerName}:`, err);
-      return fallback;
     }
   }
 

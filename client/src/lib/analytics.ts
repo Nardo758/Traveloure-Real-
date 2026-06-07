@@ -13,7 +13,6 @@ interface SearchEventData {
   travelers?: number;
   experienceType?: string;
   searchContext?: 'discover' | 'experience-template' | 'quick-start';
-  contextFields?: Record<string, string>;
 }
 
 interface ItineraryGeneratedData {

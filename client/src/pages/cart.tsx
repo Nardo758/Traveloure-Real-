@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
 import { Link, useLocation, useSearch } from "wouter";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,20 +49,10 @@ import {
   Zap,
   RefreshCw,
   Route,
-  Globe,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-
-const SUPPORTED_CURRENCIES = [
-  { code: "USD", label: "USD – US Dollar" },
-  { code: "EUR", label: "EUR – Euro" },
-  { code: "GBP", label: "GBP – British Pound" },
-  { code: "JPY", label: "JPY – Japanese Yen" },
-  { code: "AUD", label: "AUD – Australian Dollar" },
-  { code: "SGD", label: "SGD – Singapore Dollar" },
-];
 
 interface CartItem {
   id: string;
@@ -272,32 +263,34 @@ export default function CartPage() {
     }
   }, [externalItems, experienceSlug]);
 
-  // Check for step query param and stored optimization preview on mount
-  // CON-A.P1: experience-template now hands off an OptimizationPreview (free heuristic).
+  // Check for step query param and stored optimization result on mount
   useEffect(() => {
     const params = new URLSearchParams(searchString);
     const step = params.get("step");
-
-    if (step === "optimize" || step === "payment") {
-      const stored = sessionStorage.getItem("optimizationPreview");
+    
+    if (step === "itinerary" || step === "payment") {
+      // Try to load optimization result from session storage
+      const stored = sessionStorage.getItem("optimizationResult");
       if (stored) {
         try {
-          const preview: OptimizationPreview = JSON.parse(stored);
-          setOptimizationPreview(preview);
-          sessionStorage.removeItem("optimizationPreview");
+          const result = JSON.parse(stored);
+          setOptimizationResult(result);
+          sessionStorage.removeItem("optimizationResult");
           setFlowStep(step as FlowStep);
         } catch (e) {
-          console.error("Failed to parse stored optimization preview");
+          console.error("Failed to parse stored optimization result");
+          // Fallback to cart step if parsing fails
           setFlowStep("cart");
-          toast({
-            variant: "destructive",
-            title: "Unable to load optimization preview",
-            description: "Please generate itinerary again",
+          toast({ 
+            variant: "destructive", 
+            title: "Unable to load optimization results",
+            description: "Please generate itinerary again"
           });
         }
       } else {
+        // No optimization result stored, fall back to cart step
         setFlowStep("cart");
-        toast({
+        toast({ 
           title: "Optimization required",
           description: "Please click 'Generate Itinerary' to see your optimized plan"
         });
@@ -319,9 +312,6 @@ export default function CartPage() {
   const [newTripName, setNewTripName] = useState("");
   const [newTripDestination, setNewTripDestination] = useState("");
   const [selectedPlanItemIds, setSelectedPlanItemIds] = useState<Set<string>>(new Set());
-  const [displayCurrency, setDisplayCurrency] = useState<string>(
-    () => localStorage.getItem("traveloure_currency") || "USD"
-  );
 
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
@@ -340,11 +330,6 @@ export default function CartPage() {
   const { data: userTrips = [] } = useQuery<any[]>({
     queryKey: ["/api/trips"],
     enabled: !!user && showPlanningDialog,
-  });
-
-  const { data: exchangeRatesData } = useQuery<{ base: string; rates: Record<string, number>; cachedAt: number }>({
-    queryKey: ["/api/exchange-rates"],
-    staleTime: 60 * 60 * 1000,
   });
 
   const convertToItineraryMutation = useMutation({
@@ -455,24 +440,6 @@ export default function CartPage() {
   const platformFee = parseFloat(cart?.platformFee || "0");
   const combinedTotal = combinedSubtotal + platformFee;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
-
-  const exchangeRates = exchangeRatesData?.rates ?? {};
-  const formatPrice = (usdAmount: number): string => {
-    if (displayCurrency === "USD") return `$${usdAmount.toFixed(2)}`;
-    const rate = exchangeRates[displayCurrency];
-    if (!rate) return `$${usdAmount.toFixed(2)}`;
-    return new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: displayCurrency,
-      maximumFractionDigits: displayCurrency === "JPY" ? 0 : 2,
-      minimumFractionDigits: displayCurrency === "JPY" ? 0 : 2,
-    }).format(usdAmount * rate);
-  };
-
-  const handleCurrencyChange = (code: string) => {
-    setDisplayCurrency(code);
-    localStorage.setItem("traveloure_currency", code);
-  };
 
   // Content items (Discover saves) — eligible for "Start planning"
   // Require both contentId AND contentType to be non-empty; do NOT use
@@ -930,38 +897,27 @@ export default function CartPage() {
       return "Your destination";
     };
     
-    // CON-A.P1: free preview path. Full LLM optimization is delivered via the gated
-    // paid path (/api/optimization-payments → /confirm) surfaced from the Concierge UI.
-    const previewItems = [
-      ...platformServices.map(s => ({
-        serviceType: s.category || "sightseeing",
-        price: s.price,
-        duration: 90,
-        dayNumber: 1,
-      })),
-      ...externalServices.map((s, i) => ({
-        serviceType: s.category || "activity",
-        price: s.price,
-        duration: 120,
-        dayNumber: Math.floor(i / 3) + 1,
-      })),
-    ];
-
+    // Build request payload with context or fallback values
+    const payload = {
+      experienceType: experienceContext?.experienceType || "General",
+      destination: getDestination(),
+      startDate: experienceContext?.startDate,
+      endDate: experienceContext?.endDate,
+      selectedServices: [...platformServices, ...externalServices],
+      preferences: {}
+    };
+    
     try {
-      const response = await fetch("/api/optimization-preview", {
+      const response = await fetch("/api/ai/optimize-experience", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          items: previewItems,
-          eventType: experienceContext?.experienceType,
-        }),
+        body: JSON.stringify(payload)
       });
       if (response.ok) {
-        const preview: OptimizationPreview = await response.json();
-        setOptimizationPreview(preview);
-        setOptimizationPayment(null);
-        setFlowStep("optimize");
+        const result = await response.json();
+        setOptimizationResult(result);
+        setFlowStep("itinerary");
       } else {
         toast({ variant: "destructive", title: "Failed to generate itinerary" });
       }
@@ -979,16 +935,18 @@ export default function CartPage() {
 
   if (authLoading) {
     return (
-      <div className="container py-8 max-w-4xl mx-auto">
-        <Skeleton className="h-10 w-48 mb-6" />
-        <Skeleton className="h-64 w-full" />
-      </div>
+      <DashboardLayout>
+        <div className="container py-8 max-w-4xl mx-auto">
+          <Skeleton className="h-10 w-48 mb-6" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <>
-    <div className="container py-8 max-w-5xl mx-auto">
+    <DashboardLayout>
+      <div className="container py-8 max-w-5xl mx-auto">
         {/* Flow Steps Indicator */}
         <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
           <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "cart" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
@@ -1220,7 +1178,7 @@ export default function CartPage() {
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(parseFloat(item.service?.price || "0"))}
+                              ${parseFloat(item.service?.price || "0").toFixed(2)}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
                               <Button
@@ -1314,7 +1272,7 @@ export default function CartPage() {
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(item.price)}
+                              ${item.price.toFixed(2)}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
                               <Button
@@ -1362,40 +1320,22 @@ export default function CartPage() {
                 <div className="lg:col-span-1 space-y-4">
                   <Card className="sticky top-4">
                     <CardHeader>
-                      <div className="flex items-center justify-between gap-2">
-                        <CardTitle>Order Summary</CardTitle>
-                        <Select value={displayCurrency} onValueChange={handleCurrencyChange}>
-                          <SelectTrigger className="w-28 h-7 text-xs gap-1" data-testid="select-display-currency">
-                            <Globe className="w-3 h-3 shrink-0" />
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SUPPORTED_CURRENCIES.map(c => (
-                              <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <CardTitle>Order Summary</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span data-testid="text-subtotal">{formatPrice(combinedSubtotal)}</span>
+                        <span data-testid="text-subtotal">${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span data-testid="text-platform-fee">{formatPrice(platformFee)}</span>
+                        <span data-testid="text-platform-fee">${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span data-testid="text-total">{formatPrice(combinedTotal)}</span>
+                        <span data-testid="text-total">${combinedTotal.toFixed(2)}</span>
                       </div>
-                      {displayCurrency !== "USD" && (
-                        <p className="text-xs text-muted-foreground" data-testid="text-currency-disclaimer">
-                          Prices shown in {displayCurrency}. You will be charged in USD.
-                        </p>
-                      )}
                     </CardContent>
                     <CardFooter className="flex flex-col gap-3">
                       {contentItems.length > 0 && (
@@ -1604,7 +1544,7 @@ export default function CartPage() {
                             <p className="text-xs text-muted-foreground">Potential savings</p>
                             {optimizationPreview.estimatedCostDelta < 0 && (
                               <p className="text-xs text-green-600 font-medium mt-0.5">
-                                ~{formatPrice(Math.abs(optimizationPreview.estimatedCostDelta / 100))} less
+                                ~${Math.abs(optimizationPreview.estimatedCostDelta / 100).toFixed(0)} less
                               </p>
                             )}
                           </div>
@@ -1722,9 +1662,9 @@ export default function CartPage() {
                       ) : (
                         <div className="text-center">
                           <p className="text-2xl font-bold text-foreground">
-                            {formatPrice(optimizationPreview.feeCents / 100)}
+                            ${(optimizationPreview.feeCents / 100).toFixed(2)}
                           </p>
-                          <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? " · charged in USD" : ""}</p>
+                          <p className="text-xs text-muted-foreground">one-time fee</p>
                         </div>
                       )}
 
@@ -1876,22 +1816,22 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPrice(combinedSubtotal)}</span>
+                        <span>${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
                           <span>Savings</span>
-                          <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
+                          <span>-${optimizationResult.estimatedTotal.savings}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>{formatPrice(platformFee)}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span>${(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
@@ -1995,7 +1935,7 @@ export default function CartPage() {
                               <div className="text-sm text-muted-foreground">Qty: {item.quantity}</div>
                             </div>
                             <div className="font-medium">
-                              {formatPrice(parseFloat(item.service?.price || "0") * item.quantity)}
+                              ${(parseFloat(item.service?.price || "0") * item.quantity).toFixed(2)}
                             </div>
                           </div>
                         ))}
@@ -2006,7 +1946,7 @@ export default function CartPage() {
                               <div className="text-sm text-muted-foreground">Qty: {item.quantity} | {item.provider}</div>
                             </div>
                             <div className="font-medium">
-                              {formatPrice(item.price * item.quantity)}
+                              ${(item.price * item.quantity).toFixed(2)}
                             </div>
                           </div>
                         ))}
@@ -2023,22 +1963,22 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPrice(combinedSubtotal)}</span>
+                        <span>${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
                           <span>Savings</span>
-                          <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
+                          <span>-${optimizationResult.estimatedTotal.savings}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>{formatPrice(platformFee)}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span>${(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
@@ -2244,6 +2184,6 @@ export default function CartPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </DashboardLayout>
   );
 }

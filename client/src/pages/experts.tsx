@@ -387,6 +387,45 @@ export default function ExpertsPage() {
             </div>
           </motion.div>
 
+          {/* Search Bar */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl p-4 shadow-xl max-w-4xl mx-auto"
+          >
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search by name, destination, or specialty..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 h-12 border-[#E5E7EB] text-[#111827]"
+                  data-testid="input-search-experts"
+                />
+              </div>
+              <Select value={selectedDestination} onValueChange={setSelectedDestination}>
+                <SelectTrigger className="w-full md:w-48 h-12 border-[#E5E7EB]" data-testid="select-destination">
+                  <MapPin className="w-4 h-4 mr-2 text-gray-400" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {destinations.map((dest) => (
+                    <SelectItem key={dest} value={dest}>
+                      {dest}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                className="h-12 px-8 bg-[#FF385C] hover:bg-[#E23350] text-white"
+                data-testid="button-search-experts"
+              >
+                Search Experts
+              </Button>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -610,93 +649,69 @@ export default function ExpertsPage() {
       {/* Filters & Results */}
       <section className="py-8">
         <div className="container mx-auto px-4 max-w-6xl">
-          {/* Unified Filter Bar */}
-          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 mb-6 shadow-sm">
-            {/* Top row: search + destination */}
-            <div className="flex flex-col sm:flex-row gap-2 mb-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search by name, destination, or specialty..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10 border-[#E5E7EB] text-[#111827] text-sm"
-                  data-testid="input-search-experts"
-                />
-              </div>
-              <Select value={selectedDestination} onValueChange={setSelectedDestination}>
-                <SelectTrigger className="w-full sm:w-44 h-10 border-[#E5E7EB]" data-testid="select-destination">
-                  <MapPin className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
-                  <SelectValue />
+          {/* Filter Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="flex flex-wrap gap-3">
+              <Select value={selectedExperienceType || "all"} onValueChange={(val) => setSelectedExperienceType(val === "all" ? "" : val)}>
+                <SelectTrigger className="w-48 border-[#E5E7EB] bg-white" data-testid="select-experience-type">
+                  <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                  <SelectValue placeholder="Experience Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {destinations.map((dest) => (
-                    <SelectItem key={dest} value={dest}>{dest}</SelectItem>
+                  <SelectItem value="all">All Experience Types</SelectItem>
+                  {experienceTypes.map((exp: any) => (
+                    <SelectItem key={exp.id} value={exp.id}>
+                      {exp.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                <SelectTrigger className="w-40 border-[#E5E7EB] bg-white" data-testid="select-language">
+                  <Languages className="w-4 h-4 mr-2 text-gray-400" />
+                  <SelectValue placeholder="Language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {languages.map((lang) => (
+                    <SelectItem key={lang} value={lang}>
+                      {lang}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {selectedRole === "local_expert" && (
+                <div className="relative">
+                  <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    ref={neighbourhoodInputRef}
+                    placeholder="Neighbourhood (e.g. Shimokitazawa)"
+                    value={neighbourhoodQuery}
+                    onChange={(e) => setNeighbourhoodQuery(e.target.value)}
+                    className="pl-9 h-10 border-[#E5E7EB] bg-white w-56 text-sm"
+                    data-testid="input-neighbourhood-filter"
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Bottom row: secondary filters + sort + count */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-2">
-                <Select value={selectedExperienceType || "all"} onValueChange={(val) => setSelectedExperienceType(val === "all" ? "" : val)}>
-                  <SelectTrigger className="h-9 w-44 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-experience-type">
-                    <Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
-                    <SelectValue placeholder="Experience Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Experience Types</SelectItem>
-                    {experienceTypes.map((exp: any) => (
-                      <SelectItem key={exp.id} value={exp.id}>{exp.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                  <SelectTrigger className="h-9 w-36 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-language">
-                    <Languages className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
-                    <SelectValue placeholder="Language" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {languages.map((lang) => (
-                      <SelectItem key={lang} value={lang}>{lang}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {selectedRole === "local_expert" && (
-                  <div className="relative">
-                    <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                    <Input
-                      ref={neighbourhoodInputRef}
-                      placeholder="Neighbourhood"
-                      value={neighbourhoodQuery}
-                      onChange={(e) => setNeighbourhoodQuery(e.target.value)}
-                      className="pl-8 h-9 border-[#E5E7EB] bg-[#F9FAFB] w-44 text-sm"
-                      data-testid="input-neighbourhood-filter"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-[#6B7280] whitespace-nowrap">
-                  {sortedExperts.length} found
-                </span>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="h-9 w-40 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-sort">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recommended">Recommended</SelectItem>
-                    <SelectItem value="rating">Highest Rated</SelectItem>
-                    <SelectItem value="reviews">Most Reviews</SelectItem>
-                    <SelectItem value="price-low">Price: Low to High</SelectItem>
-                    <SelectItem value="price-high">Price: High to Low</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-[#6B7280]">
+                {sortedExperts.length} experts found
+              </span>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-44 border-[#E5E7EB] bg-white" data-testid="select-sort">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recommended">Recommended</SelectItem>
+                  <SelectItem value="rating">Highest Rated</SelectItem>
+                  <SelectItem value="reviews">Most Reviews</SelectItem>
+                  <SelectItem value="price-low">Price: Low to High</SelectItem>
+                  <SelectItem value="price-high">Price: High to Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

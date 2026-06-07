@@ -7,13 +7,10 @@ import { Layout } from "@/components/layout";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { EALayout } from "@/components/ea-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
-import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
-import { ConsoleAwareLayout } from "@/components/console-aware-layout";
 import { useEffect, useRef } from "react";
 
 import LandingPage from "@/pages/landing";
@@ -72,7 +69,6 @@ import AdminPlans from "@/pages/admin/plans";
 import AdminRevenue from "@/pages/admin/revenue";
 import AdminAnalytics from "@/pages/admin/analytics";
 import AdminCategories from "@/pages/admin/categories";
-import AdminExpertTemplates from "@/pages/admin/expert-templates";
 import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
@@ -85,11 +81,7 @@ import AdminAICosts from "@/pages/admin/ai-costs";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
 import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
-import AdminGemPhotoBackfill from "@/pages/admin/gem-photo-backfill";
-import AdminReviewModeration from "@/pages/admin/review-moderation";
-import ConciergePage from "@/pages/concierge";
-import ResetPasswordPage from "@/pages/reset-password";
-import VerifyEmailPage from "@/pages/verify-email";
+import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
@@ -112,7 +104,6 @@ import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
 import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
-import AdminEventPackages from "@/pages/admin/event-packages";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
 import AdminCrossSellAnalytics from "@/pages/admin/cross-sell-analytics";
@@ -190,11 +181,15 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
 }
 
 function ChatWithRoleLayout() {
-  return (
-    <ConsoleAwareLayout title="Messages">
-      <Chat />
-    </ConsoleAwareLayout>
-  );
+  const { user } = useAuth();
+  const role = user?.role ?? "user";
+  if (["local_expert", "travel_expert", "event_planner", "expert"].includes(role)) {
+    return <ExpertLayout title="Messages"><Chat /></ExpertLayout>;
+  }
+  if (role === "service_provider") {
+    return <ProviderLayout title="Messages"><Chat /></ProviderLayout>;
+  }
+  return <DashboardLayout><Chat /></DashboardLayout>;
 }
 
 function Router() {
@@ -222,17 +217,8 @@ function Router() {
       <Route path="/architecture">
         <ArchitectureDiagram />
       </Route>
-      <Route path="/concierge">
-        <ConciergePage />
-      </Route>
       <Route path="/optimize">
-        <Redirect to="/concierge?tier=ai" />
-      </Route>
-      <Route path="/reset-password">
-        <ResetPasswordPage />
-      </Route>
-      <Route path="/verify-email">
-        <VerifyEmailPage />
+        <OptimizePage />
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
@@ -246,7 +232,7 @@ function Router() {
       
       {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
       <Route path="/discover">
-        <ConsoleAwareLayout title="Discover"><DiscoverPage /></ConsoleAwareLayout>
+        <DiscoverPage />
       </Route>
       {/* Phase 3 LocationView — 9-section city marketplace (Decision #5 = Replace). */}
       <Route path="/discover/location/:city">
@@ -266,7 +252,7 @@ function Router() {
         <ServiceDetailPage />
       </Route>
       <Route path="/cart">
-        <ConsoleAwareLayout title="Cart"><CartPage /></ConsoleAwareLayout>
+        <CartPage />
       </Route>
 
       <Route path="/itinerary-view/:token">
@@ -411,11 +397,11 @@ function Router() {
       
       {/* Consolidated Credits page */}
       <Route path="/credits">
-        {() => <ConsoleAwareLayout title="Credits"><ProtectedRoute component={CreditsBillingPage} /></ConsoleAwareLayout>}
+        {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
       </Route>
       
       <Route path="/notifications">
-        {() => <ConsoleAwareLayout title="Notifications"><ProtectedRoute component={Notifications} /></ConsoleAwareLayout>}
+        {() => <ProtectedRoute component={Notifications} />}
       </Route>
       <Route path="/expert-status">
         {() => <ProtectedRoute component={ExpertStatusPage} />}
@@ -632,9 +618,6 @@ function Router() {
       <Route path="/admin/categories">
         {() => <ProtectedRoute component={AdminCategories} requiredRole="admin" />}
       </Route>
-      <Route path="/admin/expert-templates">
-        {() => <ProtectedRoute component={AdminExpertTemplates} requiredRole="admin" />}
-      </Route>
       <Route path="/admin/search">
         {() => <ProtectedRoute component={AdminSearch} requiredRole="admin" />}
       </Route>
@@ -668,9 +651,6 @@ function Router() {
       <Route path="/admin/fee-config">
         {() => <ProtectedRoute component={AdminFeeConfig} requiredRole="admin" />}
       </Route>
-      <Route path="/admin/event-packages">
-        {() => <ProtectedRoute component={AdminEventPackages} requiredRole="admin" />}
-      </Route>
       <Route path="/admin/platform-providers">
         {() => <ProtectedRoute component={AdminPlatformProviders} requiredRole="admin" />}
       </Route>
@@ -682,12 +662,6 @@ function Router() {
       </Route>
       <Route path="/admin/neighborhood-backfill">
         {() => <ProtectedRoute component={AdminNeighborhoodBackfill} requiredRole="admin" />}
-      </Route>
-      <Route path="/admin/gem-photo-backfill">
-        {() => <ProtectedRoute component={AdminGemPhotoBackfill} requiredRole="admin" />}
-      </Route>
-      <Route path="/admin/review-moderation">
-        {() => <ProtectedRoute component={AdminReviewModeration} requiredRole="admin" />}
       </Route>
       <Route path="/admin/analytics/cross-sell">
         {() => <ProtectedRoute component={AdminCrossSellAnalytics} requiredRole="admin" />}
@@ -785,13 +759,11 @@ function App() {
       <GuestTripProvider>
         <TripQueueProvider>
           <SignInModalProvider>
-            <ActiveConsoleProvider>
-              <TooltipProvider>
-                <Toaster />
-                <GuestCartMigrator />
-                <Router />
-              </TooltipProvider>
-            </ActiveConsoleProvider>
+            <TooltipProvider>
+              <Toaster />
+              <GuestCartMigrator />
+              <Router />
+            </TooltipProvider>
           </SignInModalProvider>
         </TripQueueProvider>
       </GuestTripProvider>

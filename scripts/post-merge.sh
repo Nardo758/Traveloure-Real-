@@ -1,4 +1,4 @@
 #!/bin/bash
 set -e
 npm install
-npx tsx scripts/run-migrations.ts
+npx drizzle-kit push --force

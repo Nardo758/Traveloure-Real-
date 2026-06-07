@@ -35,6 +35,5 @@ DROP TABLE IF EXISTS expert_selected_services CASCADE;
 -- 3. Drop expert_custom_services table (all data migrated to provider_services)
 DROP TABLE IF EXISTS expert_custom_services CASCADE;
 
--- 4. expert_service_categories: intentionally NOT dropped here.
--- Migration 026 recreates it with its seed rows and restores the FK from
--- expert_service_offerings.category_id so orphaned rows are resolved.
+-- 4. Drop expert_service_categories table (deprecated in favor of canonical service_categories)
+DROP TABLE IF EXISTS expert_service_categories CASCADE;

@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { differenceInDays, format, isValid } from "date-fns";
+import { differenceInDays, format } from "date-fns";
 import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { getDestinationPhotoUrl, type PlanCardTrip } from "./plancard-types";
@@ -16,18 +16,9 @@ interface HeroSectionProps {
 
 export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, budget }: HeroSectionProps) {
   const { toast } = useToast();
-  const photoUrl = getDestinationPhotoUrl(trip.destination || "travel");
-
-  function safeDate(raw: string | null | undefined): Date | null {
-    if (!raw) return null;
-    const d = new Date(raw);
-    return isValid(d) ? d : null;
-  }
-
-  const startDate = safeDate(trip.startDate);
-  const endDate = safeDate(trip.endDate);
-  const daysUntil = startDate ? differenceInDays(startDate, new Date()) : null;
-  const statusLabel = daysUntil != null && daysUntil > 0
+  const photoUrl = getDestinationPhotoUrl(trip.destination);
+  const daysUntil = differenceInDays(new Date(trip.startDate ?? Date.now()), new Date());
+  const statusLabel = daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
     : "Planning";
 
@@ -105,9 +96,7 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
           </span>
           <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
             <Calendar className="w-3.5 h-3.5" />
-            {startDate && endDate
-              ? `${format(startDate, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`
-              : "Dates not set"}
+            {format(new Date(trip.startDate ?? Date.now()), "MMM d")} - {format(new Date(trip.endDate ?? Date.now()), "MMM d, yyyy")}
           </span>
           {displayCost && (
             <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>

@@ -9,8 +9,39 @@ import { CreditCard, Zap, Gift, Clock, Check, Star, Loader2 } from "lucide-react
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 
-// LB-P5a: canonical credit packages live in @shared/credit-packages.
-import { CREDIT_PACKAGES as creditPackages } from "@shared/credit-packages";
+const creditPackages = [
+  { 
+    id: 1, 
+    credits: 50, 
+    price: 49, 
+    popular: false,
+    features: ["50 AI queries", "Basic expert access", "Email support"]
+  },
+  { 
+    id: 2, 
+    credits: 100, 
+    price: 89, 
+    popular: true, 
+    savings: "Save 11%",
+    features: ["100 AI queries", "Priority expert access", "Chat support", "Itinerary exports"]
+  },
+  { 
+    id: 3, 
+    credits: 250, 
+    price: 199, 
+    popular: false, 
+    savings: "Save 20%",
+    features: ["250 AI queries", "VIP expert access", "Priority support", "Unlimited exports"]
+  },
+  { 
+    id: 4, 
+    credits: 500, 
+    price: 349, 
+    popular: false, 
+    savings: "Save 30%",
+    features: ["500 AI queries", "VIP expert access", "Priority support", "Unlimited exports", "Early access to features"]
+  },
+];
 
 const transactions = [
   { id: 1, type: "purchase", amount: 150, description: "Credit Package Purchase", date: "Dec 28, 2024" },

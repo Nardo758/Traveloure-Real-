@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +21,6 @@ import {
   Zap,
   Star,
   Trophy,
-  Shield,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -36,19 +33,14 @@ interface FeeConfigData {
   minFee: number | null;
   maxFee: number | null;
   isActive: boolean;
-  insuranceEnabled: boolean;
-  insuranceRatePercent: number;
-  insuranceAppliesTo: string[];
 }
 
 interface OptimizationFeeData {
   id: string;
   complexity_tier: string;
-  event_type: string | null;  // CON-A.P2: null = tier-level default, non-null = per-event-type override
   price_cents: number;
   currency: string;
   is_active: boolean;
-  is_disabled: boolean;  // CON-A.P2: $0=off semantic per §4.8
   updated_by: string | null;
   updated_at: string | null;
 }
@@ -75,9 +67,6 @@ const DEFAULT_CONFIGS: FeeConfigData[] = Object.keys(CATEGORY_LABELS).map(cat =>
   minFee: null,
   maxFee: null,
   isActive: true,
-  insuranceEnabled: false,
-  insuranceRatePercent: 0,
-  insuranceAppliesTo: [],
 }));
 
 const OPTIMIZATION_TIER_META: Record<string, { label: string; description: string; Icon: any; color: string }> = {
@@ -234,59 +223,6 @@ function FeeConfigCard({
           </div>
         </div>
 
-        {/* Insurance Tier */}
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 p-3 space-y-3" data-testid={`card-insurance-tier-${config.category}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-xs font-semibold text-blue-800 dark:text-blue-200">Insurance Tier</span>
-            </div>
-            <Switch
-              checked={config.insuranceEnabled}
-              onCheckedChange={v => onChange("insuranceEnabled", v)}
-              data-testid={`switch-insurance-enabled-${config.category}`}
-            />
-          </div>
-          {config.insuranceEnabled && (
-            <div className="space-y-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Insurance rate (% of item cost)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={25}
-                    step={0.5}
-                    value={config.insuranceRatePercent}
-                    onChange={e => onChange("insuranceRatePercent", parseFloat(e.target.value) || 0)}
-                    className="w-24"
-                    data-testid={`input-insurance-rate-${config.category}`}
-                  />
-                  <span className="text-sm text-muted-foreground">%</span>
-                </div>
-              </div>
-              <div className="rounded bg-blue-100 dark:bg-blue-900/30 p-2 text-center">
-                <p className="text-[10px] text-blue-700 dark:text-blue-300">
-                  Added on top of platform fee. Applies to all bookings in this category unless restricted below.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Restrict to booking types (comma-separated, blank = all)</Label>
-                <Input
-                  type="text"
-                  placeholder="e.g. hotel,flight"
-                  value={config.insuranceAppliesTo.join(",")}
-                  onChange={e => onChange("insuranceAppliesTo", e.target.value ? e.target.value.split(",").map(s => s.trim()).filter(Boolean) : [])}
-                  data-testid={`input-insurance-applies-to-${config.category}`}
-                />
-              </div>
-            </div>
-          )}
-          {!config.insuranceEnabled && (
-            <p className="text-xs text-blue-600 dark:text-blue-400">Enable to add an insurance component to the platform fee for this category.</p>
-          )}
-        </div>
-
         <Button
           size="sm"
           className="w-full gap-2"
@@ -308,46 +244,38 @@ function OptimizationFeeCard({
   isSaving,
 }: {
   fee: OptimizationFeeData;
-  onSave: (params: { complexityTier: string; eventType: string | null; priceCents: number; isActive: boolean; isDisabled: boolean }) => void;
+  onSave: (tier: string, priceCents: number, isActive: boolean) => void;
   isSaving: boolean;
 }) {
-  // CON-A.P2: event-type rows show the event-type label; tier rows show the tier meta.
-  const isEventRow = fee.event_type !== null;
-  const tierMeta = OPTIMIZATION_TIER_META[fee.complexity_tier] || {
+  const meta = OPTIMIZATION_TIER_META[fee.complexity_tier] || {
     label: fee.complexity_tier,
     description: "",
     Icon: Sparkles,
     color: "text-primary",
   };
-  const label = isEventRow ? fee.event_type! : tierMeta.label;
-  const description = isEventRow
-    ? `Override for ${fee.event_type} (resolves to ${fee.complexity_tier} tier if unset)`
-    : tierMeta.description;
-  const Icon = tierMeta.Icon;
-  const testKey = fee.event_type ?? fee.complexity_tier;
+  const Icon = meta.Icon;
   const [localCents, setLocalCents] = useState(fee.price_cents);
   const [localActive, setLocalActive] = useState(fee.is_active);
-  const [localDisabled, setLocalDisabled] = useState(fee.is_disabled);
   const displayPrice = (localCents / 100).toFixed(2);
 
   return (
-    <Card className="border-border" data-testid={`card-optimization-fee-${testKey}`}>
+    <Card className="border-border" data-testid={`card-optimization-fee-${fee.complexity_tier}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Icon className={`w-5 h-5 ${tierMeta.color}`} />
-            {label}
+            <Icon className={`w-5 h-5 ${meta.color}`} />
+            {meta.label}
           </CardTitle>
           <div className="flex items-center gap-2">
             <Switch
               checked={localActive}
               onCheckedChange={setLocalActive}
-              data-testid={`switch-opt-active-${testKey}`}
+              data-testid={`switch-opt-active-${fee.complexity_tier}`}
             />
-            <span className="text-xs text-muted-foreground">{localActive ? "Active" : "Hidden"}</span>
+            <span className="text-xs text-muted-foreground">{localActive ? "Active" : "Disabled"}</span>
           </div>
         </div>
-        <CardDescription className="text-xs mt-1">{description}</CardDescription>
+        <CardDescription className="text-xs mt-1">{meta.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
@@ -367,22 +295,10 @@ function OptimizationFeeCard({
                 setLocalCents(Math.round(dollars * 100));
               }}
               className="w-28"
-              disabled={localDisabled}
-              data-testid={`input-opt-fee-${testKey}`}
+              data-testid={`input-opt-fee-${fee.complexity_tier}`}
             />
             <span className="text-xs text-muted-foreground">USD ({localCents}¢)</span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={localDisabled}
-            onCheckedChange={setLocalDisabled}
-            data-testid={`switch-opt-disabled-${testKey}`}
-          />
-          <span className="text-xs text-muted-foreground">
-            {localDisabled ? "AI Concierge disabled for this type ($0=off)" : "Charged at the price above"}
-          </span>
         </div>
 
         <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground">
@@ -393,15 +309,9 @@ function OptimizationFeeCard({
         <Button
           size="sm"
           className="w-full gap-2"
-          onClick={() => onSave({
-            complexityTier: fee.complexity_tier,
-            eventType: fee.event_type,
-            priceCents: localCents,
-            isActive: localActive,
-            isDisabled: localDisabled,
-          })}
+          onClick={() => onSave(fee.complexity_tier, localCents, localActive)}
           disabled={isSaving}
-          data-testid={`button-save-opt-fee-${testKey}`}
+          data-testid={`button-save-opt-fee-${fee.complexity_tier}`}
         >
           {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           Save Changes
@@ -439,8 +349,8 @@ export default function AdminFeeConfigPage() {
   });
 
   const saveOptMutation = useMutation({
-    mutationFn: (params: { complexityTier: string; eventType: string | null; priceCents: number; isActive: boolean; isDisabled: boolean }) =>
-      apiRequest("POST", `/api/admin/optimization-fees`, params),
+    mutationFn: ({ complexityTier, priceCents, isActive }: { complexityTier: string; priceCents: number; isActive: boolean }) =>
+      apiRequest("POST", `/api/admin/optimization-fees`, { complexityTier, priceCents, isActive }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/optimization-fees"] });
       toast({ title: "Saved", description: "Optimization fee updated." });
@@ -460,19 +370,12 @@ export default function AdminFeeConfigPage() {
 
   const globalExpertShare = configs[0]?.expertSharePercent ?? 70;
 
-  // CON-A.P2: fallback rows match §4.8 defaults — $9.99 standard tier; $49.99 event-type overrides.
-  // These are display-only fallbacks; the DB is seeded with the same values by migration 017.
   const defaultOptFees: OptimizationFeeData[] = [
-    { id: "simple", complexity_tier: "simple", event_type: null, price_cents: 999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
-    { id: "standard", complexity_tier: "standard", event_type: null, price_cents: 999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
-    { id: "complex", complexity_tier: "complex", event_type: null, price_cents: 999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
-    { id: "wedding", complexity_tier: "complex", event_type: "wedding", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
-    { id: "proposal", complexity_tier: "standard", event_type: "proposal", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
-    { id: "corporate", complexity_tier: "complex", event_type: "corporate", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
+    { id: "simple", complexity_tier: "simple", price_cents: 499, currency: "USD", is_active: true, updated_by: null, updated_at: null },
+    { id: "standard", complexity_tier: "standard", price_cents: 999, currency: "USD", is_active: true, updated_by: null, updated_at: null },
+    { id: "complex", complexity_tier: "complex", price_cents: 1999, currency: "USD", is_active: true, updated_by: null, updated_at: null },
   ];
   const displayOptFees = optimizationFees && optimizationFees.length > 0 ? optimizationFees : defaultOptFees;
-  const tierDefaults = displayOptFees.filter(f => f.event_type === null);
-  const eventOverrides = displayOptFees.filter(f => f.event_type !== null);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -580,39 +483,17 @@ export default function AdminFeeConfigPage() {
             <p>Loading optimization fees...</p>
           </div>
         ) : (
-          <div className="space-y-6" data-testid="grid-optimization-fees">
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                Tier defaults
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {tierDefaults.map(fee => (
-                  <OptimizationFeeCard
-                    key={`tier-${fee.complexity_tier}`}
-                    fee={fee}
-                    onSave={params => saveOptMutation.mutate(params)}
-                    isSaving={saveOptMutation.isPending}
-                  />
-                ))}
-              </div>
-            </div>
-            {eventOverrides.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                  Per-event-type overrides ($49.99 default per §4.8)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {eventOverrides.map(fee => (
-                    <OptimizationFeeCard
-                      key={`event-${fee.event_type}`}
-                      fee={fee}
-                      onSave={params => saveOptMutation.mutate(params)}
-                      isSaving={saveOptMutation.isPending}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="grid-optimization-fees">
+            {displayOptFees.map(fee => (
+              <OptimizationFeeCard
+                key={fee.complexity_tier}
+                fee={fee}
+                onSave={(tier, cents, active) =>
+                  saveOptMutation.mutate({ complexityTier: tier, priceCents: cents, isActive: active })
+                }
+                isSaving={saveOptMutation.isPending}
+              />
+            ))}
           </div>
         )}
       </div>

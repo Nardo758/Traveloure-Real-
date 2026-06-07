@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe, Tag } from "lucide-react";
+import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { matchedServiceSuggestion, gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
@@ -485,24 +485,7 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
             className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
           />
         )}
-        {!photoUrl && !loading && (
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-            <Tag className="w-8 h-8 text-primary/40" />
-          </div>
-        )}
-        <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookingBadge level={computeBookability({ externalUrl })} />
-        </span>
-        {service.isFeatured && (
-          <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
-            Featured
-          </span>
-        )}
-        {!service.isFeatured && tag && (
-          <span className="absolute top-2 left-2 bg-primary/80 text-white text-[10px] font-medium rounded-full px-2 py-0.5 capitalize">
-            {tag}
-          </span>
-        )}
+        {!loading && !photoUrl && <span className="text-2xl">🎯</span>}
       </div>
 
       <div className="p-3 flex flex-col gap-1.5 flex-1">

@@ -7,7 +7,7 @@ import {
   type DiscoveryCategory,
   type InsertAiDiscoveredGem 
 } from "@shared/schema";
-import { eq, and, desc, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../infrastructure/logger";
 import { unsplashService } from "./unsplash.service";
 import { pexelsService } from "./pexels.service";
@@ -109,11 +109,27 @@ class GrokDiscoveryService {
           const result = await this.discoverCategoryGems(destination, category, maxGems);
           
           for (const gem of result.gems) {
-            const imageUrl = await this.fetchGemPhoto(
-              gem.name,
-              result.destination,
-              gem.imageSearchTerms ?? []
-            );
+            const existingRows = await db
+              .select({ imageUrl: aiDiscoveredGems.imageUrl })
+              .from(aiDiscoveredGems)
+              .where(
+                and(
+                  eq(aiDiscoveredGems.destination, result.destination),
+                  eq(aiDiscoveredGems.name, gem.name),
+                  eq(aiDiscoveredGems.category, category)
+                )
+              )
+              .limit(1);
+
+            const existingImageUrl = existingRows[0]?.imageUrl;
+            const imageUrl = existingImageUrl
+              ? existingImageUrl
+              : await this.fetchGemPhoto(
+                  gem.name,
+                  result.destination,
+                  gem.imageSearchTerms ?? []
+                );
+
             await this.saveGem({
               destination: result.destination,
               country: result.country,
@@ -316,9 +332,11 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       .limit(1);
 
     if (existing.length > 0) {
+      const preservedImageUrl = (!gem.imageUrl && existing[0].imageUrl) ? existing[0].imageUrl : gem.imageUrl;
       await db.update(aiDiscoveredGems)
         .set({
           ...gem,
+          imageUrl: preservedImageUrl,
           updatedAt: new Date(),
           lastRefreshedAt: new Date(),
         })
@@ -421,40 +439,6 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       .orderBy(desc(sql`count(*)`));
 
     return results;
-  }
-
-  async backfillGemPhotos(): Promise<{ processed: number; updated: number; failed: number }> {
-    const gems = await db.select({
-      id: aiDiscoveredGems.id,
-      name: aiDiscoveredGems.name,
-      destination: aiDiscoveredGems.destination,
-      imageSearchTerms: aiDiscoveredGems.imageSearchTerms,
-    })
-      .from(aiDiscoveredGems)
-      .where(isNull(aiDiscoveredGems.imageUrl));
-
-    let updated = 0;
-    let failed = 0;
-
-    for (const gem of gems) {
-      try {
-        const terms = Array.isArray(gem.imageSearchTerms) ? gem.imageSearchTerms as string[] : [];
-        const imageUrl = await this.fetchGemPhoto(gem.name, gem.destination, terms);
-        if (imageUrl) {
-          await db.update(aiDiscoveredGems)
-            .set({ imageUrl, updatedAt: new Date() })
-            .where(eq(aiDiscoveredGems.id, gem.id));
-          updated++;
-        } else {
-          failed++;
-        }
-      } catch (err) {
-        logger.error(`backfillGemPhotos: failed for gem ${gem.id}`, err);
-        failed++;
-      }
-    }
-
-    return { processed: gems.length, updated, failed };
   }
 }
 

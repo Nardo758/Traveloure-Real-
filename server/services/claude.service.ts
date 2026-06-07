@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { trackAnthropicResponse } from './ai-cost-tracker';
 
 // claude-sonnet-4-20250514 is the latest model
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";
@@ -161,7 +160,6 @@ Return ONLY valid JSON, no additional text.`;
         ],
         system: systemPrompt,
       });
-      trackAnthropicResponse(message, { sourceType: 'ai_optimization' });
 
       const content = message.content[0];
       if (content.type !== 'text') {
@@ -224,7 +222,6 @@ Return JSON:
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
       });
-      trackAnthropicResponse(message, { sourceType: 'ai_transport' });
 
       const content = message.content[0];
       if (content.type !== 'text') {
@@ -281,7 +278,6 @@ Provide 5-8 recommendations in JSON format:
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
       });
-      trackAnthropicResponse(message, { sourceType: 'ai_traveler' });
 
       const content = message.content[0];
       if (content.type !== 'text') {
@@ -378,7 +374,6 @@ Return JSON:
         max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
       });
-      trackAnthropicResponse(message, { sourceType: 'ai_optimization' });
 
       const content = message.content[0];
       if (content.type !== 'text') {

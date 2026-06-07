@@ -24,10 +24,7 @@ import {
   Save,
   StickyNote,
   Lock,
-  Home,
-  BadgeCheck,
-  AlertCircle,
-  Info,
+  Home
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -35,14 +32,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
-
-const EXPERT_ROLE_LABELS: Record<string, string> = {
-  travel_expert: "Travel Advisor",
-  local_expert: "Local Expert",
-  event_planner: "Event Planner",
-  executive_assistant: "Executive Assistant",
-  expert: "Expert",
-};
 
 const LOCALITY_PROOF_OPTIONS = [
   { value: "born_raised", label: "Born & raised here" },
@@ -62,7 +51,6 @@ export default function ExpertProfile() {
   const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
   const [newNeighborhood, setNewNeighborhood] = useState("");
   const [localityProof, setLocalityProof] = useState("");
-  const [selectedRole, setSelectedRole] = useState("");
 
   const { data: expertProfile, isLoading: profileLoading } = useQuery({
     queryKey: ["/api/experts", user?.id],
@@ -106,13 +94,6 @@ export default function ExpertProfile() {
     }
   }, [expertProfile]);
 
-  // Sync selectedRole from loaded profile
-  React.useEffect(() => {
-    const roleFromForm = (expertProfile as any)?.expertForm?.expertType;
-    const roleFromUser = user?.role;
-    setSelectedRole(roleFromForm ?? roleFromUser ?? "travel_expert");
-  }, [expertProfile, user?.role]);
-
   // Sync neighborhoods + localityProof from loaded data
   React.useEffect(() => {
     if (neighborhoodsData) {
@@ -120,28 +101,6 @@ export default function ExpertProfile() {
       setLocalityProof((neighborhoodsData as any).localityProof || "");
     }
   }, [neighborhoodsData]);
-
-  const saveRoleMutation = useMutation({
-    mutationFn: (expertType: string) =>
-      apiRequest("PATCH", "/api/expert/role", { expertType }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({ title: "Role updated successfully" });
-    },
-    onError: (error: any) => {
-      let message = "Failed to update role";
-      try {
-        const raw: string = error?.message ?? "";
-        const jsonStart = raw.indexOf("{");
-        if (jsonStart !== -1) {
-          const body = JSON.parse(raw.slice(jsonStart));
-          if (body?.message) message = body.message;
-        }
-      } catch {}
-      toast({ title: message, variant: "destructive" });
-    },
-  });
 
   const saveNotesMutation = useMutation({
     mutationFn: (notesStyle: string) =>
@@ -260,67 +219,6 @@ export default function ExpertProfile() {
                   data-testid="input-last-name"
                 />
               </div>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label className="flex items-center gap-1.5">
-                <BadgeCheck className="w-4 h-4 text-[#FF385C]" />
-                Expert Role
-              </Label>
-              {profileLoading ? (
-                <Skeleton className="h-10 rounded" />
-              ) : (() => {
-                const currentExpertType = (expertProfile as any)?.expertForm?.expertType ?? user?.role ?? "travel_expert";
-                const isRoleUnchanged = selectedRole === currentExpertType;
-                const requiresReview = selectedRole === "local_expert" && currentExpertType !== "local_expert";
-                return (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={selectedRole}
-                        onValueChange={setSelectedRole}
-                        data-testid="select-expert-role"
-                      >
-                        <SelectTrigger className="flex-1" data-testid="trigger-expert-role">
-                          <SelectValue placeholder="Select your role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="travel_expert">Travel Advisor</SelectItem>
-                          <SelectItem value="local_expert">
-                            Local Expert{currentExpertType !== "local_expert" ? " (requires review)" : ""}
-                          </SelectItem>
-                          <SelectItem value="event_planner">Event Planner</SelectItem>
-                          <SelectItem value="executive_assistant">Executive Assistant</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        className="bg-[#FF385C] shrink-0"
-                        onClick={() => saveRoleMutation.mutate(selectedRole)}
-                        disabled={
-                          saveRoleMutation.isPending ||
-                          isRoleUnchanged ||
-                          requiresReview
-                        }
-                        data-testid="button-save-role"
-                      >
-                        {saveRoleMutation.isPending ? "Saving…" : "Save"}
-                      </Button>
-                    </div>
-                    {requiresReview && (
-                      <div
-                        className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-                        data-testid="alert-role-requires-review"
-                      >
-                        <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>
-                          Switching to <strong>Local Expert</strong> requires admin review. Your current role was vetted for a different category. Please contact support to have your application re-evaluated.
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
 
             <div className="space-y-2">
