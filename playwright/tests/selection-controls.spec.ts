@@ -7,6 +7,12 @@ import { test, expect, type Page } from '@playwright/test';
  * render per tab, selecting an option NARROWS the provider list, Clear restores
  * it, switching tabs ISOLATES (resets) refinements, and no console errors.
  *
+ * Plus the consolidation guard: every non-flight/hotel tab renders EXACTLY ONE
+ * filter surface — a single compact CompactFilterBar (data-testid="filter-bar")
+ * — and never the old facet wall (button-toggle-filters). Count/absence asserts
+ * so fragmentation (the duplicate-Price-Range / second-input-set pattern) can't
+ * silently regress.
+ *
  * Runs against the deployed app (BASE_URL). Tabs whose type is dining /
  * vendors / venue-search render the "Showing N providers" count we assert on;
  * activities/services/flights/hotels tabs hide it by design.
@@ -34,14 +40,12 @@ test.describe('Selection controls (P462) — render / narrow / parity / tab-isol
     await gotoTemplate(page, 'wedding');
     await page.getByTestId('tab-vendors').click();
 
-    await expect(page.getByTestId('selection-controls-panel')).toBeVisible();
+    // Exactly ONE filter surface, and never the old facet wall. Present-only
+    // checks can't catch a duplicate; count==1 + absence is the regression guard.
+    await expect(page.getByTestId('filter-bar')).toHaveCount(1);
+    await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
     const photography = page.getByTestId('selection-vendor-focus-focus-photography');
     await expect(photography).toBeVisible();
-
-    // Gate gap that let the filter-doubling bug ship: the OLD facet wall (the
-    // "Filters & Sort" Collapsible) must NOT co-render on a seeded selection-
-    // controls tab. Present-only checks can't catch a duplicate; assert absence.
-    await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
 
     const before = await providerCount(page);
     expect(before, 'expected wedding vendors in Kyoto to assert narrowing').toBeGreaterThan(1);
@@ -57,7 +61,7 @@ test.describe('Selection controls (P462) — render / narrow / parity / tab-isol
   test('travel/dining: budget control narrows', async ({ page }) => {
     await gotoTemplate(page, 'travel');
     await page.getByTestId('tab-dining').click();
-    await expect(page.getByTestId('selection-controls-panel')).toBeVisible();
+    await expect(page.getByTestId('filter-bar')).toBeVisible();
 
     const before = await providerCount(page);
     test.skip(before < 2, 'not enough dining inventory to assert narrowing');
@@ -80,13 +84,33 @@ test.describe('Selection controls (P462) — render / narrow / parity / tab-isol
     await expect(photography).not.toHaveClass(/FF385C/);
   });
 
+  // Generalized consolidation guard — structural only (no inventory dependency):
+  // each seeded non-flight/hotel tab renders exactly one filter bar, exactly one
+  // Sort control, and zero of the old facet wall. Catches fragmentation (a
+  // second input set) and dimension duplication regressing on any tab.
+  const SEEDED_TABS: Array<{ slug: string; tab: string }> = [
+    { slug: 'wedding', tab: 'tab-vendors' },
+    { slug: 'travel', tab: 'tab-dining' },
+    { slug: 'travel', tab: 'tab-activities' },
+    { slug: 'travel', tab: 'tab-services' },
+  ];
+  for (const { slug, tab } of SEEDED_TABS) {
+    test(`single filter surface on ${slug}/${tab}`, async ({ page }) => {
+      await gotoTemplate(page, slug);
+      await page.getByTestId(tab).click();
+      await expect(page.getByTestId('filter-bar')).toHaveCount(1);
+      await expect(page.getByTestId('select-template-sort')).toHaveCount(1);
+      await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
+    });
+  }
+
   test('no console errors interacting with the panel', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
     await gotoTemplate(page, 'wedding');
     await page.getByTestId('tab-vendors').click();
-    await expect(page.getByTestId('selection-controls-panel')).toBeVisible();
+    await expect(page.getByTestId('filter-bar')).toBeVisible();
     await page.getByTestId('selection-vendor-focus-focus-photography').click();
 
     expect(errors, errors.join('\n')).toHaveLength(0);
