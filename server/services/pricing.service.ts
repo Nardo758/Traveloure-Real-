@@ -16,9 +16,10 @@ interface FeeBreakdown {
 }
 
 class PricingService {
-  // FEE-3: deposit rate resolves from booking_fee_configs.platform_deposit_rate.
-  // 0.25 is the safe fallback if the row is missing/unseeded so checkout cannot
-  // silently drop to a 0 deposit. Cached for 60 s to bound DB load.
+  // FEE-3: deposit rate now resolves from fee_bands.platform_deposit (Phase 1.3).
+  // Migration 033 seeded this band from booking_fee_configs.platform_deposit_rate's
+  // live value, so behavior is neutral on day-one. 0.25 stays the safe fallback if
+  // both reads fail. Cached for 60 s to bound DB load.
   private static readonly DEFAULT_DEPOSIT_RATE = 0.25;
   private static readonly RATE_CACHE_TTL_MS = 60_000;
   private depositRateCache: { value: number; expiresAt: number } | null = null;
@@ -28,15 +29,16 @@ class PricingService {
       return this.depositRateCache.value;
     }
     try {
+      // Phase 1.3: read from fee_bands as primary source.
       const result = await db.execute(sql`
-        SELECT CAST(platform_fee_percent AS FLOAT) AS rate
-        FROM booking_fee_configs
-        WHERE category = 'platform_deposit_rate' AND is_active = true
+        SELECT CAST(default_rate AS FLOAT) AS rate
+        FROM fee_bands
+        WHERE band_key = 'platform_deposit' AND is_active = true
         LIMIT 1
       `);
       const row = result.rows?.[0] as { rate: number | null } | undefined;
       const value = row?.rate !== undefined && row.rate !== null
-        ? Number(row.rate) / 100
+        ? Number(row.rate)  // fee_bands.default_rate already stores the fraction (0.25), not a percent (25)
         : PricingService.DEFAULT_DEPOSIT_RATE;
       this.depositRateCache = { value, expiresAt: Date.now() + PricingService.RATE_CACHE_TTL_MS };
       return value;
