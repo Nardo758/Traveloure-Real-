@@ -413,7 +413,6 @@ export async function registerRoutes(
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
   app.use("/api/webhooks", webhooksRoutes);
 
-<<<<<<< HEAD
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
@@ -12071,19 +12070,6 @@ Respond with this exact JSON structure:
 
   // Register AI Discovery routes
   await registerDiscoveryRoutes(app);
-=======
-  // ── Extracted route modules (defrag P1-P6) ──────────────────────────────────
-  // These routers were extracted from routes.ts and take priority via first-match.
-  app.use(tripsRoutes);
-  app.use(adminRoutes);
-  app.use(expertsRoutes);
-  app.use(contentRoutes);
-  app.use(paymentsRoutes);
-  app.use(bookingsDomainRoutes);
-  app.use(crossSellRoutes);
-  app.use(savedItemsRoutes);
-  // ────────────────────────────────────────────────────────────────────────────
->>>>>>> origin/main
 
   return httpServer;
 }

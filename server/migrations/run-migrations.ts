@@ -25,8 +25,6 @@ const MIGRATION_FILES = [
   "013_drop_deprecated_service_tables.sql",
   "014_itinerary_item_scheduled_date.sql",
   "015_gem_image_url.sql",
-<<<<<<< HEAD
-=======
   "016_eso_target_roles.sql",
   "017_optimization_fees_event_type.sql",
   "018_concierge_requests.sql",
@@ -44,7 +42,6 @@ const MIGRATION_FILES = [
   "028_service_bookings_insurance_fee.sql",
   "029_review_moderation.sql",
   "030_restore_expert_service_categories.sql",
->>>>>>> origin/main
 ];
 
 export async function runMigrations(): Promise<void> {
