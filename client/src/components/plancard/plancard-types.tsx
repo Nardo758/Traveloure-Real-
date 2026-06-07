@@ -105,6 +105,8 @@ export interface PlanCardActivity {
   comments: number;
   changes?: Array<{ who: string; what: string }>;
   expertNote?: string;
+  /** Provider-canonical Maps link (from googlePlaceId); preferred for nav. */
+  mapsUrl?: string;
 }
 
 export interface PlanCardTransport {

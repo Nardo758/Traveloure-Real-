@@ -293,6 +293,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           // pins read coordinates directly (no client-side geocoding).
           lat: item.latitude ? parseFloat(item.latitude.toString()) : null,
           lng: item.longitude ? parseFloat(item.longitude.toString()) : null,
+          // Provider-canonical place link; the deep-link builder prefers this for
+          // single-destination navigation over a synthesized lat/lng URL.
+          mapsUrl: item.googlePlaceId
+            ? `https://www.google.com/maps/place/?q=place_id:${item.googlePlaceId}`
+            : null,
           expertNote: (item as any).notes || null,
           comments: commentCounts[item.id] || 0,
           suggestedBy: item.suggestedBy || null,
@@ -393,6 +398,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
               cost: parseFloat(a.estimatedCost?.toString() || a.cost?.toString() || "0"),
               lat: a.lat ?? a.latitude ?? null,
               lng: a.lng ?? a.longitude ?? null,
+              mapsUrl: a.googlePlaceId
+                ? `https://www.google.com/maps/place/?q=place_id:${a.googlePlaceId}`
+                : (a.mapsUrl ?? null),
               expertNote: null,
               comments: 0,
               suggestedBy: null,

@@ -37,10 +37,18 @@ export function buildDayMapsUrls(places: Place[], mode?: TransportMode): {
   appleUrl: string;
   appleWebUrl: string;
 } {
+  const googleUrl = buildGoogleMapsDeepLink(places, mode);
+  // Google escape hatch: Apple Maps can't carry intermediate waypoints, so for a
+  // >2-stop day the Apple links fall through to the Google route rather than
+  // silently dropping the middle stops.
+  if (places.length > 2) {
+    return { googleUrl, appleUrl: googleUrl, appleWebUrl: googleUrl };
+  }
+  const appleWebUrl = buildAppleMapsDeepLink(places, mode);
   return {
-    googleUrl: buildGoogleMapsDeepLink(places, mode),
-    appleUrl: buildAppleMapsDeepLink(places, mode).replace("https://maps.apple.com", "maps://"),
-    appleWebUrl: buildAppleMapsDeepLink(places, mode),
+    googleUrl,
+    appleUrl: appleWebUrl.replace("https://maps.apple.com", "maps://"),
+    appleWebUrl,
   };
 }
 
