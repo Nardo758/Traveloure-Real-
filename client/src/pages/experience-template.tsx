@@ -84,6 +84,7 @@ import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
 import { filterServices } from "@shared/service-filter";
+import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
 import { SelectionControlsPanel } from "@/components/selection-controls-panel";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
@@ -681,15 +682,22 @@ function deriveTabType(slug: string): string {
   return "venue-search";
 }
 
-function dbTabsToConfig(tabs: ExperienceTemplateTab[]): TabConfig[] {
-  return tabs.map((tab) => ({
-    id: tab.slug,
-    label: tab.name,
-    icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
-    category: tab.slug,
-    tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
-    controlConfig: (tab as any).controlConfig as TabControlConfig | undefined,
-  }));
+function dbTabsToConfig(tabs: ExperienceTemplateTab[], templateSlug: string): TabConfig[] {
+  return tabs.map((tab) => {
+    const controlConfig = (tab as any).controlConfig as TabControlConfig | undefined;
+    const seededSelectionControls = SELECTION_CONTROL_SEED[templateSlug]?.[tab.slug];
+
+    return {
+      id: tab.slug,
+      label: tab.name,
+      icon: DB_TAB_ICON_MAP[tab.icon || ""] || MapPin,
+      category: tab.slug,
+      tabType: (tab as any).tabType ?? deriveTabType(tab.slug),
+      controlConfig: seededSelectionControls && !(controlConfig?.selectionControls?.length)
+        ? { ...controlConfig, selectionControls: seededSelectionControls }
+        : controlConfig,
+    };
+  });
 }
 
 const slugAliases: Record<string, string> = {
@@ -1089,7 +1097,7 @@ export default function ExperienceTemplatePage() {
   // P5: effectiveTabs — DB is the single source of truth; experienceConfigs no longer drives structure
   const effectiveTabs = useMemo(() => {
     if (!dbTabs || dbTabs.length === 0) return [];
-    const allTabs = dbTabsToConfig(dbTabs);
+    const allTabs = dbTabsToConfig(dbTabs, slug);
     // Wedding guest-mode: filter to guest-relevant tabTypes only (DB-driven)
     if (slug === "wedding" && weddingMode === "guest") {
       const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events", "hotels", "venue-search"]);
@@ -1102,11 +1110,11 @@ export default function ExperienceTemplatePage() {
   // P5: Reset activeTab when dbTabs loads and current tab isn't present
   useEffect(() => {
     if (!dbTabs || dbTabs.length === 0) return;
-    const tabIds = dbTabsToConfig(dbTabs).map((t) => t.id);
+    const tabIds = dbTabsToConfig(dbTabs, slug).map((t) => t.id);
     if (!tabIds.includes(activeTab)) {
       setActiveTab(tabIds[0] ?? "venue");
     }
-  }, [dbTabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dbTabs, slug]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // Track whether we've done initial hydration
   const hasHydratedRef = useRef(false);
@@ -2240,7 +2248,7 @@ export default function ExperienceTemplatePage() {
                   size="sm"
                   onClick={() => {
                     setWeddingMode("planning");
-                    setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
+                    setActiveTab(dbTabsToConfig(dbTabs, slug)[0]?.id ?? "venues");
                   }}
                   className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
                   data-testid="button-wedding-mode-planning"
@@ -2253,7 +2261,7 @@ export default function ExperienceTemplatePage() {
                   onClick={() => {
                     setWeddingMode("guest");
                     const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
-                    const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                    const firstGuest = dbTabsToConfig(dbTabs, slug).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
                     setActiveTab(firstGuest?.id ?? "activities");
                   }}
                   className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
@@ -3300,7 +3308,7 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   setWeddingMode("planning");
-                  setActiveTab(dbTabsToConfig(dbTabs)[0]?.id ?? "venues");
+                  setActiveTab(dbTabsToConfig(dbTabs, slug)[0]?.id ?? "venues");
                 }}
                 className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
               >
@@ -3312,7 +3320,7 @@ export default function ExperienceTemplatePage() {
                 onClick={() => {
                   setWeddingMode("guest");
                   const GUEST_TAB_TYPES = new Set(["activities", "dining", "nightlife", "events"]);
-                  const firstGuest = dbTabsToConfig(dbTabs).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
+                  const firstGuest = dbTabsToConfig(dbTabs, slug).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
                   setActiveTab(firstGuest?.id ?? "activities");
                 }}
                 className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
