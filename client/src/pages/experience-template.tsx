@@ -83,7 +83,7 @@ import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
-import { filterServices } from "@shared/service-filter";
+import { filterServices, sortServices } from "@shared/service-filter";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
 import { SelectionControlsPanel } from "@/components/selection-controls-panel";
@@ -1722,15 +1722,7 @@ export default function ExperienceTemplatePage() {
       tags: selectedFilters.length > 0 ? selectedFilters : undefined,
     });
 
-    if (sortBy === "price-low") {
-      filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
-    } else if (sortBy === "price-high") {
-      filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
-    } else if (sortBy === "rating") {
-      filtered.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
-    }
-
-    return filtered;
+    return sortServices(filtered, sortBy);
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
@@ -2419,8 +2411,14 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab */}
-          {activeTabControlConfig && (
+          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab.
+              Gated to flight/hotel tabs only: every control here (priceRange/stops/starRatings/
+              sortOptions) reads activeTabControlConfig and writes flight/hotel state
+              (flightMaxPrice/hotelMaxPrice, flightStops, hotelStarRating, flight/hotelSortBy),
+              so it is inert on other tabs. Without this guard it co-rendered with the
+              SelectionControlsPanel below on seeded tabs — the filter-doubling bug. Non-flight/
+              hotel tabs get their (working) sort control in the selection-controls block below. */}
+          {activeTabControlConfig && (currentTabType === "flights" || currentTabType === "hotels") && (
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
@@ -2536,6 +2534,24 @@ export default function ExperienceTemplatePage() {
                   onClearFilters={templateFilters.onClearFilters}
                 />
               )}
+              {/* Sort control for non-flight/hotel tabs. The flight/hotel "Sort By" lives in the
+                  Collapsible above and only sets flight/hotelSortBy; this drives the generic
+                  `sortBy` that actually orders the filteredServices list (price/rating), which
+                  previously had no UI on these tabs. */}
+              <div className="mt-4 flex items-center gap-2">
+                <Label className="text-sm font-medium">Sort By</Label>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-[200px]" data-testid="select-template-sort">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="popular">Most Popular</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    <SelectItem value="rating">Highest Rated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
