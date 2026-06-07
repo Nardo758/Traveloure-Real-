@@ -11,7 +11,7 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
-  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange,
+  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
@@ -19,7 +19,9 @@ import { DaySelector } from "./DaySelector";
 import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { TransportSection } from "./TransportSection";
+import { EscalationCTA } from "./EscalationCTA";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -908,6 +910,27 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const stats = plancardData?.stats || {};
   const day = days[selectedDay];
 
+  // Map the day's transports into the leg shape the activities-view picker reads.
+  // Ordered by legOrder so legs[i] is the connector after activity i.
+  const dayLegs: InlineTransportLegData[] = (day?.transports ?? [])
+    .map((tr, i) => ({
+      id: tr.id,
+      legOrder: tr.legOrder ?? i,
+      fromName: tr.fromName ?? tr.from,
+      toName: tr.toName ?? tr.to,
+      recommendedMode: tr.recommendedMode ?? tr.mode,
+      userSelectedMode: tr.userSelectedMode ?? null,
+      distanceDisplay: tr.distanceDisplay ?? "",
+      estimatedDurationMinutes: tr.estimatedDurationMinutes ?? tr.duration ?? 0,
+      estimatedCostUsd: tr.estimatedCostUsd ?? tr.cost ?? null,
+      alternativeModes: tr.alternativeModes,
+      fromLat: tr.fromLat ?? null,
+      fromLng: tr.fromLng ?? null,
+      toLat: tr.toLat ?? null,
+      toLng: tr.toLng ?? null,
+    }))
+    .sort((a, b) => a.legOrder - b.legOrder);
+
   const optimizationScore = score?.optimizationScore;
   const shareToken = score?.shareToken;
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
@@ -947,8 +970,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       ? `$${Math.round(Number(trip.budget) / trip.numberOfTravelers).toLocaleString()}/person`
       : null);
 
-  const isViewer = role === "viewer";
-  const isOwner = role === "owner";
+  const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
+  const isViewer = effectiveRole === "viewer" || effectiveRole === "friend";
+  const isOwner = effectiveRole === "owner";
 
   return (
     <motion.div
@@ -1060,6 +1084,27 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               perPerson={perPersonDisplay}
             />
 
+            {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
+                Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
+            {!isViewer && stage === "full" && (
+              <div className="px-5">
+                <EscalationCTA
+                  tripId={trip.id}
+                  destination={trip.destination}
+                  eventType={(trip as any).eventType}
+                  planSnapshot={{
+                    days: days.map(d => ({
+                      day: d.day,
+                      date: d.date,
+                      activityCount: d.activities?.length ?? 0,
+                    })),
+                    totalActivities,
+                    totalCost: totalCostDisplay,
+                  }}
+                />
+              </div>
+            )}
+
             <DaySelector
               tripId={trip.id}
               days={days}
@@ -1098,6 +1143,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 tripId={trip.id}
                 day={day}
                 templateConfig={templateConfig}
+                legs={dayLegs}
               />
             )}
 
@@ -1141,6 +1187,20 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
+            {/* CON-A.P6 / D8: Concierge entry slot on every PlanCard. Soft, always visible. */}
+            <Link
+              href={`/concierge?intent=${encodeURIComponent(`Help me with my ${trip.destination} trip`)}`}
+              className="flex-shrink-0"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-concierge-${trip.id}`}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                Concierge
+              </Button>
+            </Link>
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"

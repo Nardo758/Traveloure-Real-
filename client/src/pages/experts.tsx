@@ -327,6 +327,7 @@ export default function ExpertsPage() {
           </motion.div>
 
           {/* Role Switcher */}
+<<<<<<< HEAD
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -388,44 +389,68 @@ export default function ExpertsPage() {
           </motion.div>
 
           {/* Search Bar */}
+=======
+>>>>>>> origin/main
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-white rounded-xl p-4 shadow-xl max-w-4xl mx-auto"
+            transition={{ delay: 0.05 }}
+            className="flex justify-center mb-6"
           >
-            <div className="flex flex-col md:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <Input
-                  placeholder="Search by name, destination, or specialty..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-12 border-[#E5E7EB] text-[#111827]"
-                  data-testid="input-search-experts"
-                />
-              </div>
-              <Select value={selectedDestination} onValueChange={setSelectedDestination}>
-                <SelectTrigger className="w-full md:w-48 h-12 border-[#E5E7EB]" data-testid="select-destination">
-                  <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {destinations.map((dest) => (
-                    <SelectItem key={dest} value={dest}>
-                      {dest}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                className="h-12 px-8 bg-[#FF385C] hover:bg-[#E23350] text-white"
-                data-testid="button-search-experts"
-              >
-                Search Experts
-              </Button>
+            <div
+              className="inline-flex bg-white/10 backdrop-blur-sm rounded-full p-1 gap-1"
+              role="tablist"
+              aria-label="Expert type"
+              data-testid="role-switcher"
+            >
+              {[
+                { role: "local_expert", label: "Local Experts" },
+                { role: "travel_expert", label: "Travel Advisors" },
+                { role: "event_planner", label: "Event Planners" },
+              ].map(({ role, label }) => {
+                const count = roleCounts?.[role];
+                return (
+                  <button
+                    key={role}
+                    role="tab"
+                    aria-selected={selectedRole === role}
+                    onClick={() => handleRoleChange(role)}
+                    className={cn(
+                      "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap flex items-center gap-1.5",
+                      selectedRole === role
+                        ? "bg-[#FF385C] text-white shadow-md"
+                        : "text-white/80 hover:text-white hover:bg-white/15"
+                    )}
+                    data-testid={`tab-role-${role}`}
+                  >
+                    {label}
+                    {isLoadingCounts ? (
+                      <span
+                        className={cn(
+                          "inline-block w-5 h-4 rounded-full animate-pulse",
+                          selectedRole === role ? "bg-white/30" : "bg-white/20"
+                        )}
+                        data-testid={`skeleton-count-${role}`}
+                      />
+                    ) : count !== undefined ? (
+                      <span
+                        className={cn(
+                          "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold leading-none",
+                          selectedRole === role
+                            ? "bg-white/25 text-white"
+                            : "bg-white/20 text-white/90"
+                        )}
+                        data-testid={`count-${role}`}
+                      >
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </motion.div>
+
         </div>
       </section>
 
@@ -649,6 +674,7 @@ export default function ExpertsPage() {
       {/* Filters & Results */}
       <section className="py-8">
         <div className="container mx-auto px-4 max-w-6xl">
+<<<<<<< HEAD
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div className="flex flex-wrap gap-3">
@@ -703,15 +729,95 @@ export default function ExpertsPage() {
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-44 border-[#E5E7EB] bg-white" data-testid="select-sort">
                   <SelectValue placeholder="Sort by" />
+=======
+          {/* Unified Filter Bar */}
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 mb-6 shadow-sm">
+            {/* Top row: search + destination */}
+            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Search by name, destination, or specialty..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10 border-[#E5E7EB] text-[#111827] text-sm"
+                  data-testid="input-search-experts"
+                />
+              </div>
+              <Select value={selectedDestination} onValueChange={setSelectedDestination}>
+                <SelectTrigger className="w-full sm:w-44 h-10 border-[#E5E7EB]" data-testid="select-destination">
+                  <MapPin className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
+                  <SelectValue />
+>>>>>>> origin/main
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="recommended">Recommended</SelectItem>
-                  <SelectItem value="rating">Highest Rated</SelectItem>
-                  <SelectItem value="reviews">Most Reviews</SelectItem>
-                  <SelectItem value="price-low">Price: Low to High</SelectItem>
-                  <SelectItem value="price-high">Price: High to Low</SelectItem>
+                  {destinations.map((dest) => (
+                    <SelectItem key={dest} value={dest}>{dest}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Bottom row: secondary filters + sort + count */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Select value={selectedExperienceType || "all"} onValueChange={(val) => setSelectedExperienceType(val === "all" ? "" : val)}>
+                  <SelectTrigger className="h-9 w-44 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-experience-type">
+                    <Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
+                    <SelectValue placeholder="Experience Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Experience Types</SelectItem>
+                    {experienceTypes.map((exp: any) => (
+                      <SelectItem key={exp.id} value={exp.id}>{exp.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                  <SelectTrigger className="h-9 w-36 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-language">
+                    <Languages className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
+                    <SelectValue placeholder="Language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languages.map((lang) => (
+                      <SelectItem key={lang} value={lang}>{lang}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {selectedRole === "local_expert" && (
+                  <div className="relative">
+                    <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <Input
+                      ref={neighbourhoodInputRef}
+                      placeholder="Neighbourhood"
+                      value={neighbourhoodQuery}
+                      onChange={(e) => setNeighbourhoodQuery(e.target.value)}
+                      className="pl-8 h-9 border-[#E5E7EB] bg-[#F9FAFB] w-44 text-sm"
+                      data-testid="input-neighbourhood-filter"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-[#6B7280] whitespace-nowrap">
+                  {sortedExperts.length} found
+                </span>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="h-9 w-40 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-sort">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recommended">Recommended</SelectItem>
+                    <SelectItem value="rating">Highest Rated</SelectItem>
+                    <SelectItem value="reviews">Most Reviews</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 

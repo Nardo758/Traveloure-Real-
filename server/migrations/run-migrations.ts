@@ -25,6 +25,26 @@ const MIGRATION_FILES = [
   "013_drop_deprecated_service_tables.sql",
   "014_itinerary_item_scheduled_date.sql",
   "015_gem_image_url.sql",
+<<<<<<< HEAD
+=======
+  "016_eso_target_roles.sql",
+  "017_optimization_fees_event_type.sql",
+  "018_concierge_requests.sql",
+  "019_event_packages.sql",
+  "020_commission_override.sql",
+  "021_password_reset_tokens.sql",
+  "022_email_verification_tokens.sql",
+  "023_platform_deposit_rate.sql",
+  "024_experience_template_hero_fields.sql",
+  "024_provider_commission.sql",
+  "025_tab_control_config.sql",
+  "025_ai_cost_tracking.sql",
+  "026_trip_collaborators.sql",
+  "027_insurance_tier_fields.sql",
+  "028_service_bookings_insurance_fee.sql",
+  "029_review_moderation.sql",
+  "030_restore_expert_service_categories.sql",
+>>>>>>> origin/main
 ];
 
 export async function runMigrations(): Promise<void> {

@@ -314,12 +314,26 @@ class AffiliateReconciliationService {
       best.reconciliation_status = "matched";
       consumed.add(best.id);
 
+      // Look up content_tracking_number from the affiliate_products row linked via the click
+      let contentTrackingNumber: string | null = null;
+      try {
+        const clickRow = await db.execute(sql`
+          SELECT ap.tracking_number
+          FROM affiliate_clicks ac
+          JOIN affiliate_products ap ON ac.product_id = ap.id
+          WHERE ac.id = ${best.click_id}
+          LIMIT 1
+        `);
+        contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
+      } catch (_) {}
+
       await db.execute(sql`
         UPDATE affiliate_earnings
-        SET reconciliation_status  = 'matched',
-            partner_reference_id   = ${ext.partnerReferenceId},
-            reconciled_at          = NOW(),
-            external_report_data   = ${JSON.stringify(ext.rawData)}::jsonb
+        SET reconciliation_status    = 'matched',
+            partner_reference_id     = ${ext.partnerReferenceId},
+            reconciled_at            = NOW(),
+            external_report_data     = ${JSON.stringify(ext.rawData)}::jsonb,
+            content_tracking_number  = ${contentTrackingNumber}
         WHERE id = ${best.id}
       `);
     }
