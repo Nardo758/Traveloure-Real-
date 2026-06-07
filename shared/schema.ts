@@ -5556,15 +5556,15 @@ export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
 
 // platform_settings: key/value rows for cross-cutting flags.
 // First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
-export const platformSettings = pgTable("platform_settings", {
+export const platformSettingsTable = pgTable("platform_settings", {
   settingKey: varchar("setting_key", { length: 100 }).primaryKey(),
   settingValue: text("setting_value").notNull(),
   description: text("description"),
   updatedBy: varchar("updated_by", { length: 255 }),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
-export type PlatformSetting = typeof platformSettings.$inferSelect;
-export const insertPlatformSettingSchema = createInsertSchema(platformSettings).omit({ updatedAt: true });
+export type PlatformSetting = typeof platformSettingsTable.$inferSelect;
+export const insertPlatformSettingSchema = createInsertSchema(platformSettingsTable).omit({ updatedAt: true });
 export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
 
 // template_category_matrix per SEED_DATA §3.
