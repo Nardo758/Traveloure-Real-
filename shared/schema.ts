@@ -1054,15 +1054,6 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   // All ESO rows are platform templates; expert-owned services live in provider_services.
 });
 
-// Link experts to their selected service offerings
-export const expertSelectedServices = pgTable("expert_selected_services", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  serviceOfferingId: varchar("service_offering_id").notNull().references(() => expertServiceOfferings.id, { onDelete: "cascade" }),
-  customPrice: decimal("custom_price", { precision: 10, scale: 2 }), // Allow experts to set custom pricing
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
 
 // Expert specializations (Budget, Luxury, Adventure, etc.)
 export const expertSpecializationEnum = [
@@ -1314,15 +1305,12 @@ export type InsertExpertExperienceType = z.infer<typeof insertExpertExperienceTy
 // Expert Service Categories & Offerings schemas and types
 export const insertExpertServiceCategorySchema = createInsertSchema(expertServiceCategories).omit({ id: true, createdAt: true });
 export const insertExpertServiceOfferingSchema = createInsertSchema(expertServiceOfferings).omit({ id: true, createdAt: true });
-export const insertExpertSelectedServiceSchema = createInsertSchema(expertSelectedServices).omit({ id: true, createdAt: true });
 export const insertExpertSpecializationSchema = createInsertSchema(expertSpecializations).omit({ id: true, createdAt: true });
 
 export type ExpertServiceCategory = typeof expertServiceCategories.$inferSelect;
 export type InsertExpertServiceCategory = z.infer<typeof insertExpertServiceCategorySchema>;
 export type ExpertServiceOffering = typeof expertServiceOfferings.$inferSelect;
 export type InsertExpertServiceOffering = z.infer<typeof insertExpertServiceOfferingSchema>;
-export type ExpertSelectedService = typeof expertSelectedServices.$inferSelect;
-export type InsertExpertSelectedService = z.infer<typeof insertExpertSelectedServiceSchema>;
 export type ExpertSpecialization = typeof expertSpecializations.$inferSelect;
 export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializationSchema>;
 
