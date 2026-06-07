@@ -3,8 +3,9 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { isEA } from "../middleware/ea-rbac";
 import { db } from "../db";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -30,7 +31,6 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
-  expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
@@ -86,6 +86,8 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+
+import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
 
@@ -687,6 +689,43 @@ router.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     }
   });
 
+  // PATCH /api/expert/role — Self-service role change for approved experts only
+router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      // Verify caller is an approved expert — non-experts cannot self-promote
+      const form = await storage.getLocalExpertForm(userId);
+      if (!form) {
+        return res.status(403).json({ message: "No expert application found" });
+      }
+      if (form.status !== "approved") {
+        return res.status(403).json({ message: "Only approved experts can change their role" });
+      }
+
+      const { expertType } = req.body;
+      const validTypes = ["travel_expert", "local_expert", "event_planner", "executive_assistant"];
+      if (!expertType || !validTypes.includes(expertType)) {
+        return res.status(400).json({ message: "Invalid expert type" });
+      }
+
+      // Local Expert requires specific vetting — only allow if already a local_expert
+      const currentType = form.expertType;
+      if (expertType === "local_expert" && currentType !== "local_expert") {
+        return res.status(403).json({
+          message: "Switching to Local Expert requires admin review. Please contact support to have your application re-evaluated.",
+          requiresReview: true,
+        });
+      }
+
+      await storage.updateLocalExpertFormType(userId, expertType);
+      res.json({ success: true, expertType });
+    } catch (err) {
+      console.error("Error updating expert role:", err);
+      res.status(500).json({ message: "Failed to update role" });
+    }
+  });
+
   // PATCH /api/expert/profile-notes — Save expert's notes style description
 
 router.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
@@ -761,41 +800,11 @@ router.delete("/api/expert/specializations/:specialization", isAuthenticated, as
 router.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
 
-    // ESO-first: expert_service_offerings where expertId matches
-    const esoRows = await db.select().from(expertServiceOfferings)
-      .where(eq(expertServiceOfferings.expertId, userId));
-    const esoExternalIds = new Set(esoRows.map(r => r.externalId).filter(Boolean));
-
-    // Legacy fallback: rows in expert_custom_services not already covered by ESO
+    // expert_id / external_id columns were dropped in migration 013.
+    // Expert-owned services now live in provider_services (not ESO).
+    // Return legacy expert_custom_services rows only.
     const legacyRows = await storage.getExpertCustomServices(userId);
-    const legacyOnly = legacyRows.filter((r: any) => !esoExternalIds.has(r.id));
-
-    const esoShaped = esoRows.map((eso: any) => ({
-      id:                 eso.id,
-      expertId:           eso.expertId,
-      title:              eso.name,
-      description:        eso.description,
-      categoryName:       eso.categoryName,
-      existingCategoryId: eso.categoryId,
-      price:              eso.price,
-      duration:           eso.duration,
-      deliverables:       eso.deliverables,
-      cancellationPolicy: eso.cancellationPolicy,
-      leadTime:           eso.leadTime,
-      imageUrl:           eso.imageUrl,
-      galleryImages:      eso.galleryImages,
-      experienceTypes:    eso.experienceTypes,
-      isActive:           eso.isActive,
-      status:             eso.status ?? "draft",
-      submittedAt:        eso.submittedAt,
-      reviewedAt:         eso.reviewedAt,
-      reviewedBy:         eso.reviewedBy,
-      rejectionReason:    eso.rejectionReason,
-      createdAt:          eso.createdAt,
-      updatedAt:          eso.updatedAt,
-    }));
-
-    res.json([...esoShaped, ...legacyOnly]);
+    res.json(legacyRows);
   });
 
   // Get single custom service by ID (authenticated - owner only)
@@ -818,82 +827,21 @@ router.post("/api/expert/custom-services", isAuthenticated, async (req, res) => 
     try {
       const userId = (req.user as any).claims.sub;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
-      
+
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
 
-      const { title, description, categoryName, existingCategoryId, price, duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes, isActive } = req.body;
-      
-      if (!title || !price) {
-        return res.status(400).json({ message: "Title and price are required" });
-      }
-
-      // Resolve category: use existingCategoryId or fall back to "Itinerary Planning"
-      let categoryId = existingCategoryId;
-      if (!categoryId) {
-        const catRow = await db.select({ id: expertServiceCategories.id })
-          .from(expertServiceCategories)
-          .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-          .then(r => r[0]);
-        if (catRow) {
-          categoryId = catRow.id;
-        } else {
-          const [ins] = await db.insert(expertServiceCategories)
-            .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
-            .returning({ id: expertServiceCategories.id });
-          categoryId = ins.id;
-        }
-      }
-
-      const [eso] = await db.insert(expertServiceOfferings).values({
-        categoryId,
-        name:               title,
-        description:        description ?? null,
-        price:              price.toString(),
-        isDefault:          false,
-        sortOrder:          400,
-        expertId:           userId,
-        categoryName:       categoryName ?? null,
-        duration:           duration ?? null,
-        deliverables:       deliverables ?? [],
-        cancellationPolicy: cancellationPolicy ?? null,
-        leadTime:           leadTime ?? null,
-        imageUrl:           imageUrl ?? null,
-        galleryImages:      galleryImages ?? [],
-        experienceTypes:    experienceTypes ?? [],
-        isActive:           isActive !== false,
-        status:             "draft",
-      }).returning();
-
-      // Return in the same shape as ExpertCustomService so existing UIs don't break
-      res.status(201).json({
-        id:                 eso.id,
-        expertId:           eso.expertId,
-        title:              eso.name,
-        description:        eso.description,
-        categoryName:       eso.categoryName,
-        existingCategoryId: eso.categoryId,
-        price:              eso.price,
-        duration:           eso.duration,
-        deliverables:       eso.deliverables,
-        cancellationPolicy: eso.cancellationPolicy,
-        leadTime:           eso.leadTime,
-        imageUrl:           eso.imageUrl,
-        galleryImages:      eso.galleryImages,
-        experienceTypes:    eso.experienceTypes,
-        isActive:           eso.isActive,
-        status:             eso.status,
-        submittedAt:        eso.submittedAt,
-        reviewedAt:         eso.reviewedAt,
-        reviewedBy:         eso.reviewedBy,
-        rejectionReason:    eso.rejectionReason,
-        createdAt:          eso.createdAt,
-        updatedAt:          eso.updatedAt,
+      // expert_custom_services table and workflow columns on expert_service_offerings were
+      // both dropped in migration 013. Expert-owned services are now managed via
+      // provider_services. This endpoint is deprecated; redirect callers to
+      // POST /api/provider/services instead.
+      return res.status(410).json({
+        message: "This endpoint is deprecated. Create services via POST /api/provider/services instead.",
       });
     } catch (err) {
-      console.error("Error creating custom service:", err);
-      res.status(500).json({ message: "Failed to create custom service" });
+      console.error("Error in deprecated custom-services endpoint:", err);
+      res.status(500).json({ message: "Failed to process request" });
     }
   });
 
@@ -1657,6 +1605,109 @@ router.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, r
     }
   });
 
+  // GET /api/expert/service-templates — role-filtered platform template catalog
+  // Returns platform templates (expertId IS NULL) whose targetRoles is NULL (all roles)
+  // OR contains the requesting expert's role. Includes a `roleBadge` field so the UI
+  // can display why each template appears.
+
+router.get("/api/expert/service-templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      // Resolve the expert's role from their application form
+      const formRow = await db
+        .select({ expertType: localExpertForms.expertType })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.userId, userId))
+        .then((r) => r[0]);
+
+      const expertRole = formRow?.expertType ?? null; // null = no form submitted yet
+
+      // expertId and isActive columns dropped in migration 013; all ESO rows are platform templates.
+      // Filter by targetRoles only.
+      const rows = await db
+        .select()
+        .from(expertServiceOfferings)
+        .where(
+          or(
+            isNull(expertServiceOfferings.targetRoles),
+            expertRole
+              ? sql`${expertRole} = ANY(${expertServiceOfferings.targetRoles})`
+              : sql`false`
+          )
+        )
+        .orderBy(expertServiceOfferings.sortOrder);
+
+      const ROLE_LABELS: Record<string, string> = {
+        local_expert:  "Local Expert",
+        travel_expert: "Travel Advisor",
+        event_planner: "Event Planner",
+        executive_assistant: "Executive Assistant",
+      };
+
+      const templates = rows.map((o) => {
+        const isRoleSpecific =
+          Array.isArray(o.targetRoles) && o.targetRoles.length > 0;
+        return {
+          id: o.id,
+          title: o.name,
+          description: o.description,
+          categoryId: null,
+          serviceType: null,
+          deliveryMethod: null,
+          deliveryTimeframe: null,
+          suggestedPrice: o.price,
+          requirements: null,
+          whatIncluded: null,
+          isActive: o.isDefault ?? true,
+          sortOrder: o.sortOrder,
+          createdAt: o.createdAt,
+          targetRoles: o.targetRoles ?? [],
+          roleBadge: isRoleSpecific && expertRole
+            ? ROLE_LABELS[expertRole] ?? expertRole
+            : null,
+        };
+      });
+
+      res.json(templates);
+    } catch (err) {
+      console.error("Error fetching expert service templates:", err);
+      res.status(500).json({ message: "Failed to fetch service templates" });
+    }
+  });
+
+  // GET /api/expert/role — returns the expert's role type and a human-readable label
+  // Used by the UI to show the role callout even when no role-specific templates exist yet.
+
+router.get("/api/expert/role", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const formRow = await db
+        .select({ expertType: localExpertForms.expertType })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.userId, userId))
+        .then((r) => r[0]);
+
+      const expertRole = formRow?.expertType ?? null;
+
+      const ROLE_LABELS: Record<string, string> = {
+        local_expert:        "Local Expert",
+        travel_expert:       "Travel Advisor",
+        event_planner:       "Event Planner",
+        executive_assistant: "Executive Assistant",
+      };
+
+      res.json({
+        role:      expertRole,
+        roleLabel: expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
+      });
+    } catch (err) {
+      console.error("Error fetching expert role:", err);
+      res.status(500).json({ message: "Failed to fetch expert role" });
+    }
+  });
+
   // Create service from template
 
 router.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
@@ -1664,53 +1715,51 @@ router.post("/api/expert/services/from-template/:templateId", isAuthenticated, a
       const userId = (req.user as any).claims.sub;
       const templateId = req.params.templateId;
 
-      // expert_service_offerings is the primary catalog; service_templates is legacy fallback
-      let serviceName: string;
-      let description: string | undefined;
-      let price: string;
-      let serviceType: string | undefined;
-      let deliveryMethod: string | undefined;
-      let deliveryTimeframe: string | undefined;
-      let requirements: string | undefined;
-      let whatIncluded: string | undefined;
-
+      // expert_service_offerings is the primary catalog; service_templates is legacy fallback.
+      // expertId column was dropped in migration 013 — all ESO rows are platform templates.
       const esoRow = await db.select().from(expertServiceOfferings)
-        .where(eq(expertServiceOfferings.id, templateId)).then(r => r[0]);
+        .where(eq(expertServiceOfferings.id, templateId))
+        .then(r => r[0]);
+
+      let serviceData: Record<string, any>;
 
       if (esoRow) {
-        // Primary: expert_service_offerings
-        serviceName     = esoRow.name;
-        description     = esoRow.description ?? undefined;
-        price           = esoRow.price;
+        // Primary: expert_service_offerings platform template — copy all available fields.
+        // We write into provider_services (not expert_service_offerings) because the full
+        // expert services edit/list/status/duplicate flow (ServiceForm, /api/expert/services,
+        // PATCH /api/provider/services/:id) operates on provider_services rows.
+        // The ServiceForm fetches from /api/provider/services/:id, so the created row must
+        // exist there for /expert/services/:id/edit to load correctly.
+        // Note: duration, cancellationPolicy, leadTime, deliverables, experienceTypes, galleryImages,
+        // imageUrl were dropped from ESO in migration 013; they are set on the provider_services row.
+        serviceData = {
+          userId,
+          serviceName:      esoRow.name,
+          description:      esoRow.description ?? undefined,
+          price:            esoRow.price || "0",
+          status:           "draft",
+          approvalStatus:   "draft",
+        };
       } else {
         // Fallback: service_templates (legacy / admin-created)
         const stRow = await storage.getServiceTemplate(templateId);
         if (!stRow) {
           return res.status(404).json({ message: "Template not found" });
         }
-        serviceName     = stRow.title;
-        description     = stRow.description ?? undefined;
-        price           = stRow.suggestedPrice ?? "0";
-        serviceType     = stRow.serviceType ?? undefined;
-        deliveryMethod  = stRow.deliveryMethod ?? undefined;
-        deliveryTimeframe = stRow.deliveryTimeframe ?? undefined;
-        requirements    = stRow.requirements as string | undefined;
-        whatIncluded    = stRow.whatIncluded as string | undefined;
+        serviceData = {
+          userId,
+          serviceName:      stRow.title,
+          description:      stRow.description ?? undefined,
+          price:            stRow.suggestedPrice ?? "0",
+          serviceType:      stRow.serviceType ?? undefined,
+          deliveryMethod:   stRow.deliveryMethod ?? undefined,
+          deliveryTimeframe: stRow.deliveryTimeframe ?? undefined,
+          requirements:     stRow.requirements as string | undefined,
+          whatIncluded:     stRow.whatIncluded as string | undefined,
+          status:           "draft",
+          approvalStatus:   "draft",
+        };
       }
-
-      const serviceData = {
-        userId,
-        serviceName,
-        description,
-        categoryId: null,
-        price: price || "0",
-        serviceType,
-        deliveryMethod,
-        deliveryTimeframe,
-        requirements,
-        whatIncluded,
-        status: "draft",
-      };
 
       const service = await storage.createProviderService(serviceData as any);
       res.status(201).json(service);
@@ -3715,6 +3764,9 @@ router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
 
   // === Trip Commission ===
 
+// ── EA RBAC: every /api/ea/* route requires executive_assistant or admin role ──
+router.use("/api/ea", isEA);
+
 router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id;
@@ -4491,6 +4543,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }],
       });
+      trackAnthropicResponse(completion, { sourceType: "ai_expert" });
 
       const text = (completion.content[0] as any).text;
       const jsonMatch = text.match(/\{[\s\S]*\}/);

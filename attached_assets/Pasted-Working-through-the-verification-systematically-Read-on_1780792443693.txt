@@ -1,0 +1,83 @@
+Working through the verification systematically. Read-only — no changes.
+
+## Read-only verification — trace contradicts repo state
+
+The trace appears to describe a different "local main" than this container holds. I can only verify against (a) what's on `origin/main` and (b) what's in this environment's `main` (which was reset to match origin earlier in the container's lifecycle). If your "local main" lives in another environment (e.g., Replit), I can't see it directly.
+
+Here's what the repo actually shows:
+
+---
+
+### Claim 1 — Three features supposedly missing from origin/main
+
+**All three claims are FALSE — origin/main HAS these features; this environment's local main LACKS them.**
+
+| Trace claim | Reality (file:line) |
+|---|---|
+| `d43bf589` grok skip-re-fetch on `grok-discovery.service.ts` is local-only | **Commit `d43bf589` does not exist in the repo** (`git cat-file` returns "not a valid object"). Also: origin/main's `grok-discovery.service.ts` is **78 lines ahead** of local main — it has photo-fetch additions (`isNull` import, `unsplashService`/`pexelsService` imports, `fetchGemPhoto` call) that local main lacks. The diff direction is the opposite of what the trace asserts. |
+| Unified filter bar + role-switcher refactor in `experts.tsx` is local-only | **On origin/main, not local main.** Commit `6e38283 "Consolidate expert search and filtering into a single bar"` is an ancestor of `origin/main`, NOT of `main`. `git diff main origin/main -- client/src/pages/experts.tsx` shows +257/-127 in origin's favor. |
+| Photo-credit badge in `discover-location.tsx` is local-only | **On origin/main, not local main.** Commit `a4968dc "Add photo credit badge to city discover cover hero"` is an ancestor of `origin/main`, NOT of `main`. `discover-location.tsx` diff is +931/-1209 with origin holding the new code. |
+
+**Underlying fact: local main is `0 commits ahead of origin/main` and `194 behind`** (`git rev-list --count`). Merge base is local main itself (`042f979`). There is no divergence — local main is a strict ancestor of origin/main. A `reset --hard origin/main` would only ADD commits; nothing can be lost.
+
+---
+
+### Claim 2 — Local has no migration origin lacks
+
+**Mostly TRUE, but the "behind range" is wrong.**
+
+- Local main has migrations `001–011` only.
+- Origin/main has migrations `001–030` (plus duplicated numbers `024_*` and `025_*` — two each).
+- Local is missing `012–030`, not `016–030` as the trace says.
+- No local-unique migration files. ✓
+
+---
+
+### Claim 3 — origin/main routes.ts is internally consistent
+
+**TRUE in substance, but the trace's mounting count is wrong.**
+
+- Trace says "8 `app.use(module)` mountings" — actual count on origin/main is **19** (lines 387–425 of `origin/main:server/routes.ts`).
+- Origin/main's routes.ts has **ZERO inline `app.(get|post|patch|put|delete)(...)` definitions** (`grep -cE` returns 0). Local main has **652**.
+- Spot-checks confirm no double-registration:
+  - `/api/visa/requirements` exists only in `experts.routes.ts:4473`
+  - `/api/ai/generate-blueprint` exists only in `content.routes.ts:395`
+  - `/api/transport-legs/:legId/mode` exists only in `trips.routes.ts:2629`
+
+The route-defrag cleanup the `route-defragmentation-brief.md` describes appears to have been completed on origin/main. Adopting origin's `routes.ts` wholesale is structurally safe.
+
+---
+
+### Claim 4 — Diff "task-completed" commits b2286271, c5d85c4a, etc.
+
+**Cannot verify — both hashes don't exist in this repo.**
+
+- `git cat-file -t b2286271` → `fatal: Not a valid object name`
+- `git cat-file -t c5d85c4a` → `fatal: Not a valid object name`
+- No commits with those prefixes exist on any branch (local or remote).
+
+There are 6 commits on local main with `Task #` in the title (sample: `7846f2e Task #313`, `7f5fa7a Task #270`, `61e7c19/67cf449 Task #271`). None match the hashes you cited. If those hashes are from a different local clone, I can't classify content I can't reach.
+
+---
+
+### Claim 5 — 20-commit backup branch pushed to origin
+
+**FALSE — no backup branch exists, local or remote.**
+
+Branches present:
+- Local: `main`, `claude/laughing-bardeen-KyTUY`, `consolidation/steps-3-5`
+- Remote: `origin/main`, `origin/claude/laughing-bardeen-KyTUY`, `origin/consolidation/steps-3-5`, `origin/changeset-upload`, and four other `claude/*` branches
+
+No branch matching `backup|saved|preserve|main.bak|main-bak|pre-reset` exists. If a 20-commit backup is supposed to exist before a hard reset, it has not been created/pushed.
+
+---
+
+## Bottom-line discrepancies to flag
+
+1. **Direction of divergence is inverted.** Local main is 194 commits BEHIND origin/main, not ahead. There is nothing to "re-PR" because nothing on local main is unique. A `git pull` (fast-forward) or `reset --hard origin/main` would bring local up to date without loss.
+2. **Two of the three "lost" features are already on origin/main** — `6e38283` (filter bar) and `a4968dc` (photo credit) are ancestors of `origin/main`. The third (`d43bf589`) doesn't exist anywhere in the repo, and the file the trace names has more code on origin than on local.
+3. **Cited task hashes (`b2286271`, `c5d85c4a`) don't exist in this repo.** The trace may be quoting commits from a different clone (Replit-side?). I can't classify their content from here.
+4. **No backup branch exists.** If the reset plan assumes one is in place, that prerequisite is unmet.
+5. **Origin/main's routes.ts is clean** (no inline routes; 19 mountings, not 8). Adopting it wholesale is structurally safe.
+
+If your "local main" lives in a Replit environment that I can't see, those claims 1, 4, and 5 may need to be re-verified there. From the repo state I can observe, the divergence-and-reset framing doesn't match reality.

@@ -298,7 +298,7 @@ class BookingService {
         let balanceAmount: number | null = null;
 
         if (paymentMethod === 'deposit') {
-          depositAmount = pricingService.calculateDeposit(finalPrice);
+          depositAmount = await pricingService.calculateDeposit(finalPrice);
           balanceAmount = finalPrice + feeBreakdown.platformFee - depositAmount;
         }
 

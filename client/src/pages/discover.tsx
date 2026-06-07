@@ -3,7 +3,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Search,
   MapPin,
@@ -584,8 +583,9 @@ export default function DiscoverPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   
-  // Parse URL params for expert handoff context
-  const urlParams = new URLSearchParams(window.location.search);
+  // Parse URL params for expert handoff context (useSearch makes this reactive to navigation)
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
   const showExperts = urlParams.get("showExperts") === "true";
   const expertHandoffDestination = urlParams.get("destination") || "";
   const expertHandoffCountry = urlParams.get("country") || "";
@@ -630,6 +630,11 @@ export default function DiscoverPage() {
   const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
   const urlCity = urlParams.get("city") || "";
   const [activeTab, setActiveTab] = useState(urlTab);
+
+  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks)
+  useEffect(() => {
+    setActiveTab(urlTab);
+  }, [urlTab]);
 
   // Debounce search query
   useEffect(() => {
@@ -881,7 +886,7 @@ export default function DiscoverPage() {
   const influencerContent: any[] = [];
 
   return (
-    <Layout>
+    <>
       <SEOHead 
         title="Discover Services & Experiences"
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
@@ -889,6 +894,24 @@ export default function DiscoverPage() {
         url="/discover"
       />
       <div className="min-h-screen bg-background">
+        {/* Back navigation */}
+        <div className="container mx-auto px-4 max-w-6xl pt-4">
+          <button
+            onClick={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                setLocation("/");
+              }
+            }}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="btn-back"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
+
         {/* Hero Section */}
         <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
           <div className="container mx-auto px-4 max-w-6xl">
@@ -1061,7 +1084,7 @@ export default function DiscoverPage() {
                               {expert.firstName} {expert.lastName || ""}
                             </h3>
                             <p className="text-sm text-muted-foreground truncate">
-                              {expert.expertSpecialty || "Travel Expert"}
+                              {expert.expertSpecialty || "Local Expert"}
                             </p>
                             {expert.expertLocations && (
                               <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
@@ -1169,8 +1192,8 @@ export default function DiscoverPage() {
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
                     data-testid="tab-events"
                   >
-                    <Ticket className="w-4 h-4 mr-2" />
-                    <span className="hidden lg:inline">Travel </span>Events
+                    <Calendar className="w-4 h-4 mr-2" />
+                    By Date
                   </TabsTrigger>
                   <TabsTrigger
                     value="services"
@@ -1187,39 +1210,6 @@ export default function DiscoverPage() {
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
-                {/* Cart Summary Bar */}
-                {cart && cart.items.length > 0 && (
-                  <div className="mb-6 p-4 bg-card border rounded-lg flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <ShoppingCart className="w-5 h-5 text-primary" />
-                      <span className="font-medium">
-                        {cart.itemCount} items in cart
-                      </span>
-                      <span className="text-muted-foreground">
-                        Total: ${cart.total}
-                      </span>
-                    </div>
-                    <div className="flex gap-3">
-                      <Link href="/cart">
-                        <Button variant="outline" data-testid="button-view-cart">
-                          View Cart
-                        </Button>
-                      </Link>
-                      <Button
-                        onClick={createComparison}
-                        disabled={creatingComparison}
-                        data-testid="button-compare-ai"
-                      >
-                        {creatingComparison ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <GitCompare className="w-4 h-4 mr-2" />
-                        )}
-                        Compare AI Alternatives
-                      </Button>
-                    </div>
-                  </div>
-                )}
 
                 {/* AI Recommendations Panel */}
                 {showRecommendations && recommendations && (
@@ -1994,11 +1984,7 @@ export default function DiscoverPage() {
 
               {/* Events Tab - Global Calendar */}
               <TabsContent value="events">
-                <GlobalCalendar 
-                  onCityClick={(cityName) => {
-                    setLocation(`/discover?tab=travelpulse&city=${encodeURIComponent(cityName)}`);
-                  }}
-                />
+                <GlobalCalendar />
               </TabsContent>
 
               {/* TravelPulse Tab */}
@@ -2016,7 +2002,7 @@ export default function DiscoverPage() {
               Need Help Deciding?
             </h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Talk to one of our travel experts. They'll help you find the perfect
+              Talk to one of our local experts or trip planners. They'll help you find the perfect
               trip based on your preferences, budget, and travel style.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
@@ -2035,6 +2021,6 @@ export default function DiscoverPage() {
         </section>
       </div>
       <TripQueueIndicator />
-    </Layout>
+    </>
   );
 }

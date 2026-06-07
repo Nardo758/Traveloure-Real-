@@ -1825,7 +1825,7 @@ export default function ItineraryComparisonPage() {
                 Request Expert Booking Assistance
               </DialogTitle>
               <DialogDescription>
-                Let our travel experts handle all bookings for your itinerary. They'll coordinate 
+                Let our trip planners handle all bookings for your itinerary. They'll coordinate 
                 both on-site and partner bookings, ensuring everything is confirmed before your trip.
               </DialogDescription>
             </DialogHeader>

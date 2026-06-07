@@ -18,7 +18,7 @@
  */
 
 import { db } from "../db";
-import { cityNeighborhoods, travelPulseHiddenGems, providerServices } from "@shared/schema";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories } from "@shared/schema";
 import { eq, sql, and, ilike } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
@@ -43,6 +43,8 @@ export interface Neighborhood {
   updatedAt: Date | null;
   gemCount: number;
   serviceCount: number;
+  /** Top gems (up to 6) pre-fetched for the city feed bento grid. */
+  gems: any[];
 }
 
 export interface LocationViewPayload {
@@ -66,6 +68,8 @@ export interface LocationViewOptions {
   year?: number;
   /** Cap on recommendations + events lists. */
   limit?: number;
+  /** ISO date string (YYYY-MM-DD) for date-aware planning mode. Passed through to payload; no behavior change yet. */
+  date?: string;
 }
 
 const SECTION_TIMEOUT_MS = 12_000;
@@ -119,7 +123,7 @@ class LocationViewService {
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
-    const cacheKey = `v2|${cityName}:${country ?? ""}`;
+    const cacheKey = `v3|${cityName}:${country ?? ""}`;
     const cached = locationViewCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
@@ -166,8 +170,8 @@ class LocationViewService {
       return result ?? { events: [], total: 0, page: 1, totalPages: 0, city: null };
     })();
 
-    // Neighborhoods for this city — annotated with gem + service counts
-    // Uses 2 aggregate queries instead of N+1 to avoid per-neighborhood round-trips
+    // Neighborhoods for this city — annotated with gem + service counts + top gems[]
+    // Uses aggregate queries + one bulk gem fetch instead of N+1 round-trips.
     const neighborhoodsPromise = (async () => {
       const neighborhoods = await db
         .select()
@@ -175,7 +179,7 @@ class LocationViewService {
         .where(eq(cityNeighborhoods.city, cityName))
         .orderBy(cityNeighborhoods.name);
 
-      const [gemRows, svcRows] = await Promise.all([
+      const [gemRows, svcRows, allCityGems] = await Promise.all([
         db
           .select({
             neighborhood: travelPulseHiddenGems.neighborhood,
@@ -197,6 +201,12 @@ class LocationViewService {
             ),
           )
           .groupBy(providerServices.neighborhood),
+        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood
+        db
+          .select()
+          .from(travelPulseHiddenGems)
+          .where(eq(travelPulseHiddenGems.city, cityName))
+          .orderBy(travelPulseHiddenGems.gemScore),
       ]);
 
       const gemCountMap = new Map<string, number>();
@@ -209,10 +219,20 @@ class LocationViewService {
         if (row.neighborhood) svcCountMap.set(row.neighborhood, row.count);
       }
 
+      // Group gems by neighborhood slug for the gems[] embed
+      const gemsBySlug = new Map<string, any[]>();
+      for (const gem of allCityGems) {
+        if (gem.neighborhood) {
+          if (!gemsBySlug.has(gem.neighborhood)) gemsBySlug.set(gem.neighborhood, []);
+          gemsBySlug.get(gem.neighborhood)!.push(gem);
+        }
+      }
+
       return neighborhoods.map((n) => ({
         ...n,
         gemCount: gemCountMap.get(n.slug) ?? 0,
         serviceCount: svcCountMap.get(n.slug) ?? 0,
+        gems: (gemsBySlug.get(n.slug) ?? []).slice(0, 6),
       }));
     })();
 
@@ -223,16 +243,48 @@ class LocationViewService {
       .where(eq(travelPulseHiddenGems.city, cityName))
       .orderBy(travelPulseHiddenGems.gemScore);
 
-    // Active platform services for this city — location field ILIKE city name
+    // Active platform services for this city — joined with vendor form + category
+    // so the frontend card can show website link and category label without extra queries.
     const servicesPromise = db
-      .select()
+      .select({
+        id: providerServices.id,
+        userId: providerServices.userId,
+        serviceName: providerServices.serviceName,
+        shortDescription: providerServices.shortDescription,
+        description: providerServices.description,
+        serviceType: providerServices.serviceType,
+        categoryId: providerServices.categoryId,
+        price: providerServices.price,
+        priceType: providerServices.priceType,
+        deliveryMethod: providerServices.deliveryMethod,
+        neighborhood: providerServices.neighborhood,
+        serviceImage: providerServices.serviceImage,
+        location: providerServices.location,
+        isFeatured: providerServices.isFeatured,
+        contentAffinityTags: providerServices.contentAffinityTags,
+        approvalStatus: providerServices.approvalStatus,
+        averageRating: providerServices.averageRating,
+        reviewCount: providerServices.reviewCount,
+        bookingsCount: providerServices.bookingsCount,
+        whatIncluded: providerServices.whatIncluded,
+        // Vendor identity fields from joined tables
+        vendorWebsite: serviceProviderForms.website,
+        vendorBookingLink: serviceProviderForms.bookingLink,
+        vendorBusinessName: serviceProviderForms.businessName,
+        vendorPhoto: serviceProviderForms.photo1,
+        categoryName: serviceCategories.name,
+        categorySlug: serviceCategories.slug,
+      })
       .from(providerServices)
+      .leftJoin(serviceProviderForms, eq(serviceProviderForms.userId, providerServices.userId))
+      .leftJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
       .where(
         and(
           eq(providerServices.status, "active"),
           ilike(providerServices.location, `%${cityName}%`),
         ),
-      );
+      )
+      .orderBy(providerServices.isFeatured);
 
     const [hero, recommendations, events, neighborhoods, gems, services] = await Promise.all([
       settle("hero", heroPromise),

@@ -23,7 +23,7 @@
 
 import { db } from "../db";
 import { travelPulseHiddenGems, providerServices, users } from "@shared/schema";
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, ilike, isNull, or } from "drizzle-orm";
 import { logger } from "../infrastructure";
 
 interface GemSeed {
@@ -45,6 +45,7 @@ interface GemSeed {
   bestFor: string[];
   priceRange: string;
   neighborhood: string;
+  imageUrl?: string;
 }
 
 const HIDDEN_GEMS: GemSeed[] = [
@@ -68,6 +69,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["slow mornings", "breakfast", "solo travel"],
     priceRange: "$",
     neighborhood: "yanaka",
+    imageUrl: "https://images.unsplash.com/photo-1576618148400-f54bbd73ed4f?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -88,6 +90,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["date night", "craft beer", "evening out"],
     priceRange: "$$",
     neighborhood: "nakameguro",
+    imageUrl: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -108,6 +111,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["budget dining", "local culture", "street food"],
     priceRange: "$",
     neighborhood: "asakusa",
+    imageUrl: "https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -128,6 +132,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["nightlife", "solo travel", "unique experience"],
     priceRange: "$$",
     neighborhood: "shinjuku",
+    imageUrl: "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -148,6 +153,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["music lovers", "rainy days", "unique souvenirs"],
     priceRange: "$",
     neighborhood: "shimokitazawa",
+    imageUrl: "https://images.unsplash.com/photo-1494232410401-ad00d5433cfa?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -167,6 +173,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["design lovers", "couples", "boutique stay"],
     priceRange: "$$$",
     neighborhood: "nakameguro",
+    imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -187,6 +194,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "cherry blossom season", "walking"],
     priceRange: "$",
     neighborhood: "yanaka",
+    imageUrl: "https://images.unsplash.com/photo-1522383225653-ed111181a951?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Tokyo",
@@ -206,6 +214,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "evening walk", "golden hour"],
     priceRange: "$",
     neighborhood: "nakameguro",
+    imageUrl: "https://images.unsplash.com/photo-1528360983277-13d401cdc186?auto=format&fit=crop&w=800&q=80",
   },
 
   // ── KYOTO (8 gems: 3 Eat · 2 Do · 1 Stay · 2 Photo) ─────────────────────
@@ -228,6 +237,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["tea lovers", "cultural immersion", "quiet afternoon"],
     priceRange: "$$",
     neighborhood: "kawaramachi-sanjo",
+    imageUrl: "https://images.unsplash.com/photo-1569144157591-c60f3f82f137?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -247,6 +257,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["food tasting", "local culture", "lunch"],
     priceRange: "$",
     neighborhood: "kawaramachi-sanjo",
+    imageUrl: "https://images.unsplash.com/photo-1564419320461-6870880221ad?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -267,6 +278,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["fine dining", "vegetarian", "cultural immersion"],
     priceRange: "$$$",
     neighborhood: "nishijin",
+    imageUrl: "https://images.unsplash.com/photo-1492571350019-22de08371fd3?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -287,6 +299,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["hiking", "spiritual experience", "avoiding crowds"],
     priceRange: "$",
     neighborhood: "fushimi",
+    imageUrl: "https://images.unsplash.com/photo-1478436127897-769e1b3f0f36?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -306,6 +319,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["evening walk", "summer dining", "atmosphere"],
     priceRange: "$$",
     neighborhood: "pontocho",
+    imageUrl: "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -326,6 +340,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["luxury stay", "couples", "authentic ryokan"],
     priceRange: "$$$$",
     neighborhood: "higashiyama",
+    imageUrl: "https://images.unsplash.com/photo-1548165892-cd6be85a7f69?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -346,6 +361,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "dawn", "iconic shot"],
     priceRange: "$",
     neighborhood: "fushimi",
+    imageUrl: "https://images.unsplash.com/photo-1580917922805-21d32edd27e3?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Kyoto",
@@ -365,6 +381,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "autumn foliage", "walking", "golden hour"],
     priceRange: "$",
     neighborhood: "higashiyama",
+    imageUrl: "https://images.unsplash.com/photo-1601823984263-6ec76b4c8aaf?auto=format&fit=crop&w=800&q=80",
   },
 
   // ── PARIS (8 gems: 3 Eat · 2 Do · 1 Stay · 2 Photo) ─────────────────────
@@ -387,6 +404,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["natural wine", "small plates", "date night", "foodie"],
     priceRange: "$$",
     neighborhood: "bastille",
+    imageUrl: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -407,6 +425,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["bargain hunting", "food tasting", "local culture", "morning"],
     priceRange: "$",
     neighborhood: "bastille",
+    imageUrl: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -427,6 +446,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["coffee", "writing", "people watching", "literary Paris"],
     priceRange: "$",
     neighborhood: "saint-germain",
+    imageUrl: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -447,6 +467,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["picnic", "families", "afternoon escape", "views"],
     priceRange: "$",
     neighborhood: "belleville",
+    imageUrl: "https://images.unsplash.com/photo-1551918120-9739cb430c6d?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -467,6 +488,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["walking", "urban exploration", "gardens"],
     priceRange: "$",
     neighborhood: "bastille",
+    imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -487,6 +509,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["design lovers", "couples", "boutique stay", "Le Marais"],
     priceRange: "$$$",
     neighborhood: "le-marais",
+    imageUrl: "https://images.unsplash.com/photo-1551882547-ff40c63fe2f5?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -507,6 +530,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "panoramic views", "golden hour"],
     priceRange: "$",
     neighborhood: "belleville",
+    imageUrl: "https://images.unsplash.com/photo-1431274172761-fca41d930114?auto=format&fit=crop&w=800&q=80",
   },
   {
     city: "Paris",
@@ -526,6 +550,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "wine lovers", "autumn visit", "unique experience"],
     priceRange: "$",
     neighborhood: "montmartre",
+    imageUrl: "https://images.unsplash.com/photo-1471919743851-c3efa5059c11?auto=format&fit=crop&w=800&q=80",
   },
 ];
 
@@ -604,7 +629,24 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number; servic
       )
       .limit(1);
 
-    if (existing.length > 0) continue;
+    if (existing.length > 0) {
+      // Patch imageUrl on already-seeded rows that are missing a photo
+      if (gem.imageUrl) {
+        await db
+          .update(travelPulseHiddenGems)
+          .set({ imageUrl: gem.imageUrl })
+          .where(
+            and(
+              eq(travelPulseHiddenGems.id, existing[0].id),
+              or(
+                isNull(travelPulseHiddenGems.imageUrl),
+                eq(travelPulseHiddenGems.imageUrl, ""),
+              ),
+            ),
+          );
+      }
+      continue;
+    }
 
     await db.insert(travelPulseHiddenGems).values({
       city: gem.city,
@@ -625,6 +667,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number; servic
       bestFor: gem.bestFor,
       priceRange: gem.priceRange,
       neighborhood: gem.neighborhood,
+      imageUrl: gem.imageUrl,
       aiGenerated: false,
     });
     gemsCreated++;

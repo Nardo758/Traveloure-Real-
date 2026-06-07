@@ -607,6 +607,31 @@ export const customVenues = pgTable("custom_venues", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Activity Bookings (Viator/external provider bookings) ===
+// NOTE: This table exists in production with real user booking data (including live
+// Stripe PaymentIntents). Kept in schema so Drizzle does not propose DROP TABLE.
+// The one real prod booking (Segway Paris, user 79cdafd1) must not be lost.
+// Future work: migrate real rows to service_bookings and remove this table.
+
+export const activityBookings = pgTable("activity_bookings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  productCode: varchar("product_code", { length: 255 }),
+  productTitle: text("product_title").notNull(),
+  imageUrl: text("image_url"),
+  priceAmount: decimal("price_amount").notNull(),
+  priceCurrency: varchar("price_currency", { length: 10 }).default("USD").notNull(),
+  bookingUrl: text("booking_url"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  productOptionCode: varchar("product_option_code", { length: 100 }),
+  providerBookingRef: varchar("provider_booking_ref", { length: 100 }),
+  travelDate: varchar("travel_date", { length: 20 }),
+  travelerCount: integer("traveler_count").default(1),
+});
+
 // === Service Bookings ===
 
 export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", "completed", "cancelled", "refunded"] as const;
@@ -627,6 +652,7 @@ export const serviceBookings = pgTable("service_bookings", {
   status: varchar("status", { length: 30 }).default("pending"),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).default("0"),
+  insuranceFee: decimal("insurance_fee", { precision: 10, scale: 2 }).default("0.00"),
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   
@@ -660,6 +686,21 @@ export const serviceReviews = pgTable("service_reviews", {
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
   isVerified: boolean("is_verified").default(false),
+  // Moderation (REV-MOD)
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | approved | flagged | removed
+  flagReason: text("flag_reason"),
+  moderatedBy: varchar("moderated_by", { length: 255 }),
+  moderatedAt: timestamp("moderated_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Review Moderation Logs ===
+export const reviewModerationLogs = pgTable("review_moderation_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  reviewId: varchar("review_id").notNull().references(() => serviceReviews.id, { onDelete: "cascade" }),
+  action: varchar("action", { length: 20 }).notNull(), // approve | flag | remove
+  actorId: varchar("actor_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -873,12 +914,17 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
 });
 
 // === Optimization Fee Tiers ===
+// CON-A.P2 (FEE-A): keyed by (complexity_tier, event_type). event_type IS NULL = tier-level
+// default. Non-null event_type = admin override for that experience type (e.g. wedding $49.99).
+// is_disabled = "$0=off" semantic per §4.8 — explicit disable, distinct from a $0 price.
 export const optimizationFees = pgTable("optimization_fees", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  complexityTier: varchar("complexity_tier", { length: 20 }).notNull().unique(), // simple | standard | complex
+  complexityTier: varchar("complexity_tier", { length: 20 }).notNull(), // simple | standard | complex
+  eventType: varchar("event_type", { length: 50 }), // null = tier-level default; non-null = per-event-type override
   priceCents: integer("price_cents").notNull(),
   currency: varchar("currency", { length: 3 }).notNull().default("USD"),
   isActive: boolean("is_active").notNull().default(true),
+  isDisabled: boolean("is_disabled").notNull().default(false), // $0=off per §4.8
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -972,6 +1018,13 @@ export const experienceTypes = pgTable("experience_types", {
   typicalGroupSizeMax: integer("typical_group_size_max"),
   typicalDurationMinDays: integer("typical_duration_min_days"),
   typicalDurationMaxDays: integer("typical_duration_max_days"),
+  // Hero card configuration — DB-driven (P462)
+  headcountLabel: varchar("headcount_label", { length: 50 }),       // singular unit e.g. "guest" | "traveler" | "attendee"
+  showOriginCity: varchar("show_origin_city", { length: 10 }).default("optional"), // "hide" | "optional" | "required"
+  showKids: boolean("show_kids").default(true),
+  locationLabel: varchar("location_label", { length: 100 }),
+  heroImage: text("hero_image"),
+  contextFields: jsonb("context_fields").default([]),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1017,39 +1070,15 @@ export const expertServiceOfferings = pgTable("expert_service_offerings", {
   isDefault: boolean("is_default").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
-  // Migration 006: ESO canonicalization
-  // expertId=null → platform template; expertId set → expert-owned offering
-  expertId: varchar("expert_id").references(() => users.id, { onDelete: "cascade" }),
-  // externalId links back to the originating service_templates / expert_custom_services row
-  // Used for deterministic deduplication instead of fragile name-matching
-  externalId: varchar("external_id"),
-  // Migration 007: workflow/lifecycle columns (null for platform templates where expertId IS NULL)
-  status: varchar("status", { length: 20 }).default("draft"),       // draft | submitted | approved | rejected
-  submittedAt: timestamp("submitted_at"),
-  reviewedAt: timestamp("reviewed_at"),
-  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
-  rejectionReason: text("rejection_reason"),
-  duration: varchar("duration", { length: 50 }),
-  deliverables: jsonb("deliverables").default([]),
-  cancellationPolicy: text("cancellation_policy"),
-  leadTime: varchar("lead_time", { length: 50 }),
-  imageUrl: text("image_url"),
-  galleryImages: jsonb("gallery_images").default([]),
-  experienceTypes: jsonb("experience_types").default([]),
-  isActive: boolean("is_active").default(true),
-  categoryName: varchar("category_name", { length: 100 }),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  // Migration 016: role-scoped templates
+  // NULL = shown to all expert roles; array = scoped to listed role(s)
+  targetRoles: text("target_roles").array(),
+  // NOTE: expertId, externalId, status, submittedAt, reviewedAt, reviewedBy, rejectionReason,
+  // duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes,
+  // isActive, categoryName, updatedAt were all dropped in migration 013.
+  // All ESO rows are platform templates; expert-owned services live in provider_services.
 });
 
-// Link experts to their selected service offerings
-export const expertSelectedServices = pgTable("expert_selected_services", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  serviceOfferingId: varchar("service_offering_id").notNull().references(() => expertServiceOfferings.id, { onDelete: "cascade" }),
-  customPrice: decimal("custom_price", { precision: 10, scale: 2 }), // Allow experts to set custom pricing
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
 
 // Expert specializations (Budget, Luxury, Adventure, etc.)
 export const expertSpecializationEnum = [
@@ -1066,37 +1095,36 @@ export const expertSpecializations = pgTable("expert_specializations", {
 });
 
 // === Expert Custom Services (user-submitted offerings) ===
+// NOTE: The expert_custom_services DB table exists in production and holds data
+// that was NOT migrated by migration 012 before prod was deployed. The pgTable
+// definition is kept here so Drizzle does not propose DROP TABLE on publish.
+// Once migration 012 is confirmed to have run on prod and data is in
+// provider_services, this table definition can be removed in a future migration.
 export const expertCustomServicesStatusEnum = ["draft", "submitted", "approved", "rejected"] as const;
 
 export const expertCustomServices = pgTable("expert_custom_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  // Service details
+  expertId: varchar("expert_id").notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  categoryName: varchar("category_name", { length: 100 }), // Custom category or existing
-  existingCategoryId: varchar("existing_category_id").references(() => expertServiceCategories.id, { onDelete: "set null" }),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  duration: varchar("duration", { length: 50 }), // e.g., "2 hours", "1 day", "3-5 days"
-  deliverables: jsonb("deliverables").default([]), // List of what's included
-  // Policies
+  categoryName: varchar("category_name", { length: 100 }),
+  existingCategoryId: varchar("existing_category_id"),
+  price: decimal("price").notNull(),
+  duration: varchar("duration", { length: 50 }),
+  deliverables: jsonb("deliverables").default([]),
   cancellationPolicy: text("cancellation_policy"),
-  leadTime: varchar("lead_time", { length: 50 }), // e.g., "48 hours", "1 week"
-  // Media
+  leadTime: varchar("lead_time", { length: 50 }),
   imageUrl: text("image_url"),
   galleryImages: jsonb("gallery_images").default([]),
-  // Experience types this service applies to
   experienceTypes: jsonb("experience_types").default([]),
-  // Approval workflow
-  status: varchar("status", { length: 20 }).default("draft"), // draft, submitted, approved, rejected
+  status: varchar("status", { length: 20 }).default("draft"),
   submittedAt: timestamp("submitted_at"),
   reviewedAt: timestamp("reviewed_at"),
-  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedBy: varchar("reviewed_by"),
   rejectionReason: text("rejection_reason"),
-  // Metadata
   isActive: boolean("is_active").default(true),
   bookingsCount: integer("bookings_count").default(0),
-  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
+  averageRating: decimal("average_rating").default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1259,7 +1287,7 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   createdAt: true, 
   updatedAt: true 
 });
-export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true }).extend({
+export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
@@ -1331,34 +1359,59 @@ export type InsertExpertExperienceType = z.infer<typeof insertExpertExperienceTy
 // Expert Service Categories & Offerings schemas and types
 export const insertExpertServiceCategorySchema = createInsertSchema(expertServiceCategories).omit({ id: true, createdAt: true });
 export const insertExpertServiceOfferingSchema = createInsertSchema(expertServiceOfferings).omit({ id: true, createdAt: true });
-export const insertExpertSelectedServiceSchema = createInsertSchema(expertSelectedServices).omit({ id: true, createdAt: true });
 export const insertExpertSpecializationSchema = createInsertSchema(expertSpecializations).omit({ id: true, createdAt: true });
 
 export type ExpertServiceCategory = typeof expertServiceCategories.$inferSelect;
 export type InsertExpertServiceCategory = z.infer<typeof insertExpertServiceCategorySchema>;
 export type ExpertServiceOffering = typeof expertServiceOfferings.$inferSelect;
 export type InsertExpertServiceOffering = z.infer<typeof insertExpertServiceOfferingSchema>;
-export type ExpertSelectedService = typeof expertSelectedServices.$inferSelect;
-export type InsertExpertSelectedService = z.infer<typeof insertExpertSelectedServiceSchema>;
 export type ExpertSpecialization = typeof expertSpecializations.$inferSelect;
 export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializationSchema>;
 
 // Expert Custom Services schemas and types
-export const insertExpertCustomServiceSchema = createInsertSchema(expertCustomServices).omit({ 
-  id: true, 
-  expertId: true, 
-  status: true, 
-  submittedAt: true, 
-  reviewedAt: true, 
-  reviewedBy: true, 
-  rejectionReason: true,
-  bookingsCount: true,
-  averageRating: true,
-  createdAt: true, 
-  updatedAt: true 
+// (table dropped in migration 013; type kept manually for storage adapter compatibility)
+export const insertExpertCustomServiceSchema = z.object({
+  title: z.string(),
+  description: z.string().nullable().optional(),
+  categoryName: z.string().nullable().optional(),
+  existingCategoryId: z.string().nullable().optional(),
+  price: z.string(),
+  duration: z.string().nullable().optional(),
+  deliverables: z.array(z.string()).optional(),
+  cancellationPolicy: z.string().nullable().optional(),
+  leadTime: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  galleryImages: z.array(z.string()).optional(),
+  experienceTypes: z.array(z.string()).optional(),
+  isActive: z.boolean().optional(),
 });
 
-export type ExpertCustomService = typeof expertCustomServices.$inferSelect;
+export type ExpertCustomService = {
+  id: string;
+  expertId: string;
+  title: string;
+  description: string | null;
+  categoryName: string | null;
+  existingCategoryId: string | null;
+  price: string;
+  duration: string | null;
+  deliverables: unknown;
+  cancellationPolicy: string | null;
+  leadTime: string | null;
+  imageUrl: string | null;
+  galleryImages: unknown;
+  experienceTypes: unknown;
+  status: "draft" | "submitted" | "approved" | "rejected";
+  submittedAt: Date | null;
+  reviewedAt: Date | null;
+  reviewedBy: string | null;
+  rejectionReason: string | null;
+  isActive: boolean | null;
+  bookingsCount: number | null;
+  averageRating: string | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
 export type InsertExpertCustomService = z.infer<typeof insertExpertCustomServiceSchema>;
 
 // Influencer schemas and types
@@ -2640,6 +2693,8 @@ export const experienceTemplateTabs = pgTable("experience_template_tabs", {
   icon: varchar("icon", { length: 50 }), // Lucide icon name
   sortOrder: integer("sort_order").default(0),
   isActive: boolean("is_active").default(true),
+  tabType: varchar("tab_type", { length: 50 }).default("venue-search"), // "flights"|"hotels"|"venue-search"|"activity-search"|"transport"
+  controlConfig: jsonb("control_config"), // filter control descriptors for flight/hotel tabs
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2940,6 +2995,9 @@ export const itineraryItems = pgTable("itinerary_items", {
   attendanceRequirement: varchar("attendance_requirement", { length: 20 }).default("optional"), // all, subset, optional
   conflictsWith: jsonb("conflicts_with").default([]), // itinerary item IDs that can't overlap
   peakTimingPreference: varchar("peak_timing_preference", { length: 20 }), // morning, afternoon, evening, night, flexible
+
+  // Calendar date when this item is planned — carries the "Add to {date}" intent
+  scheduledDate: date("scheduled_date"),
 
   // Notes and attachments
   notes: text("notes"),
@@ -3446,6 +3504,7 @@ export const aiDiscoveredGems = pgTable("ai_discovered_gems", {
   priceRange: varchar("price_range", { length: 50 }),
   difficultyLevel: varchar("difficulty_level", { length: 50 }),
   tags: jsonb("tags").$type<string[]>().default([]),
+  imageUrl: text("image_url"),
   imageSearchTerms: jsonb("image_search_terms").$type<string[]>().default([]),
   relatedExperiences: jsonb("related_experiences").$type<string[]>().default([]),
   sourceModel: varchar("source_model", { length: 50 }).default("grok"),
@@ -3546,6 +3605,7 @@ export const affiliateProducts = pgTable("affiliate_products", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   partnerId: varchar("partner_id").notNull().references(() => affiliatePartners.id, { onDelete: "cascade" }),
   externalId: varchar("external_id", { length: 200 }),
+  trackingNumber: varchar("tracking_number", { length: 25 }),
   name: varchar("name", { length: 500 }).notNull(),
   description: text("description"),
   shortDescription: varchar("short_description", { length: 500 }),
@@ -3884,6 +3944,7 @@ export const affiliateEarnings = pgTable("affiliate_earnings", {
   reconciledAt: timestamp("reconciled_at"),
   reconciliationNotes: text("reconciliation_notes"),
   externalReportData: jsonb("external_report_data"), // Raw line from partner report
+  contentTrackingNumber: varchar("content_tracking_number", { length: 25 }), // Links to content_registry
   confirmedAt: timestamp("confirmed_at"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -3981,6 +4042,19 @@ export type ProviderEarning = typeof providerEarnings.$inferSelect;
 export type InsertProviderEarning = z.infer<typeof insertProviderEarningSchema>;
 export type ProviderPayout = typeof providerPayouts.$inferSelect;
 export type InsertProviderPayout = z.infer<typeof insertProviderPayoutSchema>;
+
+// === Platform Settings (key-value config store) ===
+// NOTE: This table exists in production with 13 rows of live configuration
+// (commission rate ranges, feature flags, support_email, timezone, etc.).
+// Kept in schema so Drizzle does not propose DROP TABLE on publish.
+// No code currently reads this table — config was migrated to per-feature
+// columns/tables — but the rows must be preserved until explicitly deprecated.
+
+export const platformSettings = pgTable("platform_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 // === Platform Revenue Tracking ===
 
@@ -4110,6 +4184,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "contract",
   "media",
   "tip",
+  "affiliate_product",
   "other"
 ]);
 
@@ -4803,6 +4878,23 @@ export type InsertSharedItinerary = z.infer<typeof insertSharedItinerarySchema>;
 export type MapsExportCache = typeof mapsExportCache.$inferSelect;
 export type InsertMapsExportCache = z.infer<typeof insertMapsExportCacheSchema>;
 
+// === Trip Collaborators ===
+
+export const tripCollaborators = pgTable("trip_collaborators", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 20 }).notNull().$type<"owner" | "expert" | "friend">(),
+  invitedBy: varchar("invited_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueTripUser: unique("trip_collaborators_trip_user_unique").on(table.tripId, table.userId),
+}));
+
+export const insertTripCollaboratorSchema = createInsertSchema(tripCollaborators).omit({ id: true, createdAt: true });
+export type TripCollaborator = typeof tripCollaborators.$inferSelect;
+export type InsertTripCollaborator = z.infer<typeof insertTripCollaboratorSchema>;
+
 export const itineraryChanges = pgTable("itinerary_changes", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
@@ -5228,6 +5320,57 @@ export const expertRequests = pgTable("expert_requests", {
   completedAt: timestamp("completed_at"),
 });
 
+// === Concierge Requests (CON-A.P3 / N5) ===
+// Intent log for the pay-per-use Concierge layer. Persists every concierge request
+// — including guest previews — for funnel metrics and resume-after-abandonment.
+// userId is nullable so the guest hook (D6) is captured the same way as authed flows.
+// chosenTier is null until the user picks a delivery tier (Phase 5 router writes it).
+export const conciergeRequestStatuses = ["draft", "quoted", "selected", "paid", "delivered", "abandoned"] as const;
+export type ConciergeRequestStatus = (typeof conciergeRequestStatuses)[number];
+
+export const conciergeTiers = ["ai", "expert", "full"] as const;
+export type ConciergeTier = (typeof conciergeTiers)[number];
+
+export const conciergeRequests = pgTable("concierge_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id"), // nullable: guests can submit intent before sign-up
+  intent: text("intent").notNull(),
+  eventType: text("event_type"),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  cartId: text("cart_id"),
+  chosenTier: text("chosen_tier"), // ai | expert | full — null until the user picks
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertConciergeRequestSchema = createInsertSchema(conciergeRequests).omit({ id: true, createdAt: true });
+export type ConciergeRequest = typeof conciergeRequests.$inferSelect;
+export type InsertConciergeRequest = z.infer<typeof insertConciergeRequestSchema>;
+
+// === Event Packages (CON-A.P8 / N6) ===
+// Full / Done-for-You catalog. Admin-curated listings the Concierge surface
+// presents as "quote on request" for high-stakes events (weddings, proposals,
+// corporate, etc.). Phase A is catalog-only; the transactional flow (quote
+// → approve → PI → workspace + provider bundle) is Phase C / C1.
+export const eventPackageStatuses = ["active", "paused", "archived"] as const;
+export type EventPackageStatus = (typeof eventPackageStatuses)[number];
+
+export const eventPackages = pgTable("event_packages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventType: text("event_type").notNull(),
+  market: text("market").notNull(), // city / region name (matched ilike against destination)
+  title: text("title").notNull(),
+  description: text("description"),
+  priceFromCents: integer("price_from_cents"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEventPackageSchema = createInsertSchema(eventPackages).omit({ id: true, createdAt: true, updatedAt: true });
+export type EventPackage = typeof eventPackages.$inferSelect;
+export type InsertEventPackage = z.infer<typeof insertEventPackageSchema>;
+
 export const expertCityQueues = pgTable("expert_city_queues", {
   id: uuid("id").primaryKey().defaultRandom(),
   city: text("city"),
@@ -5423,10 +5566,18 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   minFee: decimal("min_fee", { precision: 10, scale: 2 }),
   maxFee: decimal("max_fee", { precision: 10, scale: 2 }),
   isActive: boolean("is_active").default(true),
+  // Insurance tier (FEE-2 Phase 2)
+  insuranceEnabled: boolean("insurance_enabled").default(false),
+  insuranceRatePercent: decimal("insurance_rate_percent", { precision: 5, scale: 2 }).default("0.00"),
+  insuranceAppliesTo: jsonb("insurance_applies_to").default([]),
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export type BookingFeeConfig = typeof bookingFeeConfigs.$inferSelect;
+export const insertBookingFeeConfigSchema = createInsertSchema(bookingFeeConfigs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {

@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DashboardLayout } from "@/components/dashboard-layout";
 import { Bell, MessageSquare, Calendar, CreditCard, Bot, Check, Trash2, Briefcase, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
@@ -169,8 +168,7 @@ export default function Notifications() {
   const isBookingNotif = (type: string) => type === "booking_request" || type === "booking_created";
 
   return (
-    <DashboardLayout>
-      <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
@@ -322,6 +320,5 @@ export default function Notifications() {
           </Card>
         )}
       </div>
-    </DashboardLayout>
   );
 }

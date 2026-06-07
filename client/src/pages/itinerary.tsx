@@ -23,6 +23,8 @@ import {
   Sparkles,
   LayoutDashboard,
   CalendarDays,
+  Star,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -346,9 +348,26 @@ export default function ItineraryPage() {
     );
   }
 
+  const { data: plancardData } = useQuery<any>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: !!tripId,
+    staleTime: 30000,
+  });
+
+  // LB-P2: admin-editable platform fee, resolved from booking_fee_configs.
+  // No fee literals in this file — the percent is fetched at render time so an
+  // admin rate change shows in the Booking Summary immediately on next mount.
+  const { data: bookingFeeConfig } = useQuery<{
+    platform_fee_percent: number;
+    expert_share_percent: number;
+  }>({
+    queryKey: ["/api/booking-fee-config"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const totalBooked = itinerary.days.flatMap((d: any) => d.activities).filter((a: any) => a.booked).length;
   const totalActivities = itinerary.days.flatMap((d: any) => d.activities).length;
-  const totalCost = itinerary.days.flatMap((d: any) => d.activities).reduce((sum: number, a: any) => sum + a.price, 0);
+  const totalCost = plancardData?.metrics?.totalCost ?? itinerary.days.flatMap((d: any) => d.activities).reduce((sum: number, a: any) => sum + a.price, 0);
 
 
   const allTransportLegs = itinerary.days.reduce((total: number, d: any) => {
@@ -589,6 +608,57 @@ export default function ItineraryPage() {
               </div>
             )}
 
+            {/* Expert help callout — shown when no expert is involved yet */}
+            {!shareData?.expertStatus && (
+              <div
+                className="rounded-xl border border-[#FECDD3] bg-gradient-to-r from-[#FFF1F3] to-white dark:from-[#FF385C]/10 dark:to-transparent dark:border-[#FF385C]/30 p-4"
+                data-testid="expert-help-callout"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-full bg-[#FF385C]/10 shrink-0">
+                    <UserCheck className="w-4 h-4 text-[#FF385C]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#111827] dark:text-white">
+                      Want a local expert to plan this for you?
+                    </p>
+                    <p className="text-xs text-[#6B7280] mt-0.5">
+                      Browse verified experts for{" "}
+                      <span className="font-medium text-[#374151] dark:text-gray-300">
+                        {itinerary?.destination?.split(",")[0] ?? "your destination"}
+                      </span>{" "}
+                      — from hidden-gem guides to full trip planners.
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <Link
+                        href={`/experts?role=local_expert${itinerary?.destination ? `&destination=${encodeURIComponent(itinerary.destination)}` : ""}`}
+                      >
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs bg-[#FF385C] hover:bg-[#E23350] gap-1.5"
+                          data-testid="button-find-local-expert"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          Find Local Experts
+                        </Button>
+                      </Link>
+                      <Link href="/experts?role=travel_expert">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs border-[#FECDD3] text-[#FF385C] hover:bg-[#FFF1F3] gap-1.5"
+                          data-testid="button-find-trip-planner"
+                        >
+                          <Star className="w-3 h-3" />
+                          Trip Planners
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <PlanCard
               role="owner"
               stage="full"
@@ -610,7 +680,7 @@ export default function ItineraryPage() {
                         <Badge className="bg-primary/10 text-primary text-xs" data-testid="badge-recommended">Recommended</Badge>
                       </h4>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Our travel experts handle all bookings — on-site and partner.
+                        Our trip planners handle all bookings — on-site and partner.
                       </p>
                     </div>
                   </div>
@@ -640,12 +710,18 @@ export default function ItineraryPage() {
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const pendingTotal = inAppTotal + partnerTotal;
-                    const platformFeePercent = 12;
-                    const expertSharePercent = 70;
-                    const feeAI = Math.round(pendingTotal * (platformFeePercent / 100) * 100) / 100;
-                    const feeExpert = feeAI;
-                    const expertEarns = Math.round(feeExpert * (expertSharePercent / 100) * 100) / 100;
-                    const platformFromExpert = Math.round(feeExpert * ((100 - expertSharePercent) / 100) * 100) / 100;
+                    // LB-P2: fee rate resolves from /api/booking-fee-config (the existing
+                    // admin-editable endpoint); no hardcoded percent literals here.
+                    // bookingFeeConfig is loaded by the useQuery declared above the
+                    // Booking Summary card. While the rate is loading, we show Subtotal
+                    // only — never compute against an undefined rate.
+                    const platformFeeRate = typeof bookingFeeConfig?.platform_fee_percent === "number"
+                      ? bookingFeeConfig.platform_fee_percent / 100
+                      : null;
+                    const feeAmount = platformFeeRate !== null
+                      ? Math.round(pendingTotal * platformFeeRate * 100) / 100
+                      : null;
+                    const totalWithFees = feeAmount !== null ? pendingTotal + feeAmount : null;
                     return (
                       <>
                         <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
@@ -669,34 +745,20 @@ export default function ItineraryPage() {
                           </div>
                         </div>
                         <div className="border-t pt-2 mt-1 flex items-center justify-between">
-                          <span className="text-sm font-semibold text-foreground">Subtotal</span>
-                          <span className="text-base font-bold text-foreground" data-testid="text-total-pending">${pendingTotal}</span>
+                          <span className="text-sm text-muted-foreground">Subtotal</span>
+                          <span className="text-sm font-semibold text-foreground" data-testid="text-total-pending">${pendingTotal}</span>
                         </div>
-                        {pendingTotal > 0 && (
-                          <div className="space-y-2 pt-1" data-testid="fee-breakdown-section">
-                            {/* AI booking fee row */}
-                            <div className="rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-800 px-3 py-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <Sparkles className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-                                  <span className="text-xs font-medium text-violet-800 dark:text-violet-200">If AI books</span>
-                                </div>
-                                <span className="text-xs font-semibold text-violet-700 dark:text-violet-300" data-testid="text-ai-fee">+${feeAI.toFixed(2)} fee</span>
-                              </div>
-                              <p className="text-[10px] text-violet-600/80 dark:text-violet-400/80 mt-0.5">Platform keeps 100% of the {platformFeePercent}% fee</p>
+                        {pendingTotal > 0 && feeAmount !== null && totalWithFees !== null && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Fees</span>
+                              <span className="text-sm font-semibold text-foreground" data-testid="text-booking-fees">${feeAmount.toFixed(2)}</span>
                             </div>
-                            {/* Expert booking fee row */}
-                            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-800 px-3 py-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <UserCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                                  <span className="text-xs font-medium text-amber-800 dark:text-amber-200">If Expert books</span>
-                                </div>
-                                <span className="text-xs font-semibold text-amber-700 dark:text-amber-300" data-testid="text-expert-fee">+${feeExpert.toFixed(2)} fee</span>
-                              </div>
-                              <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">Expert earns ${expertEarns.toFixed(2)} · Platform ${platformFromExpert.toFixed(2)}</p>
+                            <div className="border-t pt-2 mt-1 flex items-center justify-between">
+                              <span className="text-sm font-semibold text-foreground">Total</span>
+                              <span className="text-base font-bold text-foreground" data-testid="text-booking-total">${totalWithFees.toFixed(2)}</span>
                             </div>
-                          </div>
+                          </>
                         )}
                       </>
                     );
@@ -736,30 +798,62 @@ export default function ItineraryPage() {
               );
             })()}
 
-            <Card className="bg-white dark:bg-gray-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
-                      <MessageSquare className="w-5 h-5 text-[#FF385C]" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm text-[#111827] dark:text-white">Need help?</h4>
-                      <p className="text-xs text-[#6B7280]">AI or expert support</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Button variant="outline" size="sm" className="w-full" data-testid="button-ai-help">
-                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      AI Assistant
-                    </Button>
-                    <Button size="sm" className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
-                      Talk to Expert
-                    </Button>
-                  </div>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white dark:bg-gray-800 p-4 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20 shrink-0">
+                  <UserCheck className="w-4 h-4 text-[#FF385C]" />
                 </div>
-              </CardContent>
-            </Card>
+                <div>
+                  <h4 className="font-semibold text-sm text-[#111827] dark:text-white">Get Expert Help</h4>
+                  <p className="text-[11px] text-[#6B7280] leading-tight">Local guides · Trip planners · Event experts</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Link
+                  href={`/experts?role=local_expert${itinerary?.destination ? `&destination=${encodeURIComponent(itinerary.destination)}` : ""}`}
+                >
+                  <Button
+                    size="sm"
+                    className="w-full h-8 text-xs bg-[#FF385C] hover:bg-[#E23350] justify-between"
+                    data-testid="button-expert-help"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3" />
+                      Find Local Experts
+                    </span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+                <Link href="/experts?role=travel_expert">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs justify-between"
+                    data-testid="button-trip-planner-help"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Star className="w-3 h-3" />
+                      Browse Trip Planners
+                    </span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+                <Link href="/experts?role=event_planner">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs justify-between"
+                    data-testid="button-event-planner-help"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3" />
+                      Event Planners
+                    </span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
           </div>
         </div>
@@ -775,7 +869,7 @@ export default function ItineraryPage() {
               Request Expert Booking Assistance
             </DialogTitle>
             <DialogDescription>
-              Let our travel experts handle all bookings for your itinerary. They'll coordinate both on-site and partner bookings, ensuring everything is confirmed before your trip.
+              Let our trip planners handle all bookings for your itinerary. They'll coordinate both on-site and partner bookings, ensuring everything is confirmed before your trip.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

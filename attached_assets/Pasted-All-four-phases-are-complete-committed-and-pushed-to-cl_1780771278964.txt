@@ -1,0 +1,21 @@
+All four phases are complete, committed, and pushed to claude/laughing-bardeen-KyTUY.
+
+Phase 3 — Map reads persisted mode ✅ (b86b5a6)
+MapControlCenter.tsx:212 now derives each leg's polyline style from the persisted record (tr.userSelectedMode ?? tr.recommendedMode ?? tr.mode), never local state. Geometry stays straight-line (style-only change). After a mode change + /plancard invalidate the segment restyles on its own.
+
+Gate: grep ✓ (userSelectedMode/recommendedMode/getModePolylineStyle present; no legModes leakage). tsc not runnable here — flagged; inspection-clean.
+Phase 4 — Consolidate mode config ✅ (bccbe50)
+New single source client/src/lib/transport-modes.ts (color + icon + polyline stroke + canonical id list, admin-configurable shape, graceful fallback for any unknown/foreign id). Repointed: MODE_COLORS, MODE_ICON_MAP (re-export), getModePolylineStyle (MapControlCenter local switch deleted), AVAILABLE_MODES (→ TRANSPORT_MODE_IDS).
+
+Gate: grep ✓ — those four resolve to the one module; no duplicate literal arrays remain.
+Requirement 1 (fallback): getModeColor/getModeIcon/getModePolylineStyle all fall back (#94a3b8 / Footprints / gray stroke). Persisted foreign ids like rideshare/private_driver style cleanly.
+Requirement 2 (tracked finding): docs/planning/transport-mode-taxonomy-audit.md documents the divergent taxonomies with exact file:lines, as a separate brief — not just comments.
+Tracked finding (deliberately NOT merged — needs its own brief)
+DayTransportPanel.tsx:33 ENHANCED_MODES — ids persisted via PATCH …/mode (:310) → transport_legs.userSelectedMode.
+trip-transport-planner.tsx:146 TRANSPORT_MODES — bound to /api/transport-packages/generate (:467/:495).
+ItineraryMapView.tsx:44 getModePolylineStyle — 6th site, not in the original brief, surfaced by re-verification; divergent groupings/weights + transit/tram. Left untouched to avoid a visual change.
+Cross-cutting notes
+Branch: worked on claude/laughing-bardeen-KyTUY (contains 4cd2562/7a95730), per your redirect — not compassionate-pascal.
+tsc gate: not runnable in this env (deps uninstallable); each phase verified by inspection. The real file-scoped tsc on ActivitiesSection/TransportSection/MapControlCenter/plancard-types (+ new transport-modes.ts, itinerary-view) runs in the Replit workspace on the pushed branch.
+Boundaries honored: client-side only (no routes.ts/trips.routes.ts touched in 3–4); no collaborator/accept-reject tier; straight-line geometry kept; FK attribution deferred.
+Branch tip on origin: bccbe50. All four phases of PLANCARD_TRANSPORT_BY_LEG_BUILD.md are done.
