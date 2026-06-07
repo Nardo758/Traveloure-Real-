@@ -10,7 +10,7 @@ import {
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
   userExperiences, userExperienceItems, users, customVenues,
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
-  expertServiceCategories, expertServiceOfferings, expertSpecializations,
+  expertServiceCategories, expertServiceOfferings, expertSelectedServices, expertSpecializations,
   destinationEvents, destinationSeasons, locationCache,
   experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
   experienceUniversalFilters, experienceUniversalFilterOptions,

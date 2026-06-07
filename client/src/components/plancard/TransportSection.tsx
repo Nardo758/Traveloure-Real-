@@ -1,9 +1,9 @@
-import { Clock, Route, ExternalLink, ChevronDown } from "lucide-react";
+import { Clock, Route, ExternalLink, ChevronDown, ChevronUp, ShoppingCart, Star } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
 import { openInMaps } from "@/lib/navigate";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { MODE_COLORS, STATUS_STYLES, ModeIcon, type PlanCardDay, type PlanCardTransport } from "./plancard-types";
@@ -16,7 +16,6 @@ interface TransportSectionProps {
 }
 
 function BookingSourceBadge({ transport }: { transport: PlanCardTransport }) {
-  // Default to platform when no explicit booking data — every leg gets a badge
   const resolvedSource = transport.bookingSource ?? "platform";
   const resolvedPartner = transport.partnerName;
 
@@ -53,10 +52,8 @@ function BookingSourceBadge({ transport }: { transport: PlanCardTransport }) {
   return null;
 }
 
-// Mode selector for the transport tab. Reads/writes the SAME userSelectedMode
-// field via the SAME mutation shape as the activities-view picker (Phase 1):
-// PATCH /api/transport-legs/:legId/mode { selectedMode }, optimistic update,
-// rollback + toast on error, invalidate the plancard query on success.
+// Mode selector — reads/writes the same userSelectedMode field via
+// PATCH /api/transport-legs/:legId/mode. Optimistic update with rollback.
 function TransportModeSelector({
   tripId,
   transport,
@@ -101,7 +98,6 @@ function TransportModeSelector({
     },
   });
 
-  // Read-only badge for viewers — preserves the original look.
   if (!allowActions || options.length <= 1) {
     return (
       <span
@@ -154,6 +150,168 @@ function TransportModeSelector({
               </button>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Phase 3 — Per-leg booking options panel
+// Fetches platform + affiliate options from GET /api/transport-legs/:legId/options
+// Platform options shown first (green "Book" CTA), affiliates second (deep-link).
+// ============================================================================
+
+const PARTNER_STYLES: Record<string, { bg: string; text: string; badge: string }> = {
+  "12go":        { bg: "bg-orange-50 dark:bg-orange-950/20 border-orange-200/50 dark:border-orange-800/30", text: "text-orange-700 dark:text-orange-400", badge: "12Go" },
+  omio:          { bg: "bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200/50 dark:border-indigo-800/30", text: "text-indigo-700 dark:text-indigo-400",   badge: "Omio" },
+  discovercars:  { bg: "bg-amber-50 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-800/30",    text: "text-amber-700 dark:text-amber-400",     badge: "DiscoverCars" },
+  kiwi:          { bg: "bg-cyan-50 dark:bg-cyan-950/20 border-cyan-200/50 dark:border-cyan-800/30",        text: "text-cyan-700 dark:text-cyan-400",        badge: "Kiwi.com" },
+  traveloure:    { bg: "bg-green-50 dark:bg-green-950/20 border-green-200/50 dark:border-green-800/30",    text: "text-green-700 dark:text-green-400",      badge: "Traveloure" },
+};
+
+function LegBookingPanel({ legId }: { legId: string }) {
+  const [open, setOpen] = useState(false);
+
+  const { data, isLoading } = useQuery<{ legId: string; options: any[] }>({
+    queryKey: [`/api/transport-legs/${legId}/options`],
+    enabled: open,
+  });
+
+  const options = data?.options ?? [];
+  const platformOptions = options.filter((o) => o.bookingType === "platform");
+  const affiliateOptions = options.filter((o) => o.bookingType === "affiliate" || o.bookingType === "deep_link");
+
+  return (
+    <div className="mt-2" data-testid={`leg-booking-panel-${legId}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
+        data-testid={`button-toggle-booking-options-${legId}`}
+      >
+        <ShoppingCart className="w-3.5 h-3.5" />
+        Book this leg
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-2" data-testid={`booking-options-${legId}`}>
+          {isLoading && (
+            <div className="space-y-1.5">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {!isLoading && options.length === 0 && (
+            <p className="text-[11px] text-muted-foreground italic py-1">
+              No booking options available for this leg yet.
+            </p>
+          )}
+
+          {/* Platform options — book directly on Traveloure */}
+          {platformOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Book on Traveloure</p>
+              {platformOptions.map((opt) => (
+                <div
+                  key={opt.id}
+                  className="flex items-center justify-between gap-3 p-2.5 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200/50 dark:border-green-800/30"
+                  data-testid={`booking-option-platform-${opt.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-foreground truncate">{opt.title}</p>
+                    {opt.description && (
+                      <p className="text-[11px] text-muted-foreground truncate">{opt.description}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {opt.priceDisplay && (
+                        <span className="text-[11px] font-bold text-green-700 dark:text-green-400">
+                          {opt.priceDisplay}
+                        </span>
+                      )}
+                      {opt.rating && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-amber-600">
+                          <Star className="w-2.5 h-2.5 fill-current" />
+                          {Number(opt.rating).toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="text-[11px] h-7 px-3 shrink-0 bg-green-600 hover:bg-green-700 text-white"
+                    data-testid={`button-book-platform-${opt.id}`}
+                  >
+                    Book
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Affiliate options — deep-links to partner sites */}
+          {affiliateOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {platformOptions.length > 0 ? "Or compare on" : "Compare & book on"}
+              </p>
+              {affiliateOptions.map((opt) => {
+                const style = PARTNER_STYLES[opt.source] ?? {
+                  bg: "bg-muted/40 border-border",
+                  text: "text-foreground",
+                  badge: opt.source,
+                };
+                return (
+                  <div
+                    key={opt.id}
+                    className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border ${style.bg}`}
+                    data-testid={`booking-option-affiliate-${opt.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${style.text} bg-white/60 dark:bg-black/20`}>
+                          {style.badge}
+                        </span>
+                        <p className="text-[12px] font-semibold text-foreground truncate">{opt.title}</p>
+                      </div>
+                      {opt.description && (
+                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">{opt.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {opt.priceDisplay && (
+                          <span className={`text-[11px] font-bold ${style.text}`}>{opt.priceDisplay}</span>
+                        )}
+                        {opt.pricePerPerson && (
+                          <span className="text-[10px] text-muted-foreground">per person</span>
+                        )}
+                        {opt.rating && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-amber-600">
+                            <Star className="w-2.5 h-2.5 fill-current" />
+                            {Number(opt.rating).toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {opt.externalUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-[11px] h-7 px-3 shrink-0 gap-1"
+                        onClick={() => window.open(opt.externalUrl, "_blank", "noopener")}
+                        data-testid={`button-book-affiliate-${opt.id}`}
+                      >
+                        View
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -278,6 +436,8 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
                 )}
                 <BookingSourceBadge transport={tr} />
               </div>
+              {/* Phase 3: per-leg booking panel (platform-first, then affiliates) */}
+              <LegBookingPanel legId={tr.id} />
             </div>
             {tr.status === "suggested" && allowActions && (
               <div className="flex flex-col gap-1.5 flex-shrink-0">

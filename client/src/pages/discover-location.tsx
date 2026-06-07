@@ -88,6 +88,7 @@ function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
   );
 }
 
+
 function HeroSection({
   city,
   heroData,
@@ -185,6 +186,7 @@ function HeroSection({
       );
     }
 
+
     return (
       <div
         className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
@@ -277,6 +279,7 @@ function HeroSection({
       </div>
     );
   }
+
 
   return (
     <div
@@ -505,7 +508,7 @@ function FeedRenderer({
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty">
-        No items to show yet for {toTitleCase(city)}. Check back soon!
+        No items to show yet for {city}. Check back soon!
       </p>
     );
   }
@@ -611,7 +614,7 @@ function FlatFilteredFeed({
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
-        No {activeFilter.replace("_", " ")} found in {toTitleCase(city)}.
+        No {activeFilter.replace("_", " ")} found in {city}.
       </p>
     );
   }
@@ -1045,6 +1048,7 @@ export default function DiscoverLocationPage() {
     }
     return null;
   })();
+
 
   if (!city) {
     return (

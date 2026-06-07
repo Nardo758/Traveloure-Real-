@@ -6,9 +6,8 @@
  *
  * Scope:
  *   - service_templates (all active rows) → ESO with isDefault=true, expertId=null
- *
- * NOTE: expert_custom_services was fully migrated by migration 012 into provider_services
- * and dropped by migration 013. The backfill block for that table has been removed.
+ *   - expert_custom_services (ALL rows, all statuses, all active states) → ESO with
+ *     isDefault=false, expertId set, workflow fields preserved
  *
  * Deduplication key: externalId (source row UUID) — deterministic, not name-fragile.
  * Safe to re-run: skips rows where externalId already exists in ESO.
@@ -23,11 +22,13 @@ import {
   expertServiceOfferings,
   expertServiceCategories,
   serviceTemplates,
+  expertCustomServices,
 } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 
 export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigrated: number }> {
   let stMigrated = 0;
+  let customMigrated = 0;
 
   // Resolve (or create) the fallback "Itinerary Planning" category
   let categoryRow = await db
@@ -93,10 +94,74 @@ export async function runEsoBackfill(): Promise<{ stMigrated: number; customMigr
     console.warn("[ESO Backfill] service_templates migration failed (non-fatal):", err);
   }
 
-  // expert_custom_services backfill removed: table was dropped in migration 013.
-  // All data was already migrated to provider_services by migration 012.
+  // ── Backfill ALL expert_custom_services → ESO ────────────────────────────
+  // ALL rows regardless of status (draft/submitted/approved/rejected) and isActive flag.
+  // Workflow fields (status, submittedAt, reviewedAt, reviewedBy, rejectionReason, etc.)
+  // are preserved so ESO is the complete canonical record after migration.
+  // isDefault=false: expert offerings are not template-picker starting points.
+  try {
+    const allCustom = await db
+      .select()
+      .from(expertCustomServices);
 
-  return { stMigrated, customMigrated: 0 };
+    if (allCustom.length > 0) {
+      const alreadyMigrated = new Set(
+        (
+          await db
+            .select({ externalId: expertServiceOfferings.externalId })
+            .from(expertServiceOfferings)
+            .where(
+              inArray(
+                expertServiceOfferings.externalId,
+                allCustom.map((r) => r.id)
+              )
+            )
+        ).map((r) => r.externalId)
+      );
+
+      for (const cs of allCustom) {
+        if (alreadyMigrated.has(cs.id)) continue;
+        const catId = cs.existingCategoryId ?? fallbackCategoryId;
+        await db.insert(expertServiceOfferings).values({
+          categoryId:         catId,
+          name:               cs.title,
+          description:        cs.description ?? null,
+          price:              cs.price,
+          isDefault:          false,
+          sortOrder:          300,
+          expertId:           cs.expertId,
+          externalId:         cs.id,
+          categoryName:       cs.categoryName ?? null,
+          // Preserve all workflow lifecycle fields
+          status:             cs.status ?? "draft",
+          submittedAt:        cs.submittedAt ?? null,
+          reviewedAt:         cs.reviewedAt ?? null,
+          reviewedBy:         cs.reviewedBy ?? null,
+          rejectionReason:    cs.rejectionReason ?? null,
+          // Preserve service detail fields
+          duration:           cs.duration ?? null,
+          deliverables:       (cs.deliverables as any) ?? [],
+          cancellationPolicy: cs.cancellationPolicy ?? null,
+          leadTime:           cs.leadTime ?? null,
+          imageUrl:           cs.imageUrl ?? null,
+          galleryImages:      (cs.galleryImages as any) ?? [],
+          experienceTypes:    (cs.experienceTypes as any) ?? [],
+          isActive:           cs.isActive ?? true,
+        });
+        customMigrated++;
+      }
+    }
+
+    if (customMigrated > 0) {
+      console.log(
+        `[ESO Backfill] Migrated ${customMigrated} expert_custom_services row(s) → expert_service_offerings.`
+      );
+    }
+  } catch (err) {
+    console.warn("[ESO Backfill] expert_custom_services migration failed (non-fatal):", err);
+  }
+
+  return { stMigrated, customMigrated };
 }
 
 // Allow standalone execution: npx tsx server/migrations/run-eso-backfill.ts

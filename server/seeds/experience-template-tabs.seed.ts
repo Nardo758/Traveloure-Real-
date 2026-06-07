@@ -7,8 +7,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, inArray, and } from "drizzle-orm";
-import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
+import { eq, inArray } from "drizzle-orm";
 
 interface FilterOption {
   label: string;
@@ -108,30 +107,6 @@ async function seedTabWithFilters(experienceTypeId: string, tab: TabDef, sortOrd
         isActive: true,
       });
     }
-  }
-}
-
-// P462 reconcile (Phase 2): attach lean, per-tab selection controls to each
-// tab's control_config (merged, not overwritten). Idempotent and additive —
-// runs on already-existing tabs too (seedTabWithFilters early-returns on those).
-// Scoped by experienceTypeId + slug to avoid cross-template slug collisions.
-async function backfillSelectionControls(experienceTypeId: string, templateSlug: string) {
-  const tabControls = SELECTION_CONTROL_SEED[templateSlug];
-  if (!tabControls) return;
-
-  for (const [tabSlug, selectionControls] of Object.entries(tabControls)) {
-    const [tab] = await db.select().from(experienceTemplateTabs)
-      .where(and(
-        eq(experienceTemplateTabs.experienceTypeId, experienceTypeId),
-        eq(experienceTemplateTabs.slug, tabSlug),
-      ));
-    if (!tab) continue;
-
-    const existingConfig = (tab.controlConfig as Record<string, unknown> | null) ?? {};
-    await db.update(experienceTemplateTabs)
-      .set({ controlConfig: { ...existingConfig, selectionControls } })
-      .where(eq(experienceTemplateTabs.id, tab.id));
-    console.log(`  Selection controls -> ${templateSlug}/${tabSlug} (${selectionControls.length})`);
   }
 }
 
@@ -3798,7 +3773,6 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(travelId, travelTabs[i], i);
   }
   await seedUniversalFilters(travelId, travelUniversalFilters);
-  await backfillSelectionControls(travelId, "travel");
   console.log("Travel template seeded.");
 
   // Seed Wedding template
@@ -3809,7 +3783,6 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(weddingId, weddingTabs[i], i);
   }
   await seedUniversalFilters(weddingId, standardUniversalFilters);
-  await backfillSelectionControls(weddingId, "wedding");
   console.log("Wedding template seeded.");
 
   // Seed Date Night template
@@ -3840,7 +3813,6 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(corporateId, corporateTabs[i], i);
   }
   await seedUniversalFilters(corporateId, standardUniversalFilters);
-  await backfillSelectionControls(corporateId, "corporate-events");
   console.log("Corporate Events template seeded.");
 
   // Seed Retreats template
