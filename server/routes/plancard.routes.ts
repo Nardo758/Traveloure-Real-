@@ -20,8 +20,45 @@ import { eq, and, desc, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { geocodeAddress } from "../utils/geocode";
 
 const router = Router();
+
+// Resolve-on-write: populate latitude/longitude for itinerary items that lack
+// them, once, via the single server geocode path, and persist back to the row so
+// subsequent reads use the stored value. Bounded per request so a cold trip
+// can't stall the response; safe to fail (the map simply omits a pin without
+// coordinates). The PlanCard client never geocodes — pins read these columns.
+async function resolveMissingItemCoordinates(
+  items: Array<{ id: string; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
+  destination: string | null | undefined,
+): Promise<void> {
+  const MAX_PER_REQUEST = 12;
+  let resolved = 0;
+  for (const item of items) {
+    if (resolved >= MAX_PER_REQUEST) break;
+    if (item.latitude != null && item.longitude != null) continue;
+    const address = [item.locationName, item.locationAddress, destination]
+      .filter((p) => p && String(p).trim().length > 0)
+      .join(", ");
+    if (!address) continue;
+    try {
+      const geo = await geocodeAddress(address);
+      if (!geo) continue;
+      const lat = geo.lat.toString();
+      const lng = geo.lng.toString();
+      await db.update(itineraryItems)
+        .set({ latitude: lat, longitude: lng })
+        .where(eq(itineraryItems.id, item.id));
+      // Reflect in the in-memory row so this same response carries the pin.
+      item.latitude = lat;
+      item.longitude = lng;
+      resolved++;
+    } catch {
+      // best-effort; leave this item un-pinned
+    }
+  }
+}
 
 function logChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
   return storage.createItineraryChange({
@@ -168,6 +205,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       .where(eq(itineraryItems.tripId, tripId))
       .orderBy(itineraryItems.dayNumber, itineraryItems.sortOrder);
 
+    // Resolve-on-write: fill + persist any missing pin coordinates via the single
+    // server geocode path, so the client never geocodes.
+    await resolveMissingItemCoordinates(items as any, trip.destination);
+
     const comparison = await db.query.itineraryComparisons.findFirst({
       where: eq(itineraryComparisons.tripId, tripId),
     });
@@ -248,8 +289,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           type: mapItemType(item.itemType),
           status: mapItemStatus(item.status),
           cost: parseFloat(item.estimatedCost?.toString() || "0"),
-          latitude: item.latitude ? parseFloat(item.latitude.toString()) : null,
-          longitude: item.longitude ? parseFloat(item.longitude.toString()) : null,
+          // Emitted as lat/lng to match the PlanCardActivity client contract so
+          // pins read coordinates directly (no client-side geocoding).
+          lat: item.latitude ? parseFloat(item.latitude.toString()) : null,
+          lng: item.longitude ? parseFloat(item.longitude.toString()) : null,
           expertNote: (item as any).notes || null,
           comments: commentCounts[item.id] || 0,
           suggestedBy: item.suggestedBy || null,
@@ -348,8 +391,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
               type: a.category || a.type || "activity",
               status: a.status || "planned",
               cost: parseFloat(a.estimatedCost?.toString() || a.cost?.toString() || "0"),
-              latitude: a.latitude ?? null,
-              longitude: a.longitude ?? null,
+              lat: a.lat ?? a.latitude ?? null,
+              lng: a.lng ?? a.longitude ?? null,
               expertNote: null,
               comments: 0,
               suggestedBy: null,
