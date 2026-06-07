@@ -83,7 +83,7 @@ import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
-import { filterServices } from "@shared/service-filter";
+import { filterServices, sortServices } from "@shared/service-filter";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
 import { SelectionControlsPanel } from "@/components/selection-controls-panel";
@@ -1722,15 +1722,7 @@ export default function ExperienceTemplatePage() {
       tags: selectedFilters.length > 0 ? selectedFilters : undefined,
     });
 
-    if (sortBy === "price-low") {
-      filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
-    } else if (sortBy === "price-high") {
-      filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
-    } else if (sortBy === "rating") {
-      filtered.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
-    }
-
-    return filtered;
+    return sortServices(filtered, sortBy);
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
