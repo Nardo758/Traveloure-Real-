@@ -86,14 +86,13 @@ import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenu
 import { filterServices, sortServices } from "@shared/service-filter";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
-import { SelectionControlsPanel } from "@/components/selection-controls-panel";
+import { CompactFilterBar } from "@/components/compact-filter-bar";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
-import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
@@ -1086,10 +1085,6 @@ export default function ExperienceTemplatePage() {
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
   
-  // Template-based filters (DB-driven — now enabled for all templates)
-  const templateFilters = useTemplateFilters();
-  // P3: All templates with a DB record get TemplateFiltersPanel (gate removed)
-  const hasTemplateTabs = !!experienceType?.id;
   
   // Wedding mode state (planning vs guest activities)
   const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
@@ -2416,8 +2411,8 @@ export default function ExperienceTemplatePage() {
               sortOptions) reads activeTabControlConfig and writes flight/hotel state
               (flightMaxPrice/hotelMaxPrice, flightStops, hotelStarRating, flight/hotelSortBy),
               so it is inert on other tabs. Without this guard it co-rendered with the
-              SelectionControlsPanel below on seeded tabs — the filter-doubling bug. Non-flight/
-              hotel tabs get their (working) sort control in the selection-controls block below. */}
+              compact filter bar below on seeded tabs — the filter-doubling bug. Non-flight/
+              hotel tabs get their controls + sort from the CompactFilterBar below. */}
           {activeTabControlConfig && (currentTabType === "flights" || currentTabType === "hotels") && (
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
             <CollapsibleTrigger asChild>
@@ -2513,46 +2508,22 @@ export default function ExperienceTemplatePage() {
           </Collapsible>
           )}
 
-          {/* P462 reconcile (Phase 3): selection controls replace the inert facet wall
-              on tabs that have them seeded; other tabs fall back to TemplateFiltersPanel.
-              Both hidden on flight/hotel tabs (those use the Collapsible above). */}
+          {/* P462 reconcile: ONE compact filter bar per non-flight/hotel tab — the
+              tab's seeded selection controls + Sort, in a single horizontal row.
+              Replaces the prior split (SelectionControlsPanel + separate Sort) and
+              the inert TemplateFiltersPanel facet wall (deleted). flights/hotels keep
+              their own Collapsible (Block A) above. The bar renders even with no
+              seeded controls (Sort still applies); tabs needing a new dimension get
+              it seeded as a selection control, not as a facet. */}
           {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
-            <div className="mb-6">
-              {activeTabControlConfig?.selectionControls?.length ? (
-                <SelectionControlsPanel
-                  controls={activeTabControlConfig.selectionControls}
-                  selected={selectionState}
-                  onToggle={handleSelectionToggle}
-                  onClear={handleSelectionClear}
-                />
-              ) : (
-                <TemplateFiltersPanel
-                  experienceTypeId={experienceType.id}
-                  activeTab={activeTab}
-                  selectedFilters={templateFilters.selectedFilters}
-                  onFilterChange={templateFilters.onFilterChange}
-                  onClearFilters={templateFilters.onClearFilters}
-                />
-              )}
-              {/* Sort control for non-flight/hotel tabs. The flight/hotel "Sort By" lives in the
-                  Collapsible above and only sets flight/hotelSortBy; this drives the generic
-                  `sortBy` that actually orders the filteredServices list (price/rating), which
-                  previously had no UI on these tabs. */}
-              <div className="mt-4 flex items-center gap-2">
-                <Label className="text-sm font-medium">Sort By</Label>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-[200px]" data-testid="select-template-sort">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="popular">Most Popular</SelectItem>
-                    <SelectItem value="price-low">Price: Low to High</SelectItem>
-                    <SelectItem value="price-high">Price: High to Low</SelectItem>
-                    <SelectItem value="rating">Highest Rated</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <CompactFilterBar
+              controls={activeTabControlConfig?.selectionControls ?? []}
+              selected={selectionState}
+              onToggle={handleSelectionToggle}
+              onClear={handleSelectionClear}
+              sortValue={sortBy}
+              onSortChange={setSortBy}
+            />
           )}
 
           {/* P5: tabType-registry driven — any tab with tabType "flights" renders FlightSearch */}
