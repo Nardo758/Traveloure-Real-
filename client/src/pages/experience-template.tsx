@@ -2306,8 +2306,10 @@ export default function ExperienceTemplatePage() {
               the inert TemplateFiltersPanel facet wall (deleted). flights/hotels keep
               their own Collapsible (Block A) above. The bar renders even with no
               seeded controls (Sort still applies); tabs needing a new dimension get
-              it seeded as a selection control, not as a facet. */}
-          {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
+              it seeded as a selection control, not as a facet.
+              Note: experienceType is always defined here (guarded by the !experienceType
+              early return above); the id check was removed to avoid falsy-id edge cases. */}
+          {currentTabType !== "flights" && currentTabType !== "hotels" && (
             <CompactFilterBar
               controls={activeTabControlConfig?.selectionControls ?? []}
               selected={selectionState}

@@ -57,6 +57,20 @@ jobs:
     name: e2e-selection-controls (DOM gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,20 +80,31 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
-      - name: Wait for deployment
-        run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL" || true)
-            case "$code" in 200|301|302) echo "deployment up ($code)"; exit 0;; esac
-            echo "attempt $i/30: waiting for deployment ($code)..."; sleep 10
-          done
-          echo "deployment not responding at $BASE_URL"; exit 1
+      - name: Push database schema
+        run: npx drizzle-kit push --force
         env:
-          BASE_URL: https://traveloure-platform.replit.app/
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          NODE_ENV: development
+          PORT: 5000
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete"; exit 0
+            fi
+            echo "attempt $i/60: waiting for server/seeding... ($result)"; sleep 5
+          done
+          echo "Server not ready in time"; exit 1
       - name: Selection-controls DOM test
         run: npx playwright test selection-controls --project=chromium
         env:
-          BASE_URL: https://traveloure-platform.replit.app/
+          BASE_URL: http://localhost:5000
           CI: 'true'
       - name: Upload report
         if: always()
