@@ -770,18 +770,128 @@ router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
   });
 
   // Update category (admin only)
+  // Phase 8.2: includes footgun validation for the billing-aware fields
+  // (commission_band_key, insurance_band, risk_profile, etc.). A category
+  // cannot be saved with a commission_band_key that doesn't reference an
+  // active percent band; an explicit NULL is permitted only when the
+  // platform-wide default_commission_band_key inheritance fallback is itself
+  // a valid active band. Edits are audit-logged.
 
 router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const userId = (req.user as any).claims.sub;
+      const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertServiceCategorySchema.partial().parse(req.body);
+
+      // ── Phase 8.2 footgun validation ────────────────────────────────────
+      if ("commissionBandKey" in input) {
+        const newBandKey = input.commissionBandKey;
+        if (newBandKey === null || newBandKey === "" || newBandKey === undefined) {
+          // Explicit inheritance — only allowed if default_commission_band_key
+          // is set AND references an active fee_bands row.
+          const fallback = await db.execute(sql`
+            SELECT s.setting_value, fb.is_active
+            FROM platform_settings s
+            LEFT JOIN fee_bands fb ON fb.band_key = s.setting_value
+            WHERE s.setting_key = 'default_commission_band_key'
+            LIMIT 1
+          `);
+          const row = fallback.rows?.[0] as any;
+          if (!row || !row.setting_value) {
+            return res.status(400).json({
+              error: "category_unpriced_in_tiered_mode",
+              message:
+                "Cannot clear commission_band_key: platform_settings.default_commission_band_key is unset. Either set a default first, or explicitly pick a band for this category.",
+            });
+          }
+          if (!row.is_active) {
+            return res.status(400).json({
+              error: "category_inheritance_target_inactive",
+              message: `default_commission_band_key='${row.setting_value}' but that band is inactive in fee_bands. Activate it or set commission_band_key on this category.`,
+            });
+          }
+        } else {
+          // Explicit band — validate it exists, is active, rate_type='percent'.
+          const bandCheck = await db.execute(sql`
+            SELECT rate_type, is_active
+            FROM fee_bands WHERE band_key = ${newBandKey} LIMIT 1
+          `);
+          const bandRow = bandCheck.rows?.[0] as any;
+          if (!bandRow) {
+            return res.status(400).json({
+              error: "commission_band_not_found",
+              message: `commission_band_key='${newBandKey}' does not match any fee_bands row.`,
+            });
+          }
+          if (!bandRow.is_active) {
+            return res.status(400).json({
+              error: "commission_band_inactive",
+              message: `Band '${newBandKey}' exists but is inactive — activate it before pinning a category to it.`,
+            });
+          }
+          if (bandRow.rate_type !== "percent") {
+            return res.status(400).json({
+              error: "commission_band_wrong_type",
+              message: `Band '${newBandKey}' is rate_type='${bandRow.rate_type}', expected 'percent' for a commission band.`,
+            });
+          }
+        }
+      }
+
+      if ("insuranceBand" in input && input.insuranceBand !== null && input.insuranceBand !== undefined) {
+        const ib = Number(input.insuranceBand);
+        if (!Number.isInteger(ib) || ib < 1 || ib > 4) {
+          return res.status(400).json({
+            error: "invalid_insurance_band",
+            message: "insurance_band must be 1, 2, 3, or 4 (Premium escalation per §5.2).",
+          });
+        }
+      }
+
+      if ("riskProfile" in input && input.riskProfile !== null && input.riskProfile !== undefined) {
+        if (!["low", "moderate", "high"].includes(String(input.riskProfile))) {
+          return res.status(400).json({
+            error: "invalid_risk_profile",
+            message: "risk_profile must be 'low' | 'moderate' | 'high'.",
+          });
+        }
+      }
+
+      // ── Snapshot before for audit ────────────────────────────────────────
+      const before = await storage.getServiceCategoryById(req.params.id);
       const updated = await storage.updateServiceCategory(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Category not found" });
       }
+
+      // Audit-log changes to billing-aware fields.
+      const billingFields = [
+        "commissionBandKey", "insuranceBand", "riskProfile", "requiresBackgroundCheck",
+        "sourceType", "launchTier", "affiliatePartnerKey", "categoryKey",
+      ] as const;
+      const changedBilling = before
+        ? billingFields.filter(f => (input as any)[f] !== undefined && (before as any)[f] !== (input as any)[f])
+        : [];
+      if (changedBilling.length > 0) {
+        await db.insert(accessAuditLogs).values({
+          actorId: userId,
+          actorRole: user.role,
+          action: "service_category_billing_update",
+          resourceType: "service_category",
+          resourceId: req.params.id,
+          metadata: {
+            changed: changedBilling,
+            before: Object.fromEntries(changedBilling.map(f => [f, (before as any)?.[f] ?? null])),
+            after: Object.fromEntries(changedBilling.map(f => [f, (input as any)[f] ?? null])),
+          },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch(err => console.error("[service-category] audit log failed (non-fatal):", err));
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
