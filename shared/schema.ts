@@ -1116,40 +1116,10 @@ export const expertSpecializations = pgTable("expert_specializations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Expert Custom Services (user-submitted offerings) ===
-// NOTE: The expert_custom_services DB table exists in production and holds data
-// that was NOT migrated by migration 012 before prod was deployed. The pgTable
-// definition is kept here so Drizzle does not propose DROP TABLE on publish.
-// Once migration 012 is confirmed to have run on prod and data is in
-// provider_services, this table definition can be removed in a future migration.
-export const expertCustomServicesStatusEnum = ["draft", "submitted", "approved", "rejected"] as const;
-
-export const expertCustomServices = pgTable("expert_custom_services", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description"),
-  categoryName: varchar("category_name", { length: 100 }),
-  existingCategoryId: varchar("existing_category_id"),
-  price: decimal("price").notNull(),
-  duration: varchar("duration", { length: 50 }),
-  deliverables: jsonb("deliverables").default([]),
-  cancellationPolicy: text("cancellation_policy"),
-  leadTime: varchar("lead_time", { length: 50 }),
-  imageUrl: text("image_url"),
-  galleryImages: jsonb("gallery_images").default([]),
-  experienceTypes: jsonb("experience_types").default([]),
-  status: varchar("status", { length: 20 }).default("draft"),
-  submittedAt: timestamp("submitted_at"),
-  reviewedAt: timestamp("reviewed_at"),
-  reviewedBy: varchar("reviewed_by"),
-  rejectionReason: text("rejection_reason"),
-  isActive: boolean("is_active").default(true),
-  bookingsCount: integer("bookings_count").default(0),
-  averageRating: decimal("average_rating").default("0"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// === Expert Custom Services ===
+// DB table dropped in migration 013 (data migrated to provider_services in 012).
+// pgTable definition removed — migration confirmed; Drizzle no longer needs the
+// stub to avoid proposing DROP TABLE. Types/Zod schema kept below for storage adapter.
 
 // === Influencer Referral Tracking ===
 export const influencerReferralStatusEnum = ["pending", "converted", "paid", "expired"] as const;
@@ -4127,15 +4097,8 @@ export type InsertProviderPayout = z.infer<typeof insertProviderPayoutSchema>;
 // === Platform Settings (key-value config store) ===
 // NOTE: This table exists in production with 13 rows of live configuration
 // (commission rate ranges, feature flags, support_email, timezone, etc.).
-// Kept in schema so Drizzle does not propose DROP TABLE on publish.
-// No code currently reads this table — config was migrated to per-feature
-// columns/tables — but the rows must be preserved until explicitly deprecated.
-
-export const platformSettings = pgTable("platform_settings", {
-  key: varchar("key", { length: 100 }).primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// platformSettings (key/value shape) — removed. The live table uses setting_key/setting_value
+// columns (see platformSettingsTable below). commission.ts reads via raw SQL; no ORM access.
 
 // === Platform Revenue Tracking ===
 
