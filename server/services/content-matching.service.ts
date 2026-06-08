@@ -36,7 +36,7 @@
 
 import { db } from "../db";
 import { eq, and, or, ilike, inArray, isNotNull, sql } from "drizzle-orm";
-import { providerServices, users } from "@shared/schema";
+import { providerServices, users, seasonalOpportunities } from "@shared/schema";
 import { leadRoutingService, type ExpertScore } from "./lead-routing.service";
 import {
   findMatchingProviders,
@@ -210,12 +210,55 @@ export interface ContentMatchInput {
   /** WGS-84 longitude of the content item */
   lng?: number;
   limit?: number;
+  /** Optional month (1-12) for time-aware matching (filters by seasonal opportunities) */
+  month?: number;
+  /** Optional country for time-aware matching */
+  country?: string;
+}
+
+// ─── Seasonal opportunity helper ──────────────────────────────────────────────
+
+/**
+ * Fetch seasonal opportunities for a destination and month.
+ * Used to bias matching towards time-relevant service types.
+ */
+async function getSeasonalOpportunities(
+  city: string,
+  country: string,
+  month: number,
+): Promise<Map<string, number>> {
+  if (!month || month < 1 || month > 12 || !city) {
+    return new Map();
+  }
+
+  try {
+    const opportunities = await db
+      .select({ serviceType: seasonalOpportunities.serviceType, demandMultiplier: seasonalOpportunities.demandMultiplier })
+      .from(seasonalOpportunities)
+      .where(
+        and(
+          ilike(seasonalOpportunities.city, `%${city}%`),
+          country ? ilike(seasonalOpportunities.country, `%${country}%`) : undefined,
+          eq(seasonalOpportunities.month, month),
+        )
+      );
+
+    const map = new Map<string, number>();
+    for (const opp of opportunities) {
+      const multiplier = parseFloat(opp.demandMultiplier ?? "1.0");
+      map.set((opp.serviceType ?? "").toLowerCase(), multiplier);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
 }
 
 // ─── Core resolver ────────────────────────────────────────────────────────────
 
 /**
  * Resolve matched providers and experts for a given content item.
+ * Optionally filters by season/month for time-aware matching.
  * Always returns a valid result object — never throws.
  */
 export async function resolveMatches(input: ContentMatchInput): Promise<ContentMatchResult> {
@@ -225,6 +268,11 @@ export async function resolveMatches(input: ContentMatchInput): Promise<ContentM
   const normalizedCity = (input.city ?? "").toLowerCase().trim();
 
   const rule: AffinityRule | undefined = AFFINITY_RULES[normalizedType];
+
+  // Fetch seasonal opportunities if month/city provided (for time-aware matching)
+  const seasonalOps = input.month && normalizedCity
+    ? await getSeasonalOpportunities(normalizedCity, input.country ?? "", input.month)
+    : new Map<string, number>();
 
   // Unknown content type: surface nothing (never pollute recommendations with
   // off-affinity supply). Experts can still resolve by destination.
@@ -239,7 +287,7 @@ export async function resolveMatches(input: ContentMatchInput): Promise<ContentM
   }
 
   const [matchedProviders, matchedExperts] = await Promise.all([
-    resolveProviders(rule, normalizedType, normalizedNeighborhood, normalizedCity, input.lat, input.lng, limit),
+    resolveProviders(rule, normalizedType, normalizedNeighborhood, normalizedCity, input.lat, input.lng, limit, seasonalOps),
     resolveExperts(rule, normalizedCity, normalizedNeighborhood, limit),
   ]);
 
@@ -269,6 +317,7 @@ async function resolveProviders(
   lat: number | undefined,
   lng: number | undefined,
   limit: number,
+  seasonalOpportunities: Map<string, number> = new Map(),
 ): Promise<ProviderMatch[]> {
   try {
     const matchingAffinityTag = CONTENT_TYPE_TO_AFFINITY_TAG[contentType] ?? null;
@@ -414,7 +463,12 @@ async function resolveProviders(
       const ratingBonus = rating >= 4.5 ? 15 : rating >= 4.0 ? 10 : rating >= 3.5 ? 5 : 0;
       const popularityBonus = Math.min(Math.floor((row.bookingsCount ?? 0) / 5), 5);
 
-      const totalScore = availScore + affinityBonus + neighborhoodBonus + geoBonus + ratingBonus + popularityBonus;
+      // Seasonal opportunity boost (time-aware matching)
+      // Apply demand multiplier from seasonalOpportunities if this serviceType is relevant for this season
+      const seasonalMultiplier = seasonalOpportunities.get((row.serviceType ?? "").toLowerCase()) ?? 1.0;
+      const seasonalBonus = seasonalMultiplier > 1.0 ? Math.min(Math.floor((seasonalMultiplier - 1.0) * 20), 20) : 0;
+
+      const totalScore = (availScore + affinityBonus + neighborhoodBonus + geoBonus + ratingBonus + popularityBonus + seasonalBonus) * seasonalMultiplier;
 
       const providerName =
         [row.providerFirstName, row.providerLastName].filter(Boolean).join(" ").trim() ||
@@ -490,4 +544,47 @@ async function resolveExperts(
     console.error("[ContentMatching] resolveExperts error:", err.message);
     return [];
   }
+}
+
+// ─── Time-aware matching for by-date page ─────────────────────────────────────
+// Resolves time-relevant content (services + experts) for a destination in a given month.
+// Used by the global-calendar endpoint to power Layer 3 (Book Around It).
+
+export interface TimeRelevantMatch {
+  city: string;
+  country: string;
+  month: number;
+  providers: ProviderMatch[];
+  experts: ExpertMatch[];
+}
+
+/**
+ * Resolve time-relevant matched content for a destination and month.
+ * Surfaces services that are in-season or event-relevant for that timeframe.
+ */
+export async function resolveTimeRelevantMatches(
+  city: string,
+  country: string,
+  month: number,
+  limit: number = 3,
+): Promise<TimeRelevantMatch> {
+  // Generic trip-level content type acts as a catch-all for "what to book this month"
+  // The matching engine will surface planning, concierge, and logistics services
+  const input: ContentMatchInput = {
+    type: "trip",
+    city,
+    country,
+    month,
+    limit,
+  };
+
+  const matches = await resolveMatches(input);
+
+  return {
+    city,
+    country,
+    month,
+    providers: matches.providers,
+    experts: matches.experts,
+  };
 }
