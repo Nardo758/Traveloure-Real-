@@ -31,6 +31,7 @@ import ExecutiveAssistant from "@/pages/executive-assistant";
 import HowItWorks from "@/pages/how-it-works";
 import Pricing from "@/pages/pricing";
 import About from "@/pages/about";
+import EarnPage from "@/pages/earn";
 import NotFound from "@/pages/not-found";
 import ExpertDashboard from "@/pages/expert/dashboard";
 import ExpertClients from "@/pages/expert/clients";
@@ -218,6 +219,9 @@ function Router() {
       </Route>
       <Route path="/about">
         <Layout><About /></Layout>
+      </Route>
+      <Route path="/earn">
+        <EarnPage />
       </Route>
       <Route path="/architecture">
         <ArchitectureDiagram />
