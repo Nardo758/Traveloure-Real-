@@ -83,6 +83,14 @@ export const trips = pgTable("trips", {
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   expertNotes: text("expert_notes"),
   expertModifiedAt: timestamp("expert_modified_at"),
+  // Master Integration Brief — Phase 3.
+  // primaryExpertId: neighborhood-lead expert assigned to this trip. Distinct
+  // from expertId (the generic handler). Set when the upsell engine routes a
+  // trip to the lead of the trip's primary neighborhood.
+  // neighborhoodIds: derived from itinerary items at write time; powers the
+  // upsell engine's neighborhood-context branch (Phase 5).
+  primaryExpertId: varchar("primary_expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  neighborhoodIds: text("neighborhood_ids").array(),
   bookingReference: varchar("booking_reference", { length: 50 }),
   isPublic: boolean("is_public").default(false),
   shareToken: varchar("share_token", { length: 64 }),
@@ -2477,11 +2485,70 @@ export const cityNeighborhoods = pgTable("city_neighborhoods", {
   description: text("description"),
   isFeatured: boolean("is_featured").default(false),
 
+  // Master Integration Brief — Phase 3 additions.
+  // adjacentKeys: slugs of neighboring neighborhoods (proximity ranking signal
+  // for the upsell engine). NULL = unknown / no graph yet (deferred per brief).
+  // leadExpertTarget: per SEED_DATA §7 "featured-lead slot: 1". Admin can tune.
+  adjacentKeys: text("adjacent_keys").array(),
+  leadExpertTarget: integer("lead_expert_target").notNull().default(1),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   uniqCitySlug: unique("city_neighborhoods_city_country_slug_uniq").on(table.city, table.country, table.slug),
 }));
+
+// ─── Phase 3 join + target tables ───────────────────────────────────────────
+// expertNeighborhoods: expert ↔ neighborhood. Soft-exclusive "lead" enforced
+// at DB level by a partial unique index (one is_lead=true per neighborhood).
+export const expertNeighborhoods = pgTable("expert_neighborhoods", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  isLead: boolean("is_lead").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqExpertNeighborhood: unique("expert_neighborhoods_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+}));
+export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
+export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertExpertNeighborhood = z.infer<typeof insertExpertNeighborhoodSchema>;
+
+// providerNeighborhoodCoverage: which providers serve which neighborhood × category.
+// Powers the "category × neighborhood" upsell query (brief Phase 3 gate).
+export const providerNeighborhoodCoverage = pgTable("provider_neighborhood_coverage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: varchar("provider_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  // Soft FK into service_categories.category_key (the brief's join key).
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqProviderNeighborhoodCategory: unique("provider_neighborhood_coverage_uniq").on(table.providerId, table.neighborhoodId, table.categoryKey),
+}));
+export type ProviderNeighborhoodCoverage = typeof providerNeighborhoodCoverage.$inferSelect;
+export const insertProviderNeighborhoodCoverageSchema = createInsertSchema(providerNeighborhoodCoverage).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProviderNeighborhoodCoverage = z.infer<typeof insertProviderNeighborhoodCoverageSchema>;
+
+// neighborhoodCoverageTarget: per (neighborhood, category) target count.
+// Lead-expert target lives on cityNeighborhoods.leadExpertTarget — not here.
+export const neighborhoodCoverageTarget = pgTable("neighborhood_coverage_target", {
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  targetCount: integer("target_count").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  pk: { name: "neighborhood_coverage_target_pk", columns: [table.neighborhoodId, table.categoryKey] },
+}));
+export type NeighborhoodCoverageTargetRow = typeof neighborhoodCoverageTarget.$inferSelect;
+export const insertNeighborhoodCoverageTargetSchema = createInsertSchema(neighborhoodCoverageTarget).omit({ createdAt: true, updatedAt: true });
+export type InsertNeighborhoodCoverageTargetRow = z.infer<typeof insertNeighborhoodCoverageTargetSchema>;
 
 // Live Activity Feed - Real-time traveler activity
 export const travelPulseLiveActivity = pgTable("travel_pulse_live_activity", {
