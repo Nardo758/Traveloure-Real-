@@ -1,0 +1,48 @@
+I'll investigate the failing Selection Controls Gate. Let me first pull the run logs and locate the `filter-bar` element in both the test and the product code.
+
+On my branch (`claude/plancard-piece3`), **none of these exist** — no `selection-controls.spec.ts`, no `selection-controls-gate.yml` workflow, and no `data-testid="filter-bar"` (only an unrelated `spine-filter-bar` in `discover-location.tsx`). This gate belongs to a different branch/PR. Let me confirm which branch the failing run ran against and find where these files live.
+
+The run is on **PR #38** (`claude/plancard-piece3` → `main`), head SHA `1838672` — my latest commit. The gate, the spec, and the `filter-bar` UI **don't exist on my branch**, which means CI is testing the **PR merge result** (my branch merged into `main`), and all of that lives on `main`. So this is about how my branch interacts with `main`'s filter-bar UI. Let me fetch `main`, read the spec + UI there, and pull the failure logs.
+
+`main` has the filter-bar architecture: `CompactFilterBar` (`compact-filter-bar.tsx:55`, `data-testid="filter-bar"`), imported by `experience-template.tsx:89`, gated by `selection-controls.spec.ts`. My branch was cut **before** these existed (none are on my branch). Now I need the actual failure detail and whether my branch clobbers main's filter-bar flow on merge. Let me get the failure logs and the merge-relevant diff.
+
+The logs are decisive: it's **0 filter-bars, not duplicates** — `Error: element(s) not found` / `toBeVisible failed` on **every** template, including `wedding/vendors` (line 113), not just travel. **8 failed**, spanning wedding AND travel tabs. So `CompactFilterBar` isn't mounting at all in the PR's merged tree.
+
+Since the filter-bar files don't exist on my branch, this is a **merge interaction**. Let me check whether my branch carries an older `experience-template.tsx` that clobbers main's CompactFilterBar wiring, and simulate the actual PR merge.
+
+Key finding: the merge-base is `f3eba7a` (my own Phase 1, already in `main`), my branch **does not modify** `experience-template.tsx` at all, and the simulated PR merge is **conflict-free** — so the merged tree keeps `main`'s full CompactFilterBar wiring. My branch isn't regressing the filter-bar. That points to the gate failing on `main` itself. Let me confirm what my branch actually touches and whether this gate is red on `main` too.
+
+My branch touches only plancard/maps files (`ActivitiesSection`, `PlanCard`, `plancard-types`, `maps.ts`, `maps-platform.ts`, `navigate.ts`, `plancard.routes.ts`) — **none** imported by `experience-template.tsx`, and the merge is clean. My changes are disjoint from the filter-bar flow. So the gate is almost certainly red on `main` itself. Let me confirm via run history and inspect how `main` renders `CompactFilterBar`.
+
+**Decisive evidence: this is not your PR.** The Selection Controls Gate has failed on **`main` itself for every push run — #3 through #34** (including main's current tip `e33720f`, run #34, which postdates my PR). It has **never passed on `main`**. My PR (run #31) inherits a pre-existing, branch-independent failure — and my branch touches nothing in the filter-bar flow (clean merge, disjoint files).
+
+Now let me find the *actual* root cause on `main` so the diagnosis is grounded, not guessed. Reading main's spec setup and how it renders `CompactFilterBar`.
+
+The spec runs against a **deployed app** (`BASE_URL`), and its own docstring flags the risk: *"Validate selectors/route/inventory on the first CI run before promoting to a required check. If the /experiences pages require auth in the deployed env, add a loginAs() step."* It has failed since run #3 — i.e., **it never passed once**. Let me confirm how the workflow runs (deployed vs built) and that `CompactFilterBar` is actually rendered (not just imported) on main.
+
+I have the root cause, and it contradicts the relayed premise. Here's what the evidence shows.
+
+## Finding: not your PR, and not a filter-bar code bug
+
+**1. `CompactFilterBar` is present and rendered on `main`** — imported at `experience-template.tsx:89`, rendered at `experience-template.tsx:2311` with `data-testid="filter-bar"` (`compact-filter-bar.tsx:55`). Nothing removed it, renamed it, or hid it.
+
+**2. My PR can't be the cause.** My branch touches only plancard/maps files (`PlanCard`, `ActivitiesSection`, `plancard-types`, `maps.ts`, `maps-platform.ts`, `navigate.ts`, `plancard.routes.ts`) — **none** imported by `experience-template.tsx`. The PR merge is **conflict-free** and my branch doesn't modify `experience-template.tsx` at all, so the merged tree keeps main's full filter-bar wiring.
+
+**3. The gate has never passed — on `main` itself.** Every push run on `main` failed: **#3 → #34**, including main's current tip `e33720f` (run #34, *after* my PR). My PR's run #31 just inherits the same red.
+
+**4. The DOM gate tests a deployed URL, not the PR code.** The workflow runs Playwright against a live Replit deploy:
+```yaml
+BASE_URL: https://traveloure-platform.replit.app/
+```
+The "Wait for deployment" step only checks the URL returns 200/301/302 — which passes even for a stale build or a login page. The failure is `element(s) not found` for `filter-bar` across **all** templates (wedding *and* travel) — a blanket absence, not the "0 or >1 per tab" duplication the feedback hypothesized. Notably the `tab-vendors`/`tab-dining` clicks *succeed* before the filter-bar assertion fails — so the deployed page loads with tabs but **without** the new `CompactFilterBar`. That's the signature of a **stale deploy**: the published Replit app predates the CompactFilterBar consolidation.
+
+Both the spec and the workflow already call this out:
+- Spec docstring: *"Runs against the deployed app (BASE_URL)… If the /experiences pages require auth in the deployed env, add a loginAs() step."*
+- Workflow report job: *"A red `e2e-selection-controls` may be a **stale BASE_URL deploy**, DOM plumbing, or a real behavior bug… never softens an assertion to go green."* And: *"a deploy is not a GitHub event, so the gate won't auto-run on publish"* — hence the `workflow_dispatch` trigger.
+
+## What this means for the fix
+- **There is no product-code fix to make** — the filter-bar renders correctly in the source on `main` (and in my PR's merge). The contract isn't broken in code; the *deployed app* is behind the code.
+- The real remedy is a **publish/deploy of current `main`** to `traveloure-platform.replit.app`, then re-run the gate via `workflow_dispatch`. If `/experiences/*` requires auth in that deployed env, the gate also needs a `loginAs()` step.
+- Both of those land **outside my branch** (`claude/plancard-piece3`): the deploy is an infra action, and a `loginAs()` change is test-infra on `main`. I'm instructed not to push elsewhere without explicit permission, and bundling a filter-bar/test change into the plancard PR would be wrong scope.
+
+I won't touch filter-bar code (it isn't broken) or soften the test (the workflow forbids it). How do you want to proceed?
