@@ -321,7 +321,7 @@ router.post(
       // Create Stripe checkout session
       const checkoutSession = await createTransportBookingCheckout(
         optionId,
-        comparison.id, // tripId
+        comparison.tripId ?? undefined, // real trips FK (comparison.id is an itinerary_comparisons id, not a trip id)
         userId,
         travelers,
         specialRequests
