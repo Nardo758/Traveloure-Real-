@@ -24,6 +24,7 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -476,6 +477,33 @@ export default function AdminFeeConfigPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
+      {/* Phase 8.1 update: the live editor is now at /admin/fee-bands. This page
+          still exists for transitional reasons (and the booking_fee_configs table
+          remains as the legacy backing source until Phase 1.3's resolver flip is
+          verified in prod), but admin edits made here are no-ops at runtime. */}
+      <div
+        className="border border-amber-400 bg-amber-50 text-amber-900 rounded-lg p-4 flex items-start gap-3"
+        data-testid="banner-fee-config-deprecated"
+      >
+        <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+        <div className="text-sm">
+          <p className="font-semibold mb-1">Edits on this page are currently inactive.</p>
+          <p>
+            Phase 1 of the fee architecture migration moved rate resolution to the new{" "}
+            <code className="font-mono text-xs bg-amber-100 px-1 rounded">fee_bands</code> table. Saves here write to the legacy{" "}
+            <code className="font-mono text-xs bg-amber-100 px-1 rounded">booking_fee_configs</code> table — which the resolver no longer reads.
+            To change a live rate, use the new editor at{" "}
+            <a
+              href="/admin/fee-bands"
+              className="font-semibold underline hover:no-underline"
+              data-testid="link-to-fee-bands"
+            >
+              /admin/fee-bands
+            </a>.
+          </p>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

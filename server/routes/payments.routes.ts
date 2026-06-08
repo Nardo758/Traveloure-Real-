@@ -629,6 +629,41 @@ router.get("/api/booking-fee-config", async (req, res) => {
     }
   });
 
+  // ─── Phase 1.4: GET /api/fee-bands/:bandKey (public; read-only) ──────────────
+  // Returns the live default_rate for a fee_bands row. Used by client-side
+  // pricing surfaces (optimize.tsx, etc.) so admin edits propagate without redeploy.
+  // Percent bands return rate as a fraction (0.25 = 25 %); flat bands return rate
+  // as USD dollars (49.99 = $49.99). The rateType field disambiguates.
+router.get("/api/fee-bands/:bandKey", async (req, res) => {
+    try {
+      const bandKey = String(req.params.bandKey || "").trim();
+      if (!bandKey || bandKey.length > 100) {
+        return res.status(400).json({ error: "Invalid bandKey" });
+      }
+      const result = await db.execute(sql`
+        SELECT
+          band_key,
+          rate_type,
+          CAST(default_rate AS FLOAT) AS default_rate,
+          CAST(min_rate AS FLOAT) AS min_rate,
+          CAST(max_rate AS FLOAT) AS max_rate,
+          display_name,
+          description
+        FROM fee_bands
+        WHERE band_key = ${bandKey} AND is_active = true
+        LIMIT 1
+      `);
+      if (result.rows && result.rows.length > 0) {
+        // Cache for 60 s — same TTL as the server-side resolver cache.
+        res.setHeader("Cache-Control", "public, max-age=60");
+        return res.json(result.rows[0]);
+      }
+      return res.status(404).json({ error: "Band not found", bandKey });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ─── Smart Lead Routing ──────────────────────────────────────────────────────
   // POST /api/leads/route  — score experts and auto-assign
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -141,7 +142,20 @@ const plans: PlanOption[] = [
   },
 ];
 
-const pricingTiers = [
+// Phase 1.4: tier prices read from fee_bands via /api/fee-bands/:bandKey
+// at render time. Fallbacks below are the seeded defaults from migration 033;
+// they only show if the API is unreachable.
+interface PricingTier {
+  id: string;
+  name: string;
+  price: number;
+  bandKey?: string;          // fee_bands band that drives this tier's price (when admin-editable)
+  isStartingFrom?: boolean;  // true = expert services, prices vary; display as "from $X"
+  description: string;
+  recommended?: boolean;
+}
+
+const PRICING_TIER_FALLBACKS: PricingTier[] = [
   {
     id: "ai-only",
     name: "AI Optimization Only",
@@ -152,6 +166,7 @@ const pricingTiers = [
     id: "ai-expert",
     name: "AI Optimization + Expert Review",
     price: 49.99,
+    bandKey: "optimize_expert_review",
     description: "Get optimized plans PLUS have a Paris expert review and customize based on your preferences",
     recommended: true,
   },
@@ -159,15 +174,42 @@ const pricingTiers = [
     id: "full-service",
     name: "Full Expert Service",
     price: 199,
+    isStartingFrom: true,    // expert sets the actual price; flows through 25/75 split — not a flat platform fee
     description: "Expert handles everything: planning, booking, coordination",
   },
 ];
+
+interface FeeBand {
+  band_key: string;
+  rate_type: "percent" | "flat";
+  default_rate: number;
+}
+
+function useTierPrice(bandKey: string | undefined, fallback: number): number {
+  const { data } = useQuery<FeeBand>({
+    queryKey: [`/api/fee-bands/${bandKey}`],
+    enabled: Boolean(bandKey),
+    staleTime: 60_000,
+  });
+  if (!bandKey) return fallback;
+  if (!data || data.rate_type !== "flat" || typeof data.default_rate !== "number") return fallback;
+  return data.default_rate;
+}
 
 export default function OptimizePage() {
   const [, setLocation] = useLocation();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedTier, setSelectedTier] = useState("ai-expert");
   const [showComparison, setShowComparison] = useState(false);
+
+  // Phase 1.4: AI+Expert-Review tier price reads from fee_bands.optimize_expert_review
+  // so admin can edit the live $49.99 without redeploy. Other tiers stay at their
+  // fallback values (ai-only's real fee comes from optimization_fees per-event-type;
+  // full-service is a "starting from" expert-set price flowing through 25/75 split).
+  const aiExpertPrice = useTierPrice("optimize_expert_review", 49.99);
+  const pricingTiers: PricingTier[] = PRICING_TIER_FALLBACKS.map(t =>
+    t.id === "ai-expert" ? { ...t, price: aiExpertPrice } : t
+  );
 
   if (!showComparison) {
     return (
@@ -289,7 +331,9 @@ export default function OptimizePage() {
                           </div>
                           <p className="text-sm text-gray-500 mt-1">{tier.description}</p>
                         </div>
-                        <p className="font-semibold text-gray-900">${tier.price}</p>
+                        <p className="font-semibold text-gray-900">
+                          {tier.isStartingFrom ? "from " : ""}${tier.price}
+                        </p>
                       </div>
                     ))}
                   </RadioGroup>
