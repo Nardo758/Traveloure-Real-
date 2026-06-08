@@ -89,7 +89,6 @@ export async function createTransportBookingCheckout(
     id: bookingId,
     travelerId: userId,
     providerId: option.providerId || undefined,
-    tripId: tripId || undefined,
     status: "pending",
     totalAmount: String(totalAmount / 100),
     bookingDetails: {
