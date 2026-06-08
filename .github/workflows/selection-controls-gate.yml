@@ -84,10 +84,6 @@ jobs:
         run: npx drizzle-kit push --force
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
       - name: Start dev server
         run: npx tsx server/index.ts &
         env:
@@ -95,10 +91,6 @@ jobs:
           SESSION_SECRET: ci-test-secret-not-for-production
           NODE_ENV: development
           PORT: 5000
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
       - name: Wait for server and seeding
         run: |
           for i in $(seq 1 60); do

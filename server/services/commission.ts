@@ -104,13 +104,21 @@ const noInsurance = { insuranceEnabled: false, insuranceRatePercent: 0, insuranc
  *
  *   source='provider' OR legacy category='provider_commission_percent' →
  *     'beta_flat' (when policy='beta_flat') or 'tiered' fallback.
- *   Everything else → 'expert_standard' (the default).
+ *   category='tip' → 'tip_handling' (Phase 1.5; preserves legacy 5 % platform take).
+ *   Other named category → direct band lookup by the category name
+ *     (Phase 1.5 enumeration migration 046 seeds a preserving band for every
+ *     active booking_fee_configs row, so admin per-category overrides flow
+ *     through without per-category code changes).
+ *   No category / category='default' → 'expert_standard' (the canonical default).
  */
 export function decideBandKey(
   opts: { source?: string | null; category?: string | null; categoryCommissionBand?: string | null },
   policy: string,
   defaultBandKey: string,
 ): string {
+  // Phase 1.5 semantic mappings (override the generic direct-lookup fallback):
+  if (opts.category === "tip") return "tip_handling";
+
   const isProviderLine =
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
@@ -118,6 +126,16 @@ export function decideBandKey(
     if (policy === "beta_flat") return "beta_flat";
     // tiered: service_categories.commission_band_key → fee_bands
     return opts.categoryCommissionBand ?? defaultBandKey;
+  }
+
+  // Phase 1.5 enumeration: if the caller passed a specific category that's
+  // not a known semantic mapping, try a direct lookup by the category name.
+  // Migration 046 seeds preserving bands for every active booking_fee_configs
+  // row so admin per-category overrides (including ones we haven't enumerated
+  // by hand) flow through. If the band is missing, the resolver's safety net
+  // falls back to expert_standard / constants — preserving today's behavior.
+  if (opts.category && opts.category !== "default") {
+    return opts.category;
   }
 
   return "expert_standard";
