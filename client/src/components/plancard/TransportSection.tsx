@@ -172,6 +172,7 @@ const PARTNER_STYLES: Record<string, { bg: string; text: string; badge: string }
 
 function LegBookingPanel({ legId }: { legId: string }) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<{ legId: string; options: any[] }>({
     queryKey: [`/api/transport-legs/${legId}/options`],
@@ -181,6 +182,21 @@ function LegBookingPanel({ legId }: { legId: string }) {
   const options = data?.options ?? [];
   const platformOptions = options.filter((o) => o.bookingType === "platform");
   const affiliateOptions = options.filter((o) => o.bookingType === "affiliate" || o.bookingType === "deep_link");
+
+  const bookMutation = useMutation({
+    mutationFn: (optionId: string) =>
+      apiRequest(`/api/transport-booking-options/${optionId}/book`, { method: "POST" }),
+    onSuccess: (res: any) => {
+      if (res?.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+      } else {
+        toast({ title: "Booking initiated", description: "Redirecting to checkout…" });
+      }
+    },
+    onError: () => {
+      toast({ title: "Booking failed", description: "Could not start checkout. Please try again.", variant: "destructive" });
+    },
+  });
 
   return (
     <div className="mt-2" data-testid={`leg-booking-panel-${legId}`}>
@@ -244,8 +260,10 @@ function LegBookingPanel({ legId }: { legId: string }) {
                     size="sm"
                     className="text-[11px] h-7 px-3 shrink-0 bg-green-600 hover:bg-green-700 text-white"
                     data-testid={`button-book-platform-${opt.id}`}
+                    onClick={() => bookMutation.mutate(opt.id)}
+                    disabled={bookMutation.isPending}
                   >
-                    Book
+                    {bookMutation.isPending ? "…" : "Book"}
                   </Button>
                 </div>
               ))}

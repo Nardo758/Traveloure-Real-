@@ -1008,7 +1008,7 @@ export default function ExperienceTemplatePage() {
   ]);
   
   const [cartOpen, setCartOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [expertHelpDialogOpen, setExpertHelpDialogOpen] = useState(false);
@@ -2198,118 +2198,75 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* P462: DB-driven tab filter controls — rendered from controlConfig seeded per tab.
-              Gated to flight/hotel tabs only: every control here (priceRange/stops/starRatings/
-              sortOptions) reads activeTabControlConfig and writes flight/hotel state
-              (flightMaxPrice/hotelMaxPrice, flightStops, hotelStarRating, flight/hotelSortBy),
-              so it is inert on other tabs. Without this guard it co-rendered with the
-              compact filter bar below on seeded tabs — the filter-doubling bug. Non-flight/
-              hotel tabs get their controls + sort from the CompactFilterBar below. */}
-          {activeTabControlConfig && (currentTabType === "flights" || currentTabType === "hotels") && (
-          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
-                <SlidersHorizontal className="w-4 h-4" />
-                Filters & Sort
-                <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Card className="mb-6">
-                <CardContent className="p-4 space-y-4">
-                  <div className="flex flex-wrap gap-4">
-                    {activeTabControlConfig.priceRange && (
-                      <div className="min-w-[200px] flex-1">
-                        <Label className="text-sm font-medium">
-                          {activeTabControlConfig.priceRange.label ?? "Max Price"}: $
-                          {currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice}
-                        </Label>
-                        <Slider
-                          value={[currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice]}
-                          onValueChange={(v) => currentTabType === "flights" ? setFlightMaxPrice(v[0]) : setHotelMaxPrice(v[0])}
-                          min={activeTabControlConfig.priceRange.min}
-                          max={activeTabControlConfig.priceRange.max}
-                          step={activeTabControlConfig.priceRange.step}
-                          className="mt-2"
-                          data-testid={currentTabType === "flights" ? "slider-flight-price" : "slider-hotel-price"}
-                        />
-                      </div>
-                    )}
-                    {activeTabControlConfig.stops && (
-                      <div className="min-w-[200px] flex-1">
-                        <Label className="text-sm font-medium">Stops</Label>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {activeTabControlConfig.stops.map((option) => (
-                            <Button
-                              key={option.value}
-                              variant={flightStops === option.value ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => setFlightStops(option.value as "any" | "nonstop" | "1stop")}
-                              className={flightStops === option.value ? "bg-[#FF385C]" : ""}
-                              data-testid={`button-stops-${option.value}`}
-                            >
-                              {option.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {activeTabControlConfig.starRatings && (
-                      <div className="min-w-[200px] flex-1">
-                        <Label className="text-sm font-medium">Star Rating</Label>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {activeTabControlConfig.starRatings.map((stars) => (
-                            <Button
-                              key={stars}
-                              variant={hotelStarRating === stars ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => setHotelStarRating(stars)}
-                              className={hotelStarRating === stars ? "bg-[#FF385C]" : ""}
-                              data-testid={`button-stars-${stars}`}
-                            >
-                              {stars === 0 ? "All" : <><Star className="w-3 h-3 mr-1 fill-current" />{stars}+</>}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {activeTabControlConfig.sortOptions && (
-                      <div className="min-w-[140px] max-w-[180px]">
-                        <Label className="text-sm font-medium">Sort By</Label>
-                        <Select
-                          value={currentTabType === "flights" ? flightSortBy : hotelSortBy}
-                          onValueChange={(v) => currentTabType === "flights"
-                            ? setFlightSortBy(v as "price" | "duration" | "departure")
-                            : setHotelSortBy(v as "price" | "rating")}
-                        >
-                          <SelectTrigger className="mt-2" data-testid={currentTabType === "flights" ? "select-flight-sort" : "select-hotel-sort"}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeTabControlConfig.sortOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </CollapsibleContent>
-          </Collapsible>
+          {/* Price slider strip — shown only for flights/hotels above the unified bar. */}
+          {(currentTabType === "flights" || currentTabType === "hotels") && (
+            <div className="flex items-center gap-4 mb-3 px-1">
+              <Label className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                Max price: ${currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice}
+              </Label>
+              <Slider
+                value={[currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice]}
+                onValueChange={(v) => currentTabType === "flights" ? setFlightMaxPrice(v[0]) : setHotelMaxPrice(v[0])}
+                min={currentTabType === "flights" ? 100 : 50}
+                max={currentTabType === "flights" ? 5000 : 2000}
+                step={currentTabType === "flights" ? 100 : 50}
+                className="flex-1 max-w-[260px]"
+                data-testid={currentTabType === "flights" ? "slider-flight-price" : "slider-hotel-price"}
+              />
+            </div>
           )}
 
-          {/* P462 reconcile: ONE compact filter bar per non-flight/hotel tab — the
-              tab's seeded selection controls + Sort, in a single horizontal row.
-              Replaces the prior split (SelectionControlsPanel + separate Sort) and
-              the inert TemplateFiltersPanel facet wall (deleted). flights/hotels keep
-              their own Collapsible (Block A) above. The bar renders even with no
-              seeded controls (Sort still applies); tabs needing a new dimension get
-              it seeded as a selection control, not as a facet.
-              Note: experienceType is always defined here (guarded by the !experienceType
-              early return above); the id check was removed to avoid falsy-id edge cases. */}
-          {currentTabType !== "flights" && currentTabType !== "hotels" && (
+          {/* Unified filter bar — all tabs including flights/hotels.
+              Flights get stops chips + flight sort options.
+              Hotels get star-rating chips + hotel sort options.
+              Other tabs get their seeded selection controls + generic sort. */}
+          {currentTabType === "flights" ? (
+            <CompactFilterBar
+              controls={[{
+                id: "flight-stops",
+                label: "Stops",
+                type: "single_select",
+                options: [
+                  { id: "any",     label: "Any",     filterMapping: {} },
+                  { id: "nonstop", label: "Nonstop", filterMapping: {} },
+                  { id: "1stop",   label: "1 Stop",  filterMapping: {} },
+                ],
+              }]}
+              selected={{ "flight-stops": [flightStops] }}
+              onToggle={(_, optionId) => setFlightStops(optionId as "any" | "nonstop" | "1stop")}
+              onClear={() => setFlightStops("any")}
+              sortValue={flightSortBy}
+              onSortChange={(v) => setFlightSortBy(v as "price" | "duration" | "departure")}
+              sortOptions={[
+                { value: "price",     label: "Price" },
+                { value: "duration",  label: "Duration" },
+                { value: "departure", label: "Departure" },
+              ]}
+            />
+          ) : currentTabType === "hotels" ? (
+            <CompactFilterBar
+              controls={[{
+                id: "hotel-stars",
+                label: "Star Rating",
+                type: "single_select",
+                options: [
+                  { id: "0", label: "All",  filterMapping: {} },
+                  { id: "3", label: "3★+",  filterMapping: {} },
+                  { id: "4", label: "4★+",  filterMapping: {} },
+                  { id: "5", label: "5★",   filterMapping: {} },
+                ],
+              }]}
+              selected={{ "hotel-stars": [String(hotelStarRating)] }}
+              onToggle={(_, optionId) => setHotelStarRating(Number(optionId))}
+              onClear={() => setHotelStarRating(0)}
+              sortValue={hotelSortBy}
+              onSortChange={(v) => setHotelSortBy(v as "price" | "rating")}
+              sortOptions={[
+                { value: "price",  label: "Price" },
+                { value: "rating", label: "Rating" },
+              ]}
+            />
+          ) : (
             <CompactFilterBar
               controls={activeTabControlConfig?.selectionControls ?? []}
               selected={selectionState}
