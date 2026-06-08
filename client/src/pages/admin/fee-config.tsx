@@ -477,9 +477,10 @@ export default function AdminFeeConfigPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Phase 1 fee-architecture banner: edits here are currently no-ops.
-          Resolver now reads fee_bands; this UI still writes to booking_fee_configs.
-          Phase 8 will swap the admin UI to fee_bands; until then, edit DB directly. */}
+      {/* Phase 8.1 update: the live editor is now at /admin/fee-bands. This page
+          still exists for transitional reasons (and the booking_fee_configs table
+          remains as the legacy backing source until Phase 1.3's resolver flip is
+          verified in prod), but admin edits made here are no-ops at runtime. */}
       <div
         className="border border-amber-400 bg-amber-50 text-amber-900 rounded-lg p-4 flex items-start gap-3"
         data-testid="banner-fee-config-deprecated"
@@ -488,11 +489,17 @@ export default function AdminFeeConfigPage() {
         <div className="text-sm">
           <p className="font-semibold mb-1">Edits on this page are currently inactive.</p>
           <p>
-            Phase 1 of the fee architecture migration moved rate resolution to the new <code className="font-mono text-xs bg-amber-100 px-1 rounded">fee_bands</code> table.
-            Until Phase 8 ships an updated admin UI, saves here write to the legacy{" "}
+            Phase 1 of the fee architecture migration moved rate resolution to the new{" "}
+            <code className="font-mono text-xs bg-amber-100 px-1 rounded">fee_bands</code> table. Saves here write to the legacy{" "}
             <code className="font-mono text-xs bg-amber-100 px-1 rounded">booking_fee_configs</code> table — which the resolver no longer reads.
-            To change a live rate today, update the corresponding{" "}
-            <code className="font-mono text-xs bg-amber-100 px-1 rounded">fee_bands</code> row directly in the database.
+            To change a live rate, use the new editor at{" "}
+            <a
+              href="/admin/fee-bands"
+              className="font-semibold underline hover:no-underline"
+              data-testid="link-to-fee-bands"
+            >
+              /admin/fee-bands
+            </a>.
           </p>
         </div>
       </div>

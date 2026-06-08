@@ -58,6 +58,12 @@ const MIGRATION_FILES = [
   "038_phase2_seed_service_offering_types.sql",
   "039_phase2_seed_expert_offering_types.sql",
   "040_phase2_offering_types_completeness_gate.sql",
+  "041_phase3_neighborhood_spine_scaffold.sql",
+  "042_phase3_seed_neighborhoods.sql",
+  "043_phase3_seed_coverage_targets.sql",
+  "044_phase3_neighborhood_completeness_gate.sql",
+  "045_phase1_5_tip_handling_band.sql",
+  "046_phase1_5_enumerate_legacy_bands.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
