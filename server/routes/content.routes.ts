@@ -179,6 +179,69 @@ router.get("/api/status", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // ─── Phase 7: Offering type catalogs (public; read-only) ─────────────────────
+  // Powers /earn — the traveler/onboarding page that lists what providers and
+  // experts can offer. Phase 2 seeded these tables (75 provider + 39 expert rows).
+  // No auth: pre-signup discovery surface.
+
+  // GET /api/offering-types/services?market=kyoto
+  // Returns active service_offering_types. Optional ?market filter intersects
+  // marketScoped (universal rows always included).
+  router.get("/api/offering-types/services", async (req, res) => {
+    try {
+      const market = typeof req.query.market === "string" ? req.query.market.trim() : null;
+      const result = await db.execute(sql`
+        SELECT
+          offering_type_key,
+          category_key,
+          display_name,
+          tagline,
+          is_surprising,
+          market_scoped,
+          sort_order
+        FROM service_offering_types
+        WHERE is_active = true
+          AND (
+            ${market}::text IS NULL
+            OR market_scoped IS NULL
+            OR ${market}::text = ANY(market_scoped)
+          )
+        ORDER BY is_surprising DESC, sort_order ASC, display_name ASC
+      `);
+      // 5-min cache — catalog data drifts slowly; admin edits show up promptly.
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.json(result.rows ?? []);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/offering-types/experts?tier=advisory
+  // Returns active expert_offering_types. Optional ?tier filter.
+  router.get("/api/offering-types/experts", async (req, res) => {
+    try {
+      const tier = typeof req.query.tier === "string" ? req.query.tier.trim() : null;
+      const result = await db.execute(sql`
+        SELECT
+          offering_type_key,
+          service_tier,
+          display_name,
+          tagline,
+          delivery_formats,
+          is_surprising,
+          sort_order
+        FROM expert_offering_types
+        WHERE is_active = true
+          AND (${tier}::text IS NULL OR service_tier = ${tier}::text)
+        ORDER BY is_surprising DESC, sort_order ASC, display_name ASC
+      `);
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.json(result.rows ?? []);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Contact form endpoint
   const contactSchema = z.object({
     name: z.string().min(1, "Name is required").max(100),
