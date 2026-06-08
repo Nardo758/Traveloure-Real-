@@ -4,7 +4,7 @@
  * Called at startup BEFORE seeding. Throws on failure so the server never starts with
  * a partially migrated schema — this prevents silent runtime failures in ESO write/read paths.
  */
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
@@ -14,14 +14,13 @@ import { sql } from "drizzle-orm";
 // reliably intercept it after esbuild's transform. Instead probe __dirname
 // (always defined in CJS) then fall back to process.cwd().
 const __dirname_local = (() => {
-  const fs = require("fs");
   // In the production bundle __dirname === "dist/" — go up one level to reach
   // "server/migrations". In development tsx sets __dirname per-file correctly.
   if (typeof __dirname !== "undefined") {
     const candidate = join(__dirname, "..", "server", "migrations");
-    if (fs.existsSync(candidate)) return candidate;
+    if (existsSync(candidate)) return candidate;
     // __dirname already points at server/migrations/ (tsx dev)
-    if (fs.existsSync(join(__dirname, "006_eso_canonicalization.sql")))
+    if (existsSync(join(__dirname, "006_eso_canonicalization.sql")))
       return __dirname;
   }
   // Ultimate fallback: workspace root + server/migrations
@@ -29,6 +28,11 @@ const __dirname_local = (() => {
 })()
 
 const MIGRATION_FILES = [
+  "001_guest_invite_system.sql",
+  "002_transport_booking_options.sql",
+  "003_fix_test_account_roles.sql",
+  "004_restaurant_cache.sql",
+  "005_affiliate_reconciliation.sql",
   "006_eso_canonicalization.sql",
   "007_eso_workflow_columns.sql",
   "008_content_affinity_tags.sql",
