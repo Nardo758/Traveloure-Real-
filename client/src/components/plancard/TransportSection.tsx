@@ -185,7 +185,7 @@ function LegBookingPanel({ legId }: { legId: string }) {
 
   const bookMutation = useMutation({
     mutationFn: (optionId: string) =>
-      apiRequest(`/api/transport-booking-options/${optionId}/book`, { method: "POST" }),
+      apiRequest("POST", `/api/transport-booking-options/${optionId}/book`),
     onSuccess: (res: any) => {
       if (res?.checkoutUrl) {
         window.location.href = res.checkoutUrl;
