@@ -789,6 +789,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       fromLng: tr.fromLng ?? null,
       toLat: tr.toLat ?? null,
       toLng: tr.toLng ?? null,
+      mapsUrl: tr.mapsUrl ?? null,
     }))
     .sort((a, b) => a.legOrder - b.legOrder);
 
