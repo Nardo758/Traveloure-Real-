@@ -77,10 +77,14 @@ describe("Phase 1.3 — decideBandKey (pure)", () => {
     );
   });
 
-  it("category='tip' (storage.ts case) → expert_standard", () => {
+  // Phase 1.5: tip transactions route to tip_handling (5 % default), NOT
+  // expert_standard. The staging neutrality script caught this divergence:
+  // booking_fee_configs.tip was at 5 %, but the resolver was falling through
+  // to expert_standard (25 %) — a 20-point overcharge on every tip.
+  it("category='tip' (storage.ts case) → tip_handling", () => {
     assert.equal(
       decideBandKey({ category: "tip" }, "beta_flat", "beta_flat"),
-      "expert_standard",
+      "tip_handling",
     );
   });
 });
@@ -131,6 +135,7 @@ describe("Phase 1.3 — neutrality matrix (with seeded fee_bands defaults)", () 
     commercial: 0.06,
     premium: 0.04,
     platform_deposit: 0.25,
+    tip_handling: 0.05,  // Phase 1.5: preserves booking_fee_configs.tip legacy
   };
 
   // Each row: [old behavior, new resolver computed from pure helpers, diff]
@@ -145,8 +150,8 @@ describe("Phase 1.3 — neutrality matrix (with seeded fee_bands defaults)", () 
     { label: "expert default booking", oldRate: 0.25, bandKey: "expert_standard", diff: 0 },
     // Provider line item (source='provider' or category='provider_commission_percent') → was 0.10; now 0.10 from beta_flat.
     { label: "provider beta-flat booking", oldRate: 0.10, bandKey: "beta_flat", diff: 0 },
-    // 'tip' (storage.ts) → was 0.25 via constants fallback; now 0.25 from expert_standard.
-    { label: "tip (no matching band — fallback path)", oldRate: 0.25, bandKey: "expert_standard", diff: 0 },
+    // 'tip' (Phase 1.5 fix): was 0.05 from booking_fee_configs.tip; now 0.05 from tip_handling band.
+    { label: "tip handling (Phase 1.5)", oldRate: 0.05, bandKey: "tip_handling", diff: 0 },
     // Generic category like 'accommodation' that wasn't admin-overridden → was 0.25 via default-fallback; now 0.25 from expert_standard.
     { label: "generic category (default fallback)", oldRate: 0.25, bandKey: "expert_standard", diff: 0 },
   ];

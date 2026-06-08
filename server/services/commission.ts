@@ -104,6 +104,7 @@ const noInsurance = { insuranceEnabled: false, insuranceRatePercent: 0, insuranc
  *
  *   source='provider' OR legacy category='provider_commission_percent' →
  *     'beta_flat' (when policy='beta_flat') or 'tiered' fallback.
+ *   category='tip' → 'tip_handling' (Phase 1.5; preserves legacy 5 % platform take).
  *   Everything else → 'expert_standard' (the default).
  */
 export function decideBandKey(
@@ -111,6 +112,12 @@ export function decideBandKey(
   policy: string,
   defaultBandKey: string,
 ): string {
+  // Phase 1.5: tip transactions go to tip_handling band (5 % default), not
+  // expert_standard. Caught by the staging neutrality script — admin had set
+  // booking_fee_configs.tip = 5 % and the fallback to expert_standard (25 %)
+  // would have been a 20-point overcharge.
+  if (opts.category === "tip") return "tip_handling";
+
   const isProviderLine =
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
