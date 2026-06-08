@@ -661,9 +661,9 @@ export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", 
 export const serviceBookings = pgTable("service_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
-  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
-  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }),
   contractId: varchar("contract_id").references(() => userAndExpertContracts.id, { onDelete: "set null" }),
   
   // Booking Details
