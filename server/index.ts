@@ -108,6 +108,15 @@ app.get("/api/ready", (_req: Request, res: Response) => {
   }
 });
 
+// Build-identity endpoint — lets CI confirm it is talking to the correct artifact.
+// GIT_COMMIT is injected by the CI workflow; falls back to "dev" locally.
+app.get("/api/version", (_req: Request, res: Response) => {
+  res.json({
+    sha: process.env.GIT_COMMIT ?? "dev",
+    env: process.env.NODE_ENV ?? "development",
+  });
+});
+
 // Run database seeding in background (non-blocking)
 async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
