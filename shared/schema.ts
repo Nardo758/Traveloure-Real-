@@ -5732,6 +5732,10 @@ export const serviceOfferingTypes = pgTable("service_offering_types", {
   isSurprising: boolean("is_surprising").notNull().default(false),
   // Array of market slugs (e.g. ['kyoto', 'edinburgh']). NULL = universal.
   marketScoped: text("market_scoped").array(),
+  // Phase 8.2.5: per-offering risk override that supersedes service_categories.riskProfile.
+  // Enum (CHECK at DB level): 'low' | 'moderate' | 'high' | 'specialized'.
+  // Phase 5 eligibility reads this for suppression on family / low-mobility trips.
+  riskOverride: varchar("risk_override", { length: 20 }),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
