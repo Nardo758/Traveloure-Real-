@@ -1,0 +1,36 @@
+Good question — let me ground the answer in the current tree rather than memory. Checking the two big open structural items (expert-workspace ↔ PlanCard reconciliation, and the suggestion accept/reject flow) before I give you the list.
+
+Pulled the current state. One pleasant surprise: the **Expert Workspace now reuses the shared `<PlanCard role="expert" stage="full" />`** (`workspace.tsx:897`) and the bespoke `DayCard`/`ARow`/`TConn` renderers are gone — so the Piece 3 ↔ Piece 4 divergence (audit A10, "Flag #3") is **resolved**, not outstanding. That removes the biggest item I'd have expected on this list.
+
+Here's what's actually left on the PlanCard surface, by priority and lane.
+
+## Done (so the scope is clear)
+3-layer map, activity pins, multi-leg polylines, inline per-leg mode swap (persisted), deep-link builder, leg persistence, attribution/change-log, per-leg booking panel (partial), AI-Optimized delta, expert-polish CTA, Concierge entry, **workspace reuse of PlanCard**. Phases 1 & 2 shipped.
+
+## Left to implement
+
+**1. 🔴 Platform Book wiring (the strand) — laughing-bardeen lane, on `main`, gates publish**
+Two-part diff already drafted on issue #43 (server `variantId`-via-leg resolution + client `onClick`→Stripe). Awaiting application + the in-lane gate (behavior-neutral on the multi-day-pass path, real per-leg click-through). `TransportSection.tsx:246`.
+
+**2. 🟠 Suggested-leg Accept / Change flow — laughing-bardeen lane (`TransportSection.tsx:444,447`)**
+Still dead stubs (no `onClick`); only Decline is wired. This is the spec'd AI/expert **accept-reject** flow (audit A9) — currently decline-only. Accept should confirm/apply the suggested leg; Change should open the mode picker. Needs a server action for accept (the decline path PATCHes `…/status {dismissed}` — accept needs the mirror).
+
+**3. 🟠 `plancard_pretrip` / `plancard_ontrip` upsell slots — PlanCard lane (`plancard-piece3`), net-new**
+Confirmed absent from the entire surface. This is a **build from nothing** (Phase 4), not a reconcile. The only PlanCard-lane-owned net-new feature left — most of the rest lives in the transport files.
+
+**4. 🟡 Booking-layer conformance (issue #43, laughing-bardeen lane) — several surface on the card**
+- Fit-based ordering (today: static revenue-rank, `service:96,130,154`)
+- Party size from trip (today: hardcoded `1`, `routes:241`)
+- Mode-aware affiliate (today: 12Go+Omio on every leg, `service:465,485`)
+- Reuse `transport-modes.ts` (today: new server taxonomy, `service:368,650`)
+- Real ratings (today: fabricated constants shown as real, `service:478…`)
+- Affiliate click-tracking wired (today: `View` skips `…/:optionId/click`, `routes:341`) — lost attribution
+- `booking_fee_configs` → `fee_bands` reconciliation (consolidation debt)
+
+**5. ⚪ Minor / decide**
+"Export" button (`HeroSection.tsx:88`) is labelled Export but only links to `/itinerary/:id` — no actual file/PDF export. Intended, or a gap?
+
+## The framing that matters
+Most of "what's left on the PlanCard" now lives in **`TransportSection.tsx` + `transport-booking-options.service.ts` — the laughing-bardeen lane's files on `main`** (items 1, 2, 4). The **PlanCard lane's own remaining net-new work is essentially the upsell slots (item 3)**. And items 1–2 touch the exact contested file Phase 3 needs — so they reinforce the same prerequisite: **pin `TransportSection.tsx` ownership + sync-freeze before Phase 3 runs on `plancard-piece3`**, otherwise two lanes edit it at once.
+
+Want me to draft the **Accept/Change** wiring (item 2) for the laughing-bardeen lane the same way I did the Book diff, or scope the **upsell slots** (item 3) as the next PlanCard-lane Phase 3/4 piece?
