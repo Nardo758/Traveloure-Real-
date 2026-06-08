@@ -45,6 +45,7 @@ export interface InlineTransportLegData {
   fromLng?: number | null;
   toLat?: number | null;
   toLng?: number | null;
+  mapsUrl?: string | null;
 }
 
 interface InlineTransportSelectorProps {
@@ -203,11 +204,13 @@ export function InlineTransportSelector({
   };
 
   const handleOpenLegInMaps = () => {
-    if (!leg.fromLat || !leg.fromLng || !leg.toLat || !leg.toLng) return;
+    const hasCoords = leg.fromLat && leg.fromLng && leg.toLat && leg.toLng;
+    if (!leg.mapsUrl && !hasCoords) return;
     openInMaps({
-      origin: { lat: leg.fromLat, lng: leg.fromLng, name: leg.fromName },
-      destination: { lat: leg.toLat, lng: leg.toLng, name: leg.toName },
+      origin: hasCoords ? { lat: leg.fromLat!, lng: leg.fromLng!, name: leg.fromName } : undefined,
+      destination: hasCoords ? { lat: leg.toLat!, lng: leg.toLng!, name: leg.toName } : undefined,
       mode: currentMode,
+      mapsUrl: leg.mapsUrl,
     });
   };
 
