@@ -267,7 +267,7 @@ router.post(
     try {
       const { optionId } = req.params;
       const { travelers = 1, specialRequests } = req.body;
-      const userId = (req as any).user?.id; // From auth middleware
+      const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub; // Replit Auth: user.id; email auth: user.claims.sub
 
       if (!userId) {
         return res.status(401).json({ error: "User not authenticated" });
@@ -286,13 +286,23 @@ router.post(
         return res.status(400).json({ error: "Not a platform booking option" });
       }
 
-      if (!option.variantId) {
-        return res.status(400).json({ error: "Booking option has no associated variant" });
+      // Per-leg platform options carry transportLegId but not variantId.
+      // Resolve the variant via the leg when the option has no direct variantId.
+      let variantId = option.variantId;
+      if (!variantId && option.transportLegId) {
+        const leg = await db.query.transportLegs.findFirst({
+          where: eq(transportLegs.id, option.transportLegId),
+        });
+        variantId = leg?.variantId ?? null;
+      }
+
+      if (!variantId) {
+        return res.status(400).json({ error: "Booking option has no associated variant or leg" });
       }
 
       // Fetch the variant to get tripId
       const variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, option.variantId),
+        where: eq(itineraryVariants.id, variantId),
       });
 
       if (!variant) {
@@ -349,7 +359,7 @@ router.post(
   async (req, res) => {
     try {
       const { optionId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
       const userAgent = req.get("user-agent") || "";
       const referrer = req.get("referrer") || "";
 
