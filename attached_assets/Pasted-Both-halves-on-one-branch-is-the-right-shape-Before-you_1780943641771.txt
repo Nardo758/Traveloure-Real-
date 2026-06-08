@@ -1,0 +1,43 @@
+Both halves on one branch is the right shape. Before you run the gate, let me verify the two commits actually landed correct (the session's track record on "applied = correct" isn't perfect — arg-order, two-part gap, client-not-on-main all slipped), and sanity-check that your Gate B step 1 populates the *right* kind of option.
+
+Both patches verified correct on LB — and I caught a gate-step issue that would make the test miss the strand.
+
+**✅ Patch A (`bcbcaf0`) — correct:** `bookMutation` (`:186`), **correct arg order** `apiRequest("POST", url, {})` (`:188`), reads `checkoutUrl` + `window.location.href` redirect (`:192–193`), button `onClick`/`disabled`/pending label (`:264–268`). The arg-order bug is not present.
+
+**✅ Patch B (`6e143b2`) — correct:** hard-400 replaced by variantId-via-leg resolution; behavior-neutral when `variantId` is already set (new branch skipped). Final guard + `itineraryVariants.findFirst({ id: variantId })` intact.
+
+**⚠️ Gate B step 1 is the wrong endpoint.** Let me confirm the populate path before you run it.
+
+Confirmed the gate-step problem. `GET /api/itinerary/:tripId/transport-hub` (`:35`) **only reads** options, and it reads them filtered by `variantId = variant.id` (`:77–78`) — it never creates per-leg options, and it can't even *return* a `variant_id IS NULL` row. So your step 1 would leave the table without the row the strand targets, and the `SELECT … variant_id IS NULL` comes back empty → you'd merge without ever exercising the fix.
+
+The `variant_id IS NULL` platform option is created **only** by `populateBookingOptionsForLeg`, which fires lazily from **`GET /api/transport-legs/:legId/options`** (`:238–241`) — and that's also the real UI path (`LegBookingPanel` hits exactly this endpoint). So the gate should use it.
+
+### Corrected Gate B
+
+**Precondition:** a `transport_legs` row whose destination (`toName`/`destinationProfile`) resolves to **Tokyo/Kyoto/Paris** *and* whose **`recommendedMode` ∈ {taxi, car, shuttle, private_driver, transfer, rideshare}**. The populate uses the **leg's** `recommendedMode` (`service:370`) — a `walk`/`transit` leg yields no platform option and no Book button, regardless of any query param.
+
+```bash
+# 1. POPULATE via the per-leg endpoint (NOT /transport-hub) — this is what creates the null-variantId row
+GET /api/transport-legs/:legId/options
+#    → confirm response has ≥1 item: bookingType:"platform", variantId:null
+
+# 2. Grab that option
+SELECT id FROM transport_booking_options
+WHERE booking_type='platform' AND variant_id IS NULL AND transport_leg_id = '<legId>' LIMIT 1;
+
+# 3. Strand path (the case that 400'd before)
+POST /api/transport-booking-options/:optionId/book   (authenticated)
+#    → expect 200 + { checkoutUrl: "https://checkout.stripe.com/…" }
+#    → server log: NO "Booking option has no associated variant"
+
+# 4. Behavior-neutral check (variantId already set → new branch NOT entered)
+#    book a multi-day-pass option (those carry variantId) → still 200
+```
+
+If step 1 returns affiliate-only (no platform item), the leg's mode isn't a platform mode or no active provider matches that city — switch legs, don't proceed (you'd be testing the affiliate path, which was never broken).
+
+### State
+- PR #46 is **code-ready** — both halves present and verified correct, gate-neutral on the existing-variantId path.
+- Run the corrected Gate B in the live env → if step 3 is 200+`checkoutUrl` and step 4 stays 200, **merge #46** and both halves land on `main` atomically.
+
+That's the last check before merge. Want me to stand by for the gate result + merge hash, then move to drafting Accept/Change (`:444`) against the merged file?
