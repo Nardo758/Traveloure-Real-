@@ -475,8 +475,6 @@ async function findAffiliateTransportOptions(
     estimatedMinutes: null,
     urlWithAffiliate: buildTwelveGoUrl(fromName, toName, token),
     affiliateCode: token ?? "traveloure",
-    rating: 4.5,
-    reviewCount: 50000,
     revenueRate: go12Margin,
   });
 
@@ -495,8 +493,6 @@ async function findAffiliateTransportOptions(
     estimatedMinutes: null,
     urlWithAffiliate: buildOmioUrl(fromName, toName, token),
     affiliateCode: token ?? "traveloure",
-    rating: 4.3,
-    reviewCount: 120000,
     revenueRate: omioMargin,
   });
 
@@ -516,8 +512,6 @@ async function findAffiliateTransportOptions(
       estimatedMinutes: null,
       urlWithAffiliate: buildDiscoverCarsUrl(destination, token),
       affiliateCode: token ?? "traveloure",
-      rating: 4.4,
-      reviewCount: 75000,
       revenueRate: dcMargin,
     });
   }
@@ -538,8 +532,6 @@ async function findAffiliateTransportOptions(
       estimatedMinutes: null,
       urlWithAffiliate: buildKiwiUrl(fromName, toName, token),
       affiliateCode: token ?? "traveloure",
-      rating: 4.2,
-      reviewCount: 200000,
       revenueRate: kiwiMargin,
     });
   }
@@ -584,8 +576,6 @@ function getAvailablePassesForDestination(destination: string): any[] {
         pricePerPerson: 30,
         validDays: 7,
         affiliateUrl: "https://12go.asia/en/travel/paris-metro-pass",
-        rating: 4.6,
-        reviewCount: 8234,
       },
     ],
     // ... more passes
