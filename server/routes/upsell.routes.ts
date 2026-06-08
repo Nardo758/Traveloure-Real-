@@ -104,6 +104,23 @@ const discoverDateBodySchema = z.object({
  * 5.3+ surfaces will add provider_services availability gating where it makes
  * sense (e.g., date-range availability on discover_date).
  */
+/**
+ * Resolve the effective template key for a candidate-gather call.
+ * Public discover surfaces pass no template; rather than silently filter
+ * everything out (every category lookup would null), we default to 'travel'.
+ * This means discover surfaces match against the 14 travel-template
+ * categories. Callers that genuinely want a different template (wedding
+ * planning discover, etc.) pass it explicitly.
+ *
+ * Catches null, undefined, and empty-string — `??` alone would let `""`
+ * through and produce a zero-row join.
+ */
+export function resolveTemplateKey(input: string | null | undefined): string {
+  if (input === null || input === undefined) return "travel";
+  const trimmed = input.trim();
+  return trimmed.length === 0 ? "travel" : trimmed;
+}
+
 async function gatherOfferingCandidates(opts: {
   templateKey?: string;
   marketCity?: string | null;
@@ -111,6 +128,7 @@ async function gatherOfferingCandidates(opts: {
   expertEndorsedKeys?: string[];
 }): Promise<RankInputCandidate[]> {
   const endorsedSet = new Set(opts.expertEndorsedKeys ?? []);
+  const effectiveTemplate = resolveTemplateKey(opts.templateKey);
 
   // SQL: join offering types → categories → template matrix → neighborhoods.
   // Returns one row per offering with everything the engine needs to score.
@@ -134,7 +152,7 @@ async function gatherOfferingCandidates(opts: {
       LEFT JOIN service_categories sc
         ON sc.category_key = sot.category_key
       LEFT JOIN template_category_matrix tcm
-        ON tcm.template_key = ${opts.templateKey ?? "travel"}
+        ON tcm.template_key = ${effectiveTemplate}
         AND tcm.category_key = sot.category_key
       WHERE sot.is_active = true
         AND (
@@ -384,6 +402,223 @@ router.post("/api/upsell/discover-date", async (req, res) => {
       candidates: decorate(candidates, displayLookup),
       suppressed,
       hardFilteredByDate: unavailable.size,
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Step 5 surfaces: optimize_gate · plancard_pretrip · plancard_ontrip ─────
+
+const optimizeGateBodySchema = z.object({
+  tripId: z.string().optional(),
+  guestSessionId: z.string().optional(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+  expertEndorsedKeys: z.array(z.string()).optional(),
+  /** Optional delta the optimizer already computed (savings %, time-savings, etc.).
+   *  Passed through to the response unchanged — engine does not derive deltas. */
+  optimizationDelta: z.object({
+    savingsPercent: z.number().optional(),
+    savingsAmount: z.number().optional(),
+    timeSavedMinutes: z.number().optional(),
+  }).optional(),
+});
+
+const plancardBodySchema = z.object({
+  tripId: z.string(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+  expertEndorsedKeys: z.array(z.string()).optional(),
+  /** Per §B5: PlanCard pretrip uses the optimizer's empty-slot output as
+   *  candidate slots. The optimizer flags categoryKeys it identified as gaps
+   *  (REQ/REC categories the trip lacks). The engine ranks only those.
+   *  When omitted, the surface falls back to general template gap-filling. */
+  emptySlotCategoryKeys: z.array(z.string()).optional(),
+});
+
+const plancardOntripBodySchema = z.object({
+  tripId: z.string(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+  expertEndorsedKeys: z.array(z.string()).optional(),
+  /** Current location during the trip — drives "near you tomorrow" gap-fill.
+   *  Optional; absence falls back to trip neighborhoods. */
+  currentNeighborhoodId: z.string().optional(),
+});
+
+/**
+ * POST /api/upsell/optimize-gate — DELTA-ONLY response (§B4 + §B9).
+ *
+ * The user is deciding whether to pay for AI+Expert Review ($49.99 =
+ * optimize_expert_review band). Showing the specific optimized arrangement
+ * here gives away the paid product. So this endpoint runs the engine
+ * INTERNALLY, then REDACTS the candidate detail before responding:
+ *   - returns COUNT of add-ons available
+ *   - returns CATEGORY HINTS (de-duped categoryKey set)
+ *   - DOES NOT return offering IDs, display names, prices, or any detail
+ *     that would let a non-paying user reconstruct the plan
+ *
+ * Impressions are still logged (the engine ran; that's tracking-side data,
+ * not user-facing).
+ */
+router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
+  try {
+    const body = optimizeGateBodySchema.parse(req.body);
+    const ctx: UpsellContext = {
+      surface: "optimize_gate",
+      tripId: body.tripId,
+      guestSessionId: body.guestSessionId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    };
+    const raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    });
+
+    const slotConfig = (await getSlotConfig("optimize_gate")) ?? {
+      surface: "optimize_gate" as Surface,
+      maxItems: 3,
+      revenueWeight: 0.10,
+      revenueCap: 0.15,
+      frequencyCapHours: 0,
+      enabled: true,
+    };
+    const { candidates } = rankCandidates(ctx, raw, slotConfig, DEFAULT_POLICY);
+
+    // Log impressions for engine-side tracking (the candidates DID rank;
+    // we just don't reveal them to the user).
+    logImpressions(ctx, candidates).catch(() => { /* fire-and-forget */ });
+
+    // REDACT before responding. Categories teaser only — never offering IDs.
+    const categoryHints = Array.from(new Set(candidates.map(c => c.categoryKey))).filter(Boolean);
+
+    res.json({
+      delta: body.optimizationDelta ?? null,
+      addOnsAvailable: candidates.length,
+      categoryHints,
+      teaser: candidates.length > 0
+        ? `${candidates.length} add-on${candidates.length === 1 ? "" : "s"} could improve this plan`
+        : null,
+      // EXPLICITLY no candidates / displayName / tagline / price field — see §B4.
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/upsell/plancard-pretrip — gap-fill against the optimizer's empty slots.
+ *
+ * Per §B5: "uses optimizer's empty-slot output as candidate slots." The
+ * client passes emptySlotCategoryKeys (the optimizer's flagged gaps). The
+ * engine restricts gathering to those categories, then ranks normally.
+ * Transport remains suppressed (this is pre-trip).
+ */
+router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) => {
+  try {
+    const body = plancardBodySchema.parse(req.body);
+    const ctx: UpsellContext = {
+      surface: "plancard_pretrip",
+      tripId: body.tripId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    };
+    let raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    });
+
+    // Optimizer-driven gap-fill: when emptySlotCategoryKeys is provided,
+    // restrict candidates to those categories. Otherwise general gap-fill.
+    if (body.emptySlotCategoryKeys && body.emptySlotCategoryKeys.length > 0) {
+      const slotSet = new Set(body.emptySlotCategoryKeys);
+      raw = raw.filter(c => slotSet.has(c.categoryKey));
+    }
+
+    const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_pretrip", ctx, raw, req);
+    res.json({
+      candidates: decorate(candidates, displayLookup),
+      suppressed,
+      gapDriven: !!(body.emptySlotCategoryKeys && body.emptySlotCategoryKeys.length > 0),
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/upsell/plancard-ontrip — live nudges; the ONE surface that
+ * allows transport upsells (per §B4 carry-in). Frequency-capped at 24 h
+ * via slot_config; surface-level history check would normally exclude
+ * recently-shown offerings, but Phase 5.2 left that seam at the surface
+ * layer — wiring it requires the trip's impression history fetch which
+ * is fine to lean on here.
+ */
+router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => {
+  try {
+    const body = plancardOntripBodySchema.parse(req.body);
+    const ctx: UpsellContext = {
+      surface: "plancard_ontrip",
+      tripId: body.tripId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodId: body.currentNeighborhoodId,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    };
+    let raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.currentNeighborhoodId ?? body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    });
+
+    // Frequency cap: exclude offerings shown to this trip in the last
+    // slot_config.frequencyCapHours window. This is the surface-seam
+    // implementation of the cap; pure engine doesn't enforce.
+    try {
+      const slotConfig = await getSlotConfig("plancard_ontrip");
+      if (slotConfig && slotConfig.frequencyCapHours > 0) {
+        const recent = await db.execute(sql`
+          SELECT DISTINCT offering_id
+          FROM upsell_impressions
+          WHERE trip_id = ${body.tripId}
+            AND surface = 'plancard_ontrip'
+            AND shown_at > NOW() - (${slotConfig.frequencyCapHours} || ' hours')::INTERVAL
+        `);
+        const recentSet = new Set((recent.rows ?? []).map((r: any) => String(r.offering_id)));
+        if (recentSet.size > 0) raw = raw.filter(c => !recentSet.has(c.offeringId));
+      }
+    } catch (err) {
+      console.warn("[upsell] plancard-ontrip frequency-cap check skipped:", err);
+    }
+
+    const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_ontrip", ctx, raw, req);
+    res.json({
+      candidates: decorate(candidates, displayLookup),
+      suppressed,
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
