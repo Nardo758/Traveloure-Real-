@@ -1,6 +1,5 @@
 import {
-  buildGoogleMapsDeepLink,
-  buildAppleMapsDeepLink,
+  buildMapsDeepLink,
   hasValidCoords,
   type Place,
   type TransportMode,
@@ -34,6 +33,8 @@ export interface NavigateDestination {
   lng?: number;
   name: string;
   placeId?: string;
+  /** Provider-canonical Maps URL; takes precedence for single-destination nav. */
+  mapsUrl?: string;
 }
 
 export interface NavigateOrigin {
@@ -46,7 +47,7 @@ export interface NavigateParams {
   destination?: NavigateDestination;
   origin?: NavigateOrigin;
   mode?: TraveloureMode;
-  waypoints?: Array<{ lat?: number; lng?: number; name: string }>;
+  waypoints?: Array<{ lat?: number; lng?: number; name: string; mapsUrl?: string }>;
   app?: "google" | "apple" | "waze";
 }
 
@@ -108,20 +109,12 @@ export function normalizeMode(mode?: TraveloureMode): NormalizedMode {
 /** Convert NavigateParams into an ordered Place[] for the unified builder. */
 function paramsToPlaces(params: NavigateParams): Place[] {
   if (params.waypoints && params.waypoints.length > 0) {
-    return params.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name }));
+    return params.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name, mapsUrl: w.mapsUrl }));
   }
   const places: Place[] = [];
   if (params.origin) places.push({ lat: params.origin.lat, lng: params.origin.lng, name: params.origin.name });
-  if (params.destination) places.push({ lat: params.destination.lat, lng: params.destination.lng, name: params.destination.name, placeId: params.destination.placeId });
+  if (params.destination) places.push({ lat: params.destination.lat, lng: params.destination.lng, name: params.destination.name, placeId: params.destination.placeId, mapsUrl: params.destination.mapsUrl });
   return places;
-}
-
-function buildGoogleUrl(params: NavigateParams): string {
-  return buildGoogleMapsDeepLink(paramsToPlaces(params), params.mode as TransportMode);
-}
-
-function buildAppleUrl(params: NavigateParams): string {
-  return buildAppleMapsDeepLink(paramsToPlaces(params), params.mode as TransportMode);
 }
 
 function buildWazeUrl(params: NavigateParams): string {
@@ -142,22 +135,13 @@ export function openInMaps(params: NavigateParams): void {
     app = PLATFORM === "ios" ? "apple" : "google";
   }
 
-  if (app === "apple" && params.waypoints && params.waypoints.length > 2) {
-    app = "google";
-  }
-
-  let url: string;
-  switch (app) {
-    case "apple":
-      url = buildAppleUrl(params);
-      break;
-    case "waze":
-      url = buildWazeUrl(params);
-      break;
-    default:
-      url = buildGoogleUrl(params);
-      break;
-  }
+  // Waze is built here; apple/google (including the Apple→Google escape hatch for
+  // multi-stop routes) are delegated to the single builder so the rule lives in
+  // exactly one place.
+  const url =
+    app === "waze"
+      ? buildWazeUrl(params)
+      : buildMapsDeepLink({ places: paramsToPlaces(params), mode: params.mode as TransportMode, platform: app });
 
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }

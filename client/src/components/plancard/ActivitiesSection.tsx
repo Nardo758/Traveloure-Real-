@@ -325,7 +325,9 @@ export function ActivitiesSection({
   const fabCanShow =
     isLiveDay &&
     upNextActivity != null &&
-    hasValidCoords(upNextActivity.lat, upNextActivity.lng);
+    // Navigable when we have real coordinates OR a provider-canonical place link.
+    // Items with neither resolve to no button (never a broken link).
+    (hasValidCoords(upNextActivity.lat, upNextActivity.lng) || !!upNextActivity.mapsUrl);
 
   const toggleVisited = (actId: string) => {
     setVisited((prev) => {
@@ -589,6 +591,7 @@ export function ActivitiesSection({
                   lat: upNextActivity!.lat,
                   lng: upNextActivity!.lng,
                   name: upNextActivity!.name,
+                  mapsUrl: upNextActivity!.mapsUrl,
                 },
                 mode: upNextMode,
               })
