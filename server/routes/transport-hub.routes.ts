@@ -286,13 +286,23 @@ router.post(
         return res.status(400).json({ error: "Not a platform booking option" });
       }
 
-      if (!option.variantId) {
-        return res.status(400).json({ error: "Booking option has no associated variant" });
+      // Per-leg platform options carry transportLegId but not variantId.
+      // Resolve the variant via the leg when the option has no direct variantId.
+      let variantId = option.variantId;
+      if (!variantId && option.transportLegId) {
+        const leg = await db.query.transportLegs.findFirst({
+          where: eq(transportLegs.id, option.transportLegId),
+        });
+        variantId = leg?.variantId ?? null;
+      }
+
+      if (!variantId) {
+        return res.status(400).json({ error: "Booking option has no associated variant or leg" });
       }
 
       // Fetch the variant to get tripId
       const variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, option.variantId),
+        where: eq(itineraryVariants.id, variantId),
       });
 
       if (!variant) {
