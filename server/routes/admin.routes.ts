@@ -4086,6 +4086,188 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   // GET /api/booking-fee-config?category=accommodation
   // Used by itinerary page to get the live fee rate for a category
 
+  // ─── Phase 8.1: fee_bands + platform_settings admin CRUD ─────────────────────
+  // Live source of truth for the new resolver. The legacy /api/admin/fee-config
+  // writes booking_fee_configs, which is dormant post-Phase-1.3. The banner on
+  // /admin/fee-config tells admins to use this surface until Phase 8 is fully
+  // shipped; once the new admin page (admin/fee-bands.tsx) is live, that banner
+  // can come down.
+
+  // GET /api/admin/fee-bands — list all bands grouped by rate_type
+  router.get("/api/admin/fee-bands", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+
+      const result = await db.execute(sql`
+        SELECT
+          id, band_key, rate_type,
+          CAST(default_rate AS FLOAT) AS default_rate,
+          CAST(min_rate AS FLOAT)     AS min_rate,
+          CAST(max_rate AS FLOAT)     AS max_rate,
+          display_name, description, is_active, updated_by, updated_at
+        FROM fee_bands
+        ORDER BY rate_type ASC, band_key ASC
+      `);
+      res.json(result.rows ?? []);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/fee-bands/:bandKey — update one band.
+  // Editable fields: default_rate, min_rate, max_rate, display_name, description, is_active.
+  // band_key and rate_type are immutable post-seed (they identify the band).
+  // Validates default_rate falls within min/max if set.
+  router.patch("/api/admin/fee-bands/:bandKey", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+
+      const bandKey = String(req.params.bandKey || "").trim();
+      if (!bandKey) return res.status(400).json({ error: "Invalid bandKey" });
+
+      const { defaultRate, minRate, maxRate, displayName, description, isActive } = req.body;
+
+      // Fetch current row for audit + validation context.
+      const current = await db.execute(sql`
+        SELECT band_key, CAST(default_rate AS FLOAT) AS default_rate,
+               CAST(min_rate AS FLOAT) AS min_rate, CAST(max_rate AS FLOAT) AS max_rate, is_active
+        FROM fee_bands WHERE band_key = ${bandKey} LIMIT 1
+      `);
+      if (!current.rows || current.rows.length === 0) {
+        return res.status(404).json({ error: "Band not found", bandKey });
+      }
+      const before = current.rows[0] as any;
+
+      // Apply min/max validation against the proposed (or unchanged) default_rate.
+      const nextDefault = typeof defaultRate === "number" ? defaultRate : Number(before.default_rate);
+      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : Number(minRate));
+      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : Number(maxRate));
+      if (nextMin !== null && nextDefault < nextMin) {
+        return res.status(400).json({ error: "default_rate below min_rate", nextDefault, nextMin });
+      }
+      if (nextMax !== null && nextDefault > nextMax) {
+        return res.status(400).json({ error: "default_rate above max_rate", nextDefault, nextMax });
+      }
+
+      await db.execute(sql`
+        UPDATE fee_bands
+        SET
+          default_rate = ${nextDefault},
+          min_rate     = ${nextMin},
+          max_rate     = ${nextMax},
+          display_name = COALESCE(${displayName ?? null}, display_name),
+          description  = COALESCE(${description ?? null}, description),
+          is_active    = COALESCE(${isActive ?? null}, is_active),
+          updated_by   = ${userId},
+          updated_at   = NOW()
+        WHERE band_key = ${bandKey}
+      `);
+
+      // Audit-log every fee_bands edit. Critical: these rows drive live billing.
+      await db.insert(accessAuditLogs).values({
+        actorId: userId,
+        actorRole: user.role,
+        action: "fee_band_update",
+        resourceType: "fee_band",
+        resourceId: bandKey,
+        metadata: {
+          before: { default_rate: before.default_rate, is_active: before.is_active },
+          after: { default_rate: nextDefault, is_active: isActive ?? before.is_active },
+        },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch(err => console.error("[fee-bands] audit log failed (non-fatal):", err));
+
+      res.json({ ok: true, bandKey, defaultRate: nextDefault });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/admin/platform-settings — list all key/value settings
+  router.get("/api/admin/platform-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+
+      const result = await db.execute(sql`
+        SELECT setting_key, setting_value, description, updated_by, updated_at
+        FROM platform_settings
+        ORDER BY setting_key ASC
+      `);
+      res.json(result.rows ?? []);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/platform-settings/:settingKey — update one setting.
+  // The active_provider_commission_policy flip lives here. Audit-logged.
+  router.patch("/api/admin/platform-settings/:settingKey", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+
+      const settingKey = String(req.params.settingKey || "").trim();
+      const { settingValue } = req.body;
+      if (!settingKey) return res.status(400).json({ error: "Invalid settingKey" });
+      if (typeof settingValue !== "string") return res.status(400).json({ error: "settingValue must be a string" });
+
+      // Footgun guard: validate the policy enum at the boundary so an admin
+      // can't set active_provider_commission_policy to a junk string that
+      // would route every provider through the default fallback band.
+      if (settingKey === "active_provider_commission_policy" && !["beta_flat", "tiered"].includes(settingValue)) {
+        return res.status(400).json({ error: "active_provider_commission_policy must be 'beta_flat' or 'tiered'", got: settingValue });
+      }
+      // Footgun guard #2: default_commission_band_key must reference an existing
+      // active band — otherwise the tiered-policy fallback is unpriced.
+      if (settingKey === "default_commission_band_key") {
+        const bandCheck = await db.execute(sql`
+          SELECT 1 FROM fee_bands WHERE band_key = ${settingValue} AND is_active = true LIMIT 1
+        `);
+        if (!bandCheck.rows || bandCheck.rows.length === 0) {
+          return res.status(400).json({ error: "default_commission_band_key must reference an active fee_bands row", got: settingValue });
+        }
+      }
+
+      // Fetch before-value for audit.
+      const before = await db.execute(sql`
+        SELECT setting_value FROM platform_settings WHERE setting_key = ${settingKey} LIMIT 1
+      `);
+      const beforeValue = before.rows && before.rows.length > 0 ? (before.rows[0] as any).setting_value : null;
+
+      await db.execute(sql`
+        INSERT INTO platform_settings (setting_key, setting_value, updated_by, updated_at)
+        VALUES (${settingKey}, ${settingValue}, ${userId}, NOW())
+        ON CONFLICT (setting_key) DO UPDATE SET
+          setting_value = EXCLUDED.setting_value,
+          updated_by    = EXCLUDED.updated_by,
+          updated_at    = NOW()
+      `);
+
+      await db.insert(accessAuditLogs).values({
+        actorId: userId,
+        actorRole: user.role,
+        action: "platform_setting_update",
+        resourceType: "platform_setting",
+        resourceId: settingKey,
+        metadata: { before: beforeValue, after: settingValue },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch(err => console.error("[platform-settings] audit log failed (non-fatal):", err));
+
+      res.json({ ok: true, settingKey, settingValue });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
 router.get("/api/admin/lead-routing-logs", isAuthenticated, async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
