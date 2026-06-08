@@ -87,20 +87,18 @@ export async function createTransportBookingCheckout(
 
   await db.insert(serviceBookings).values({
     id: bookingId,
-    userId,
-    serviceProviderId: option.providerId || undefined,
-    bookingType: "transport",
+    travelerId: userId,
+    providerId: option.providerId || undefined,
     status: "pending",
-    bookingDate: new Date(),
-    totalAmount: totalAmount / 100, // Convert to dollars
-    currency: option.currency || "USD",
-    metadata: {
-      tripId,
+    totalAmount: String(totalAmount / 100),
+    bookingDetails: {
+      bookingType: "transport",
       optionId,
       travelers,
       specialRequests,
       transportMode: option.modeType,
       source: option.source,
+      currency: option.currency || "USD",
     },
   } as any);
 
