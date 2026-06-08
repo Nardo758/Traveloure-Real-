@@ -53,7 +53,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, expertNeighborhoods, neighborhoodCoverageTarget } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -4906,6 +4906,364 @@ router.delete("/api/admin/event-packages/:id", requireAdminLocal, async (req, re
       UPDATE event_packages SET status = 'archived', updated_at = NOW() WHERE id = ${id}::uuid
     `);
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Phase 8.3: Neighborhood admin ───────────────────────────────────────────
+// Three surfaces:
+//   1. Coverage targets (CRUD on neighborhood_coverage_target)
+//   2. Expert lead assignment (atomic swap — never raw partial-index violation)
+//   3. Adjacency editing (symmetric writes: A→B implies B→A)
+//
+// Footgun discipline carries over from Phase 8.2:
+//   - coverage_target.category_key must resolve in service_categories.
+//   - lead expert must serve the neighborhood's market (city) per their
+//     localExpertForms row; mismatch with concrete-evidence rejects, missing
+//     data allows with warning.
+//   - adjacency must stay within the same (city, country) — graph is undirected
+//     and city-scoped.
+
+async function isAdmin(req: any): Promise<{ ok: true; userId: string } | { ok: false }> {
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  if (!userId) return { ok: false };
+  const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  if (!user || user.role !== "admin") return { ok: false };
+  return { ok: true, userId };
+}
+
+// GET /api/admin/neighborhoods?city=Kyoto — list with current lead summary.
+router.get("/api/admin/neighborhoods", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const city = typeof req.query.city === "string" ? req.query.city.trim() : null;
+    const result = await db.execute(sql`
+      SELECT
+        cn.id, cn.city, cn.country, cn.name, cn.slug,
+        cn.adjacent_keys, cn.lead_expert_target,
+        CAST(cn.radius_km AS FLOAT) AS radius_km,
+        (SELECT en.expert_id FROM expert_neighborhoods en
+          WHERE en.neighborhood_id = cn.id AND en.is_lead = true LIMIT 1) AS lead_expert_id,
+        (SELECT COUNT(*) FROM neighborhood_coverage_target t WHERE t.neighborhood_id = cn.id) AS coverage_target_count
+      FROM city_neighborhoods cn
+      ${city ? sql`WHERE cn.city = ${city}` : sql``}
+      ORDER BY cn.city, cn.name
+    `);
+    res.json(result.rows ?? []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/neighborhoods/:id — full detail with coverage targets + adjacency.
+router.get("/api/admin/neighborhoods/:id", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const id = req.params.id;
+    const [neighborhood] = await db.select().from(cityNeighborhoods).where(eq(cityNeighborhoods.id, id)).limit(1);
+    if (!neighborhood) return res.status(404).json({ error: "Neighborhood not found" });
+
+    const experts = await db.execute(sql`
+      SELECT en.expert_id, en.is_lead, en.sort_order,
+             u.first_name, u.last_name, u.email
+      FROM expert_neighborhoods en
+      JOIN users u ON u.id = en.expert_id
+      WHERE en.neighborhood_id = ${id}
+      ORDER BY en.is_lead DESC, en.sort_order ASC
+    `);
+
+    const coverage = await db
+      .select()
+      .from(neighborhoodCoverageTarget)
+      .where(eq(neighborhoodCoverageTarget.neighborhoodId, id));
+
+    res.json({ neighborhood, experts: experts.rows ?? [], coverage });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/neighborhoods/:id/coverage-targets — upsert one target row.
+router.post("/api/admin/neighborhoods/:id/coverage-targets", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const id = req.params.id;
+    const { categoryKey, targetCount } = req.body;
+    if (typeof categoryKey !== "string" || !categoryKey.trim()) {
+      return res.status(400).json({ error: "categoryKey required" });
+    }
+    const count = Number(targetCount);
+    if (!Number.isInteger(count) || count < 0) {
+      return res.status(400).json({ error: "targetCount must be a non-negative integer" });
+    }
+
+    // Footgun: categoryKey must resolve in service_categories.
+    const [cat] = await db
+      .select({ id: serviceCategories.id })
+      .from(serviceCategories)
+      .where(eq(serviceCategories.categoryKey, categoryKey))
+      .limit(1);
+    if (!cat) {
+      return res.status(400).json({
+        error: "category_key_not_found",
+        message: `categoryKey='${categoryKey}' does not resolve to any service_categories row. Reconcile the taxonomy first.`,
+      });
+    }
+
+    await db.execute(sql`
+      INSERT INTO neighborhood_coverage_target (neighborhood_id, category_key, target_count)
+      VALUES (${id}, ${categoryKey}, ${count})
+      ON CONFLICT (neighborhood_id, category_key) DO UPDATE SET
+        target_count = EXCLUDED.target_count,
+        updated_at = NOW()
+    `);
+
+    await db.insert(accessAuditLogs).values({
+      actorId: auth.userId,
+      actorRole: "admin",
+      action: "neighborhood_coverage_target_upsert",
+      resourceType: "neighborhood_coverage_target",
+      resourceId: `${id}:${categoryKey}`,
+      metadata: { neighborhoodId: id, categoryKey, targetCount: count },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+
+    res.json({ ok: true, neighborhoodId: id, categoryKey, targetCount: count });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/admin/neighborhoods/:id/coverage-targets/:categoryKey
+router.delete("/api/admin/neighborhoods/:id/coverage-targets/:categoryKey", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const { id, categoryKey } = req.params;
+    await db
+      .delete(neighborhoodCoverageTarget)
+      .where(and(
+        eq(neighborhoodCoverageTarget.neighborhoodId, id),
+        eq(neighborhoodCoverageTarget.categoryKey, categoryKey),
+      ));
+    await db.insert(accessAuditLogs).values({
+      actorId: auth.userId,
+      actorRole: "admin",
+      action: "neighborhood_coverage_target_delete",
+      resourceType: "neighborhood_coverage_target",
+      resourceId: `${id}:${categoryKey}`,
+      metadata: { neighborhoodId: id, categoryKey },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/admin/neighborhoods/:id/lead — atomic swap (demote old, promote new).
+// Body: { expertId: string } to assign, or { clear: true } to vacate.
+// The transaction prevents the partial-unique index from ever firing.
+router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const id = req.params.id;
+    const { expertId, clear } = req.body;
+
+    const [neighborhood] = await db.select().from(cityNeighborhoods).where(eq(cityNeighborhoods.id, id)).limit(1);
+    if (!neighborhood) return res.status(404).json({ error: "Neighborhood not found" });
+
+    if (clear === true) {
+      // Vacate the lead slot. No-op if already vacant.
+      await db.transaction(async (tx) => {
+        await tx.update(expertNeighborhoods)
+          .set({ isLead: false, updatedAt: new Date() })
+          .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)));
+      });
+      await db.insert(accessAuditLogs).values({
+        actorId: auth.userId,
+        actorRole: "admin",
+        action: "neighborhood_lead_clear",
+        resourceType: "neighborhood",
+        resourceId: id,
+        metadata: { neighborhoodId: id },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch(err => console.error("[neighborhoods] audit failed:", err));
+      return res.json({ ok: true, cleared: true });
+    }
+
+    if (typeof expertId !== "string" || !expertId.trim()) {
+      return res.status(400).json({ error: "expertId or clear required" });
+    }
+
+    // Footgun: lead must serve the neighborhood's market. Check localExpertForms.
+    // Concrete-evidence rejection: if the form exists AND its city + destinations
+    // both disagree with the neighborhood's city. Missing-data soft-pass (with audit).
+    const [form] = await db
+      .select({ city: localExpertForms.city, destinations: localExpertForms.destinations })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.userId, expertId))
+      .limit(1);
+
+    let marketCheck: "match" | "missing" | "mismatch" = "missing";
+    if (form && (form.city || (Array.isArray(form.destinations) && form.destinations.length > 0))) {
+      const nbhCity = (neighborhood.city || "").toLowerCase();
+      const expertCity = (form.city || "").toLowerCase();
+      const destinationsArr = Array.isArray(form.destinations) ? form.destinations.map(d => String(d).toLowerCase()) : [];
+      if (expertCity === nbhCity || destinationsArr.some(d => d.includes(nbhCity))) {
+        marketCheck = "match";
+      } else {
+        marketCheck = "mismatch";
+      }
+    }
+
+    if (marketCheck === "mismatch") {
+      return res.status(400).json({
+        error: "expert_outside_market",
+        message: `Expert serves '${form?.city ?? "unknown"}', not '${neighborhood.city}'. Assign a lead whose localExpertForms covers this market.`,
+      });
+    }
+
+    // Get current lead (for "Reassign from A to B?" UI surfacing — server still does it).
+    const [currentLead] = await db
+      .select({ expertId: expertNeighborhoods.expertId })
+      .from(expertNeighborhoods)
+      .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)))
+      .limit(1);
+
+    // Atomic swap: demote any existing lead, upsert the new one with is_lead=true.
+    await db.transaction(async (tx) => {
+      // Step 1: demote whatever's currently lead.
+      await tx.update(expertNeighborhoods)
+        .set({ isLead: false, updatedAt: new Date() })
+        .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)));
+
+      // Step 2: upsert the new lead (expert may or may not have an existing row).
+      await tx.execute(sql`
+        INSERT INTO expert_neighborhoods (expert_id, neighborhood_id, is_lead, updated_at)
+        VALUES (${expertId}, ${id}, true, NOW())
+        ON CONFLICT (expert_id, neighborhood_id) DO UPDATE SET
+          is_lead = true,
+          updated_at = NOW()
+      `);
+    });
+
+    await db.insert(accessAuditLogs).values({
+      actorId: auth.userId,
+      actorRole: "admin",
+      action: "neighborhood_lead_assigned",
+      resourceType: "neighborhood",
+      resourceId: id,
+      targetUserId: expertId,
+      metadata: {
+        neighborhoodId: id,
+        replaced: currentLead?.expertId ?? null,
+        marketCheck,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+
+    res.json({
+      ok: true,
+      neighborhoodId: id,
+      newLeadExpertId: expertId,
+      replacedLeadExpertId: currentLead?.expertId ?? null,
+      marketCheck,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/admin/neighborhoods/:id/adjacency — set adjacent_keys with symmetric writes.
+// Body: { adjacentKeys: string[] }. All slugs must reference neighborhoods in the
+// SAME (city, country). Removing a slug also removes this neighborhood from
+// that slug's adjacent_keys. Adding does the same in reverse. Transactional.
+router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const id = req.params.id;
+    const { adjacentKeys } = req.body;
+    if (!Array.isArray(adjacentKeys) || !adjacentKeys.every(s => typeof s === "string" && s.length <= 100)) {
+      return res.status(400).json({ error: "adjacentKeys must be an array of slugs" });
+    }
+    const newKeys: string[] = Array.from(new Set(adjacentKeys.map(s => s.trim()).filter(Boolean)));
+
+    const [self] = await db.select().from(cityNeighborhoods).where(eq(cityNeighborhoods.id, id)).limit(1);
+    if (!self) return res.status(404).json({ error: "Neighborhood not found" });
+    if (newKeys.includes(self.slug)) {
+      return res.status(400).json({ error: "adjacency_self_loop", message: "A neighborhood cannot be adjacent to itself." });
+    }
+
+    // Validate every target slug is in the same (city, country).
+    if (newKeys.length > 0) {
+      const validTargets = await db.execute(sql`
+        SELECT slug FROM city_neighborhoods
+        WHERE city = ${self.city} AND country = ${self.country} AND slug = ANY(${newKeys})
+      `);
+      const validSlugs = new Set((validTargets.rows ?? []).map((r: any) => r.slug));
+      const invalid = newKeys.filter(k => !validSlugs.has(k));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          error: "adjacency_cross_market",
+          message: `Adjacency must stay within (${self.city}, ${self.country}). Invalid slugs: ${invalid.join(", ")}`,
+        });
+      }
+    }
+
+    const oldKeys: string[] = Array.isArray(self.adjacentKeys) ? self.adjacentKeys : [];
+    const added = newKeys.filter(k => !oldKeys.includes(k));
+    const removed = oldKeys.filter(k => !newKeys.includes(k));
+
+    await db.transaction(async (tx) => {
+      // Update self.
+      await tx.update(cityNeighborhoods)
+        .set({ adjacentKeys: newKeys, updatedAt: new Date() })
+        .where(eq(cityNeighborhoods.id, id));
+
+      // For each ADDED slug: append self.slug to that neighborhood's adjacent_keys.
+      for (const slug of added) {
+        await tx.execute(sql`
+          UPDATE city_neighborhoods
+          SET adjacent_keys = ARRAY(SELECT DISTINCT unnest(COALESCE(adjacent_keys, ARRAY[]::TEXT[]) || ARRAY[${self.slug}]::TEXT[])),
+              updated_at = NOW()
+          WHERE city = ${self.city} AND country = ${self.country} AND slug = ${slug}
+        `);
+      }
+
+      // For each REMOVED slug: drop self.slug from that neighborhood's adjacent_keys.
+      for (const slug of removed) {
+        await tx.execute(sql`
+          UPDATE city_neighborhoods
+          SET adjacent_keys = ARRAY(SELECT x FROM unnest(COALESCE(adjacent_keys, ARRAY[]::TEXT[])) AS x WHERE x <> ${self.slug}),
+              updated_at = NOW()
+          WHERE city = ${self.city} AND country = ${self.country} AND slug = ${slug}
+        `);
+      }
+    });
+
+    await db.insert(accessAuditLogs).values({
+      actorId: auth.userId,
+      actorRole: "admin",
+      action: "neighborhood_adjacency_update",
+      resourceType: "neighborhood",
+      resourceId: id,
+      metadata: { neighborhoodId: id, before: oldKeys, after: newKeys, added, removed, symmetric: true },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+
+    res.json({ ok: true, neighborhoodId: id, adjacentKeys: newKeys, added, removed });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
