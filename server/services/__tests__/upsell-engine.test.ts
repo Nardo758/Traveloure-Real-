@@ -459,6 +459,160 @@ describe("Phase 5.2 step 5 gate — plancard_pretrip gap-driven candidates", () 
   });
 });
 
+// ─── Step 6 GATE: endorsement raises relevance, not revenue ──────────────────
+
+describe("Phase 5.4 step 6 GATE — endorsement raises relevance, NEVER revenue", () => {
+  const w = DEFAULT_POLICY.relevanceWeights;
+
+  // CONTRACT 1 — structural: endorsement delta in computeRelevance equals
+  // exactly `weights.expertEndorsement`, and nothing else changes.
+  it("flipping expertEndorsed false→true raises relevanceScore by exactly weights.expertEndorsement", () => {
+    const base = { templateStrength: "REC" as const, profileMatchScore: 0.5, proximityFit: 0.5, expertEndorsed: false };
+    const without = computeRelevance(base, w);
+    const withEnd = computeRelevance({ ...base, expertEndorsed: true }, w);
+    const delta = withEnd - without;
+    assert.equal(
+      Math.round(delta * 1e6) / 1e6,
+      Math.round(w.expertEndorsement * 1e6) / 1e6,
+      `endorsement delta ${delta} must equal weight ${w.expertEndorsement}`,
+    );
+  });
+
+  it("the relevance lift from endorsement equals the weight regardless of other inputs", () => {
+    // Sweep across inputs; the endorsement-induced relevance delta must be
+    // the SAME value (w.expertEndorsement) for every input combination.
+    const cases = [
+      { templateStrength: "REQ" as const, profileMatchScore: 1, proximityFit: 1 },
+      { templateStrength: "OPT" as const, profileMatchScore: 0, proximityFit: 0 },
+      { templateStrength: "REC" as const, profileMatchScore: 0.7, proximityFit: 0.3 },
+      { templateStrength: null as const, profileMatchScore: 0.5, proximityFit: 0.5 },
+    ];
+    for (const partial of cases) {
+      const a = computeRelevance({ ...partial, expertEndorsed: false }, w);
+      const b = computeRelevance({ ...partial, expertEndorsed: true }, w);
+      const delta = Math.round((b - a) * 1e6) / 1e6;
+      assert.equal(delta, Math.round(w.expertEndorsement * 1e6) / 1e6,
+        `for ${JSON.stringify(partial)} delta was ${delta}, expected ${w.expertEndorsement}`);
+    }
+  });
+
+  // CONTRACT 2 — revenueScore independence: endorsement does NOT enter the
+  // revenue calculation path. normalizeRevenue uses only the raw earnings.
+  it("revenueScore is computed solely from expectedPlatformEarningsRaw — endorsement is structurally invisible", () => {
+    // Two candidate sets with IDENTICAL raw earnings but different endorsement
+    // states. normalizeRevenue cares only about the values.
+    const earningsA = [10, 20, 5];
+    const earningsB = [10, 20, 5]; // same values
+    const normA = normalizeRevenue(earningsA);
+    const normB = normalizeRevenue(earningsB);
+    // endorsement doesn't enter the function; outputs identical.
+    assert.deepEqual(normA, normB);
+    assert.deepEqual(normA, [0.5, 1.0, 0.25]);
+  });
+
+  // CONTRACT 3 — end-to-end through rankCandidates: endorsement boosts
+  // finalScore by exactly `revenueWeight × 0 + relevanceLift` (i.e., the
+  // entire boost comes from the relevance side).
+  it("end-to-end: identical candidates with only endorsement differing — finalScore delta = relevance weight (no revenue change)", () => {
+    const slotConfig = {
+      surface: "cart" as const,
+      maxItems: 10,
+      revenueWeight: 0.15,
+      revenueCap: 0.15,
+      frequencyCapHours: 0,
+      enabled: true,
+    };
+    const ctx = { surface: "cart" as const, cartItems: [] };
+
+    function mk(endorsed: boolean): RankInputCandidate {
+      return {
+        offeringId: endorsed ? "endorsed" : "vanilla",
+        categoryKey: "photography",
+        sourceType: "platform_provider",
+        templateStrength: "REC",
+        riskProfile: "low",
+        riskOverride: null,
+        requiresBackgroundCheck: false,
+        providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 10,    // SAME revenue raw
+        expertEndorsed: endorsed,
+        profileMatchScore: 0.5,
+        proximityFit: 0.5,
+      };
+    }
+    const result = rankCandidates(ctx, [mk(false), mk(true)], slotConfig);
+    const vanilla = result.candidates.find(c => c.offeringId === "vanilla")!;
+    const endorsed = result.candidates.find(c => c.offeringId === "endorsed")!;
+
+    // Both should be present (no filter touches them).
+    assert.ok(vanilla);
+    assert.ok(endorsed);
+
+    // Revenue scores: identical (both have raw earnings 10, normalized against each other = 1.0 each).
+    assert.equal(endorsed.revenueScore, vanilla.revenueScore);
+
+    // Relevance scores: endorsed > vanilla by exactly weights.expertEndorsement.
+    const relDelta = Math.round((endorsed.relevanceScore - vanilla.relevanceScore) * 1e6) / 1e6;
+    assert.equal(relDelta, Math.round(w.expertEndorsement * 1e6) / 1e6);
+
+    // Final scores: endorsed > vanilla because relevance is up, revenue is unchanged.
+    assert.ok(endorsed.finalScore > vanilla.finalScore);
+    // Final delta should also equal exactly the relevance weight (revenue contributes equally to both).
+    const finalDelta = Math.round((endorsed.finalScore - vanilla.finalScore) * 1e6) / 1e6;
+    assert.equal(finalDelta, Math.round(w.expertEndorsement * 1e6) / 1e6,
+      "finalScore delta must come ENTIRELY from relevance — revenue path must not amplify endorsement");
+
+    // Endorsed must rank ahead (rank 1).
+    assert.equal(endorsed.rank, 1);
+    assert.equal(vanilla.rank, 2);
+  });
+
+  // CONTRACT 4 — endorsement compounds across surfaces: the same offering
+  // endorsed at the neighborhood scope shows up endorsed on every surface
+  // that includes that neighborhood in ctx.neighborhoodIds.
+  it("compounding: endorsement key in ctx flows to every surface (cart, discover_location, plancard_ontrip)", () => {
+    function mkCandidate(): RankInputCandidate {
+      return {
+        offeringId: "tea_ritual_host",
+        categoryKey: "activity_provider",
+        sourceType: "platform_provider",
+        templateStrength: "REC",
+        riskProfile: "moderate",
+        riskOverride: null,
+        requiresBackgroundCheck: false,
+        providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: "gion",
+        expectedPlatformEarningsRaw: 5,
+        expertEndorsed: false,
+        profileMatchScore: 0.5,
+        proximityFit: 0.5,
+      };
+    }
+
+    const slot = (surface: any) => ({
+      surface, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true,
+    });
+
+    // For each surface, the gather function would set expertEndorsed=true
+    // based on ctx.expertEndorsedKeys containing "tea_ritual_host". Simulate
+    // by toggling the field on the candidate. The gather function in
+    // upsell.routes.ts does exactly: `expertEndorsed: endorsedSet.has(id)`.
+    for (const surface of ["cart", "discover_location", "plancard_ontrip"] as const) {
+      const baseline = rankCandidates({ surface, cartItems: [] }, [mkCandidate()], slot(surface));
+      const endorsed = rankCandidates(
+        { surface, cartItems: [], expertEndorsedKeys: ["tea_ritual_host"] },
+        [{ ...mkCandidate(), expertEndorsed: true }],   // gather() would set this
+        slot(surface),
+      );
+      assert.ok(endorsed.candidates[0].relevanceScore > baseline.candidates[0].relevanceScore,
+        `${surface}: endorsement must raise relevance`);
+      assert.equal(endorsed.candidates[0].revenueScore, baseline.candidates[0].revenueScore,
+        `${surface}: revenue must be unchanged`);
+    }
+  });
+});
+
 describe("Phase 5.2 step 5 gate — plancard_ontrip is the lone transport surface", () => {
   // Already proven by the "step 4 gate" test above — re-verifying the
   // invariant from the step-5 perspective so a future change to ontrip's

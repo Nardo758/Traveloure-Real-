@@ -307,10 +307,14 @@ function decorate(
 
 // ─── Surface endpoints ───────────────────────────────────────────────────────
 
-/** POST /api/upsell/cart — highest-intent surface; revenueCap stays at default. */
+/** POST /api/upsell/cart — highest-intent surface; revenueCap stays at default.
+ *  Phase 5.4: merges persisted expert endorsements with any caller-provided keys.
+ */
 router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
   try {
     const body = cartBodySchema.parse(req.body);
+    const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
     const ctx: UpsellContext = {
       surface: "cart",
       tripId: body.tripId,
@@ -319,13 +323,13 @@ router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
       cartItems: body.cartItems as CartItemRef[],
       userProfile: body.userProfile as UserProfile | undefined,
       neighborhoodIds: body.neighborhoodIds,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     };
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodId: body.neighborhoodIds?.[0] ?? null,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, raw, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
@@ -347,6 +351,11 @@ router.post("/api/upsell/discover-location", async (req, res) => {
     const nbhRow = nbh.rows?.[0] as any;
     const marketCity = nbhRow?.city ?? null;
 
+    // Phase 5.4: merge persisted endorsements (trip- and neighborhood-scoped).
+    // Discover-by-location reads neighborhood endorsements regardless of trip.
+    const fetched = await loadEndorsementsForContext(body.tripId, [body.neighborhoodId]);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+
     const ctx: UpsellContext = {
       surface: "discover_location",
       tripId: body.tripId,
@@ -355,13 +364,13 @@ router.post("/api/upsell/discover-location", async (req, res) => {
       cartItems: body.cartItems as CartItemRef[],
       userProfile: body.userProfile as UserProfile | undefined,
       neighborhoodId: body.neighborhoodId,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     };
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: marketCity ? marketCity.toLowerCase() : null,
       neighborhoodId: body.neighborhoodId,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
@@ -376,6 +385,10 @@ router.post("/api/upsell/discover-date", async (req, res) => {
   try {
     const body = discoverDateBodySchema.parse(req.body);
 
+    // Phase 5.4: merge persisted endorsements before scoring.
+    const fetched = await loadEndorsementsForContext(body.tripId, undefined);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+
     const ctx: UpsellContext = {
       surface: "discover_date",
       tripId: body.tripId,
@@ -384,7 +397,7 @@ router.post("/api/upsell/discover-date", async (req, res) => {
       cartItems: body.cartItems as CartItemRef[],
       userProfile: body.userProfile as UserProfile | undefined,
       dateRange: body.dateRange,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     };
 
     // Hard date filter: drop offerings whose category requires specific date
@@ -393,7 +406,7 @@ router.post("/api/upsell/discover-date", async (req, res) => {
     const raw = (await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: body.city.toLowerCase(),
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     })).filter(c => !unavailable.has(c.offeringId));
 
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_date", ctx, raw, req);
@@ -620,6 +633,203 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
       candidates: decorate(candidates, displayLookup),
       suppressed,
     });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Step 6 — expert_review channel + endorsement write-back ─────────────────
+// Endorsements raise RELEVANCE only (never revenue). Read by every other
+// surface via loadEndorsementsForContext so a lead's pick compounds.
+
+/**
+ * Load persisted endorsements for a context (trip-scoped + neighborhood-scoped).
+ * Used by every surface endpoint to merge with caller-provided expertEndorsedKeys.
+ */
+export async function loadEndorsementsForContext(
+  tripId: string | undefined,
+  neighborhoodIds: string[] | undefined,
+): Promise<string[]> {
+  const ids = new Set<string>();
+  try {
+    if (tripId) {
+      const result = await db.execute(sql`
+        SELECT offering_id FROM upsell_expert_endorsements
+        WHERE scope = 'trip' AND trip_id = ${tripId}
+      `);
+      for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
+    }
+    if (neighborhoodIds && neighborhoodIds.length > 0) {
+      const result = await db.execute(sql`
+        SELECT offering_id FROM upsell_expert_endorsements
+        WHERE scope = 'neighborhood' AND neighborhood_id = ANY(${neighborhoodIds})
+      `);
+      for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
+    }
+  } catch (err) {
+    console.warn("[upsell] endorsement lookup failed (non-fatal):", err);
+  }
+  return Array.from(ids);
+}
+
+async function requireExpertRole(req: any, res: any): Promise<string | null> {
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  if (!userId) {
+    res.status(401).json({ error: "Authentication required" });
+    return null;
+  }
+  const userRow = await db.execute(sql`SELECT role FROM users WHERE id = ${userId} LIMIT 1`);
+  const role = (userRow.rows?.[0] as any)?.role;
+  if (role !== "expert" && role !== "local_expert" && role !== "admin") {
+    res.status(403).json({ error: "Expert role required" });
+    return null;
+  }
+  return userId;
+}
+
+const expertReviewBodySchema = z.object({
+  tripId: z.string(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+});
+
+/**
+ * POST /api/upsell/expert-review
+ *
+ * The expert's working surface. Returns the engine's full ranked candidate
+ * list for a trip plus the expert's existing endorsements so the curation UI
+ * can highlight already-curated items. Auto-loads persisted endorsements via
+ * loadEndorsementsForContext so scores reflect the lead's prior calls.
+ */
+router.post("/api/upsell/expert-review", isAuthenticated, async (req, res) => {
+  try {
+    const expertId = await requireExpertRole(req, res);
+    if (!expertId) return;
+
+    const body = expertReviewBodySchema.parse(req.body);
+    const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
+
+    const ctx: UpsellContext = {
+      surface: "expert_review",
+      tripId: body.tripId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: fetched,
+    };
+    const raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: fetched,
+    });
+    const { candidates, suppressed, displayLookup } = await rankAndLog("expert_review", ctx, raw, req);
+
+    // List THIS expert's own endorsements for the curation UI.
+    const myEndorsements = await db.execute(sql`
+      SELECT id, scope, trip_id, neighborhood_id, offering_id, category_key, notes, created_at
+      FROM upsell_expert_endorsements
+      WHERE expert_id = ${expertId}
+        AND (
+          (scope = 'trip' AND trip_id = ${body.tripId}) OR
+          (scope = 'neighborhood' AND neighborhood_id = ANY(${body.neighborhoodIds ?? []}::TEXT[]))
+        )
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      candidates: decorate(candidates, displayLookup),
+      suppressed,
+      myEndorsements: myEndorsements.rows ?? [],
+      contextEndorsements: fetched,    // every offering_id active for this trip
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const endorseBodySchema = z.object({
+  scope: z.enum(["trip", "neighborhood"]),
+  tripId: z.string().optional(),
+  neighborhoodId: z.string().optional(),
+  offeringId: z.string(),
+  categoryKey: z.string().optional(),
+  notes: z.string().max(1000).optional(),
+}).refine(
+  (b) => (b.scope === "trip" && !!b.tripId && !b.neighborhoodId) ||
+         (b.scope === "neighborhood" && !!b.neighborhoodId && !b.tripId),
+  { message: "scope='trip' requires tripId; scope='neighborhood' requires neighborhoodId (mutually exclusive)" },
+);
+
+/**
+ * POST /api/upsell/expert-review/endorse
+ * Upsert via partial-unique-index match. Re-endorsing only updates notes.
+ */
+router.post("/api/upsell/expert-review/endorse", isAuthenticated, async (req, res) => {
+  try {
+    const expertId = await requireExpertRole(req, res);
+    if (!expertId) return;
+    const body = endorseBodySchema.parse(req.body);
+
+    if (body.scope === "trip") {
+      await db.execute(sql`
+        INSERT INTO upsell_expert_endorsements
+          (expert_id, scope, trip_id, offering_id, category_key, notes)
+        VALUES (${expertId}, 'trip', ${body.tripId!}, ${body.offeringId}, ${body.categoryKey ?? null}, ${body.notes ?? null})
+        ON CONFLICT (expert_id, trip_id, offering_id) WHERE scope = 'trip'
+        DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
+      `);
+    } else {
+      await db.execute(sql`
+        INSERT INTO upsell_expert_endorsements
+          (expert_id, scope, neighborhood_id, offering_id, category_key, notes)
+        VALUES (${expertId}, 'neighborhood', ${body.neighborhoodId!}, ${body.offeringId}, ${body.categoryKey ?? null}, ${body.notes ?? null})
+        ON CONFLICT (expert_id, neighborhood_id, offering_id) WHERE scope = 'neighborhood'
+        DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
+      `);
+    }
+
+    res.json({ ok: true, scope: body.scope, offeringId: body.offeringId });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const unendorseBodySchema = z.object({
+  scope: z.enum(["trip", "neighborhood"]),
+  tripId: z.string().optional(),
+  neighborhoodId: z.string().optional(),
+  offeringId: z.string(),
+});
+
+router.delete("/api/upsell/expert-review/endorse", isAuthenticated, async (req, res) => {
+  try {
+    const expertId = await requireExpertRole(req, res);
+    if (!expertId) return;
+    const body = unendorseBodySchema.parse(req.body);
+
+    if (body.scope === "trip" && body.tripId) {
+      await db.execute(sql`
+        DELETE FROM upsell_expert_endorsements
+        WHERE expert_id = ${expertId} AND scope = 'trip'
+          AND trip_id = ${body.tripId} AND offering_id = ${body.offeringId}
+      `);
+    } else if (body.scope === "neighborhood" && body.neighborhoodId) {
+      await db.execute(sql`
+        DELETE FROM upsell_expert_endorsements
+        WHERE expert_id = ${expertId} AND scope = 'neighborhood'
+          AND neighborhood_id = ${body.neighborhoodId} AND offering_id = ${body.offeringId}
+      `);
+    } else {
+      return res.status(400).json({ error: "scope_key_required" });
+    }
+    res.json({ ok: true });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
     res.status(500).json({ error: err.message });
