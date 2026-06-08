@@ -90,6 +90,7 @@ import transportHubRoutes from "./routes/transport-hub.routes";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
+import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
@@ -407,6 +408,11 @@ export async function registerRoutes(
 
   // Concierge routes - pay-per-use Concierge layer (intent log; Phase 5 adds router + quote)
   app.use(conciergeRoutes);
+
+  // Phase 5.2: upsell engine surfaces (cart + discover-location + discover-date).
+  // Calls into server/services/upsell-engine.service.ts which enforces the
+  // relevance-dominance contract (revenue can never override fit across bands).
+  app.use(upsellRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);

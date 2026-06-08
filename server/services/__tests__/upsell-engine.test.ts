@@ -209,6 +209,30 @@ describe("Phase 5.1 — hard filters", () => {
     assert.equal(isRiskSuppressed("high", "low", { mobilityLevel: "low" }), false);
   });
 
+  // The exact scenario commit 048 added the field for: a moderate category
+  // (activity_provider — cooking, tea, crafts) hosting a high-risk offering
+  // (sport_instructor — Surf/Bike/Kayak/Climb). The category-only check would
+  // surface it on a family trip; the override fixes that.
+  it("isRiskSuppressed: moderate-category + high-override + family trip → suppressed", () => {
+    // sport_instructor case: category=moderate, offering.riskOverride=high
+    assert.equal(
+      isRiskSuppressed("moderate", "high", { familyKids: true }),
+      true,
+      "high-override on a moderate-category offering must suppress for family without opt-in",
+    );
+    // Counter: family opt-in unlocks it
+    assert.equal(
+      isRiskSuppressed("moderate", "high", { familyKids: true, familyKidsOptIn: true }),
+      false,
+    );
+    // Gentle sibling (no override) on same moderate category surfaces normally
+    assert.equal(
+      isRiskSuppressed("moderate", null, { familyKids: true }),
+      false,
+      "Gentle moderate-category offerings (tea, cooking, crafts) must not be suppressed for family",
+    );
+  });
+
   it("isBackgroundCheckGated: bg-required offerings gated until provider has verified badge", () => {
     assert.equal(isBackgroundCheckGated(true, false), true);
     assert.equal(isBackgroundCheckGated(true, undefined), true);
@@ -261,6 +285,37 @@ describe("Phase 5.1 — rankCandidates end-to-end", () => {
     assert.equal(result.candidates.length, 1);
     assert.equal(result.candidates[0].offeringId, "photo");
     assert.ok(result.suppressed.some(s => s.offeringId === "transport" && s.reason === "transport_pre_optimize"));
+  });
+
+  // Phase 5.2 step-4 gate: transport stays suppressed on BOTH cart AND
+  // discover surfaces. Confirms isTransportSuppressed fires the same way on
+  // each surface name the new endpoints will pass (cart / discover_location /
+  // discover_date), with plancard_ontrip as the sole exception.
+  it("step 4 gate: transport suppressed on cart, discover_location, discover_date — allowed on plancard_ontrip", () => {
+    const surfaces = ["cart", "discover_location", "discover_date", "plancard_ontrip"] as const;
+    for (const surface of surfaces) {
+      const surfCtx = { ...ctx, surface } as UpsellContext;
+      const surfSlot = { ...slotConfig, surface } as SlotConfig;
+      const result = rankCandidates(surfCtx, [
+        mkCandidate({ offeringId: "transport", categoryKey: "private_transportation" }),
+        mkCandidate({ offeringId: "aff_transport", categoryKey: "aff_ground_transport" }),
+        mkCandidate({ offeringId: "photo", categoryKey: "photography" }),
+      ], surfSlot);
+
+      if (surface === "plancard_ontrip") {
+        // All 3 should make it through (live trip can surface transport).
+        assert.equal(result.candidates.length, 3, `plancard_ontrip should NOT suppress transport`);
+      } else {
+        // 2 transport entries suppressed; only photo surfaces.
+        assert.equal(result.candidates.length, 1, `${surface} should suppress transport`);
+        assert.equal(result.candidates[0].offeringId, "photo");
+        assert.equal(
+          result.suppressed.filter(s => s.reason === "transport_pre_optimize").length,
+          2,
+          `${surface} should record 2 transport_pre_optimize suppressions`,
+        );
+      }
+    }
   });
 
   it("caps at slotConfig.maxItems", () => {
