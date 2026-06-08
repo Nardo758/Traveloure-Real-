@@ -64,7 +64,8 @@ const MIGRATION_FILES = [
   "044_phase3_neighborhood_completeness_gate.sql",
   "045_phase1_5_tip_handling_band.sql",
   "046_phase1_5_enumerate_legacy_bands.sql",
-  "047_phase8_offering_risk_override.sql",
+  "047_early_adopter_commission_cutoff.sql",
+  "048_phase8_offering_risk_override.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
