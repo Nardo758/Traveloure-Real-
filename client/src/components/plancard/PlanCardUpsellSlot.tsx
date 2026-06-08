@@ -85,7 +85,7 @@ export function PlanCardUpsellSlot({ tripId, eventType, startDate, endDate, surf
 
   const handleExplore = (c: UpsellCandidate) => {
     logClick.mutate(c.offeringId);
-    navigate(`/discover?category=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
+    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
   };
 
   return (
