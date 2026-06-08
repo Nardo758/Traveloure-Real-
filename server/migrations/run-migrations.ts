@@ -5,19 +5,28 @@
  * a partially migrated schema — this prevents silent runtime failures in ESO write/read paths.
  */
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
+import { join } from "path";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 
-// CJS-safe dirname: import.meta.url is undefined in the production CJS bundle.
+// CJS-safe dirname: never use import.meta.url — it is undefined in the
+// production CJS bundle (dist/index.cjs) and the try/catch does not
+// reliably intercept it after esbuild's transform. Instead probe __dirname
+// (always defined in CJS) then fall back to process.cwd().
 const __dirname_local = (() => {
-  try {
-    const { fileURLToPath } = require("url");
-    return dirname(fileURLToPath(import.meta.url));
-  } catch {
-    return join(process.cwd(), "server", "migrations");
+  const fs = require("fs");
+  // In the production bundle __dirname === "dist/" — go up one level to reach
+  // "server/migrations". In development tsx sets __dirname per-file correctly.
+  if (typeof __dirname !== "undefined") {
+    const candidate = join(__dirname, "..", "server", "migrations");
+    if (fs.existsSync(candidate)) return candidate;
+    // __dirname already points at server/migrations/ (tsx dev)
+    if (fs.existsSync(join(__dirname, "006_eso_canonicalization.sql")))
+      return __dirname;
   }
-})();
+  // Ultimate fallback: workspace root + server/migrations
+  return join(process.cwd(), "server", "migrations");
+})()
 
 const MIGRATION_FILES = [
   "006_eso_canonicalization.sql",
