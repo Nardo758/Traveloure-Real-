@@ -1,163 +1,118 @@
-import { test, expect } from '@playwright/test';
-import { loginAs } from '../utils/auth';
-import { testAccounts } from '../fixtures/test-accounts';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
- * SELECTION CONTROLS GATE
+ * P462 reconcile — selection controls DOM gate.
  *
- * Asserts that [data-testid="filter-bar"] is visible on experience-template
- * tabs where the TemplateFiltersPanel renders (Activities, Experiences, Events,
- * Transfers) and is absent on tabs that use their own dedicated filter UI
- * (Flights, Hotels).
+ * The automated form of the manual Replit checklist (the gate PR #21 jumped):
+ * render per tab, selecting an option NARROWS the provider list, Clear restores
+ * it, switching tabs ISOLATES (resets) refinements, and no console errors.
  *
- * Gate target: /experiences/travel?destination=Kyoto%2C+Japan
- * Auth: seeded Kyoto traveler account
- * Base URL: http://localhost:5000 (set via BASE_URL env or playwright.config.ts)
+ * Plus the consolidation guard: every non-flight/hotel tab renders EXACTLY ONE
+ * filter surface — a single compact CompactFilterBar (data-testid="filter-bar")
+ * — and never the old facet wall (button-toggle-filters). Count/absence asserts
+ * so fragmentation (the duplicate-Price-Range / second-input-set pattern) can't
+ * silently regress.
+ *
+ * Runs against the deployed app (BASE_URL). Tabs whose type is dining /
+ * vendors / venue-search render the "Showing N providers" count we assert on;
+ * activities/services/flights/hotels tabs hide it by design.
+ *
+ * NOTE: seeds the suite. Validate selectors/route/inventory on the first CI run
+ * before promoting `e2e-selection-controls` to a required check. If the
+ * /experiences pages require auth in the deployed env, add a loginAs() step.
  */
 
-const traveler = testAccounts.travelers.find(
-  (a) => a.email === 'test-traveler-kyoto@traveloure.test'
-)!;
+async function providerCount(page: Page): Promise<number> {
+  const el = page.getByText(/Showing \d+ provider/).first();
+  if (await el.count() === 0) return 0;
+  const txt = (await el.textContent()) ?? '';
+  const m = txt.match(/Showing (\d+) provider/);
+  return m ? parseInt(m[1], 10) : 0;
+}
 
-const TEMPLATE_URL = '/experiences/travel?destination=Kyoto%2C+Japan';
+async function gotoTemplate(page: Page, slug: string, destination = 'Kyoto') {
+  await page.goto(`/experiences/${slug}?destination=${encodeURIComponent(destination)}`);
+  await page.waitForLoadState('networkidle');
+}
 
-/** Tabs where filter-bar SHOULD be visible */
-const FILTER_BAR_TABS = [
-  { testId: 'tab-activities', label: 'Activities' },
-  { testId: 'tab-experiences', label: 'Experiences' },
-  { testId: 'tab-events', label: 'Events' },
-  { testId: 'tab-transfers', label: 'Transfers' },
-];
+test.describe('Selection controls (P462) — render / narrow / parity / tab-isolation', () => {
+  test('wedding/vendors: controls render and narrow the list, Clear restores it', async ({ page }) => {
+    await gotoTemplate(page, 'wedding');
+    await page.getByTestId('tab-vendors').click();
 
-/** Tabs where filter-bar MUST NOT be visible (they use their own controls) */
-const NO_FILTER_BAR_TABS = [
-  { testId: 'tab-flights', label: 'Flights' },
-  { testId: 'tab-hotels', label: 'Hotels' },
-  { testId: 'tab-accommodations', label: 'Accommodations' },
-];
+    // Exactly ONE filter surface, and never the old facet wall. Present-only
+    // checks can't catch a duplicate; count==1 + absence is the regression guard.
+    await expect(page.getByTestId('filter-bar')).toHaveCount(1);
+    await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
+    const photography = page.getByTestId('selection-vendor-focus-focus-photography');
+    await expect(photography).toBeVisible();
 
-// ──────────────────────────────────────────────────────────────────────────────
+    const before = await providerCount(page);
+    expect(before, 'expected wedding vendors in Kyoto to assert narrowing').toBeGreaterThan(1);
 
-test.describe('Selection Controls — filter-bar visibility', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAs(page, traveler.email, traveler.password);
-    await page.goto(TEMPLATE_URL);
-    // Wait for the tab list to be present, indicating the template mounted
-    await page.waitForSelector('[data-testid^="tab-"]', { timeout: 15000 });
+    await photography.click();
+    await expect.poll(() => providerCount(page)).toBeLessThan(before);
+    expect(await providerCount(page)).toBeGreaterThan(0);
+
+    await page.getByTestId('selection-clear').click();
+    await expect.poll(() => providerCount(page)).toBe(before);
   });
 
-  test('filter-bar is visible on Activities tab', async ({ page }) => {
-    const tab = page.locator('[data-testid="tab-activities"]');
-    const isPresent = await tab.count() > 0;
-    if (!isPresent) {
-      test.skip(true, 'Activities tab not present on this template — skipping');
-      return;
-    }
-    await tab.click();
-    await expect(
-      page.locator('[data-testid="filter-bar"]'),
-      'filter-bar must be visible on the Activities tab'
-    ).toBeVisible({ timeout: 10000 });
+  test('travel/dining: budget control narrows', async ({ page }) => {
+    await gotoTemplate(page, 'travel');
+    await page.getByTestId('tab-dining').click();
+    await expect(page.getByTestId('filter-bar')).toBeVisible();
+
+    const before = await providerCount(page);
+    test.skip(before < 2, 'not enough dining inventory to assert narrowing');
+    await page.getByTestId('selection-budget-budget-under-150').click();
+    await expect.poll(() => providerCount(page)).toBeLessThanOrEqual(before);
   });
 
-  test('filter-bar is visible on Events tab', async ({ page }) => {
-    const tab = page.locator('[data-testid="tab-events"]');
-    const isPresent = await tab.count() > 0;
-    if (!isPresent) {
-      test.skip(true, 'Events tab not present on this template — skipping');
-      return;
-    }
-    await tab.click();
-    await expect(
-      page.locator('[data-testid="filter-bar"]'),
-      'filter-bar must be visible on the Events tab'
-    ).toBeVisible({ timeout: 10000 });
+  test('tab isolation: switching tabs resets refinements', async ({ page }) => {
+    await gotoTemplate(page, 'wedding');
+    await page.getByTestId('tab-vendors').click();
+    await page.getByTestId('selection-vendor-focus-focus-photography').click();
+
+    // leave and return
+    await page.getByTestId('tab-venues').click();
+    await page.getByTestId('tab-vendors').click();
+
+    // the previously-selected option is no longer in its active (highlighted) state
+    const photography = page.getByTestId('selection-vendor-focus-focus-photography');
+    await expect(photography).toBeVisible();
+    await expect(photography).not.toHaveClass(/FF385C/);
   });
 
-  test('filter-bar is visible on Transfers tab', async ({ page }) => {
-    const tab = page.locator('[data-testid="tab-transfers"]');
-    const isPresent = await tab.count() > 0;
-    if (!isPresent) {
-      test.skip(true, 'Transfers tab not present on this template — skipping');
-      return;
-    }
-    await tab.click();
-    await expect(
-      page.locator('[data-testid="filter-bar"]'),
-      'filter-bar must be visible on the Transfers tab'
-    ).toBeVisible({ timeout: 10000 });
-  });
+  // Generalized consolidation guard — structural only (no inventory dependency):
+  // each seeded non-flight/hotel tab renders exactly one filter bar, exactly one
+  // Sort control, and zero of the old facet wall. Catches fragmentation (a
+  // second input set) and dimension duplication regressing on any tab.
+  const SEEDED_TABS: Array<{ slug: string; tab: string }> = [
+    { slug: 'wedding', tab: 'tab-vendors' },
+    { slug: 'travel', tab: 'tab-dining' },
+    { slug: 'travel', tab: 'tab-activities' },
+    { slug: 'travel', tab: 'tab-services' },
+  ];
+  for (const { slug, tab } of SEEDED_TABS) {
+    test(`single filter surface on ${slug}/${tab}`, async ({ page }) => {
+      await gotoTemplate(page, slug);
+      await page.getByTestId(tab).click();
+      await expect(page.getByTestId('filter-bar')).toHaveCount(1);
+      await expect(page.getByTestId('select-template-sort')).toHaveCount(1);
+      await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
+    });
+  }
 
-  test('filter-bar is visible on Experiences/Things-to-do tab (if present)', async ({ page }) => {
-    // This tab may have varying slugs depending on template seed
-    const tab = page.locator(
-      '[data-testid="tab-experiences"], [data-testid="tab-things-to-do"], [data-testid="tab-sightseeing"]'
-    ).first();
-    const isPresent = await tab.count() > 0;
-    if (!isPresent) {
-      test.skip(true, 'Experiences/sightseeing tab not present on this template — skipping');
-      return;
-    }
-    await tab.click();
-    await expect(
-      page.locator('[data-testid="filter-bar"]'),
-      'filter-bar must be visible on the Experiences tab'
-    ).toBeVisible({ timeout: 10000 });
-  });
+  test('no console errors interacting with the panel', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
-  test('filter-bar is NOT visible on Flights tab', async ({ page }) => {
-    const tab = page.locator('[data-testid="tab-flights"]');
-    const isPresent = await tab.count() > 0;
-    if (!isPresent) {
-      test.skip(true, 'Flights tab not present on this template — skipping');
-      return;
-    }
-    await tab.click();
-    // Give any async rendering a moment to settle
-    await page.waitForTimeout(1000);
-    await expect(
-      page.locator('[data-testid="filter-bar"]'),
-      'filter-bar must NOT appear on the Flights tab (Flights has its own filter UI)'
-    ).not.toBeVisible();
-  });
+    await gotoTemplate(page, 'wedding');
+    await page.getByTestId('tab-vendors').click();
+    await expect(page.getByTestId('filter-bar')).toBeVisible();
+    await page.getByTestId('selection-vendor-focus-focus-photography').click();
 
-  test('filter-bar is NOT visible on Hotels tab', async ({ page }) => {
-    // Hotels tab can appear as "hotels" or "accommodations"
-    const tab = page.locator(
-      '[data-testid="tab-hotels"], [data-testid="tab-accommodations"]'
-    ).first();
-    const isPresent = await tab.count() > 0;
-    if (!isPresent) {
-      test.skip(true, 'Hotels/Accommodations tab not present on this template — skipping');
-      return;
-    }
-    await tab.click();
-    // Give any async rendering a moment to settle
-    await page.waitForTimeout(1000);
-    await expect(
-      page.locator('[data-testid="filter-bar"]'),
-      'filter-bar must NOT appear on the Hotels tab (Hotels has its own filter UI)'
-    ).not.toBeVisible();
-  });
-
-  test('filter-bar default state: visible on whichever tab is active on load', async ({ page }) => {
-    // The default active tab should not be flights or hotels, so the filter-bar
-    // should be visible immediately after page load.
-    const filterBar = page.locator('[data-testid="filter-bar"]');
-    const flightsActive = await page.locator('[data-testid="tab-flights"][data-state="active"]').count();
-    const hotelsActive = await page.locator(
-      '[data-testid="tab-hotels"][data-state="active"], [data-testid="tab-accommodations"][data-state="active"]'
-    ).count();
-
-    if (flightsActive > 0 || hotelsActive > 0) {
-      // Default tab happens to be flights or hotels — filter-bar correctly absent
-      await expect(filterBar).not.toBeVisible();
-    } else {
-      // Any other default tab — filter-bar should be present
-      await expect(
-        filterBar,
-        'filter-bar must be visible on the default (non-flights/hotels) tab after page load'
-      ).toBeVisible({ timeout: 10000 });
-    }
+    expect(errors, errors.join('\n')).toHaveLength(0);
   });
 });

@@ -1,0 +1,155 @@
+name: Selection Controls Gate
+
+# Automates the gates for the #462 selection-controls reconcile so they can be
+# enforced as required status checks (the manual Replit checklist that PR #21
+# jumped). Status contexts:
+#   * lockfile-purity        — fails if package-lock.json re-acquires a
+#     replit.local URL (root-cause guard against the firewall-URL pollution
+#     that broke npm ci). Fast; no deps.
+#   * verify-selection-controls — pure, deterministic logic gate (no app/DB).
+#     Safe to mark REQUIRED immediately.
+#   * e2e-selection-controls — DOM gate (render/narrow/parity/tab-isolation),
+#     the automated form of the manual Replit check. Runs against the deployed
+#     app. workflow_dispatch lets it be re-run on demand after a Replit publish
+#     (a deploy is not a GitHub event, so the gate won't auto-run on publish).
+#   * report                 — posts a pass/fail completion comment on the PR
+#     (if: always) so a green run wakes the watcher with no manual ping.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lockfile-purity:
+    name: lockfile-purity (no replit.local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if package-lock.json points at the Replit firewall
+        run: |
+          if grep -n "replit\.local" package-lock.json; then
+            echo "::error::package-lock.json contains a replit.local registry URL — re-pollution from the Replit env breaks npm ci on GitHub runners. Fix: sed -i 's#http://package-firewall.replit.local/npm/#https://registry.npmjs.org/#g' package-lock.json"
+            exit 1
+          fi
+          echo "lockfile clean (no replit.local) ✅"
+
+  verify-selection-controls:
+    name: verify-selection-controls (logic gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Narrowing + parity logic gate (expects 32/32)
+        run: npm run verify:selection-controls
+
+  e2e-selection-controls:
+    name: e2e-selection-controls (DOM gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+      - name: Push database schema
+        run: npx drizzle-kit push --force
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          NODE_ENV: development
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete"; exit 0
+            fi
+            echo "attempt $i/60: waiting for server/seeding... ($result)"; sleep 5
+          done
+          echo "Server not ready in time"; exit 1
+      - name: Selection-controls DOM test
+        run: npx playwright test selection-controls --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-controls-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR completion comment)
+    runs-on: ubuntu-latest
+    needs: [lockfile-purity, verify-selection-controls, e2e-selection-controls]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Selection Controls Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> Posted automatically so the watching session is notified on pass *and* fail (GitHub does not emit success webhooks).',
+              allGreen ? '' : '> A red `e2e-selection-controls` may be a stale BASE_URL deploy, DOM plumbing, or a real behavior bug — the watcher triages, and never softens an assertion to go green.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

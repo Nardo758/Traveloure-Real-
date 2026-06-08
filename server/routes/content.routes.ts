@@ -4,6 +4,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
+import { geocodeAddress } from "../utils/geocode";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -30,7 +31,6 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
-  expertSelectedServices,
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
@@ -5200,14 +5200,10 @@ router.get("/api/geocode", async (req, res) => {
     try {
       const { address } = req.query as { address?: string };
       if (!address) return res.status(400).json({ message: "address required" });
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-      if (!apiKey) return res.status(503).json({ message: "Maps API not configured" });
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-      const resp = await fetch(url);
-      const data: any = await resp.json();
-      const loc = data.results?.[0]?.geometry?.location;
-      if (!loc) return res.status(404).json({ message: "Location not found" });
-      res.json({ lat: loc.lat, lng: loc.lng, formattedAddress: data.results[0].formatted_address });
+      if (!process.env.GOOGLE_MAPS_API_KEY) return res.status(503).json({ message: "Maps API not configured" });
+      const result = await geocodeAddress(address);
+      if (!result) return res.status(404).json({ message: "Location not found" });
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ message: "Geocode failed", error: e.message });
     }

@@ -65,9 +65,9 @@ ON CONFLICT (band_key) DO NOTHING;
 -- AI+Expert-Review tier (optimize_expert_review) needs a flat band.
 INSERT INTO fee_bands (band_key, rate_type, default_rate, display_name, description, is_active)
 VALUES
-  ('ai_concierge_standard', 'flat', 9.99,  'AI Concierge (standard)',   'Per-task AI Concierge fee per §4.8. ⚠confirm amounts.',                                                                                true),
-  ('ai_concierge_event',    'flat', 49.99, 'AI Concierge (event-type)', 'Premium event-type override per §4.8 (wedding / proposal / corporate). ⚠confirm amounts.',                                             true),
-  ('optimize_expert_review','flat', 49.99, 'AI + Expert Review',        'Optimize-gate tier: AI plan polished by an expert (the ai_plan_polish offering). Same fulfillment path; do not build a second one.',   true)
+  ('ai_concierge_standard', 'flat', 9.99,  'AI Concierge (standard)',     'Per-task AI Concierge fee per §4.8. ⚠confirm amounts.'),
+  ('ai_concierge_event',    'flat', 49.99, 'AI Concierge (event-type)',   'Premium event-type override per §4.8 (wedding / proposal / corporate). ⚠confirm amounts.'),
+  ('optimize_expert_review','flat', 49.99, 'AI + Expert Review',          'Optimize-gate tier: AI plan polished by an expert (the ai_plan_polish offering). Same fulfillment path; do not build a second one.')
 ON CONFLICT (band_key) DO NOTHING;
 
 -- ─── Deposit rate (preserve booking_fee_configs.platform_deposit_rate live value) ─
