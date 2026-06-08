@@ -83,6 +83,14 @@ export const trips = pgTable("trips", {
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   expertNotes: text("expert_notes"),
   expertModifiedAt: timestamp("expert_modified_at"),
+  // Master Integration Brief — Phase 3.
+  // primaryExpertId: neighborhood-lead expert assigned to this trip. Distinct
+  // from expertId (the generic handler). Set when the upsell engine routes a
+  // trip to the lead of the trip's primary neighborhood.
+  // neighborhoodIds: derived from itinerary items at write time; powers the
+  // upsell engine's neighborhood-context branch (Phase 5).
+  primaryExpertId: varchar("primary_expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  neighborhoodIds: text("neighborhood_ids").array(),
   bookingReference: varchar("booking_reference", { length: 50 }),
   isPublic: boolean("is_public").default(false),
   shareToken: varchar("share_token", { length: 64 }),
@@ -463,6 +471,11 @@ export const serviceCategories = pgTable("service_categories", {
   sortOrder: integer("sort_order").default(0),
   // Master Integration Brief — Phase 1: billing-aware attributes per SEED_DATA §2.
   // All nullable; populated by Phase 1.2 reconciliation pass (see audit doc).
+  // categoryKey is the brief's stable join key — distinct from the legacy slug,
+  // so existing FKs and string-literal references stay valid. Brief integrations
+  // (service_offering_types, template_category_matrix, neighborhood_coverage_target,
+  // fee resolver) join on categoryKey, never on the legacy slug.
+  categoryKey: varchar("category_key", { length: 100 }),                    // brief's join key; unique when non-null
   sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
   launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
   commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
@@ -648,9 +661,9 @@ export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", 
 export const serviceBookings = pgTable("service_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
-  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
-  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }),
   contractId: varchar("contract_id").references(() => userAndExpertContracts.id, { onDelete: "set null" }),
   
   // Booking Details
@@ -1103,40 +1116,10 @@ export const expertSpecializations = pgTable("expert_specializations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Expert Custom Services (user-submitted offerings) ===
-// NOTE: The expert_custom_services DB table exists in production and holds data
-// that was NOT migrated by migration 012 before prod was deployed. The pgTable
-// definition is kept here so Drizzle does not propose DROP TABLE on publish.
-// Once migration 012 is confirmed to have run on prod and data is in
-// provider_services, this table definition can be removed in a future migration.
-export const expertCustomServicesStatusEnum = ["draft", "submitted", "approved", "rejected"] as const;
-
-export const expertCustomServices = pgTable("expert_custom_services", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description"),
-  categoryName: varchar("category_name", { length: 100 }),
-  existingCategoryId: varchar("existing_category_id"),
-  price: decimal("price").notNull(),
-  duration: varchar("duration", { length: 50 }),
-  deliverables: jsonb("deliverables").default([]),
-  cancellationPolicy: text("cancellation_policy"),
-  leadTime: varchar("lead_time", { length: 50 }),
-  imageUrl: text("image_url"),
-  galleryImages: jsonb("gallery_images").default([]),
-  experienceTypes: jsonb("experience_types").default([]),
-  status: varchar("status", { length: 20 }).default("draft"),
-  submittedAt: timestamp("submitted_at"),
-  reviewedAt: timestamp("reviewed_at"),
-  reviewedBy: varchar("reviewed_by"),
-  rejectionReason: text("rejection_reason"),
-  isActive: boolean("is_active").default(true),
-  bookingsCount: integer("bookings_count").default(0),
-  averageRating: decimal("average_rating").default("0"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// === Expert Custom Services ===
+// DB table dropped in migration 013 (data migrated to provider_services in 012).
+// pgTable definition removed — migration confirmed; Drizzle no longer needs the
+// stub to avoid proposing DROP TABLE. Types/Zod schema kept below for storage adapter.
 
 // === Influencer Referral Tracking ===
 export const influencerReferralStatusEnum = ["pending", "converted", "paid", "expired"] as const;
@@ -2514,11 +2497,70 @@ export const cityNeighborhoods = pgTable("city_neighborhoods", {
   description: text("description"),
   isFeatured: boolean("is_featured").default(false),
 
+  // Master Integration Brief — Phase 3 additions.
+  // adjacentKeys: slugs of neighboring neighborhoods (proximity ranking signal
+  // for the upsell engine). NULL = unknown / no graph yet (deferred per brief).
+  // leadExpertTarget: per SEED_DATA §7 "featured-lead slot: 1". Admin can tune.
+  adjacentKeys: text("adjacent_keys").array(),
+  leadExpertTarget: integer("lead_expert_target").notNull().default(1),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   uniqCitySlug: unique("city_neighborhoods_city_country_slug_uniq").on(table.city, table.country, table.slug),
 }));
+
+// ─── Phase 3 join + target tables ───────────────────────────────────────────
+// expertNeighborhoods: expert ↔ neighborhood. Soft-exclusive "lead" enforced
+// at DB level by a partial unique index (one is_lead=true per neighborhood).
+export const expertNeighborhoods = pgTable("expert_neighborhoods", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  isLead: boolean("is_lead").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqExpertNeighborhood: unique("expert_neighborhoods_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+}));
+export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
+export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertExpertNeighborhood = z.infer<typeof insertExpertNeighborhoodSchema>;
+
+// providerNeighborhoodCoverage: which providers serve which neighborhood × category.
+// Powers the "category × neighborhood" upsell query (brief Phase 3 gate).
+export const providerNeighborhoodCoverage = pgTable("provider_neighborhood_coverage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: varchar("provider_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  // Soft FK into service_categories.category_key (the brief's join key).
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqProviderNeighborhoodCategory: unique("provider_neighborhood_coverage_uniq").on(table.providerId, table.neighborhoodId, table.categoryKey),
+}));
+export type ProviderNeighborhoodCoverage = typeof providerNeighborhoodCoverage.$inferSelect;
+export const insertProviderNeighborhoodCoverageSchema = createInsertSchema(providerNeighborhoodCoverage).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProviderNeighborhoodCoverage = z.infer<typeof insertProviderNeighborhoodCoverageSchema>;
+
+// neighborhoodCoverageTarget: per (neighborhood, category) target count.
+// Lead-expert target lives on cityNeighborhoods.leadExpertTarget — not here.
+export const neighborhoodCoverageTarget = pgTable("neighborhood_coverage_target", {
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  targetCount: integer("target_count").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  pk: { name: "neighborhood_coverage_target_pk", columns: [table.neighborhoodId, table.categoryKey] },
+}));
+export type NeighborhoodCoverageTargetRow = typeof neighborhoodCoverageTarget.$inferSelect;
+export const insertNeighborhoodCoverageTargetSchema = createInsertSchema(neighborhoodCoverageTarget).omit({ createdAt: true, updatedAt: true });
+export type InsertNeighborhoodCoverageTargetRow = z.infer<typeof insertNeighborhoodCoverageTargetSchema>;
 
 // Live Activity Feed - Real-time traveler activity
 export const travelPulseLiveActivity = pgTable("travel_pulse_live_activity", {
@@ -4055,15 +4097,8 @@ export type InsertProviderPayout = z.infer<typeof insertProviderPayoutSchema>;
 // === Platform Settings (key-value config store) ===
 // NOTE: This table exists in production with 13 rows of live configuration
 // (commission rate ranges, feature flags, support_email, timezone, etc.).
-// Kept in schema so Drizzle does not propose DROP TABLE on publish.
-// No code currently reads this table — config was migrated to per-feature
-// columns/tables — but the rows must be preserved until explicitly deprecated.
-
-export const platformSettings = pgTable("platform_settings", {
-  key: varchar("key", { length: 100 }).primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// platformSettings (key/value shape) — removed. The live table uses setting_key/setting_value
+// columns (see platformSettingsTable below). commission.ts reads via raw SQL; no ORM access.
 
 // === Platform Revenue Tracking ===
 
@@ -5635,6 +5670,58 @@ export const templateCategoryMatrix = pgTable("template_category_matrix", {
 export type TemplateCategoryMatrixRow = typeof templateCategoryMatrix.$inferSelect;
 export const insertTemplateCategoryMatrixSchema = createInsertSchema(templateCategoryMatrix).omit({ createdAt: true });
 export type InsertTemplateCategoryMatrixRow = z.infer<typeof insertTemplateCategoryMatrixSchema>;
+
+// ─── Master Integration Brief — Phase 2 (offering types catalogs) ────────────
+// Three "expert offering" concepts coexist in this codebase. Their roles:
+//   expertOfferingTypes      = THE TYPE CATALOG (read-only vocabulary, this Phase 2 addition).
+//                              Feeds /earn, ask-an-expert picker, expert profiles.
+//   expertSelectedServices   = THE EXPERT'S CHOSEN INSTANCES (their selected templates).
+//   expertServiceOfferings   = LEGACY template catalog (kept around for back-compat,
+//                              not a write target per CLAUDE.md / migration 013).
+// Forward direction (NOT Phase 2 scope): eventually expertSelectedServices should
+// reference expertOfferingTypes so this catalog becomes the selection vocabulary.
+//
+// serviceOfferingTypes is the provider-side equivalent — the read-only catalog
+// of named offerings (Airport Driver, Tea Ceremony Host, …) keyed to
+// service_categories.category_key. Does NOT write bookings (canonical = provider_services).
+
+export const serviceOfferingTypes = pgTable("service_offering_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  offeringTypeKey: varchar("offering_type_key", { length: 100 }).notNull().unique(),
+  // Soft reference to service_categories.category_key (enforced by Phase 2 completeness gate).
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  displayName: text("display_name").notNull(),
+  tagline: text("tagline"),
+  isSurprising: boolean("is_surprising").notNull().default(false),
+  // Array of market slugs (e.g. ['kyoto', 'edinburgh']). NULL = universal.
+  marketScoped: text("market_scoped").array(),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type ServiceOfferingType = typeof serviceOfferingTypes.$inferSelect;
+export const insertServiceOfferingTypeSchema = createInsertSchema(serviceOfferingTypes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertServiceOfferingType = z.infer<typeof insertServiceOfferingTypeSchema>;
+
+export const expertOfferingTypes = pgTable("expert_offering_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  offeringTypeKey: varchar("offering_type_key", { length: 100 }).notNull().unique(),
+  // Enum: advisory | planning | coordination | live_support | specialized (CHECK at DB level).
+  serviceTier: varchar("service_tier", { length: 20 }).notNull(),
+  displayName: text("display_name").notNull(),
+  tagline: text("tagline"),
+  // Array: chat | written | video | live_text | done_for_you (CHECK at DB level via gate).
+  deliveryFormats: text("delivery_formats").array().notNull().default([]),
+  isSurprising: boolean("is_surprising").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type ExpertOfferingType = typeof expertOfferingTypes.$inferSelect;
+export const insertExpertOfferingTypeSchema = createInsertSchema(expertOfferingTypes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertExpertOfferingType = z.infer<typeof insertExpertOfferingTypeSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {

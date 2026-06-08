@@ -53,7 +53,7 @@ export interface BookingCheckoutSession {
  */
 export async function createTransportBookingCheckout(
   optionId: string,
-  tripId: string,
+  tripId: string | null,
   userId: string,
   travelers: number = 1,
   specialRequests?: string
@@ -85,24 +85,25 @@ export async function createTransportBookingCheckout(
   // Create a service booking record first
   const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+  // NOTE: serviceBookings.providerId is a users.id varchar FK; transportBookingOptions.providerId
+  // is an unrelated integer column that platform options never populate (always null here), so it
+  // is intentionally NOT mapped. tripId links the booking to its trip when available (nullable).
   await db.insert(serviceBookings).values({
     id: bookingId,
-    userId,
-    serviceProviderId: option.providerId || undefined,
-    bookingType: "transport",
+    travelerId: userId,
+    tripId: tripId ?? undefined,
     status: "pending",
-    bookingDate: new Date(),
-    totalAmount: totalAmount / 100, // Convert to dollars
-    currency: option.currency || "USD",
-    metadata: {
-      tripId,
+    totalAmount: String(totalAmount / 100),
+    bookingDetails: {
+      bookingType: "transport",
       optionId,
       travelers,
       specialRequests,
       transportMode: option.modeType,
       source: option.source,
+      currency: option.currency || "USD",
     },
-  } as any);
+  });
 
   // Create Stripe checkout session
   const session = await stripe.checkout.sessions.create({
