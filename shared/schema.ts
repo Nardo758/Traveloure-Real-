@@ -661,9 +661,9 @@ export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", 
 export const serviceBookings = pgTable("service_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
-  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
-  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }),
   contractId: varchar("contract_id").references(() => userAndExpertContracts.id, { onDelete: "set null" }),
   
   // Booking Details
@@ -1116,40 +1116,10 @@ export const expertSpecializations = pgTable("expert_specializations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Expert Custom Services (user-submitted offerings) ===
-// NOTE: The expert_custom_services DB table exists in production and holds data
-// that was NOT migrated by migration 012 before prod was deployed. The pgTable
-// definition is kept here so Drizzle does not propose DROP TABLE on publish.
-// Once migration 012 is confirmed to have run on prod and data is in
-// provider_services, this table definition can be removed in a future migration.
-export const expertCustomServicesStatusEnum = ["draft", "submitted", "approved", "rejected"] as const;
-
-export const expertCustomServices = pgTable("expert_custom_services", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  expertId: varchar("expert_id").notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description"),
-  categoryName: varchar("category_name", { length: 100 }),
-  existingCategoryId: varchar("existing_category_id"),
-  price: decimal("price").notNull(),
-  duration: varchar("duration", { length: 50 }),
-  deliverables: jsonb("deliverables").default([]),
-  cancellationPolicy: text("cancellation_policy"),
-  leadTime: varchar("lead_time", { length: 50 }),
-  imageUrl: text("image_url"),
-  galleryImages: jsonb("gallery_images").default([]),
-  experienceTypes: jsonb("experience_types").default([]),
-  status: varchar("status", { length: 20 }).default("draft"),
-  submittedAt: timestamp("submitted_at"),
-  reviewedAt: timestamp("reviewed_at"),
-  reviewedBy: varchar("reviewed_by"),
-  rejectionReason: text("rejection_reason"),
-  isActive: boolean("is_active").default(true),
-  bookingsCount: integer("bookings_count").default(0),
-  averageRating: decimal("average_rating").default("0"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// === Expert Custom Services ===
+// DB table dropped in migration 013 (data migrated to provider_services in 012).
+// pgTable definition removed — migration confirmed; Drizzle no longer needs the
+// stub to avoid proposing DROP TABLE. Types/Zod schema kept below for storage adapter.
 
 // === Influencer Referral Tracking ===
 export const influencerReferralStatusEnum = ["pending", "converted", "paid", "expired"] as const;
@@ -4127,15 +4097,8 @@ export type InsertProviderPayout = z.infer<typeof insertProviderPayoutSchema>;
 // === Platform Settings (key-value config store) ===
 // NOTE: This table exists in production with 13 rows of live configuration
 // (commission rate ranges, feature flags, support_email, timezone, etc.).
-// Kept in schema so Drizzle does not propose DROP TABLE on publish.
-// No code currently reads this table — config was migrated to per-feature
-// columns/tables — but the rows must be preserved until explicitly deprecated.
-
-export const platformSettings = pgTable("platform_settings", {
-  key: varchar("key", { length: 100 }).primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// platformSettings (key/value shape) — removed. The live table uses setting_key/setting_value
+// columns (see platformSettingsTable below). commission.ts reads via raw SQL; no ORM access.
 
 // === Platform Revenue Tracking ===
 
@@ -5732,10 +5695,6 @@ export const serviceOfferingTypes = pgTable("service_offering_types", {
   isSurprising: boolean("is_surprising").notNull().default(false),
   // Array of market slugs (e.g. ['kyoto', 'edinburgh']). NULL = universal.
   marketScoped: text("market_scoped").array(),
-  // Phase 8.2.5: per-offering risk override that supersedes service_categories.riskProfile.
-  // Enum (CHECK at DB level): 'low' | 'moderate' | 'high' | 'specialized'.
-  // Phase 5 eligibility reads this for suppression on family / low-mobility trips.
-  riskOverride: varchar("risk_override", { length: 20 }),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
@@ -5763,53 +5722,6 @@ export const expertOfferingTypes = pgTable("expert_offering_types", {
 export type ExpertOfferingType = typeof expertOfferingTypes.$inferSelect;
 export const insertExpertOfferingTypeSchema = createInsertSchema(expertOfferingTypes).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertExpertOfferingType = z.infer<typeof insertExpertOfferingTypeSchema>;
-
-// ─── Master Integration Brief — Phase 5 (Upsell engine) ──────────────────────
-// upsell_slot_config: per-surface admin-tunable knobs (maxItems, revenueWeight,
-// revenueCap, frequencyCapHours, enabled). The dominance contract (relevance
-// can never be overridden by revenue across a band) is enforced in
-// upsell-engine.service.ts via min(revenueWeight, revenueCap) ≤ bandWidth.
-// upsell_impressions: attribution log used to tune weights empirically.
-export const upsellSlotConfig = pgTable("upsell_slot_config", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  surface: varchar("surface", { length: 50 }).notNull().unique(),
-  maxItems: integer("max_items").notNull().default(3),
-  revenueWeight: decimal("revenue_weight", { precision: 5, scale: 4 }).notNull().default("0.15"),
-  revenueCap: decimal("revenue_cap", { precision: 5, scale: 4 }).notNull().default("0.15"),
-  frequencyCapHours: integer("frequency_cap_hours").notNull().default(0),
-  enabled: boolean("enabled").notNull().default(true),
-  updatedBy: varchar("updated_by", { length: 255 }),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-export type UpsellSlotConfig = typeof upsellSlotConfig.$inferSelect;
-export const insertUpsellSlotConfigSchema = createInsertSchema(upsellSlotConfig).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertUpsellSlotConfig = z.infer<typeof insertUpsellSlotConfigSchema>;
-
-export const upsellImpressions = pgTable("upsell_impressions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  tripId: varchar("trip_id", { length: 255 }),
-  guestSessionId: varchar("guest_session_id", { length: 255 }),
-  userId: varchar("user_id", { length: 255 }),
-  surface: varchar("surface", { length: 50 }).notNull(),
-  offeringId: varchar("offering_id", { length: 255 }).notNull(),
-  categoryKey: varchar("category_key", { length: 100 }),
-  sourceType: varchar("source_type", { length: 30 }),
-  relevanceScore: decimal("relevance_score", { precision: 6, scale: 4 }),
-  revenueScore: decimal("revenue_score", { precision: 6, scale: 4 }),
-  finalScore: decimal("final_score", { precision: 6, scale: 4 }),
-  rankPosition: integer("rank_position"),
-  shownAt: timestamp("shown_at").notNull().defaultNow(),
-  clicked: boolean("clicked").notNull().default(false),
-  clickedAt: timestamp("clicked_at"),
-  added: boolean("added").notNull().default(false),
-  addedAt: timestamp("added_at"),
-  booked: boolean("booked").notNull().default(false),
-  bookedAt: timestamp("booked_at"),
-});
-export type UpsellImpression = typeof upsellImpressions.$inferSelect;
-export const insertUpsellImpressionSchema = createInsertSchema(upsellImpressions).omit({ id: true, shownAt: true });
-export type InsertUpsellImpression = z.infer<typeof insertUpsellImpressionSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {
