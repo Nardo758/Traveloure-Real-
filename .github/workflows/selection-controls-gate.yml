@@ -35,7 +35,7 @@ jobs:
       - name: Fail if package-lock.json points at the Replit firewall
         run: |
           if grep -n "replit\.local" package-lock.json; then
-            echo "::error::package-lock.json contains a replit.local registry URL — re-pollution from the Replit env breaks npm ci on GitHub runners. Fix: sed -i 's#http://package-firewall.replit.local/npm/#https://registry.npmjs.org/#g' package-lock.json"
+            echo "::error::package-lock.json contains a replit.local registry URL — re-pollution from the Replit env breaks npm ci on GitHub runners. Fix: sed -i 's#http://package-firewall.replit.local#https://registry.npmjs.org#g' package-lock.json and recommit." 
             exit 1
           fi
           echo "lockfile clean (no replit.local) ✅"
@@ -84,6 +84,10 @@ jobs:
         run: npx drizzle-kit push --force
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
       - name: Start dev server
         run: npx tsx server/index.ts &
         env:
@@ -91,6 +95,10 @@ jobs:
           SESSION_SECRET: ci-test-secret-not-for-production
           NODE_ENV: development
           PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
       - name: Wait for server and seeding
         run: |
           for i in $(seq 1 60); do
