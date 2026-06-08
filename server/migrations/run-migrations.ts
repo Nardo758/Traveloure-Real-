@@ -49,7 +49,15 @@ const MIGRATION_FILES = [
   "029_review_moderation.sql",
   "030_restore_expert_service_categories.sql",
   "031_phase1_scaffold_fee_bands.sql",
+  "032_phase1_category_key_column.sql",
+  "033_phase1_seed_fee_bands_and_settings.sql",
+  "034_phase1_reconcile_service_categories.sql",
+  "035_phase1_seed_template_matrix.sql",
   "036_transport_commerce_fee_config.sql",
+  "037_phase2_create_offering_types.sql",
+  "038_phase2_seed_service_offering_types.sql",
+  "039_phase2_seed_expert_offering_types.sql",
+  "040_phase2_offering_types_completeness_gate.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
