@@ -22,6 +22,12 @@ This document captures architectural decisions to maintain consistency across co
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
+**Transport-commerce exception (`service_bookings.service_id` is nullable):**
+- The `serviceId → provider_services` FK and the dependency above **still hold for provider-service bookings/reviews.**
+- The one documented exception: **transport-commerce bookings** (`bookingDetails.bookingType = "transport"`) reference a `transport_booking_options` row, not a `provider_services` row, so they carry a NULL `service_id`.
+- `service_id` was made nullable by migration `050_service_bookings_service_id_nullable.sql` (the strand fix in PR #46 inserts these rows; the change previously lived only in `shared/schema.ts` + a hand-run dev ALTER with no migration, so prod still rejected the insert).
+- Recorded here per the Coordination Prevention rule; ratified by the decision-maker by merging the PR that carries this note + migration 050. Any **further** loosening of this FK requires explicit decision-maker approval.
+
 **Consolidation Timeline:**
 - **Phase 1+2 (DONE):** Migrations 011-012 add schema columns and consolidate `expert_custom_services` → `provider_services` with category mapping
 - **Phase 3 (DONE):** Build shared ServiceForm component targeting provider_services (role-aware, both expert and provider)
@@ -100,3 +106,6 @@ A: They're deprecated — kept for backward-compat in Phase 5. Don't write to th
 
 **Q: Can I change the approval status enum?**
 A: No without explicit user approval. Document the change in this file.
+
+**Q: Why is `service_bookings.service_id` nullable if transactions must reference provider_services?**
+A: Provider-service transactions still must — the FK and dependency hold for them. Transport-commerce bookings are the single documented exception: they reference `transport_booking_options`, not `provider_services`, so `service_id` is NULL for them (see "Transport-commerce exception" above; migration `050`). Any further loosening of this FK requires decision-maker approval.
