@@ -2281,7 +2281,7 @@ export default function ExperienceTemplatePage() {
 
           {/* P3: TemplateFiltersPanel — DB-driven filters; hidden on flight/hotel tabs (those use the Collapsible above) */}
           {experienceType?.id && currentTabType !== "flights" && currentTabType !== "hotels" && (
-            <div className="mb-6">
+            <div className="mb-6" data-testid="filter-bar">
               <TemplateFiltersPanel
                 experienceTypeId={experienceType.id}
                 activeTab={activeTab}
