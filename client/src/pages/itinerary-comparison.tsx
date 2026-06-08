@@ -350,20 +350,14 @@ function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destin
         window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
       }
     } else {
-      // Multiple locations - create directions with waypoints
-      // Google Maps format: origin -> waypoints -> destination
+      // Multiple locations — always use Google Maps for waypoint routes.
+      // Apple Maps doesn't support multi-waypoint directions; the canonical
+      // rule lives in openInMaps() in navigate.ts (Apple→Google escape-hatch).
       const origin = encodeURIComponent(locations[0]);
       const dest = encodeURIComponent(locations[locations.length - 1]);
       const waypoints = locations.slice(1, -1).map(loc => encodeURIComponent(loc)).join("|");
-      
-      if (isIOS) {
-        // Apple Maps doesn't support multiple waypoints well, use Google Maps URL
-        const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
-        window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
-      } else {
-        const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
-        window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
-      }
+      const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
+      window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
     }
     
     toast({ 
