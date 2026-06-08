@@ -87,6 +87,31 @@ describe("Phase 1.3 — decideBandKey (pure)", () => {
       "tip_handling",
     );
   });
+
+  // Phase 1.5 enumeration: any non-default named category falls through to a
+  // direct band lookup. Migration 046 seeds a preserving band for every active
+  // booking_fee_configs row, so admin per-category overrides flow through
+  // without per-category code changes.
+  it("category='accommodation' (admin-set custom rate) → 'accommodation' (direct lookup)", () => {
+    assert.equal(
+      decideBandKey({ category: "accommodation" }, "beta_flat", "beta_flat"),
+      "accommodation",
+    );
+  });
+
+  it("category='transportation' (admin-set custom rate) → 'transportation' (direct lookup)", () => {
+    assert.equal(
+      decideBandKey({ category: "transportation" }, "beta_flat", "beta_flat"),
+      "transportation",
+    );
+  });
+
+  it("category='unknown_thing_admin_added' → direct lookup (resolver safety-nets if band missing)", () => {
+    assert.equal(
+      decideBandKey({ category: "unknown_thing_admin_added" }, "beta_flat", "beta_flat"),
+      "unknown_thing_admin_added",
+    );
+  });
 });
 
 describe("Phase 1.3 — buildRatesFromBand (pure)", () => {

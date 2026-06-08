@@ -63,6 +63,7 @@ const MIGRATION_FILES = [
   "043_phase3_seed_coverage_targets.sql",
   "044_phase3_neighborhood_completeness_gate.sql",
   "045_phase1_5_tip_handling_band.sql",
+  "046_phase1_5_enumerate_legacy_bands.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
