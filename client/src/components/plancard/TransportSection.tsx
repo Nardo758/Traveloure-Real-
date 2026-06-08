@@ -184,17 +184,19 @@ function LegBookingPanel({ legId }: { legId: string }) {
   const affiliateOptions = options.filter((o) => o.bookingType === "affiliate" || o.bookingType === "deep_link");
 
   const bookMutation = useMutation({
-    mutationFn: (optionId: string) =>
-      apiRequest("POST", `/api/transport-booking-options/${optionId}/book`),
-    onSuccess: (res: any) => {
-      if (res?.checkoutUrl) {
-        window.location.href = res.checkoutUrl;
-      } else {
-        toast({ title: "Booking initiated", description: "Redirecting to checkout…" });
-      }
+    mutationFn: async (optionId: string) => {
+      const res = await apiRequest("POST", `/api/transport-booking-options/${optionId}/book`, {});
+      return (await res.json()) as { checkoutUrl?: string; bookingId?: string };
     },
-    onError: () => {
-      toast({ title: "Booking failed", description: "Could not start checkout. Please try again.", variant: "destructive" });
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+      toast({ title: "Booking started", description: "Your transport booking is being processed." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't start booking", description: err?.message ?? "Please try again.", variant: "destructive" });
     },
   });
 
