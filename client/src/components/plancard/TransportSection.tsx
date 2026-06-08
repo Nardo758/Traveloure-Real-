@@ -182,6 +182,24 @@ function LegBookingPanel({ legId }: { legId: string }) {
   const platformOptions = options.filter((o) => o.bookingType === "platform");
   const affiliateOptions = options.filter((o) => o.bookingType === "affiliate" || o.bookingType === "deep_link");
 
+  const { toast } = useToast();
+  const bookMutation = useMutation({
+    mutationFn: async (optionId: string) => {
+      const res = await apiRequest("POST", `/api/transport-booking-options/${optionId}/book`, {});
+      return (await res.json()) as { checkoutUrl?: string; bookingId?: string };
+    },
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+      toast({ title: "Booking started", description: "Your transport booking is being processed." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't start booking", description: err?.message ?? "Please try again.", variant: "destructive" });
+    },
+  });
+
   return (
     <div className="mt-2" data-testid={`leg-booking-panel-${legId}`}>
       <button
@@ -243,9 +261,11 @@ function LegBookingPanel({ legId }: { legId: string }) {
                   <Button
                     size="sm"
                     className="text-[11px] h-7 px-3 shrink-0 bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => bookMutation.mutate(opt.id)}
+                    disabled={bookMutation.isPending}
                     data-testid={`button-book-platform-${opt.id}`}
                   >
-                    Book
+                    {bookMutation.isPending && bookMutation.variables === opt.id ? "Booking…" : "Book"}
                   </Button>
                 </div>
               ))}
