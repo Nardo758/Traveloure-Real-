@@ -267,7 +267,7 @@ router.post(
     try {
       const { optionId } = req.params;
       const { travelers = 1, specialRequests } = req.body;
-      const userId = (req as any).user?.id; // From auth middleware
+      const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub; // Replit Auth: user.id; email auth: user.claims.sub
 
       if (!userId) {
         return res.status(401).json({ error: "User not authenticated" });
@@ -359,7 +359,7 @@ router.post(
   async (req, res) => {
     try {
       const { optionId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
       const userAgent = req.get("user-agent") || "";
       const referrer = req.get("referrer") || "";
 
