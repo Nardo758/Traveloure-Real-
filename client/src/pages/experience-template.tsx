@@ -2198,28 +2198,10 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* Price slider strip — shown only for flights/hotels above the unified bar. */}
-          {(currentTabType === "flights" || currentTabType === "hotels") && (
-            <div className="flex items-center gap-4 mb-3 px-1">
-              <Label className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                Max price: ${currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice}
-              </Label>
-              <Slider
-                value={[currentTabType === "flights" ? flightMaxPrice : hotelMaxPrice]}
-                onValueChange={(v) => currentTabType === "flights" ? setFlightMaxPrice(v[0]) : setHotelMaxPrice(v[0])}
-                min={currentTabType === "flights" ? 100 : 50}
-                max={currentTabType === "flights" ? 5000 : 2000}
-                step={currentTabType === "flights" ? 100 : 50}
-                className="flex-1 max-w-[260px]"
-                data-testid={currentTabType === "flights" ? "slider-flight-price" : "slider-hotel-price"}
-              />
-            </div>
-          )}
-
-          {/* Unified filter bar — all tabs including flights/hotels.
-              Flights get stops chips + flight sort options.
-              Hotels get star-rating chips + hotel sort options.
-              Other tabs get their seeded selection controls + generic sort. */}
+          {/* Unified filter bar — all tabs including flights/hotels (#35).
+              Flights: stops chips + max-price range slider + flight sort.
+              Hotels: star-rating chips + max-price range slider + hotel sort.
+              Other tabs: seeded selection controls + generic sort. */}
           {currentTabType === "flights" ? (
             <CompactFilterBar
               controls={[{
@@ -2234,7 +2216,7 @@ export default function ExperienceTemplatePage() {
               }]}
               selected={{ "flight-stops": [flightStops] }}
               onToggle={(_, optionId) => setFlightStops(optionId as "any" | "nonstop" | "1stop")}
-              onClear={() => setFlightStops("any")}
+              onClear={() => { setFlightStops("any"); setFlightMaxPrice(2000); }}
               sortValue={flightSortBy}
               onSortChange={(v) => setFlightSortBy(v as "price" | "duration" | "departure")}
               sortOptions={[
@@ -2242,6 +2224,18 @@ export default function ExperienceTemplatePage() {
                 { value: "duration",  label: "Duration" },
                 { value: "departure", label: "Departure" },
               ]}
+              rangeControls={[{
+                id: "flightMaxPrice",
+                label: "Max Price",
+                min: 100,
+                max: 5000,
+                step: 100,
+                format: (v) => `$${v.toLocaleString()}`,
+              }]}
+              rangeValues={{ flightMaxPrice }}
+              onRangeChange={(id, val) => {
+                if (id === "flightMaxPrice") setFlightMaxPrice(val);
+              }}
             />
           ) : currentTabType === "hotels" ? (
             <CompactFilterBar
@@ -2258,13 +2252,25 @@ export default function ExperienceTemplatePage() {
               }]}
               selected={{ "hotel-stars": [String(hotelStarRating)] }}
               onToggle={(_, optionId) => setHotelStarRating(Number(optionId))}
-              onClear={() => setHotelStarRating(0)}
+              onClear={() => { setHotelStarRating(0); setHotelMaxPrice(5000); }}
               sortValue={hotelSortBy}
               onSortChange={(v) => setHotelSortBy(v as "price" | "rating")}
               sortOptions={[
                 { value: "price",  label: "Price" },
                 { value: "rating", label: "Rating" },
               ]}
+              rangeControls={[{
+                id: "hotelMaxPrice",
+                label: "Max Price",
+                min: 50,
+                max: 2000,
+                step: 50,
+                format: (v) => `$${v.toLocaleString()}`,
+              }]}
+              rangeValues={{ hotelMaxPrice }}
+              onRangeChange={(id, val) => {
+                if (id === "hotelMaxPrice") setHotelMaxPrice(val);
+              }}
             />
           ) : (
             <CompactFilterBar
