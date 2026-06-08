@@ -66,6 +66,7 @@ const MIGRATION_FILES = [
   "046_phase1_5_enumerate_legacy_bands.sql",
   "047_early_adopter_commission_cutoff.sql",
   "048_phase8_offering_risk_override.sql",
+  "049_phase5_upsell_engine_tables.sql",
 ];
 
 export async function runMigrations(): Promise<void> {
