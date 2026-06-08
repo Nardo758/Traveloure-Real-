@@ -78,10 +78,11 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 | B14 | ActivitiesSection rows, visited-toggle, expert-note callout, comments | `ActivitiesSection.tsx:351` | `day.activities` + `legs` (`PlanCard.tsx:774`) |
 | B15 | ↳ TransportConnector — inline per-leg mode picker + Open-in-Maps | `ActivitiesSection.tsx:120` (picker `:233`, maps `:219`) | `PATCH /api/transport-legs/:id/mode` (`:131`) |
 | B16 | ↳ Navigate FAB | `ActivitiesSection.tsx:585` | `openInMaps` |
-| B17 | TransportSection per-leg rows, summary, day Maps CTA | `TransportSection.tsx:204` | `day.transports` |
-| B18 | ↳ TransportModeSelector | `TransportSection.tsx:60` | `PATCH /api/transport-legs/:id/mode` (`:85`) |
-| B19 💰 | ↳ **BookingSourceBadge "✓ Book on Traveloure" / "via {partner}"** | `TransportSection.tsx:18–54` (rendered `:279`) | `transport.bookingSource`/`partnerName` — **display-only, see Flags** |
-| B20 | ↳ Suggested-leg Accept / Change / Decline | `TransportSection.tsx:282–301` | **only Decline wired** → `PATCH …/status {dismissed}` (`:167`) |
+| B17 | TransportSection per-leg rows, summary, day Maps CTA | `TransportSection.tsx:362` | `day.transports` |
+| B18 | ↳ TransportModeSelector | `TransportSection.tsx:57` | `PATCH /api/transport-legs/:id/mode` (`:82`) |
+| B19 💰 | ↳ BookingSourceBadge "✓ Book on Traveloure" / "via {partner}" (at-a-glance source label) | `TransportSection.tsx:18–53` (rendered `:437`) | `transport.bookingSource`/`partnerName` |
+| B19b 💰 | ↳ **"Book this leg" per-leg booking panel (Phase 3 — LANDED, commit `64432cb`)** | `TransportSection.tsx:173` (toggle `:191`, rendered `:440`) | `GET /api/transport-legs/:legId/options` (`:177`, lazy on open). Platform → green **Book** `button-book-platform-${opt.id}` (`:246`, **no handler yet — stub**); affiliate/deep_link → **View** `button-book-affiliate-${opt.id}` → `window.open(externalUrl)` (`:303`, **wired**). Partners: 12Go/Omio/DiscoverCars/Kiwi/Traveloure (`:165`) |
+| B20 | ↳ Suggested-leg Accept / Change / Decline | `TransportSection.tsx:442–461` | **only Decline wired** → `PATCH …/status {dismissed}` (`:324`) |
 | B21 | MapControlCenter (3 layers: pins / routes / expert-notes; Google/Apple; Add-to-Calendar; route summary; notes panel) | `MapControlCenter.tsx:261` | `days`, `GET /api/geocode` (`:65`), `GET /api/trips/:id/expert-notes` (`:273`); polylines styled by persisted leg mode (`:99`) |
 | B22 | Maps button (bottom bar) | `PlanCard.tsx:1039` | `openInMaps` (`:739`) |
 | B23 💰 | **AI Concierge entry "Concierge" (CON-A.P6 / D8)** | `PlanCard.tsx:1050–1062` | Link `/concierge?intent=…` (`:1051`) |
@@ -97,19 +98,19 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 4. Expert chip + advisor strip — `PlanCard.tsx:533`, `:603` (A10/A12).
 5. AI-Optimized / Re-optimize delta — summary `:558`, full banner `:874` (A11/B6).
 6. Service-bookings chip — `PlanCard.tsx:511` (A8).
-7. Per-leg "Book on Traveloure" badge — `TransportSection.tsx:279` (B19) — *display-only today.*
+7. **Per-leg "Book this leg" panel** — `TransportSection.tsx:173` (B19b): affiliate **View** deep-link wired (`:303`); platform **Book** checkout stubbed (`:246`). Source badge at `:437` (B19).
 8. Share / Export (virality) — `HeroSection.tsx:81`, `:88` (B3/B4).
 
 ## Flags — present in code but not rendered / half-wired
 
 - **Suggested-leg Accept & Change are dead stubs** — `TransportSection.tsx:284` & `:287` have **no `onClick`**; only Decline (`:291`) is wired. Spec'd AI/expert accept-reject flow is **decline-only today**.
-- **"Book this leg" is display-only** — spec'd in `attached_assets/…TRANSPORT-HUB-v2…:218,258`; on the card it exists *only* as the non-interactive `BookingSourceBadge` (`TransportSection.tsx:18–54`). No booking button/link/handler. The transport-commerce affordance is **not actionable yet**.
+- **"Book this leg" panel has LANDED (Phase 3, commit `64432cb`)** — `LegBookingPanel` (`TransportSection.tsx:173`, rendered per leg `:440`) fetches `GET /api/transport-legs/:legId/options` and renders platform + affiliate options. **Partially wired:** the affiliate **View** deep-link is live (`window.open`, `:303`); the platform green **Book** button (`button-book-platform-${opt.id}`, `:246`) has **no `onClick` yet** — checkout not connected. The static `BookingSourceBadge` (`:18–53`) remains a separate at-a-glance source label.
 - **`plancard_pretrip` / `plancard_ontrip` upsell slots — MISSING from the PlanCard entirely.** Upsell exists only on `itinerary-comparison.tsx` and `server/itinerary-optimizer.ts`. ⇒ For Phase 4 these are a **build from nothing, not a reconcile**; they are *not* part of the current no-regress set.
 - **Export button** (`HeroSection.tsx:88`) is labelled "Export" but only links to `/itinerary/:id` (no PDF/file export).
 
 ## Phase touch surface
 
-- **Phase 3 (per-leg transport / "by-leg" build):** `TransportConnector` (`ActivitiesSection.tsx:120–266`), `TransportModeSelector` (`TransportSection.tsx:60–161`), polyline restyle (`MapControlCenter.tsx:90–132`), `PATCH /api/transport-legs/:id/mode`. Also the home for wiring **Book-this-leg + Accept/Change** (currently stubs).
+- **Phase 3 (per-leg transport / "by-leg" build) — PARTIALLY LANDED on this branch (commit `64432cb`):** `TransportConnector` (`ActivitiesSection.tsx:120–266`), `TransportModeSelector` (`TransportSection.tsx:57–157`), polyline restyle (`MapControlCenter.tsx:90–132`), `PATCH /api/transport-legs/:id/mode`. The **per-leg booking panel** (`LegBookingPanel`, `:173`, `GET /api/transport-legs/:legId/options`) is in. **Remaining Phase 3 wiring:** platform **Book** checkout handler (`:246` stub) + suggested-leg **Accept/Change** handlers (`:444`, `:447` stubs).
 - **Phase 4 (mode-config consolidation + upsell slots):** mode styling already centralized (`client/src/lib/transport-modes.ts`, commit `bccbe50`); residual divergence in `docs/planning/transport-mode-taxonomy-audit.md` — three taxonomies, **do not collapse** (persisted `transport_legs.userSelectedMode` + `/api/transport-packages/generate` contract). `plancard_pretrip`/`plancard_ontrip` upsell slots are net-new on this surface.
 
 ---
@@ -120,9 +121,10 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 > summary/stats metrics still read **8 / 32 / 22 / 14h** on the California trip
 > (3 services · 22 legs · Expert assigned). Revenue affordances (💰 above — expert-polish
 > CTA, EscalationCTA, Concierge entry, Expert/service chips, AI-Optimized delta,
-> Share/Export, Book-this-leg badge) are **must-not-regress**: if a phase would remove or
+> Share/Export, Book-this-leg panel) are **must-not-regress**: if a phase would remove or
 > restructure one, it **stops and asks the build owner first**.
 
 **Phase-1/2 build history this baseline rides on:** `f3eba7a` (Phase 1 — three-layer map),
 `408747f` (Phase 2 — deep-link builder), `ba59270` (maps escape-hatch single-source),
-`1838672` (summary de-dup). Branch: `claude/plancard-piece3`.
+`1838672` (summary de-dup). Transport/booking rows verified against branch HEAD including
+`64432cb` (transport booking system / Phase 3 partial). Branch: `claude/plancard-piece3`.
