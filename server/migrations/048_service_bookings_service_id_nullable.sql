@@ -1,0 +1,18 @@
+-- Migration 048: Make service_bookings.service_id nullable
+--
+-- Transport-commerce bookings (bookingDetails.bookingType = "transport") reference
+-- a transport_booking_options row, NOT a provider_services row, so they legitimately
+-- have no service_id. The strand fix (PR #46) inserts such rows and relies on
+-- service_id being nullable.
+--
+-- That change previously lived only in shared/schema.ts plus a hand-run ALTER on the
+-- dev DB — there was no migration, so prod / any freshly-migrated DB still had
+-- service_id NOT NULL and rejected the insert with the exact violation the fix
+-- intended to remove. This migration makes the live schema match the code.
+--
+-- The serviceId -> provider_services FK is retained; provider-service bookings still
+-- populate it.
+--
+-- ALTER ... DROP NOT NULL is idempotent in Postgres (no error if already nullable),
+-- so this migration is safe to re-run.
+ALTER TABLE service_bookings ALTER COLUMN service_id DROP NOT NULL;
