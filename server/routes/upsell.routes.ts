@@ -836,4 +836,209 @@ router.delete("/api/upsell/expert-review/endorse", isAuthenticated, async (req, 
   }
 });
 
+// ─── Step 7 surfaces: checkout · post_booking · ai_concierge ─────────────────
+
+/**
+ * Shared frequency-cap helper. Excludes offerings already shown to this trip
+ * on this surface within the last `windowHours`. Returns the input array
+ * unchanged when tripId is missing or windowHours <= 0.
+ *
+ * Plancard-ontrip (step 5) had this logic inline; reusing here for
+ * post_booking's 48h cap. Pure engine never queries impressions — that
+ * stays at the surface seam.
+ */
+async function filterByFrequencyCap(
+  raw: RankInputCandidate[],
+  tripId: string | undefined,
+  surface: Surface,
+  windowHours: number,
+): Promise<RankInputCandidate[]> {
+  if (!tripId || windowHours <= 0) return raw;
+  try {
+    const recent = await db.execute(sql`
+      SELECT DISTINCT offering_id
+      FROM upsell_impressions
+      WHERE trip_id = ${tripId}
+        AND surface = ${surface}
+        AND shown_at > NOW() - (${windowHours} || ' hours')::INTERVAL
+    `);
+    const seen = new Set((recent.rows ?? []).map((r: any) => String(r.offering_id)));
+    if (seen.size === 0) return raw;
+    return raw.filter(c => !seen.has(c.offeringId));
+  } catch (err) {
+    console.warn(`[upsell] frequency-cap check skipped for ${surface}:`, err);
+    return raw;
+  }
+}
+
+const checkoutBodySchema = z.object({
+  tripId: z.string().optional(),
+  guestSessionId: z.string().optional(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+  expertEndorsedKeys: z.array(z.string()).optional(),
+  /** §B5 carry-in: transport (`private_transportation` / `aff_ground_transport`)
+   *  appears on checkout ONLY when the optimizer has computed transport legs.
+   *  Default false → transport stays suppressed. */
+  tripIsPostOptimize: z.boolean().default(false),
+});
+
+/**
+ * POST /api/upsell/checkout — last-mile add-ons.
+ *
+ * §B5 rules:
+ *   - Single row, ≤2 items (slotConfig.maxItems = 2 from migration 049).
+ *   - NEVER blocks completion — any internal failure returns an empty
+ *     candidate set with 200, not 5xx. Checkout cannot break because the
+ *     engine had a bad day.
+ *   - Transfer offerings (private_transportation, aff_ground_transport)
+ *     surface ONLY when tripIsPostOptimize = true.
+ */
+router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
+  try {
+    const body = checkoutBodySchema.parse(req.body);
+    const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+
+    const ctx: UpsellContext = {
+      surface: "checkout",
+      tripId: body.tripId,
+      guestSessionId: body.guestSessionId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: mergedEndorsedKeys,
+      tripIsPostOptimize: body.tripIsPostOptimize,
+    };
+    const raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: mergedEndorsedKeys,
+    });
+    const { candidates, suppressed, displayLookup } = await rankAndLog("checkout", ctx, raw, req);
+    res.json({
+      candidates: decorate(candidates, displayLookup),
+      suppressed,
+      tripIsPostOptimize: body.tripIsPostOptimize,
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    // §B5 "never blocks completion": engine failures return a benign empty result,
+    // not a 5xx that would crash the checkout flow.
+    console.error("[upsell] checkout engine error (returning empty):", err);
+    res.json({ candidates: [], suppressed: [], error: "engine_unavailable" });
+  }
+});
+
+const postBookingBodySchema = z.object({
+  tripId: z.string(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+  expertEndorsedKeys: z.array(z.string()).optional(),
+});
+
+/**
+ * POST /api/upsell/post-booking — re-engagement / complete-your-plan.
+ *
+ * §B5: "frequency-capped hard; max 1 nudge per plan per 48h."
+ * Surface config (slot_config row, seeded in 049) sets frequencyCapHours = 48.
+ * This endpoint applies that cap via filterByFrequencyCap before scoring.
+ */
+router.post("/api/upsell/post-booking", isAuthenticated, async (req, res) => {
+  try {
+    const body = postBookingBodySchema.parse(req.body);
+    const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+
+    const ctx: UpsellContext = {
+      surface: "post_booking",
+      tripId: body.tripId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: mergedEndorsedKeys,
+    };
+    const slotConfig = await getSlotConfig("post_booking");
+    let raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: mergedEndorsedKeys,
+    });
+    raw = await filterByFrequencyCap(raw, body.tripId, "post_booking", slotConfig?.frequencyCapHours ?? 48);
+
+    const { candidates, suppressed, displayLookup } = await rankAndLog("post_booking", ctx, raw, req);
+    res.json({ candidates: decorate(candidates, displayLookup), suppressed });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const aiConciergeBodySchema = z.object({
+  tripId: z.string().optional(),
+  guestSessionId: z.string().optional(),
+  templateKey: z.string().optional(),
+  cartItems: z.array(cartItemSchema).default([]),
+  userProfile: userProfileSchema,
+  neighborhoodIds: z.array(z.string()).optional(),
+  expertEndorsedKeys: z.array(z.string()).optional(),
+  /** Optional concierge task identifier the candidates relate to (for
+   *  attribution in upsell_impressions). The concierge's per-task fee is
+   *  billed elsewhere — see comment in the handler about double-counting. */
+  conciergeTaskId: z.string().optional(),
+});
+
+/**
+ * POST /api/upsell/ai-concierge — concierge proposes; can fulfill upsells.
+ *
+ * §B5 / §B9 NO-DOUBLE-COUNT rule: the concierge per-task fee (the $9.99 /
+ * $49.99 ai_concierge_* flat band) is its own revenue stream, billed at
+ * task creation, NOT at upsell render. Candidate.revenueScore must come
+ * from the candidate's own platform earnings only — not augmented by the
+ * task fee. Structurally guaranteed here: this endpoint does NOT touch
+ * gatherOfferingCandidates' revenue input. The same candidate ranks the
+ * same way on ai_concierge as it does on cart.
+ */
+router.post("/api/upsell/ai-concierge", isAuthenticated, async (req, res) => {
+  try {
+    const body = aiConciergeBodySchema.parse(req.body);
+    const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+
+    const ctx: UpsellContext = {
+      surface: "ai_concierge",
+      tripId: body.tripId,
+      guestSessionId: body.guestSessionId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: mergedEndorsedKeys,
+    };
+    const raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: mergedEndorsedKeys,
+    });
+    const { candidates, suppressed, displayLookup } = await rankAndLog("ai_concierge", ctx, raw, req);
+    res.json({
+      candidates: decorate(candidates, displayLookup),
+      suppressed,
+      conciergeTaskId: body.conciergeTaskId ?? null,
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

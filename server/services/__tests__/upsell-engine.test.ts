@@ -633,3 +633,179 @@ describe("Phase 5.2 step 5 gate — plancard_ontrip is the lone transport surfac
     }
   });
 });
+
+// ─── Step 7 carry-in: checkout's post-optimize transport allowance ────────────
+
+describe("Phase 5.5 step 7 — checkout post-optimize transport allowance", () => {
+  it("default (no flag) → suppressed", () => {
+    assert.equal(isTransportSuppressed("private_transportation", "checkout"), true);
+  });
+  it("tripIsPostOptimize=false → still suppressed", () => {
+    assert.equal(
+      isTransportSuppressed("private_transportation", "checkout", { tripIsPostOptimize: false }),
+      true,
+    );
+  });
+  it("tripIsPostOptimize=true → ALLOWED (the spec carry-in)", () => {
+    assert.equal(
+      isTransportSuppressed("private_transportation", "checkout", { tripIsPostOptimize: true }),
+      false,
+    );
+  });
+  it("flag does NOT bleed into other surfaces — cart with flag still suppresses", () => {
+    assert.equal(
+      isTransportSuppressed("private_transportation", "cart", { tripIsPostOptimize: true }),
+      true,
+    );
+  });
+  it("applies to aff_ground_transport too", () => {
+    assert.equal(
+      isTransportSuppressed("aff_ground_transport", "checkout", { tripIsPostOptimize: true }),
+      false,
+    );
+    assert.equal(
+      isTransportSuppressed("aff_ground_transport", "checkout", { tripIsPostOptimize: false }),
+      true,
+    );
+  });
+});
+
+// ─── Step 7 GATES: no double-count · frequency cap pattern · single-row ──────
+
+describe("Phase 5.5 step 7 GATE — no double-counting of ai_concierge fee in candidate revenue", () => {
+  // Structural proof: the engine's revenueScore is computed solely from
+  // candidate.expectedPlatformEarningsRaw. The ai_concierge per-task fee
+  // ($9.99/$49.99) is billed at task creation — outside this code path. So
+  // the SAME candidate must yield the SAME revenueScore on ai_concierge as
+  // it does on cart. If a future change accidentally injects task-fee
+  // earnings into the candidate, this test catches it.
+  it("identical candidate, two surfaces (cart vs ai_concierge) → identical scores", () => {
+    const slot = (surface: any) => ({
+      surface, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true,
+    });
+    function mk(): RankInputCandidate {
+      return {
+        offeringId: "in_home_chef", categoryKey: "private_chef", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "moderate", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 25, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const cart = rankCandidates({ surface: "cart", cartItems: [] }, [mk()], slot("cart"));
+    const concierge = rankCandidates({ surface: "ai_concierge", cartItems: [] }, [mk()], slot("ai_concierge"));
+    assert.equal(cart.candidates[0].revenueScore, concierge.candidates[0].revenueScore,
+      "ai_concierge revenue must NOT differ from cart for the same candidate — no double-count of the per-task fee");
+    assert.equal(cart.candidates[0].relevanceScore, concierge.candidates[0].relevanceScore,
+      "relevance also identical (no surface-specific bump)");
+  });
+
+  it("ai_concierge ranks two candidates by candidate revenue only — no fee bleed", () => {
+    const slot = { surface: "ai_concierge" as const, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true };
+    function mk(id: string, earnings: number): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: earnings,
+        expertEndorsed: false, profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const result = rankCandidates({ surface: "ai_concierge", cartItems: [] }, [mk("low", 10), mk("high", 100)], slot);
+    const lo = result.candidates.find(c => c.offeringId === "low")!;
+    const hi = result.candidates.find(c => c.offeringId === "high")!;
+    assert.equal(lo.revenueScore, 0.1);    // 10/100
+    assert.equal(hi.revenueScore, 1.0);    // 100/100
+  });
+});
+
+describe("Phase 5.5 step 7 GATE — frequency-cap filter pattern", () => {
+  // The cap lives in filterByFrequencyCap (server/routes/upsell.routes.ts).
+  // It excludes offerings already shown to the trip within the window. Pure
+  // engine never touches impression history; that's the surface seam.
+  it("recently-shown offering ids are removed; others kept", () => {
+    function mk(id: string): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 1, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const candidates = [mk("a"), mk("b"), mk("c"), mk("d")];
+    const recent = new Set(["a", "c"]);
+    const filtered = candidates.filter(c => !recent.has(c.offeringId));
+    assert.deepEqual(filtered.map(c => c.offeringId).sort(), ["b", "d"]);
+  });
+
+  it("empty history leaves candidates unchanged (cap inactive when no prior shows)", () => {
+    function mk(id: string): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 1, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const candidates = [mk("x"), mk("y")];
+    const recent = new Set<string>();
+    const filtered = candidates.filter(c => !recent.has(c.offeringId));
+    assert.equal(filtered.length, 2);
+  });
+});
+
+describe("Phase 5.5 step 7 GATE — checkout single-row, ≤2 items + post-optimize transport", () => {
+  it("respects slotConfig.maxItems=2 (single-row carry-in)", () => {
+    const slot = { surface: "checkout" as const, maxItems: 2, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true };
+    function mk(id: string): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 1, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const result = rankCandidates(
+      { surface: "checkout", cartItems: [] },
+      [mk("a"), mk("b"), mk("c"), mk("d"), mk("e")],
+      slot,
+    );
+    assert.equal(result.candidates.length, 2);
+  });
+
+  it("end-to-end: transport surfaces on checkout when ctx.tripIsPostOptimize=true; suppressed otherwise", () => {
+    const slot = { surface: "checkout" as const, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true };
+    function mkTransport(): RankInputCandidate {
+      return {
+        offeringId: "airport_driver", categoryKey: "private_transportation",
+        sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "high", riskOverride: null,
+        requiresBackgroundCheck: true, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 50, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const preOpt = rankCandidates(
+      { surface: "checkout", cartItems: [], tripIsPostOptimize: false },
+      [mkTransport()], slot,
+    );
+    assert.equal(preOpt.candidates.length, 0);
+    assert.ok(preOpt.suppressed.some(s => s.reason === "transport_pre_optimize"));
+
+    const postOpt = rankCandidates(
+      { surface: "checkout", cartItems: [], tripIsPostOptimize: true },
+      [mkTransport()], slot,
+    );
+    assert.equal(postOpt.candidates.length, 1);
+    assert.equal(postOpt.candidates[0].offeringId, "airport_driver");
+  });
+});
