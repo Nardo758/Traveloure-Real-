@@ -34,6 +34,8 @@ import {
   contentPlacementRules,
   type InsertContentPlacementRule,
   accessAuditLogs,
+  serviceOfferingTypes, insertServiceOfferingTypeSchema,
+  expertOfferingTypes, insertExpertOfferingTypeSchema,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -4283,6 +4285,158 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Phase 8 — Offering-types admin CRUD (service_offering_types + expert_offering_types).
+  // These are the Phase-2 catalog vocabularies the /earn page and the offering
+  // selection flows read. Read-only to the app; mutated only here by admins.
+  // Writes are audit-logged. offeringTypeKey is the immutable identity (unique);
+  // PATCH/DELETE address rows by it. serviceTier / deliveryFormats values are
+  // constrained by DB CHECKs (mapped to 400 below).
+  // ──────────────────────────────────────────────────────────────────────
+
+  /** Resolve the caller and ensure admin; on failure sends the response and returns null. */
+  const requireAdmin = async (req: any, res: any): Promise<{ userId: string; role: string } | null> => {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      res.status(403).json({ error: "Admin access required" });
+      return null;
+    }
+    return { userId, role: user.role };
+  };
+
+  const auditOfferingWrite = (admin: { userId: string; role: string }, req: any, action: string, resourceType: string, resourceId: string, metadata: any) =>
+    db.insert(accessAuditLogs).values({
+      actorId: admin.userId,
+      actorRole: admin.role,
+      action,
+      resourceType,
+      resourceId,
+      metadata,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error(`[offering-types] audit log failed (non-fatal):`, err));
+
+  /** Map a Postgres write error to a client-meaningful status. */
+  const offeringWriteError = (error: any, res: any) => {
+    if (error?.name === "ZodError") return res.status(400).json({ error: "Validation failed", details: error.errors });
+    if (error?.code === "23505") return res.status(409).json({ error: "offeringTypeKey already exists" });
+    if (error?.code === "23514") return res.status(400).json({ error: "Value violates a DB constraint (serviceTier / deliveryFormats enum)", detail: error.detail ?? null });
+    if (error?.code === "23502") return res.status(400).json({ error: "Missing required field", detail: error.detail ?? null });
+    return res.status(500).json({ error: error?.message ?? "Unknown error" });
+  };
+
+  // ── service_offering_types ────────────────────────────────────────────
+  router.get("/api/admin/service-offering-types", isAuthenticated, async (req, res) => {
+    try {
+      if (!(await requireAdmin(req, res))) return;
+      const rows = await db.select().from(serviceOfferingTypes)
+        .orderBy(asc(serviceOfferingTypes.sortOrder), asc(serviceOfferingTypes.offeringTypeKey));
+      res.json(rows);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  router.post("/api/admin/service-offering-types", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await requireAdmin(req, res); if (!admin) return;
+      const parsed = insertServiceOfferingTypeSchema.parse(req.body);
+      const [created] = await db.insert(serviceOfferingTypes).values(parsed).returning();
+      auditOfferingWrite(admin, req, "service_offering_type_create", "service_offering_type", created.offeringTypeKey, { after: created });
+      res.status(201).json(created);
+    } catch (error: any) { offeringWriteError(error, res); }
+  });
+
+  router.patch("/api/admin/service-offering-types/:key", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await requireAdmin(req, res); if (!admin) return;
+      const key = String(req.params.key || "").trim();
+      const b = req.body ?? {};
+      // offeringTypeKey is immutable identity; everything else is editable.
+      const updates: Record<string, unknown> = {};
+      if (b.categoryKey !== undefined) updates.categoryKey = b.categoryKey;
+      if (b.displayName !== undefined) updates.displayName = b.displayName;
+      if (b.tagline !== undefined) updates.tagline = b.tagline;
+      if (b.isSurprising !== undefined) updates.isSurprising = b.isSurprising;
+      if (b.marketScoped !== undefined) updates.marketScoped = b.marketScoped;
+      if (b.isActive !== undefined) updates.isActive = b.isActive;
+      if (b.sortOrder !== undefined) updates.sortOrder = b.sortOrder;
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No editable fields supplied" });
+      updates.updatedAt = new Date();
+      const [updated] = await db.update(serviceOfferingTypes).set(updates)
+        .where(eq(serviceOfferingTypes.offeringTypeKey, key)).returning();
+      if (!updated) return res.status(404).json({ error: "Offering type not found", key });
+      auditOfferingWrite(admin, req, "service_offering_type_update", "service_offering_type", key, { after: updated });
+      res.json(updated);
+    } catch (error: any) { offeringWriteError(error, res); }
+  });
+
+  router.delete("/api/admin/service-offering-types/:key", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await requireAdmin(req, res); if (!admin) return;
+      const key = String(req.params.key || "").trim();
+      const [deleted] = await db.delete(serviceOfferingTypes)
+        .where(eq(serviceOfferingTypes.offeringTypeKey, key)).returning();
+      if (!deleted) return res.status(404).json({ error: "Offering type not found", key });
+      auditOfferingWrite(admin, req, "service_offering_type_delete", "service_offering_type", key, { before: deleted });
+      res.json({ ok: true, key });
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  // ── expert_offering_types ─────────────────────────────────────────────
+  router.get("/api/admin/expert-offering-types", isAuthenticated, async (req, res) => {
+    try {
+      if (!(await requireAdmin(req, res))) return;
+      const rows = await db.select().from(expertOfferingTypes)
+        .orderBy(asc(expertOfferingTypes.sortOrder), asc(expertOfferingTypes.offeringTypeKey));
+      res.json(rows);
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
+  });
+
+  router.post("/api/admin/expert-offering-types", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await requireAdmin(req, res); if (!admin) return;
+      const parsed = insertExpertOfferingTypeSchema.parse(req.body);
+      const [created] = await db.insert(expertOfferingTypes).values(parsed).returning();
+      auditOfferingWrite(admin, req, "expert_offering_type_create", "expert_offering_type", created.offeringTypeKey, { after: created });
+      res.status(201).json(created);
+    } catch (error: any) { offeringWriteError(error, res); }
+  });
+
+  router.patch("/api/admin/expert-offering-types/:key", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await requireAdmin(req, res); if (!admin) return;
+      const key = String(req.params.key || "").trim();
+      const b = req.body ?? {};
+      const updates: Record<string, unknown> = {};
+      if (b.serviceTier !== undefined) updates.serviceTier = b.serviceTier;
+      if (b.displayName !== undefined) updates.displayName = b.displayName;
+      if (b.tagline !== undefined) updates.tagline = b.tagline;
+      if (b.deliveryFormats !== undefined) updates.deliveryFormats = b.deliveryFormats;
+      if (b.isSurprising !== undefined) updates.isSurprising = b.isSurprising;
+      if (b.isActive !== undefined) updates.isActive = b.isActive;
+      if (b.sortOrder !== undefined) updates.sortOrder = b.sortOrder;
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No editable fields supplied" });
+      updates.updatedAt = new Date();
+      const [updated] = await db.update(expertOfferingTypes).set(updates)
+        .where(eq(expertOfferingTypes.offeringTypeKey, key)).returning();
+      if (!updated) return res.status(404).json({ error: "Offering type not found", key });
+      auditOfferingWrite(admin, req, "expert_offering_type_update", "expert_offering_type", key, { after: updated });
+      res.json(updated);
+    } catch (error: any) { offeringWriteError(error, res); }
+  });
+
+  router.delete("/api/admin/expert-offering-types/:key", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await requireAdmin(req, res); if (!admin) return;
+      const key = String(req.params.key || "").trim();
+      const [deleted] = await db.delete(expertOfferingTypes)
+        .where(eq(expertOfferingTypes.offeringTypeKey, key)).returning();
+      if (!deleted) return res.status(404).json({ error: "Offering type not found", key });
+      auditOfferingWrite(admin, req, "expert_offering_type_delete", "expert_offering_type", key, { before: deleted });
+      res.json({ ok: true, key });
+    } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
 
   // GET /api/admin/platform-settings — list all key/value settings
