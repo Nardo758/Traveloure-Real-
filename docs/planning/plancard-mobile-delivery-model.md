@@ -82,6 +82,13 @@ The on-trip, time-critical rows are the ones that **require SMS** — they're ex
 - **Web push** needs an explicit permission prompt — don't fire it on first load; ask at a moment of demonstrated intent (e.g., after the user opts into trip alerts), or the deny-rate spikes and you lose the channel.
 - **SMS** requires **explicit opt-in/consent** before sending (US TCPA and equivalents). This needs a real consent flow and record-keeping; it is not a toggle you can default on. Treat it as a launch requirement for the SMS tier, not a follow-up. *(Not legal advice — confirm specifics with counsel; the Operating Agreement / privacy policy already in project knowledge should be extended to cover SMS consent.)*
 
+**Consent capture points (all gated on the consent backend — see below).** SMS opt-in is captured at three coordinated points, sequenced so they don't double-nag:
+1. **Signup (optional)** — an unchecked opt-in at registration; low-intent, easy to skip.
+2. **Trip creation** — the **primary ask**, at the moment trip alerts have obvious value.
+3. **Trip-card SMS opt-in prompt (NEW)** — shown on the **pre-trip PlanCard (summary)**, **once**, **only to users who haven't opted in**, **dismissible**. It's the quiet, persistent re-offer for anyone who skipped the trip-creation ask. Carries the **full disclosure** (alerts **and** offers, message frequency, msg/data rates, STOP/HELP, Terms/Privacy links) **+ a consent checkbox** — **not a bare toggle**. Coordinated with the trip-creation ask: one primary ask; the card is the soft re-offer, not a second aggressive prompt.
+
+**GATED on the consent backend** — 10DLC brand/campaign registration **+** a consent-record store **+** an SMS provider. A live opt-in shipped **before** that backend would collect consent it **cannot store or honor** — a **compliance gap, not just a dead control**. All three capture points stay docs-only until the backend exists (decision §7.2: consent-flow owner + lane).
+
 ---
 
 ## 5. Verify-first (before building anything)
