@@ -159,6 +159,32 @@ export function buildRatesFromBand(bandRate: number, insurance = noInsurance): C
   };
 }
 
+/** /api/booking-fee-config response shape (consumed by the itinerary Booking Summary). */
+export interface BookingFeeConfigResponse {
+  platform_fee_percent: number;
+  expert_share_percent: number;
+  ai_keeps_100: boolean;
+  min_fee: number | null;
+  max_fee: number | null;
+}
+
+/**
+ * Map resolved CommissionRates → the /api/booking-fee-config response shape.
+ * This is the SINGLE place the display-facing fee config is derived from the
+ * canonical resolver, so the itinerary fee DISPLAY and the checkout CHARGE
+ * cannot diverge in source or conversion. Pure function.
+ */
+export function feeConfigFromRates(rates: CommissionRates): BookingFeeConfigResponse {
+  const pct = (n: number) => Math.round(n * 100 * 100) / 100; // fraction → percent, 2dp
+  return {
+    platform_fee_percent: pct(rates.platformFeeRate),
+    expert_share_percent: pct(rates.expertShareRate),
+    ai_keeps_100: true,
+    min_fee: null,
+    max_fee: null,
+  };
+}
+
 // ─── DB lookup helpers (I/O — wrapped in try/catch for resilience) ───────────
 
 async function getBandRate(bandKey: string): Promise<number | null> {
