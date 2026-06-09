@@ -11,6 +11,8 @@ Primary data source for both: `useQuery(['/api/trips/${id}/plancard'])` → `Pla
 (`PlanCard.tsx:745`; shape in `plancard-types.tsx:192`). Role resolves from
 `plancardData.tripRole ?? role` (`PlanCard.tsx:832`).
 
+> **Pairs with:** [`plancard-mobile-delivery-model.md`](./plancard-mobile-delivery-model.md) — *how* the PlanCard reaches the phone (PWA / web-push / SMS). The on-trip affordances below (esp. the `plancard_ontrip` upsell, **B26**) render in-app but depend on that delivery channel, which is **not yet built**.
+
 **Legend:** 💰 = revenue-bearing / conversion affordance (must-not-regress; a phase that
 would remove or restructure one **stops and asks first**).
 
@@ -88,7 +90,7 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 | B23 💰 | **AI Concierge entry "Concierge" (CON-A.P6 / D8)** | `PlanCard.tsx` (bottom bar) | Link `/concierge?intent=…` |
 | B24 | View Itinerary | `PlanCard.tsx` (bottom bar) | Link `/itinerary/:id` |
 | B25 💰 | **Upsell slot — pre-trip** ("Complete your plan") | `PlanCardUpsellSlot.tsx` (mount `PlanCard.tsx:972`) | `POST /api/upsell/plancard-pretrip`; Explore → `/discover?categoryKey=…` + `POST /api/upsell/click` |
-| B26 💰 | **Upsell slot — on-trip** ("Near you on this trip") | `PlanCardUpsellSlot.tsx` (mount `PlanCard.tsx:1017`) | `POST /api/upsell/plancard-ontrip`; same Explore + click attribution |
+| B26 💰 | **Upsell slot — on-trip** ("Near you on this trip") | `PlanCardUpsellSlot.tsx` (mount `PlanCard.tsx:1017`) | `POST /api/upsell/plancard-ontrip`; same Explore + click attribution. **Renders when the app is open; on-trip delivery gated on an unbuilt push channel — see [`plancard-mobile-delivery-model.md`](./plancard-mobile-delivery-model.md).** Still must-not-regress (the slot itself). |
 
 ---
 
