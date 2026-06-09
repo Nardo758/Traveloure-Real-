@@ -448,10 +448,11 @@ const plancardBodySchema = z.object({
   userProfile: userProfileSchema,
   neighborhoodIds: z.array(z.string()).optional(),
   expertEndorsedKeys: z.array(z.string()).optional(),
-  /** Per §B5: PlanCard pretrip uses the optimizer's empty-slot output as
-   *  candidate slots. The optimizer flags categoryKeys it identified as gaps
-   *  (REQ/REC categories the trip lacks). The engine ranks only those.
-   *  When omitted, the surface falls back to general template gap-filling. */
+  /** Phase 5.6 (Commit B): ADVISORY ONLY. The server derives the gap set
+   *  itself from (template REQ/REC categories) − (trip's actual cart categories),
+   *  ignoring this field. Kept in the schema so existing callers don't 400;
+   *  the response includes `clientAdvisoryIgnored` and `serverDerivedGapCategories`
+   *  so callers can see what actually drove surfacing. */
   emptySlotCategoryKeys: z.array(z.string()).optional(),
 });
 
@@ -537,14 +538,19 @@ router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
 /**
  * POST /api/upsell/plancard-pretrip — gap-fill against the optimizer's empty slots.
  *
- * Per §B5: "uses optimizer's empty-slot output as candidate slots." The
- * client passes emptySlotCategoryKeys (the optimizer's flagged gaps). The
- * engine restricts gathering to those categories, then ranks normally.
+ * Per §B5: "uses optimizer's empty-slot output as candidate slots." Phase
+ * 5.6 (Commit B) closes the audit gap: the gap set is now SERVER-DERIVED
+ * from the trip's actual cart × the template's REQ/REC categories. The
+ * client may still pass emptySlotCategoryKeys for transparency, but it's
+ * ADVISORY ONLY — the server ignores it and reports back what it actually used.
  * Transport remains suppressed (this is pre-trip).
  */
 router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) => {
   try {
     const body = plancardBodySchema.parse(req.body);
+    const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
+    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+
     const ctx: UpsellContext = {
       surface: "plancard_pretrip",
       tripId: body.tripId,
@@ -552,27 +558,67 @@ router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) =>
       cartItems: body.cartItems as CartItemRef[],
       userProfile: body.userProfile as UserProfile | undefined,
       neighborhoodIds: body.neighborhoodIds,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     };
     let raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodId: body.neighborhoodIds?.[0] ?? null,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: mergedEndorsedKeys,
     });
 
-    // Optimizer-driven gap-fill: when emptySlotCategoryKeys is provided,
-    // restrict candidates to those categories. Otherwise general gap-fill.
-    if (body.emptySlotCategoryKeys && body.emptySlotCategoryKeys.length > 0) {
-      const slotSet = new Set(body.emptySlotCategoryKeys);
+    // ── Server-derive the empty-slot category set ───────────────────────────
+    // Phase 5.6 (Commit B): replace client-trusted emptySlotCategoryKeys with
+    // a server computation. Gap = (template REQ/REC categories) − (categories
+    // already in the trip's cart). The optimizer's "this trip needs more of X"
+    // signal is reconstructed server-side from authoritative DB state.
+    const effectiveTemplate = resolveTemplateKey(body.templateKey);
+    let serverDerivedSlots: string[] = [];
+    let cartCategoryKeys: string[] = [];
+    try {
+      const matrix = await db.execute(sql`
+        SELECT category_key, strength
+        FROM template_category_matrix
+        WHERE template_key = ${effectiveTemplate}
+      `);
+      const matrixRows = (matrix.rows ?? []).map((r: any) => ({
+        categoryKey: String(r.category_key),
+        strength: String(r.strength),
+      }));
+      const cart = await db.execute(sql`
+        SELECT DISTINCT sc.category_key
+        FROM cart_items ci
+        JOIN provider_services ps ON ps.id = ci.service_id
+        JOIN service_categories sc ON sc.id = ps.category_id
+        WHERE ci.trip_id = ${body.tripId}
+          AND sc.category_key IS NOT NULL
+      `);
+      cartCategoryKeys = (cart.rows ?? [])
+        .map((r: any) => String(r.category_key))
+        .filter(k => k && k !== "null");
+      serverDerivedSlots = computeEmptySlots(matrixRows, cartCategoryKeys);
+    } catch (err) {
+      console.warn("[upsell] plancard-pretrip server-derive failed (falling back to no filter):", err);
+    }
+
+    // Apply the server-derived filter. The client param is NEVER used to steer.
+    if (serverDerivedSlots.length > 0) {
+      const slotSet = new Set(serverDerivedSlots);
       raw = raw.filter(c => slotSet.has(c.categoryKey));
     }
 
     const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_pretrip", ctx, raw, req);
+
+    // Transparency: tell the client what was actually used + whether the
+    // advisory param (if any) was ignored.
+    const clientAdvisoryIgnored = !!(body.emptySlotCategoryKeys && body.emptySlotCategoryKeys.length > 0);
     res.json({
       candidates: decorate(candidates, displayLookup),
       suppressed,
-      gapDriven: !!(body.emptySlotCategoryKeys && body.emptySlotCategoryKeys.length > 0),
+      gapDriven: serverDerivedSlots.length > 0,
+      serverDerivedGapCategories: serverDerivedSlots,
+      cartCategoryKeys,
+      clientAdvisoryIgnored,
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -747,6 +793,33 @@ export function expertIsLead(
   return leadAssignments.some(
     la => la.expertId === expertId && la.neighborhoodId === neighborhoodId && la.isLead,
   );
+}
+
+/**
+ * Phase 5.6 (Commit B) — pure helper that derives the empty-slot category
+ * set on the server side. Inputs from queries are JS-typed; the helper is
+ * the documented contract.
+ *
+ * Inputs:
+ *   matrixRows         — template_category_matrix rows for the chosen templateKey
+ *   cartCategoryKeys   — distinct category_keys present in the trip's cart
+ *
+ * Returns: REQ/REC categoryKeys from the template that are NOT in the cart.
+ *          OPT categories are excluded — gap-fill targets the optimizer's
+ *          "this trip needs more of X" slots, not the long tail.
+ */
+export function computeEmptySlots(
+  matrixRows: Array<{ categoryKey: string; strength: string }>,
+  cartCategoryKeys: string[],
+): string[] {
+  const cart = new Set(cartCategoryKeys);
+  const out = new Set<string>();
+  for (const row of matrixRows) {
+    if (row.strength !== "REQ" && row.strength !== "REC") continue;
+    if (cart.has(row.categoryKey)) continue;
+    out.add(row.categoryKey);
+  }
+  return Array.from(out);
 }
 
 const expertReviewBodySchema = z.object({
