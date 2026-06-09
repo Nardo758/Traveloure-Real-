@@ -96,6 +96,9 @@ jobs:
           # Stripe key stub — stripe.service.ts throws at import if this is unset.
           # No real Stripe API calls are made during selection-controls tests.
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          # Amadeus stub — prevents ArgumentError: Missing required argument: clientId at module load
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           # Build identity — exposed via GET /api/version so tests can assert
           # they are talking to this PR's artifact, not a stale deployment.
           GIT_COMMIT: ${{ github.sha }}
