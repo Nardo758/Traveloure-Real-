@@ -27,7 +27,7 @@ SELECT 'expert_standard', 'percent',
   true
 WHERE NOT EXISTS (SELECT 1 FROM fee_bands WHERE band_key = 'expert_standard');
 
-INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description, is_active)
+INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description)
 VALUES
   ('expert_new',      'percent', 0.15, 0.15, 0.25, 'Expert (new / beta)',           'New/beta cohort: platform take 0.15, expert keeps 0.85. Admin-toggled via per-expert isBeta flag.'),
   -- Provider bands (all default_rate values = platform take)
@@ -47,7 +47,7 @@ SET default_rate = COALESCE(
 WHERE band_key = 'beta_flat';
 
 -- ─── Affiliate per-partner bands (platform take of affiliate margin) ──────────
-INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description, is_active)
+INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description)
 VALUES
   ('affiliate:viator',       'percent', 0.08, 0.04, 0.12, 'Affiliate: Viator',       'Platform takes 0.08 of affiliate margin; partner keeps 0.92. ⚠confirm per contract.'),
   ('affiliate:getyourguide', 'percent', 0.08, 0.04, 0.12, 'Affiliate: GetYourGuide', 'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
