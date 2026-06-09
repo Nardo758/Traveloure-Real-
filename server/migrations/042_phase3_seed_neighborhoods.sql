@@ -1,3 +1,6 @@
+-- Ensure id has a default so INSERTs below don't need explicit UUIDs.
+ALTER TABLE city_neighborhoods ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+
 -- Master Integration Brief — Phase 3.2: seed neighborhoods per SEED_DATA §6.
 --
 -- 32 starter rows across 8 launch markets. ON CONFLICT (city, country, slug)
