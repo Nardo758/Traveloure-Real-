@@ -88,6 +88,13 @@ jobs:
           PGDATABASE: traveloure
           # Stripe key stub — prevents module-load throw; no real API calls in schema push
           STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+      - name: Verify migration ledger is idempotent (#28)
+        # Runs the migration runner twice against the fresh CI Postgres: run 1
+        # applies + records every file in schema_migrations; run 2 must apply
+        # nothing. Fails the gate if the ledger isn't idempotent or doesn't record.
+        run: npx tsx scripts/verify-migration-ledger.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Start dev server (PR artifact — localhost only)
         run: npx tsx server/index.ts &
         env:

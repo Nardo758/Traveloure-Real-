@@ -122,11 +122,12 @@ async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
   logger.info("Database seeding started");
 
-  // Apply SQL schema migrations first (idempotent, safe to re-run).
-  // Non-fatal: a failing seed-data migration (e.g. INSERT column mismatch) must not
-  // permanently block seedingComplete — the server is already listening and the
-  // selection-controls / e2e tests don't depend on every seed row being present.
-  // Schema migrations that add columns/tables still run before this point via drizzle-kit push.
+  // Apply SQL schema migrations first. The runner tracks applied files in
+  // `schema_migrations` (ledger), so re-runs are fast (already-recorded files
+  // are skipped). Wrapped in try/catch so a FATAL in a single migration file
+  // does not permanently prevent seedingComplete from flipping — the server is
+  // already listening and the selection-controls / e2e tests don't depend on
+  // every seed row being present.
   try {
     await runMigrations();
   } catch (err) {
