@@ -3,8 +3,9 @@
 // the separate Sort row + the inert TemplateFiltersPanel facet wall) with ONE
 // bar per tab: the tab's seeded selection controls + Sort, no section headers.
 //
-// Reusable by design so flights/hotels (still on their own Block A Collapsible)
-// can adopt it later as a separate, tested change.
+// Extended in #35 to support:
+//   rangeControls     — price slider / numeric range (one value per control)
+//   singleSelectControls — single-choice chips (stops, star rating)
 //
 // Selection controls stay as toggle chips (they are multi-select — e.g. the
 // vendor-focus union — which a single dropdown can't express); Sort is a true
@@ -14,11 +15,28 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import type { SelectionControl } from "@shared/selection-controls";
 
 export interface SortOption {
   value: string;
   label: string;
+}
+
+export interface RangeControl {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  /** Formats the current value for display — e.g. (v) => `$${v.toLocaleString()}` */
+  format?: (value: number) => string;
+}
+
+export interface SingleSelectControl {
+  id: string;
+  label: string;
+  options: { value: string; label: string }[];
 }
 
 const DEFAULT_SORT_OPTIONS: SortOption[] = [
@@ -38,6 +56,16 @@ interface CompactFilterBarProps {
   sortValue: string;
   onSortChange: (value: string) => void;
   sortOptions?: SortOption[];
+  /** Optional numeric range sliders (e.g. max price). */
+  rangeControls?: RangeControl[];
+  /** rangeControlId -> current value */
+  rangeValues?: Record<string, number>;
+  onRangeChange?: (controlId: string, value: number) => void;
+  /** Optional single-select chip groups (e.g. stops, star rating). */
+  singleSelectControls?: SingleSelectControl[];
+  /** singleSelectControlId -> selected value */
+  singleSelectValues?: Record<string, string>;
+  onSingleSelectChange?: (controlId: string, value: string) => void;
 }
 
 export function CompactFilterBar({
@@ -48,13 +76,29 @@ export function CompactFilterBar({
   sortValue,
   onSortChange,
   sortOptions = DEFAULT_SORT_OPTIONS,
+  rangeControls = [],
+  rangeValues = {},
+  onRangeChange,
+  singleSelectControls = [],
+  singleSelectValues = {},
+  onSingleSelectChange,
 }: CompactFilterBarProps) {
   const hasSelection = Object.values(selected).some((v) => v.length > 0);
+
+  const hasSingleSelectSelection = singleSelectControls.some((ctrl) => {
+    const val = singleSelectValues[ctrl.id];
+    const defaultOpt = ctrl.options[0]?.value;
+    return val !== undefined && val !== defaultOpt;
+  });
+
+  const showClear = hasSelection || hasSingleSelectSelection;
 
   return (
     <Card className="mb-6" data-testid="filter-bar">
       <CardContent className="p-3">
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+
+          {/* Multi-select toggle chip groups (selection controls) */}
           {controls.map((control) => (
             <div key={control.id} className="min-w-[140px]">
               <Label className="text-xs font-medium text-muted-foreground">{control.label}</Label>
@@ -78,7 +122,56 @@ export function CompactFilterBar({
             </div>
           ))}
 
-          {/* Sort — always present (the only working sort dimension for these tabs). */}
+          {/* Single-select chip groups (e.g. stops, star rating) */}
+          {singleSelectControls.map((ctrl) => {
+            const current = singleSelectValues[ctrl.id] ?? ctrl.options[0]?.value ?? "";
+            return (
+              <div key={ctrl.id} className="min-w-[140px]">
+                <Label className="text-xs font-medium text-muted-foreground">{ctrl.label}</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {ctrl.options.map((opt) => {
+                    const active = current === opt.value;
+                    return (
+                      <Button
+                        key={opt.value}
+                        variant={active ? "default" : "outline"}
+                        size="sm"
+                        className={`h-8 ${active ? "bg-[#FF385C] hover:bg-[#FF385C]" : ""}`}
+                        onClick={() => onSingleSelectChange?.(ctrl.id, opt.value)}
+                        data-testid={`filter-${ctrl.id}-${opt.value}`}
+                      >
+                        {opt.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Range slider controls (e.g. max price) */}
+          {rangeControls.map((ctrl) => {
+            const val = rangeValues[ctrl.id] ?? ctrl.max;
+            const displayVal = ctrl.format ? ctrl.format(val) : String(val);
+            return (
+              <div key={ctrl.id} className="min-w-[180px]">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  {ctrl.label}: <span className="text-foreground font-semibold">{displayVal}</span>
+                </Label>
+                <Slider
+                  value={[val]}
+                  onValueChange={([v]) => onRangeChange?.(ctrl.id, v)}
+                  min={ctrl.min}
+                  max={ctrl.max}
+                  step={ctrl.step}
+                  className="mt-2 w-[180px]"
+                  data-testid={`slider-${ctrl.id}`}
+                />
+              </div>
+            );
+          })}
+
+          {/* Sort — always present */}
           <div className="min-w-[160px]">
             <Label className="text-xs font-medium text-muted-foreground">Sort By</Label>
             <Select value={sortValue} onValueChange={onSortChange}>
@@ -93,7 +186,7 @@ export function CompactFilterBar({
             </Select>
           </div>
 
-          {hasSelection && (
+          {showClear && (
             <Button
               variant="ghost"
               size="sm"
