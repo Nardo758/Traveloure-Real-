@@ -96,7 +96,9 @@ jobs:
           # Stripe key stub — stripe.service.ts throws at import if this is unset.
           # No real Stripe API calls are made during selection-controls tests.
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          # Amadeus stub — prevents ArgumentError: Missing required argument: clientId at module load
+          # Amadeus stub — new Amadeus({clientId}) runs at module load time and throws
+          # ArgumentError if clientId is undefined. Providing a stub prevents the
+          # server crash on import; no real Amadeus API calls are made in CI.
           AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
           AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           # Build identity — exposed via GET /api/version so tests can assert
