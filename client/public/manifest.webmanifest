@@ -1,0 +1,14 @@
+{
+  "name": "Traveloure",
+  "short_name": "Traveloure",
+  "description": "Your itinerary control center — plan, optimize, and travel.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F9FAFB",
+  "theme_color": "#FF3859",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "any", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -81,6 +81,7 @@ const MIGRATION_FILES = [
   "048_phase8_offering_risk_override.sql",
   "049_phase5_upsell_engine_tables.sql",
   "050_service_bookings_service_id_nullable.sql",
+  "051_push_subscriptions.sql",
 ];
 
 export async function runMigrations(): Promise<void> {

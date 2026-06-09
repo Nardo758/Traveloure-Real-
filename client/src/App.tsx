@@ -2,6 +2,7 @@ import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { PwaController } from "@/components/PwaController";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { DashboardLayout } from "@/components/dashboard-layout";
@@ -804,6 +805,7 @@ function App() {
             <ActiveConsoleProvider>
               <TooltipProvider>
                 <Toaster />
+                <PwaController />
                 <GuestCartMigrator />
                 <Router />
               </TooltipProvider>

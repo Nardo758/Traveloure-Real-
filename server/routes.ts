@@ -91,6 +91,7 @@ import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
+import pushRoutes from "./routes/push.routes";
 import tripsRoutes from "./routes/trips.routes";
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
@@ -413,6 +414,8 @@ export async function registerRoutes(
   // Calls into server/services/upsell-engine.service.ts which enforces the
   // relevance-dominance contract (revenue can never override fit across bands).
   app.use(upsellRoutes);
+  // Web Push subscription plumbing (Phase 3 — subscribe/store only, no send layer).
+  app.use(pushRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
