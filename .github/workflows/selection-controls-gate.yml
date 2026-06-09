@@ -3,17 +3,15 @@ name: Selection Controls Gate
 # Automates the gates for the #462 selection-controls reconcile so they can be
 # enforced as required status checks (the manual Replit checklist that PR #21
 # jumped). Status contexts:
-#   * lockfile-purity        — fails if package-lock.json re-acquires a
-#     replit.local URL (root-cause guard against the firewall-URL pollution
-#     that broke npm ci). Fast; no deps.
-#   * verify-selection-controls — pure, deterministic logic gate (no app/DB).
+#   * lockfile-purity            — fails if package-lock.json re-acquires a
+#     replit.local URL. Fast; no deps.
+#   * verify-selection-controls  — pure, deterministic logic gate (no app/DB).
 #     Safe to mark REQUIRED immediately.
-#   * e2e-selection-controls — DOM gate (render/narrow/parity/tab-isolation),
-#     the automated form of the manual Replit check. Runs against the deployed
-#     app. workflow_dispatch lets it be re-run on demand after a Replit publish
-#     (a deploy is not a GitHub event, so the gate won't auto-run on publish).
-#   * report                 — posts a pass/fail completion comment on the PR
-#     (if: always) so a green run wakes the watcher with no manual ping.
+#   * e2e-selection-controls     — DOM gate (render/narrow/parity/tab-isolation).
+#     Builds and serves the PR artifact locally; runs Playwright against
+#     localhost:5000 — never against the shared deployed app. A build-identity
+#     step confirms the tested binary matches the PR commit before any assertion.
+#   * report                     — posts a pass/fail completion comment on the PR.
 
 on:
   pull_request:
@@ -35,7 +33,7 @@ jobs:
       - name: Fail if package-lock.json points at the Replit firewall
         run: |
           if grep -n "replit\.local" package-lock.json; then
-            echo "::error::package-lock.json contains a replit.local registry URL — re-pollution from the Replit env breaks npm ci on GitHub runners. Fix: sed -i 's#http://package-firewall.replit.local/npm/#https://registry.npmjs.org/#g' package-lock.json"
+            echo "::error::package-lock.json contains a replit.local registry URL — re-pollution from the Replit env breaks npm ci on GitHub runners. Fix: sed -i 's#http://package-firewall.replit.local#https://registry.npmjs.org#g' package-lock.json and recommit."
             exit 1
           fi
           echo "lockfile clean (no replit.local) ✅"
@@ -84,23 +82,58 @@ jobs:
         run: npx drizzle-kit push --force
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-      - name: Start dev server
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          # Stripe key stub — prevents module-load throw; no real API calls in schema push
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+      - name: Start dev server (PR artifact — localhost only)
         run: npx tsx server/index.ts &
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
+          # Stripe key stub — stripe.service.ts throws at import if this is unset.
+          # No real Stripe API calls are made during selection-controls tests.
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          # Amadeus stub — prevents ArgumentError: Missing required argument: clientId at module load
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          # Build identity — exposed via GET /api/version so tests can assert
+          # they are talking to this PR's artifact, not a stale deployment.
+          GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
       - name: Wait for server and seeding
         run: |
           for i in $(seq 1 60); do
             result=$(curl -s http://localhost:5000/api/ready || true)
             if echo "$result" | grep -q '"ready":true'; then
-              echo "Server ready and seeding complete"; exit 0
+              echo "Server ready and seeding complete ✅"; exit 0
             fi
-            echo "attempt $i/60: waiting for server/seeding... ($result)"; sleep 5
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
           done
-          echo "Server not ready in time"; exit 1
+          echo "::error::Server did not become ready within 5 minutes"
+          echo "--- server process check ---"
+          pgrep -a tsx || true
+          echo "--- last server logs ---"
+          journalctl -u traveloure 2>/dev/null || true
+          exit 1
+      - name: Verify build identity (artifact == PR commit)
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA. Tests would run against wrong artifact."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA ✅"
       - name: Selection-controls DOM test
         run: npx playwright test selection-controls --project=chromium
         env:
@@ -136,8 +169,9 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Posted automatically so the watching session is notified on pass *and* fail (GitHub does not emit success webhooks).',
-              allGreen ? '' : '> A red `e2e-selection-controls` may be a stale BASE_URL deploy, DOM plumbing, or a real behavior bug — the watcher triages, and never softens an assertion to go green.',
+              '> Tests run against a locally-built artifact (localhost:5000), not the shared deployed app.',
+              '> Build identity is verified before any assertion — a mismatch fails fast.',
+              allGreen ? '' : '> A red `e2e-selection-controls` is a real behavior bug or server-startup failure — not a stale deployment.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
