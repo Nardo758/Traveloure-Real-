@@ -1,6 +1,7 @@
 import {
   buildGoogleMapsDeepLink,
   buildAppleMapsDeepLink,
+  exceedsAppleRouteLimit,
   type Place,
   type TransportMode,
 } from "@/lib/maps";
@@ -37,10 +38,17 @@ export function buildDayMapsUrls(places: Place[], mode?: TransportMode): {
   appleUrl: string;
   appleWebUrl: string;
 } {
+  const googleUrl = buildGoogleMapsDeepLink(places, mode);
+  // Google escape hatch (see exceedsAppleRouteLimit): a multi-stop day's Apple
+  // links fall through to the Google route rather than dropping middle stops.
+  if (exceedsAppleRouteLimit(places.length)) {
+    return { googleUrl, appleUrl: googleUrl, appleWebUrl: googleUrl };
+  }
+  const appleWebUrl = buildAppleMapsDeepLink(places, mode);
   return {
-    googleUrl: buildGoogleMapsDeepLink(places, mode),
-    appleUrl: buildAppleMapsDeepLink(places, mode).replace("https://maps.apple.com", "maps://"),
-    appleWebUrl: buildAppleMapsDeepLink(places, mode),
+    googleUrl,
+    appleUrl: appleWebUrl.replace("https://maps.apple.com", "maps://"),
+    appleWebUrl,
   };
 }
 
