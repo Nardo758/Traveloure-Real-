@@ -83,20 +83,62 @@ const MIGRATION_FILES = [
   "050_service_bookings_service_id_nullable.sql",
 ];
 
-export async function runMigrations(): Promise<void> {
+/**
+ * Applies each file in MIGRATION_FILES exactly once per database, tracked in a
+ * `schema_migrations` ledger (migration_name PK + applied_at). On every startup:
+ *   - ensure the ledger table exists,
+ *   - for each file NOT yet recorded: run it, then record it,
+ *   - skip files already recorded.
+ *
+ * The IF NOT EXISTS / ON CONFLICT guards in the SQL files are retained as a
+ * TRANSITION SAFETY NET: on a pre-ledger database the first run re-applies every
+ * file harmlessly (each is idempotent — verified) and records it; from then on
+ * recorded files are skipped. This needs zero knowledge of the DB's prior state.
+ *
+ * Returns a summary so callers / CI can assert idempotency (a second run must
+ * apply nothing). Still fail-fast: a real SQL error aborts startup.
+ */
+export async function runMigrations(): Promise<{ applied: string[]; skipped: string[] }> {
+  // The ledger itself, created idempotently before anything else.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      migration_name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  const recorded = await db.execute(sql`SELECT migration_name FROM schema_migrations`);
+  const already = new Set<string>((recorded.rows ?? []).map((r: any) => r.migration_name));
+
+  const applied: string[] = [];
+  const skipped: string[] = [];
+
   for (const file of MIGRATION_FILES) {
+    if (already.has(file)) {
+      skipped.push(file);
+      continue;
+    }
     const filePath = join(__dirname_local, file);
     const content = readFileSync(filePath, "utf-8");
     try {
       await db.execute(sql.raw(content));
-      console.log(`[Migrations] Applied: ${file}`);
+      // Record only after the file applied cleanly. If the process dies between
+      // apply and record, the next run re-applies (idempotent) — never skips a
+      // half-applied file.
+      await db.execute(sql`
+        INSERT INTO schema_migrations (migration_name) VALUES (${file})
+        ON CONFLICT (migration_name) DO NOTHING
+      `);
+      applied.push(file);
+      console.log(`[Migrations] Applied + recorded: ${file}`);
     } catch (err: any) {
-      // IF NOT EXISTS / IF EXISTS guards in our SQL files mean the only expected
-      // "error" for already-applied migrations is a silent no-op, not an exception.
-      // Any real error here (missing column, syntax error, DB unreachable) must be
+      // A real error here (missing column, syntax error, DB unreachable) must be
       // surfaced immediately — do not swallow it.
       console.error(`[Migrations] FATAL: ${file} failed:`, err?.message ?? err);
       throw err; // Fail-fast: prevents server from starting with a bad schema
     }
   }
+
+  console.log(`[Migrations] Done — applied ${applied.length}, skipped ${skipped.length} (already recorded).`);
+  return { applied, skipped };
 }
