@@ -1,3 +1,6 @@
+-- Ensure id has a default so INSERTs below don't need explicit UUIDs.
+ALTER TABLE service_categories ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+
 -- Master Integration Brief — Phase 1.2c: reconcile service_categories with SEED_DATA §2.
 --
 -- activity_provider correction (user-flagged): commissionBand=moderate (not commercial),
