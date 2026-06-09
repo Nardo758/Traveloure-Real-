@@ -626,4 +626,37 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
   }
 });
 
+/**
+ * POST /api/upsell/click — impression→click attribution (issue #49, gates PR #50).
+ *
+ * The engine logs impressions on render; upsell_impressions has a `clicked` column
+ * the schema reserved for "updated by client/server later". This closes that seam.
+ * Marks ONLY the single most-recent matching impression — flipping every row in a
+ * window would inflate click-through, the exact metric this instruments.
+ */
+const clickBodySchema = z.object({
+  tripId: z.string(),
+  surface: z.string(),
+  offeringId: z.string(),
+});
+
+router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId, surface, offeringId } = clickBodySchema.parse(req.body);
+    await db.execute(sql`
+      UPDATE upsell_impressions SET clicked = true
+      WHERE id = (
+        SELECT id FROM upsell_impressions
+        WHERE trip_id = ${tripId} AND surface = ${surface} AND offering_id = ${offeringId}
+        ORDER BY shown_at DESC
+        LIMIT 1
+      )
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
