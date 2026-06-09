@@ -341,6 +341,18 @@ function LegBookingPanel({ legId }: { legId: string }) {
 export function TransportSection({ tripId, tripDestination, day, allowActions = true }: TransportSectionProps) {
   const { toast } = useToast();
 
+  const acceptLeg = useMutation({
+    mutationFn: (legId: string) =>
+      apiRequest("PATCH", `/api/transport-legs/${legId}/status`, { status: "confirmed", tripId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: "Transport confirmed", description: "Leg locked in." });
+    },
+    onError: () => {
+      toast({ title: "Failed to confirm", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
   const declineLeg = useMutation({
     mutationFn: (legId: string) =>
       apiRequest("PATCH", `/api/transport-legs/${legId}/status`, { status: "dismissed", tripId }),
@@ -461,11 +473,15 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
             </div>
             {tr.status === "suggested" && allowActions && (
               <div className="flex flex-col gap-1.5 flex-shrink-0">
-                <Button size="sm" variant="default" className="text-[11px] h-7 px-3" data-testid={`button-accept-${tr.id}`}>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="text-[11px] h-7 px-3"
+                  onClick={() => acceptLeg.mutate(tr.id)}
+                  disabled={acceptLeg.isPending}
+                  data-testid={`button-accept-${tr.id}`}
+                >
                   Accept
-                </Button>
-                <Button size="sm" variant="outline" className="text-[11px] h-7 px-3" data-testid={`button-change-${tr.id}`}>
-                  Change
                 </Button>
                 <Button
                   size="sm"

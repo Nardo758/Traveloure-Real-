@@ -113,6 +113,9 @@ import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
 import ExpertBookingPartners from "@/pages/expert/booking-partners";
 import AdminFeeConfig from "@/pages/admin/fee-config";
+import AdminFeeBands from "@/pages/admin/fee-bands";
+import AdminCategoryFees from "@/pages/admin/category-fees";
+import AdminNeighborhoods from "@/pages/admin/neighborhoods";
 import AdminEventPackages from "@/pages/admin/event-packages";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
@@ -671,6 +674,15 @@ function Router() {
       </Route>
       <Route path="/admin/fee-config">
         {() => <ProtectedRoute component={AdminFeeConfig} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/fee-bands">
+        {() => <ProtectedRoute component={AdminFeeBands} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/category-fees">
+        {() => <ProtectedRoute component={AdminCategoryFees} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/neighborhoods">
+        {() => <ProtectedRoute component={AdminNeighborhoods} requiredRole="admin" />}
       </Route>
       <Route path="/admin/event-packages">
         {() => <ProtectedRoute component={AdminEventPackages} requiredRole="admin" />}
