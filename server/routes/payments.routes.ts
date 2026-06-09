@@ -84,6 +84,7 @@ import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
+  feeConfigFromRates,
   calcInsuranceFee,
   type CommissionRates,
 } from "../services/commission";
@@ -596,34 +597,20 @@ router.get("/stripe/connect/refresh", (_req, res) => {
 router.get("/api/booking-fee-config", async (req, res) => {
     try {
       const category = (req.query.category as string) || "default";
-      const result = await db.execute(sql`
-        SELECT
-          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
-          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
-          ai_keeps_100,
-          CAST(min_fee AS FLOAT) AS min_fee,
-          CAST(max_fee AS FLOAT) AS max_fee
-        FROM booking_fee_configs
-        WHERE category = ${category} AND is_active = true
-        LIMIT 1
-      `);
-
-      if (result.rows && result.rows.length > 0) {
-        return res.json(result.rows[0]);
-      }
-
-      // Fallback defaults
-      const defaults: Record<string, number> = {
-        accommodation: 15, activities: 12, transportation: 10,
-        flights: 8, insurance: 10, car_rental: 10, dining: 8, esim: 9, luggage: 10,
-      };
-      res.json({
-        platform_fee_percent: defaults[category] ?? 12,
-        expert_share_percent: 75,
-        ai_keeps_100: true,
-        min_fee: null,
-        max_fee: null,
-      });
+      // Forward the SAME context the checkout charge resolves with (category +
+      // per-expert override id + early-adopter/provider id) — not a generic default —
+      // so display == charge for the SAME booking context, not merely same-source.
+      // The charge loop above calls resolveCommissionRates({ category: feeCategory,
+      // expertId: service.userId }); this mirrors those inputs.
+      const expertId = (req.query.expertId as string) || null;
+      const providerId = (req.query.providerId as string) || null;
+      // Canonical source: fee_bands via the commission resolver. Previously read
+      // booking_fee_configs directly, which diverged from the charge once Phase 1.3
+      // made fee_bands canonical (12% fallback on prod, where the table was absent).
+      // feeConfigFromRates is the single shared mapper, so source + conversion can't
+      // drift. Insurance still loads from booking_fee_configs inside the resolver.
+      const rates = await resolveCommissionRates({ category, expertId, providerId });
+      res.json(feeConfigFromRates(rates));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
