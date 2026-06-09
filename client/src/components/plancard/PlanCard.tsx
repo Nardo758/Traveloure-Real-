@@ -22,6 +22,7 @@ import { ActivitiesSection } from "./ActivitiesSection";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { TransportSection } from "./TransportSection";
 import { EscalationCTA } from "./EscalationCTA";
+import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -964,6 +965,18 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               </div>
             )}
 
+            {/* Upsell pretrip slot — "what's missing" gap-fill, owner-only, full-stage.
+                Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_pretrip"
+              />
+            )}
+
             <DaySelector
               tripId={trip.id}
               days={days}
@@ -994,6 +1007,18 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 tripId={trip.id}
                 showChanges={showChanges}
                 changeLog={changeLog}
+              />
+            )}
+
+            {/* Upsell ontrip slot — live "near you" nudge, anchored above the
+                day's activities. Self-guards to the in-trip window. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_ontrip"
               />
             )}
 
