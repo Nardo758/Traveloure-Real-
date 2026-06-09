@@ -915,3 +915,75 @@ describe("Phase 5.6 (Commit A) GATE — lead-gated endorsement WRITE", () => {
     assert.equal(expertIsLead([], "A", "gion"), false);
   });
 });
+
+// ─── Phase 5.6 (Commit B) GATE: server-derived plancard-pretrip gap set ──────
+// The endpoint no longer trusts client-passed emptySlotCategoryKeys. It
+// derives the gap from (template REQ/REC categories) − (trip's actual cart).
+
+import { computeEmptySlots } from "../../routes/upsell.routes";
+
+describe("Phase 5.6 (Commit B) GATE — computeEmptySlots derives gaps server-side", () => {
+  // Stand-in matrix: a trip-style template requires private_transportation +
+  // accommodation, recommends photography + tour_guide, suggests private_chef.
+  const matrix = [
+    { categoryKey: "private_transportation", strength: "REQ" },
+    { categoryKey: "accommodation",          strength: "REQ" },
+    { categoryKey: "photography",            strength: "REC" },
+    { categoryKey: "tour_guide",             strength: "REC" },
+    { categoryKey: "private_chef",           strength: "OPT" },
+    { categoryKey: "concierge_vip",          strength: "OPT" },
+  ];
+
+  it("empty cart → gap = every REQ/REC category (OPT excluded)", () => {
+    const gap = computeEmptySlots(matrix, []);
+    assert.deepEqual(gap.sort(), [
+      "accommodation",
+      "photography",
+      "private_transportation",
+      "tour_guide",
+    ]);
+    // OPT (private_chef, concierge_vip) NOT in the gap — they're suggestions,
+    // not "this trip is missing them."
+    assert.ok(!gap.includes("private_chef"));
+    assert.ok(!gap.includes("concierge_vip"));
+  });
+
+  it("cart includes some REQ/REC → only the missing ones surface", () => {
+    const gap = computeEmptySlots(matrix, ["private_transportation", "photography"]);
+    assert.deepEqual(gap.sort(), ["accommodation", "tour_guide"]);
+  });
+
+  it("cart includes all REQ/REC → empty gap (gap-fill is a no-op)", () => {
+    const gap = computeEmptySlots(matrix, ["private_transportation", "accommodation", "photography", "tour_guide"]);
+    assert.deepEqual(gap, []);
+  });
+
+  it("OPT categories present in cart do not affect the gap (they were never in scope)", () => {
+    const gap = computeEmptySlots(matrix, ["private_chef", "concierge_vip"]);
+    assert.deepEqual(gap.sort(), ["accommodation", "photography", "private_transportation", "tour_guide"]);
+  });
+
+  it("matrix empty (template not seeded) → empty gap (safe degrade)", () => {
+    assert.deepEqual(computeEmptySlots([], ["accommodation"]), []);
+  });
+
+  it("server ignores client-style irrelevant categories — they never appear in the gap unless the matrix says so", () => {
+    // Simulating the contract: a client could pass any string, but the server
+    // computes against the matrix. If 'random_made_up_category' isn't in the
+    // matrix, it never surfaces in the gap regardless.
+    const gap = computeEmptySlots(matrix, []);
+    assert.ok(!gap.includes("random_made_up_category"));
+    assert.ok(!gap.includes("childcare_family"));    // not in our test matrix
+    assert.ok(!gap.includes("aff_events"));          // not in our test matrix
+  });
+
+  it("idempotent: REQ/REC duplicates in the matrix are deduped in the gap", () => {
+    const matrixWithDupes = [
+      { categoryKey: "photography", strength: "REQ" },
+      { categoryKey: "photography", strength: "REC" },  // dupe via different strength
+      { categoryKey: "accommodation", strength: "REQ" },
+    ];
+    const gap = computeEmptySlots(matrixWithDupes, []);
+    assert.deepEqual(gap.sort(), ["accommodation", "photography"]);
+  });
+});
