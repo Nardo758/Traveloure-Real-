@@ -1,4 +1,4 @@
--- Migration 048: Make service_bookings.service_id nullable
+-- Migration 050: Make service_bookings.service_id nullable
 --
 -- Transport-commerce bookings (bookingDetails.bookingType = "transport") reference
 -- a transport_booking_options row, NOT a provider_services row, so they legitimately
@@ -11,7 +11,8 @@
 -- intended to remove. This migration makes the live schema match the code.
 --
 -- The serviceId -> provider_services FK is retained; provider-service bookings still
--- populate it.
+-- populate it. See CLAUDE.md "Service Model: Canonical Table" for the documented
+-- transport exception.
 --
 -- ALTER ... DROP NOT NULL is idempotent in Postgres (no error if already nullable),
 -- so this migration is safe to re-run.

@@ -53,7 +53,7 @@ export interface BookingCheckoutSession {
  */
 export async function createTransportBookingCheckout(
   optionId: string,
-  tripId: string,
+  tripId: string | null,
   userId: string,
   travelers: number = 1,
   specialRequests?: string

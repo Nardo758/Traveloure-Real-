@@ -89,6 +89,7 @@ type ServiceCategory = {
   description: string;
   categoryType: string;
   priceRange: { min: number; max: number } | null;
+  categoryKey?: string | null;   // brief's join key; already returned by /api/service-categories (full select)
 };
 
 type Service = {
@@ -660,6 +661,17 @@ export default function DiscoverPage() {
   const { data: categories } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
   });
+
+  // Upsell deep-link (issue #51): ?categoryKey=<service_categories.category_key>
+  // preselects the matching category. Resolves to the row id via the already-loaded
+  // categories array — the one source; no per-surface categoryKey→id map.
+  const upsellCategoryKey = urlParams.get("categoryKey");
+  useEffect(() => {
+    if (upsellCategoryKey && categories?.length) {
+      const match = categories.find((c) => c.categoryKey === upsellCategoryKey);
+      if (match) setSelectedCategory(match.id);
+    }
+  }, [upsellCategoryKey, categories]);
 
   const { data: result, isLoading: servicesLoading } = useQuery<DiscoverResult>({
     queryKey: [

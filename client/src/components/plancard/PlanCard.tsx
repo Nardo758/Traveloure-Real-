@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles, Clock } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
@@ -22,6 +22,7 @@ import { ActivitiesSection } from "./ActivitiesSection";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { TransportSection } from "./TransportSection";
 import { EscalationCTA } from "./EscalationCTA";
+import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -542,60 +543,58 @@ function PlanCardSummary({
             )}
             {lastOptimizedAt && (() => {
               const isStale = Date.now() - new Date(lastOptimizedAt).getTime() > 30 * 24 * 60 * 60 * 1000;
-              const formattedDate = new Date(lastOptimizedAt).toLocaleString("en-GB", {
+              const formattedDate = new Date(lastOptimizedAt).toLocaleDateString(undefined, {
+                month: "long",
                 day: "numeric",
-                month: "short",
                 year: "numeric",
-                hour: "2-digit",
+              });
+              const formattedTime = new Date(lastOptimizedAt).toLocaleTimeString(undefined, {
+                hour: "numeric",
                 minute: "2-digit",
               });
+
               return (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
-                        className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-                        style={
-                          isStale
-                            ? { background: "#FFFBEB", color: "#92400E", border: "1px solid #F59E0B" }
-                            : { background: "#FFF3E8", color: "#8B3A00" }
-                        }
-                        data-testid={`pill-ai-optimized-${trip.id}`}
-                      >
-                        <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
-                        {isStale ? "Re-optimize?" : "AI Optimized"}
-                        {!isStale && optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
-                          <span style={{ color: "#2C7A44", fontWeight: 600 }}>
-                            · ${Math.round(optimizationDeltaFromData.savings as number)} saved
-                          </span>
-                        )}
-                        {!isStale && optimizationDeltaFromData?.starRatingDelta != null && (optimizationDeltaFromData.starRatingDelta as number) > 0 && (
-                          <span style={{ color: "#B07C00", fontWeight: 600 }}>
-                            · +{(optimizationDeltaFromData.starRatingDelta as number).toFixed(1)}★
-                          </span>
-                        )}
-                        <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
-                          · {formatRelativeTime(lastOptimizedAt)}
+                <Tooltip key="pill-ai-optimized">
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+                      className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                      style={
+                        isStale
+                          ? { background: "#FFFBEB", color: "#92400E", border: "1px solid #F59E0B" }
+                          : { background: "#FFF3E8", color: "#8B3A00" }
+                      }
+                      data-testid={`pill-ai-optimized-${trip.id}`}
+                    >
+                      <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
+                      {isStale ? "Re-optimize?" : "AI Optimized"}
+                      {!isStale && optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
+                        <span style={{ color: "#2C7A44", fontWeight: 600 }}>
+                          · ${Math.round(optimizationDeltaFromData.savings as number)} saved
                         </span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">
-                        Last optimized: {formattedDate}
-                        {isStale && (
-                          <>
-                            <br />
-                            <span className="text-amber-500 font-medium">
-                              Optimization is over 30 days old
-                            </span>
-                          </>
-                        )}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                      )}
+                      {!isStale && optimizationDeltaFromData?.starRatingDelta != null && (optimizationDeltaFromData.starRatingDelta as number) > 0 && (
+                        <span style={{ color: "#B07C00", fontWeight: 600 }}>
+                          · +{(optimizationDeltaFromData.starRatingDelta as number).toFixed(1)}★
+                        </span>
+                      )}
+                      <span style={{ color: isStale ? "#B45309" : "#A05A30", fontWeight: 400 }}>
+                        · {formatRelativeTime(lastOptimizedAt)}
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-[11px]">
+                      Optimized on {formattedDate} at {formattedTime}
+                      {isStale && (
+                        <div className="text-amber-600 font-medium mt-0.5">
+                          ⚠️ This optimization is over 30 days old
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               );
             })()}
           </div>
@@ -967,6 +966,18 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               </div>
             )}
 
+            {/* Upsell pretrip slot — "what's missing" gap-fill, owner-only, full-stage.
+                Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_pretrip"
+              />
+            )}
+
             <DaySelector
               tripId={trip.id}
               days={days}
@@ -997,6 +1008,18 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 tripId={trip.id}
                 showChanges={showChanges}
                 changeLog={changeLog}
+              />
+            )}
+
+            {/* Upsell ontrip slot — live "near you" nudge, anchored above the
+                day's activities. Self-guards to the in-trip window. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_ontrip"
               />
             )}
 
