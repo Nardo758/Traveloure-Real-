@@ -661,9 +661,20 @@ export async function loadEndorsementsForContext(
       for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
     }
     if (neighborhoodIds && neighborhoodIds.length > 0) {
+      // Phase 5.6 (Commit A): lead-gated. Only the FEATURED LEAD's endorsement
+      // for a neighborhood compounds — the structural authority is the local
+      // lead, not any expert who happens to have an endorsement row. JOIN
+      // expert_neighborhoods on (expert_id, neighborhood_id) WHERE is_lead = true.
+      // See filterLeadEndorsements() pure helper for the equivalent JS contract.
       const result = await db.execute(sql`
-        SELECT offering_id FROM upsell_expert_endorsements
-        WHERE scope = 'neighborhood' AND neighborhood_id = ANY(${neighborhoodIds})
+        SELECT e.offering_id
+        FROM upsell_expert_endorsements e
+        JOIN expert_neighborhoods en
+          ON en.expert_id = e.expert_id
+         AND en.neighborhood_id = e.neighborhood_id
+        WHERE e.scope = 'neighborhood'
+          AND e.neighborhood_id = ANY(${neighborhoodIds})
+          AND en.is_lead = true
       `);
       for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
     }
@@ -673,7 +684,7 @@ export async function loadEndorsementsForContext(
   return Array.from(ids);
 }
 
-async function requireExpertRole(req: any, res: any): Promise<string | null> {
+async function requireExpertRole(req: any, res: any): Promise<{ userId: string; role: string } | null> {
   const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     res.status(401).json({ error: "Authentication required" });
@@ -685,7 +696,57 @@ async function requireExpertRole(req: any, res: any): Promise<string | null> {
     res.status(403).json({ error: "Expert role required" });
     return null;
   }
-  return userId;
+  return { userId, role };
+}
+
+/**
+ * Phase 5.6 (Commit A) — pure helper that filters endorsements to those
+ * written by the FEATURED LEAD of the neighborhood. Encodes the contract
+ * the SQL JOIN implements at runtime; testable in isolation against
+ * fixtures.
+ *
+ * Inputs:
+ *   endorsements      — neighborhood-scoped endorsement rows
+ *   leadAssignments   — expert_neighborhoods rows with isLead flag
+ *   neighborhoodIds   — the set of neighborhoods the surface cares about
+ *
+ * Returns: distinct offering_ids endorsed by the lead of each requested
+ *          neighborhood (and only the lead).
+ */
+export function filterLeadEndorsements(
+  endorsements: Array<{ expertId: string; neighborhoodId: string; offeringId: string }>,
+  leadAssignments: Array<{ expertId: string; neighborhoodId: string; isLead: boolean }>,
+  neighborhoodIds: string[],
+): string[] {
+  const requested = new Set(neighborhoodIds);
+  // (expertId, neighborhoodId) pairs where isLead = true.
+  const leadPairs = new Set(
+    leadAssignments
+      .filter(la => la.isLead)
+      .map(la => `${la.expertId}::${la.neighborhoodId}`),
+  );
+  const out = new Set<string>();
+  for (const e of endorsements) {
+    if (!requested.has(e.neighborhoodId)) continue;
+    if (!leadPairs.has(`${e.expertId}::${e.neighborhoodId}`)) continue;
+    out.add(e.offeringId);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Pure helper: is a given expert the featured lead of a neighborhood?
+ * Used by the endorse endpoint to gate writes; testable separately from
+ * the DB query. Admin bypass is enforced at the call site, not here.
+ */
+export function expertIsLead(
+  leadAssignments: Array<{ expertId: string; neighborhoodId: string; isLead: boolean }>,
+  expertId: string,
+  neighborhoodId: string,
+): boolean {
+  return leadAssignments.some(
+    la => la.expertId === expertId && la.neighborhoodId === neighborhoodId && la.isLead,
+  );
 }
 
 const expertReviewBodySchema = z.object({
@@ -706,8 +767,9 @@ const expertReviewBodySchema = z.object({
  */
 router.post("/api/upsell/expert-review", isAuthenticated, async (req, res) => {
   try {
-    const expertId = await requireExpertRole(req, res);
-    if (!expertId) return;
+    const auth = await requireExpertRole(req, res);
+    if (!auth) return;
+    const expertId = auth.userId;
 
     const body = expertReviewBodySchema.parse(req.body);
     const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
@@ -772,8 +834,9 @@ const endorseBodySchema = z.object({
  */
 router.post("/api/upsell/expert-review/endorse", isAuthenticated, async (req, res) => {
   try {
-    const expertId = await requireExpertRole(req, res);
-    if (!expertId) return;
+    const auth = await requireExpertRole(req, res);
+    if (!auth) return;
+    const { userId: expertId, role } = auth;
     const body = endorseBodySchema.parse(req.body);
 
     if (body.scope === "trip") {
@@ -785,6 +848,26 @@ router.post("/api/upsell/expert-review/endorse", isAuthenticated, async (req, re
         DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
       `);
     } else {
+      // Phase 5.6 (Commit A): lead-gate the write. Only the FEATURED LEAD of
+      // a neighborhood may write a neighborhood-scoped endorsement. Admin role
+      // bypasses for backfill / curation cases — the READ JOIN still protects
+      // the consumer surface (admin endorsement would only compound if admin
+      // also held the is_lead row, which isn't a normal state).
+      if (role !== "admin") {
+        const leadCheck = await db.execute(sql`
+          SELECT 1 FROM expert_neighborhoods
+          WHERE expert_id = ${expertId}
+            AND neighborhood_id = ${body.neighborhoodId!}
+            AND is_lead = true
+          LIMIT 1
+        `);
+        if (!leadCheck.rows || leadCheck.rows.length === 0) {
+          return res.status(403).json({
+            error: "not_neighborhood_lead",
+            message: "Only the featured lead of this neighborhood may write a neighborhood-scoped endorsement.",
+          });
+        }
+      }
       await db.execute(sql`
         INSERT INTO upsell_expert_endorsements
           (expert_id, scope, neighborhood_id, offering_id, category_key, notes)
@@ -810,8 +893,9 @@ const unendorseBodySchema = z.object({
 
 router.delete("/api/upsell/expert-review/endorse", isAuthenticated, async (req, res) => {
   try {
-    const expertId = await requireExpertRole(req, res);
-    if (!expertId) return;
+    const auth = await requireExpertRole(req, res);
+    if (!auth) return;
+    const expertId = auth.userId;
     const body = unendorseBodySchema.parse(req.body);
 
     if (body.scope === "trip" && body.tripId) {

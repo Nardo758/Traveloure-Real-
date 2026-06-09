@@ -809,3 +809,109 @@ describe("Phase 5.5 step 7 GATE — checkout single-row, ≤2 items + post-optim
     assert.equal(postOpt.candidates[0].offeringId, "airport_driver");
   });
 });
+
+// ─── Phase 5.6 (Commit A) GATE: lead-gated neighborhood endorsement ──────────
+// The brief's structural guarantee: only the FEATURED LEAD of a neighborhood
+// can have their endorsement compound. Any expert can still write an
+// endorsement row, but only lead-authored rows resolve in the surface read.
+//
+// Pure helpers are exported from server/routes/upsell.routes.ts so the
+// semantic test runs in isolation (no DB). The SQL JOIN in
+// loadEndorsementsForContext implements the same predicate at runtime.
+
+import { filterLeadEndorsements, expertIsLead } from "../../routes/upsell.routes";
+
+describe("Phase 5.6 (Commit A) GATE — lead-gated neighborhood endorsement READ", () => {
+  // Fixtures: two neighborhoods (Gion, Higashiyama), three experts (A, B, C).
+  //   A is lead of Gion (and only Gion).
+  //   B is non-lead in Gion.
+  //   C is lead of Higashiyama (and only Higashiyama).
+  const leadAssignments = [
+    { expertId: "A", neighborhoodId: "gion", isLead: true },
+    { expertId: "B", neighborhoodId: "gion", isLead: false },
+    { expertId: "A", neighborhoodId: "higashiyama", isLead: false },  // A is non-lead here
+    { expertId: "C", neighborhoodId: "higashiyama", isLead: true },
+  ];
+
+  it("lead's offering in their own neighborhood RESOLVES", () => {
+    const endorsements = [{ expertId: "A", neighborhoodId: "gion", offeringId: "tea_ritual_host" }];
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["gion"]);
+    assert.deepEqual(resolved, ["tea_ritual_host"]);
+  });
+
+  it("non-lead's offering in the SAME neighborhood does NOT resolve", () => {
+    const endorsements = [{ expertId: "B", neighborhoodId: "gion", offeringId: "kimono_styling" }];
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["gion"]);
+    assert.deepEqual(resolved, []);
+  });
+
+  it("lead's offering in a DIFFERENT neighborhood (where they're not lead) does NOT resolve", () => {
+    // A endorsed something in Higashiyama, but A is non-lead there.
+    const endorsements = [{ expertId: "A", neighborhoodId: "higashiyama", offeringId: "cherry_blossom_photo" }];
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["higashiyama"]);
+    assert.deepEqual(resolved, []);
+  });
+
+  it("mixed: lead + non-lead in the same neighborhood — only lead's offerings resolve", () => {
+    const endorsements = [
+      { expertId: "A", neighborhoodId: "gion", offeringId: "tea_ritual_host" },          // lead → in
+      { expertId: "B", neighborhoodId: "gion", offeringId: "kimono_styling" },           // non-lead → out
+      { expertId: "A", neighborhoodId: "higashiyama", offeringId: "ghost_walk" },        // A not lead here → out
+      { expertId: "C", neighborhoodId: "higashiyama", offeringId: "temple_sunset_walk" },// C lead here → in
+    ];
+    const resolved = filterLeadEndorsements(
+      endorsements,
+      leadAssignments,
+      ["gion", "higashiyama"],
+    );
+    assert.deepEqual(resolved.sort(), ["tea_ritual_host", "temple_sunset_walk"]);
+  });
+
+  it("requested neighborhoods filter: rows outside the requested set are dropped even if lead-authored", () => {
+    const endorsements = [
+      { expertId: "A", neighborhoodId: "gion",        offeringId: "tea_ritual_host" },
+      { expertId: "C", neighborhoodId: "higashiyama", offeringId: "temple_sunset_walk" },
+    ];
+    // Only request 'gion' — Higashiyama's lead-endorsement must not leak in.
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["gion"]);
+    assert.deepEqual(resolved, ["tea_ritual_host"]);
+  });
+
+  it("empty inputs → empty result (no spurious matches)", () => {
+    assert.deepEqual(filterLeadEndorsements([], leadAssignments, ["gion"]), []);
+    assert.deepEqual(filterLeadEndorsements([{ expertId: "A", neighborhoodId: "gion", offeringId: "x" }], [], ["gion"]), []);
+    assert.deepEqual(filterLeadEndorsements([{ expertId: "A", neighborhoodId: "gion", offeringId: "x" }], leadAssignments, []), []);
+  });
+});
+
+describe("Phase 5.6 (Commit A) GATE — lead-gated endorsement WRITE", () => {
+  // expertIsLead is the predicate the endpoint uses before allowing a
+  // scope='neighborhood' write. Endpoint behavior: false → 403; admin bypasses.
+  const leadAssignments = [
+    { expertId: "A", neighborhoodId: "gion", isLead: true },
+    { expertId: "B", neighborhoodId: "gion", isLead: false },
+    { expertId: "C", neighborhoodId: "higashiyama", isLead: true },
+  ];
+
+  it("expert A is the lead of Gion → write permitted (predicate true)", () => {
+    assert.equal(expertIsLead(leadAssignments, "A", "gion"), true);
+  });
+
+  it("expert B is in Gion but NOT lead → write rejected (predicate false; endpoint emits 403)", () => {
+    assert.equal(expertIsLead(leadAssignments, "B", "gion"), false);
+  });
+
+  it("expert A is NOT in Higashiyama at all → write rejected", () => {
+    // A has no row for higashiyama in the fixtures.
+    assert.equal(expertIsLead(leadAssignments, "A", "higashiyama"), false);
+  });
+
+  it("expert C is lead of Higashiyama → write permitted there but NOT in Gion", () => {
+    assert.equal(expertIsLead(leadAssignments, "C", "higashiyama"), true);
+    assert.equal(expertIsLead(leadAssignments, "C", "gion"), false);
+  });
+
+  it("empty assignment set → false for every query (system permits no neighborhood endorsements)", () => {
+    assert.equal(expertIsLead([], "A", "gion"), false);
+  });
+});
