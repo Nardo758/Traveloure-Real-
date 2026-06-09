@@ -596,30 +596,19 @@ router.get("/stripe/connect/refresh", (_req, res) => {
 router.get("/api/booking-fee-config", async (req, res) => {
     try {
       const category = (req.query.category as string) || "default";
-      const result = await db.execute(sql`
-        SELECT
-          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
-          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
-          ai_keeps_100,
-          CAST(min_fee AS FLOAT) AS min_fee,
-          CAST(max_fee AS FLOAT) AS max_fee
-        FROM booking_fee_configs
-        WHERE category = ${category} AND is_active = true
-        LIMIT 1
-      `);
-
-      if (result.rows && result.rows.length > 0) {
-        return res.json(result.rows[0]);
-      }
-
-      // Fallback defaults
-      const defaults: Record<string, number> = {
-        accommodation: 15, activities: 12, transportation: 10,
-        flights: 8, insurance: 10, car_rental: 10, dining: 8, esim: 9, luggage: 10,
-      };
+      // Canonical source: fee_bands via the commission resolver — the SAME source
+      // the actual checkout charge uses (resolveCommissionRates is called per item
+      // in the checkout loop above). This endpoint previously read booking_fee_configs
+      // directly, which diverged from the charge once Phase 1.3 made fee_bands canonical
+      // (and returned a 12% fallback on prod, where booking_fee_configs was absent) — so
+      // the itinerary Booking Summary showed a fee that didn't match what was billed.
+      // Resolving here keeps display == charge. Insurance still loads from
+      // booking_fee_configs inside the resolver (its legitimate remaining role).
+      const rates = await resolveCommissionRates({ category });
+      const pct = (n: number) => Math.round(n * 100 * 100) / 100; // fraction → percent, 2dp
       res.json({
-        platform_fee_percent: defaults[category] ?? 12,
-        expert_share_percent: 75,
+        platform_fee_percent: pct(rates.platformFeeRate),
+        expert_share_percent: pct(rates.expertShareRate),
         ai_keeps_100: true,
         min_fee: null,
         max_fee: null,
