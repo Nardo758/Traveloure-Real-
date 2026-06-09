@@ -59,6 +59,7 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 | A15 | View itinerary | `PlanCard.tsx:679` | Link `/trip/:id?tab=itinerary` |
 | A16 💰 | **Expert-polish CTA "Have an expert polish this" (G8)** | `PlanCard.tsx:691–703` | shown when `showPolishCta = hasActivities && !advisor && !pendingExpertRequest` (`:432`) |
 | A17 💰 | ExpertPolishDialog → submit | `PlanCard.tsx:156–284` (confirm `:275`) | `POST /api/expert-requests {requestType:"polish"}` (`:173`) |
+| A18 ⏳ **IN-FLIGHT** | **Trip-card SMS opt-in prompt** (pre-trip, summary) — full disclosure + consent checkbox, shown once, dismissible | *not yet rendered (no code)* | **Gated on the consent backend** (10DLC + consent-record store + provider). **Not live; NOT yet must-not-regress.** See [`plancard-mobile-delivery-model.md`](./plancard-mobile-delivery-model.md) §4. |
 
 ## Stage B — Full control center (`PlanCard.tsx:836–1078`)
 
