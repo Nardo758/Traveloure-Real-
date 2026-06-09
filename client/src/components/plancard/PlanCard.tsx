@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles, Clock } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
@@ -788,6 +788,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       fromLng: tr.fromLng ?? null,
       toLat: tr.toLat ?? null,
       toLng: tr.toLng ?? null,
+      mapsUrl: tr.mapsUrl ?? null,
     }))
     .sort((a, b) => a.legOrder - b.legOrder);
 

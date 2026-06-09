@@ -94,7 +94,7 @@ import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
-import contentRoutes from "./routes/content.routes";
+import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import bookingsDomainRoutes from "./routes/bookings-domain.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";

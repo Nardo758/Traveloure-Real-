@@ -55,11 +55,11 @@ CREATE TABLE IF NOT EXISTS event_invites (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_event_invites_experience ON event_invites(experience_id);
-CREATE INDEX idx_event_invites_organizer ON event_invites(organizer_id);
-CREATE INDEX idx_event_invites_token ON event_invites(unique_token);
-CREATE INDEX idx_event_invites_email ON event_invites(guest_email);
-CREATE INDEX idx_event_invites_rsvp_status ON event_invites(rsvp_status);
+CREATE INDEX IF NOT EXISTS idx_event_invites_experience ON event_invites(experience_id);
+CREATE INDEX IF NOT EXISTS idx_event_invites_organizer ON event_invites(organizer_id);
+CREATE INDEX IF NOT EXISTS idx_event_invites_token ON event_invites(unique_token);
+CREATE INDEX IF NOT EXISTS idx_event_invites_email ON event_invites(guest_email);
+CREATE INDEX IF NOT EXISTS idx_event_invites_rsvp_status ON event_invites(rsvp_status);
 
 -- ===================================================================
 -- TABLE: guest_travel_plans
@@ -104,8 +104,8 @@ CREATE TABLE IF NOT EXISTS guest_travel_plans (
 );
 
 -- Indexes
-CREATE INDEX idx_guest_travel_plans_invite ON guest_travel_plans(invite_id);
-CREATE UNIQUE INDEX idx_guest_travel_plans_invite_unique ON guest_travel_plans(invite_id);
+CREATE INDEX IF NOT EXISTS idx_guest_travel_plans_invite ON guest_travel_plans(invite_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_travel_plans_invite_unique ON guest_travel_plans(invite_id);
 
 -- ===================================================================
 -- TABLE: invite_templates
@@ -134,8 +134,8 @@ CREATE TABLE IF NOT EXISTS invite_templates (
 );
 
 -- Indexes
-CREATE INDEX idx_invite_templates_user ON invite_templates(user_id);
-CREATE INDEX idx_invite_templates_event_type ON invite_templates(event_type);
+CREATE INDEX IF NOT EXISTS idx_invite_templates_user ON invite_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_invite_templates_event_type ON invite_templates(event_type);
 
 -- ===================================================================
 -- TABLE: invite_send_log
@@ -160,8 +160,8 @@ CREATE TABLE IF NOT EXISTS invite_send_log (
 );
 
 -- Indexes
-CREATE INDEX idx_invite_send_log_invite ON invite_send_log(invite_id);
-CREATE INDEX idx_invite_send_log_status ON invite_send_log(status);
+CREATE INDEX IF NOT EXISTS idx_invite_send_log_invite ON invite_send_log(invite_id);
+CREATE INDEX IF NOT EXISTS idx_invite_send_log_status ON invite_send_log(status);
 
 -- ===================================================================
 -- TRIGGERS: Auto-update updated_at timestamps
@@ -174,20 +174,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_event_invites_updated_at
-  BEFORE UPDATE ON event_invites
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+  CREATE TRIGGER update_event_invites_updated_at
+    BEFORE UPDATE ON event_invites
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TRIGGER update_guest_travel_plans_updated_at
-  BEFORE UPDATE ON guest_travel_plans
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+  CREATE TRIGGER update_guest_travel_plans_updated_at
+    BEFORE UPDATE ON guest_travel_plans
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TRIGGER update_invite_templates_updated_at
-  BEFORE UPDATE ON invite_templates
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+  CREATE TRIGGER update_invite_templates_updated_at
+    BEFORE UPDATE ON invite_templates
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ===================================================================
 -- COMMENTS
