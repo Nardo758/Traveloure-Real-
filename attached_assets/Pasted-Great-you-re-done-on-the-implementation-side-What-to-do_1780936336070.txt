@@ -1,0 +1,106 @@
+Great — **you’re done on the implementation side**.
+
+## What to do now
+Since all 5 are confirmed complete on `claude/rebase-recovery`, the next steps are:
+
+1. **Open/refresh a PR from `claude/rebase-recovery` into `main`**
+2. **Reference and close all 5 issues in the PR body**
+3. **Run final CI**
+4. **Merge once green**
+5. **After merge, verify prod/deploy-sensitive items**
+
+---
+
+## Suggested PR body
+
+Use something like this:
+
+```markdown
+Closes #43
+Closes #42
+Closes #28
+Closes #29
+Closes #35
+
+## Summary
+
+This PR completes five open issues on `claude/rebase-recovery`:
+
+### #43 — Transport commerce conformance
+- Restricts affiliate providers by transport mode
+- Shows rideshare links only on rideshare legs
+- Shows walk card only on walkable legs
+- Wires Book CTA end-to-end:
+  - `TransportBookingCard`
+  - `POST /api/transport-booking-options/:optionId/book`
+  - Stripe checkout session
+  - redirect to checkout URL
+- Pulls party size from the real DB join
+- Removes hardcoded affiliate `rating` / `reviewCount` fields from all active affiliate builders
+
+### #42 — CI gate reliability
+- Injects `STRIPE_SECRET_KEY=[REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls` in CI jobs
+- Adds `GIT_COMMIT=${{ github.sha }}`
+- Verifies build identity through `/api/version`
+
+### #28 — Production migration drift
+- Renames duplicate-ordinal migration files to `009b_`, `024b_`, `025b_`
+- Updates `MIGRATION_FILES`
+- Keeps idempotent migration behavior intact
+
+### #29 — Dead platform_settings config
+- Removes stale key/value `platformSettings` pgTable from `shared/schema.ts`
+- Leaves live `platform_settings` usage in `commission.ts` untouched
+
+### #35 — CompactFilterBar convergence
+- Flights: one CompactFilterBar with stops chips + max-price range
+- Hotels: one CompactFilterBar with star-rating chips + max-price range
+- Removes duplicate filter surfaces
+
+## Verification
+- Book CTA tested end-to-end to Stripe redirect
+- Affiliate cards no longer render fabricated ratings/review counts
+- CI jobs now boot with stub Stripe key and verify build identity
+- Migration rename entries confirmed idempotent
+- Flights/hotels each render a single CompactFilterBar
+```
+
+---
+
+## Final checks before merge
+
+### Must-pass
+- build
+- selection-controls gate
+- any transport/booking tests
+- any migration/bootstrap checks
+
+### Manual smoke test
+- transport **Book** button redirects correctly
+- `/api/version` returns the commit SHA
+- flights tab shows exactly one filter bar
+- hotels tab shows exactly one filter bar
+
+---
+
+## After merge
+Because some of these are deploy-sensitive, verify on `main`:
+
+- **#43:** real booking path still works in deployed environment
+- **#42:** CI is validating the correct build
+- **#28:** deploy/startup migrations still run cleanly
+- **#29:** no schema import/runtime regressions
+- **#35:** flights/hotels UI still has one filter surface in production
+
+---
+
+## Bottom line
+You do **not** need more code changes from what you’ve described. You now need:
+- a clean PR,
+- issue-closing references,
+- green checks,
+- merge and deploy verification.
+
+If you want, I can next help you write either:
+1. a **tight PR title + PR description**, or  
+2. **issue closing comments for all 5 issues**.

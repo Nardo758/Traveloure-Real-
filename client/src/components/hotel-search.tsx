@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/popover";
 import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users, ShieldCheck, ShieldX, Coffee, BedDouble, AlertCircle, Filter, RotateCcw, Database } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -716,58 +715,6 @@ export function HotelSearch({
                     </div>
                   </div>
                   
-                  <div className="border-t pt-4 mt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Filter className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium text-sm">Filters</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label>Max Price per Stay: ${localMaxPrice}</Label>
-                        <Slider
-                          value={[localMaxPrice]}
-                          onValueChange={(val) => setLocalMaxPrice(val[0])}
-                          min={100}
-                          max={10000}
-                          step={100}
-                          data-testid="slider-max-price"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Minimum Star Rating</Label>
-                        <Select
-                          value={localStarRating.toString()}
-                          onValueChange={(val) => setLocalStarRating(parseInt(val))}
-                        >
-                          <SelectTrigger data-testid="select-star-rating">
-                            <SelectValue placeholder="Any rating" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="0">Any rating</SelectItem>
-                            <SelectItem value="3">3+ stars</SelectItem>
-                            <SelectItem value="4">4+ stars</SelectItem>
-                            <SelectItem value="5">5 stars only</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sort By</Label>
-                        <Select
-                          value={localSortBy}
-                          onValueChange={(val) => setLocalSortBy(val as "price" | "rating")}
-                        >
-                          <SelectTrigger data-testid="select-sort-by">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="price">Price (Low to High)</SelectItem>
-                            <SelectItem value="rating">Rating (High to Low)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                  
                   <div className="flex gap-2 mt-4">
                     <Button
                       onClick={() => { refetch(); setShowModify(false); }}
@@ -775,14 +722,6 @@ export function HotelSearch({
                       data-testid="button-search-hotels"
                     >
                       Update Search
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={resetFilters}
-                      data-testid="button-reset-filters"
-                    >
-                      <RotateCcw className="h-4 w-4 mr-1" />
-                      Reset Filters
                     </Button>
                   </div>
                 </CardContent>

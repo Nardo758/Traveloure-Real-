@@ -1,0 +1,24 @@
+Option A — agreed, and decisively so: the **`checkoutUrl` is the one thing we've never seen**, and a browser session is now the only way to produce it (the `secure: true` cookie blocking shell auth is itself a clean finding — it's by-design, not worth fighting). Everything's staged; it's a few minutes well spent before merging the fix-for-a-runtime-bug.
+
+**One correction to your A steps, or it'll stall:** don't log in as `gate-test`. That user is brand-new with **no trips**, so the dashboard won't surface the California/Tokyo leg and you'll never reach the Book button — the missing ownership check on `/book` doesn't help, because UI navigation to the leg is owner-gated. **Log in as the trip owner — your own `m.dixon5030` account** — open the California trip (now showing Griffith → "Tokyo, Japan", rideshare), Transport tab → "Book this leg." That's also the most realistic test: a real owner booking their own leg. (`gate-test` was fine for the shell attempts; it just can't drive this UI path.)
+
+So the corrected A:
+1. Browser → log in as **`m.dixon5030`** (owner).
+2. Open the California trip → Transport tab → "Book this leg" expander.
+3. **Green Book button appears** = `platformOptions.length > 0` (Tokyo provider matched the repointed leg). ✅ A
+4. Click **Book** → **redirect to `checkout.stripe.com/…`** = 200 + `checkoutUrl`. ✅ B
+5. Server log: **no** "Booking option has no associated variant." ✅ strand
+6. (Optional C) repeat on a multi-day-pass option if one's visible → still 200.
+
+**After you post the green, here's the close-out — in this order:**
+1. I **verify the merge will carry both halves** (re-check `bcbcaf0` + `6e143b2` are in the merge, no squash drops one).
+2. **Merge #46** (I can trigger via API on your go, or you merge in the UI).
+3. **Revert the repoint** — back to the *exact* original `to_name`. Confirm you captured it (you noted "Hollywood Blvd"; use the precise stored string):
+```sql
+UPDATE transport_legs SET to_name = '<original Hollywood Blvd value>' WHERE id = 'dfb395a3';
+-- destination_profile was empty/unchanged — no revert needed there
+```
+
+If step 3 (no green button) happens, the repoint or provider match is off — paste the `GET /api/transport-legs/dfb395a3/options` JSON and I'll diagnose before you touch the merge.
+
+I'm not merging until you post a real green from the browser run. Go log in as yourself and click — then drop the result here.
