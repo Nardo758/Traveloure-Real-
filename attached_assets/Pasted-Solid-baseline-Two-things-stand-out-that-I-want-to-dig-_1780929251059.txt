@@ -1,0 +1,36 @@
+Solid baseline. Two things stand out that I want to dig into before we proceed: **(1)** there are 49 migration SQL files — I need to confirm all are registered (CLAUDE.md requires it), and **(2)** there are **two open PRs with stale bases** (#44 rebase-recovery, #38 plancard) that may now be redundant or conflicting against current main. Let me check both:
+
+Good — repo is healthy (clean tree, no markers, builds, gates pass, tsc 225 ≈ baseline). Two things need a closer look: the **001–005 migrations aren't registered** (likely pre-runner baseline, but worth confirming), and **PR #44 still has unique commits** even though its Phase 1.5/Phase 7 content already landed on main via #45. Let me check whether #44 carries a real unique fix (the "033 is_active" fix) or is now just a redundant, conflict-prone duplicate — and the mergeability of both stale PRs:
+
+Scan complete. The repo itself is **healthy**; the real risk is in the **two stale open PRs**. Here's the full picture.
+
+## Repo health on `main` (`3ddc5cc`) — green
+- Working tree clean, **no conflict markers**, **build passes**, **logic gate 37/37**, **tsc 225** (≈ baseline, trending down from 232).
+- Filter consolidation intact (`CompactFilterBar`; old panels deleted).
+- Branch protection active and enforcing.
+
+## Migrations — one thing to confirm
+- **44 of 49** SQL files are registered in `run-migrations.ts`. The 5 unregistered are **`001`–`005`** (guest invites, transport booking options, test-account roles, restaurant cache, affiliate reconciliation). The array deliberately starts at `006`, so these are almost certainly **pre-runner baseline** migrations already applied historically — but on a **brand-new DB** they won't auto-run. Worth a one-line confirmation that's intentional (the Drizzle schema covers those tables for fresh DBs).
+- Latest registered run through `046` (Phase 1.5 bands) — consistent with main's history.
+
+## The actual concern: two stale, overlapping PRs
+
+**PR #44 — "Rebase recovery: Phase 1.5 + Phase 7 + 033 fix"** (base `7172b4e`, stale)
+- **Mostly redundant**: its `033` is **byte-identical to main**, and Phase 1.5 / Phase 3 / Phase 7 **already landed on main via #45**. Merging it wholesale would be conflict-heavy and risks re-diverging already-settled code.
+- **But it has a few commits that look unique and possibly valuable**, not obviously in main:
+  - `99c0d34 Add missing imports to routes to prevent server crashes` ← sounds important
+  - `25018ff Add a book button for transport and unify flight/hotel filters` ← the "unify flight/hotel filters" part may be **Issue #35** (the convergence I filed)
+  - `8babc2f Implement tiered commission rates based on provider registration date`
+  - plus CI tweaks (some may already be in main via #40)
+  - and noise like `037968e Published your App`
+- **Recommendation:** don't merge #44 as-is. Cherry-pick the genuinely-unique commits onto a fresh branch off current `main`, PR that, and **close #44**.
+
+**PR #38 — "plancard piece3"** (base `e33720f`, *very* stale — ~weeks of drift)
+- 6 commits on a different surface (PlanCard + maps deep-link escape-hatch, Phase 2/3). Needs a check on whether this already landed in main; if not, it should be **rebased onto current main** before it's mergeable, or closed if superseded.
+
+## Recommended order before we proceed
+1. Confirm `001–005` unregistered is intentional (quick yes/no).
+2. Triage **#44** → salvage the unique commits (esp. the server-crash import fix and the flight/hotel filter unification), close the rest.
+3. Triage **#38** → rebase or close.
+
+Want me to (a) verify exactly which of #44's commits are truly absent from main and draft the cherry-pick branch, and (b) check whether #38's PlanCard work is already in main? That'd turn this into a concrete close/rebase plan.

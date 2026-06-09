@@ -1,0 +1,17 @@
+Make the two gated diffs actually get worked — that's the whole ballgame right now.
+
+Concretely:
+
+1. **Get #49 (click endpoint) and #51 (discover resolver) onto someone's queue today.** Both are drafted, both block PR #50, and both live in lanes other than yours (LB owns #49; `discover.tsx` is contended across four branches). Assign each to a specific owner with a "this gates PR #50" note. If you don't put a name on them, they're the unblocked-and-therefore-ignored work that became your `:341` hole — the gate only forces the fix if a person is on the hook for it.
+
+2. **For #51, decide which of the four contending branches owns the discover edit** so it doesn't get applied twice or conflict. That's a small orchestration call only you can make — same as pinning `TransportSection.tsx` to laughing-bardeen.
+
+3. **When each lands on `main`, paste the commit + applied diff back to Claude Code** for the follow-up review (its GitHub is still down, so feed it directly): #49 → behavior + the single-most-recent-impression fidelity check; #51 → confirm the resolver maps `categoryKey`→row `id` against the loaded categories and that the local-type field add is in.
+
+4. **Once both are on `main`, clear PR #50's two gates, merge, then have Claude flip the manifest** against the merged reality (not before).
+
+That's the path. But step back for a second, because you've been at this for a long, intense session and the work is now *parked in other people's lanes*, not yours. There is genuinely nothing left for you to build or decide on `plancard-piece3` until #49 and #51 land — the slot's done, the gates are explicit, the discipline held. So your move is the lightweight coordination above, and then you're waiting on lanes you don't control.
+
+Two things worth doing before you context-switch away, so this doesn't decay while you're gone: confirm the **`033`-on-main / Master-Brief reconciliation** didn't get dropped (it's the one item that felt closed but only stays fixed if the owning lane carries it), and jot the open state somewhere durable — #49, #51, the `033` reconcile, and "manifest flips at #50 merge" — because by your own hard-won lesson, a pull moves code but never context, and you'll lose the thread across sessions if it only lives in this chat.
+
+Then it's fine to step away. The bottleneck is no longer you.

@@ -4,27 +4,40 @@
  * Called at startup BEFORE seeding. Throws on failure so the server never starts with
  * a partially migrated schema — this prevents silent runtime failures in ESO write/read paths.
  */
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 
-// CJS-safe dirname: import.meta.url is undefined in the production CJS bundle.
+// CJS-safe dirname: never use import.meta.url — it is undefined in the
+// production CJS bundle (dist/index.cjs) and the try/catch does not
+// reliably intercept it after esbuild's transform. Instead probe __dirname
+// (always defined in CJS) then fall back to process.cwd().
 const __dirname_local = (() => {
-  try {
-    const { fileURLToPath } = require("url");
-    return dirname(fileURLToPath(import.meta.url));
-  } catch {
-    return join(process.cwd(), "server", "migrations");
+  // In the production bundle __dirname === "dist/" — go up one level to reach
+  // "server/migrations". In development tsx sets __dirname per-file correctly.
+  if (typeof __dirname !== "undefined") {
+    const candidate = join(__dirname, "..", "server", "migrations");
+    if (existsSync(candidate)) return candidate;
+    // __dirname already points at server/migrations/ (tsx dev)
+    if (existsSync(join(__dirname, "006_eso_canonicalization.sql")))
+      return __dirname;
   }
-})();
+  // Ultimate fallback: workspace root + server/migrations
+  return join(process.cwd(), "server", "migrations");
+})()
 
 const MIGRATION_FILES = [
+  "001_guest_invite_system.sql",
+  "002_transport_booking_options.sql",
+  "003_fix_test_account_roles.sql",
+  "004_restaurant_cache.sql",
+  "005_affiliate_reconciliation.sql",
   "006_eso_canonicalization.sql",
   "007_eso_workflow_columns.sql",
   "008_content_affinity_tags.sql",
   "009_cross_sell_events.sql",
-  "009_curated_by_expert.sql",
+  "009b_curated_by_expert.sql",
   "010_expert_request_optimization_context.sql",
   "011_provider_services_approval_status.sql",
   "012_migrate_expert_custom_services.sql",
@@ -40,9 +53,9 @@ const MIGRATION_FILES = [
   "022_email_verification_tokens.sql",
   "023_platform_deposit_rate.sql",
   "024_experience_template_hero_fields.sql",
-  "024_provider_commission.sql",
+  "024b_provider_commission.sql",
   "025_tab_control_config.sql",
-  "025_ai_cost_tracking.sql",
+  "025b_ai_cost_tracking.sql",
   "026_trip_collaborators.sql",
   "027_insurance_tier_fields.sql",
   "028_service_bookings_insurance_fee.sql",

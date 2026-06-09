@@ -49,6 +49,9 @@ export interface NavigateParams {
   mode?: TraveloureMode;
   waypoints?: Array<{ lat?: number; lng?: number; name: string; mapsUrl?: string }>;
   app?: "google" | "apple" | "waze";
+  /** Explicit deep-link stored on a transport leg. When present, takes precedence
+   *  over the computed fallback URL (after applying the Apple→Google escape-hatch). */
+  mapsUrl?: string | null;
 }
 
 type Platform = "ios" | "android" | "desktop";
@@ -133,6 +136,26 @@ export function openInMaps(params: NavigateParams): void {
 
   if (app === "waze" && normalized !== "driving") {
     app = PLATFORM === "ios" ? "apple" : "google";
+  }
+
+  // Single-source escape-hatch: Apple Maps doesn't support more than 2 waypoints.
+  if (app === "apple" && params.waypoints && params.waypoints.length > 2) {
+    app = "google";
+  }
+
+  // Stored mapsUrl on a transport leg takes precedence over the computed fallback.
+  // Keep the Apple→Google escape-hatch when forcing Google.
+  if (params.mapsUrl) {
+    const targetUrl =
+      app === "google" && params.mapsUrl.startsWith("maps://")
+        ? buildMapsDeepLink({
+            places: paramsToPlaces(params),
+            mode: params.mode as TransportMode,
+            platform: "google",
+          })
+        : params.mapsUrl;
+    if (targetUrl) window.open(targetUrl, "_blank", "noopener,noreferrer");
+    return;
   }
 
   // Waze is built here; apple/google (including the Apple→Google escape hatch for

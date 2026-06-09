@@ -141,6 +141,7 @@ export interface PlanCardTransport {
   distanceDisplay?: string;
   estimatedDurationMinutes?: number;
   estimatedCostUsd?: number | null;
+  mapsUrl?: string | null;
 }
 
 export interface PlanCardDay {
