@@ -67,6 +67,7 @@ const menuGroups = [
     items: [
       { title: "Services", href: "/admin/services", icon: Package },
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
+      { title: "Offering Types", href: "/admin/offering-types", icon: Layers },
       { title: "Expert Templates", href: "/admin/expert-templates", icon: LayoutTemplate },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       { title: "Content", href: "/admin/content-tracking", icon: FileText },

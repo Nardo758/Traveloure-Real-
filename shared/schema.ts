@@ -577,10 +577,6 @@ export const providerServices = pgTable("provider_services", {
   // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
   revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
 
-  // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug;
-  // populated by provider in listing form + admin backfill for legacy rows.
-  neighborhood: varchar("neighborhood", { length: 100 }),
-
   // Content-affinity tags — canonical slugs indicating which traveller contexts
   // surface this service. e.g. ['hotel_arrival','photo_shoot'].
   // Empty array → system falls back to serviceType inference in content-matching.service.
@@ -5753,6 +5749,75 @@ export const expertOfferingTypes = pgTable("expert_offering_types", {
 export type ExpertOfferingType = typeof expertOfferingTypes.$inferSelect;
 export const insertExpertOfferingTypeSchema = createInsertSchema(expertOfferingTypes).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertExpertOfferingType = z.infer<typeof insertExpertOfferingTypeSchema>;
+
+// ─── Master Integration Brief — Phase 5 (Upsell engine) ──────────────────────
+// upsell_slot_config: per-surface admin-tunable knobs. The dominance contract
+// (relevance can never be overridden by revenue across a band) is enforced
+// in upsell-engine.service.ts via min(revenueWeight, revenueCap) ≤ bandWidth.
+// upsell_impressions: attribution log used to tune weights empirically.
+export const upsellSlotConfig = pgTable("upsell_slot_config", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  surface: varchar("surface", { length: 50 }).notNull().unique(),
+  maxItems: integer("max_items").notNull().default(3),
+  revenueWeight: decimal("revenue_weight", { precision: 5, scale: 4 }).notNull().default("0.15"),
+  revenueCap: decimal("revenue_cap", { precision: 5, scale: 4 }).notNull().default("0.15"),
+  frequencyCapHours: integer("frequency_cap_hours").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type UpsellSlotConfig = typeof upsellSlotConfig.$inferSelect;
+export const insertUpsellSlotConfigSchema = createInsertSchema(upsellSlotConfig).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertUpsellSlotConfig = z.infer<typeof insertUpsellSlotConfigSchema>;
+
+export const upsellImpressions = pgTable("upsell_impressions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tripId: varchar("trip_id", { length: 255 }),
+  guestSessionId: varchar("guest_session_id", { length: 255 }),
+  userId: varchar("user_id", { length: 255 }),
+  surface: varchar("surface", { length: 50 }).notNull(),
+  offeringId: varchar("offering_id", { length: 255 }).notNull(),
+  categoryKey: varchar("category_key", { length: 100 }),
+  sourceType: varchar("source_type", { length: 30 }),
+  relevanceScore: decimal("relevance_score", { precision: 6, scale: 4 }),
+  revenueScore: decimal("revenue_score", { precision: 6, scale: 4 }),
+  finalScore: decimal("final_score", { precision: 6, scale: 4 }),
+  rankPosition: integer("rank_position"),
+  shownAt: timestamp("shown_at").notNull().defaultNow(),
+  clicked: boolean("clicked").notNull().default(false),
+  clickedAt: timestamp("clicked_at"),
+  added: boolean("added").notNull().default(false),
+  addedAt: timestamp("added_at"),
+  booked: boolean("booked").notNull().default(false),
+  bookedAt: timestamp("booked_at"),
+});
+export type UpsellImpression = typeof upsellImpressions.$inferSelect;
+export const insertUpsellImpressionSchema = createInsertSchema(upsellImpressions).omit({ id: true, shownAt: true });
+export type InsertUpsellImpression = z.infer<typeof insertUpsellImpressionSchema>;
+
+// Phase 5.4 (step 6) — expert endorsements. Two scopes:
+//   scope='trip'         → expert curates for a specific trip
+//   scope='neighborhood' → lead endorses for a neighborhood (compounds across trips)
+// XOR enforced at the DB via CHECK constraint (migration 050). Endorsements
+// feed the relevance term only — never revenue — so the lead's pick can't
+// be bought. See upsell-engine.service.ts.computeRelevance and the
+// "endorsement raises relevance, not revenue" gate test.
+export const upsellExpertEndorsements = pgTable("upsell_expert_endorsements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  scope: varchar("scope", { length: 20 }).notNull(),    // 'trip' | 'neighborhood'
+  tripId: varchar("trip_id", { length: 255 }),
+  neighborhoodId: varchar("neighborhood_id"),
+  offeringId: varchar("offering_id", { length: 255 }).notNull(),
+  categoryKey: varchar("category_key", { length: 100 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type UpsellExpertEndorsement = typeof upsellExpertEndorsements.$inferSelect;
+export const insertUpsellExpertEndorsementSchema = createInsertSchema(upsellExpertEndorsements).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertUpsellExpertEndorsement = z.infer<typeof insertUpsellExpertEndorsementSchema>;
 
 // === Provider Settings ===
 export const providerSettings = pgTable("provider_settings", {
