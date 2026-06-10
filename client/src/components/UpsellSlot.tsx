@@ -16,7 +16,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Sparkles, ChevronRight } from "lucide-react";
+import { Sparkles, ChevronRight, ImageIcon } from "lucide-react";
 import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -27,12 +27,23 @@ export type UpsellSurface =
   | "checkout"
   | "discover_location";
 
+export interface CoveringListing {
+  serviceId: string;
+  serviceName: string;
+  providerName: string;
+  priceAmount: number | null;
+  priceCurrency: string;
+  coverPhotoUrl: string | null;
+}
+
 export interface UpsellCandidate {
   offeringId: string;
   categoryKey: string;
   displayName: string;
   tagline: string | null;
   reason: string;
+  /** Present for platform_provider candidates; null for affiliate candidates. */
+  coveringListing: CoveringListing | null;
 }
 
 export interface SlotResult {
@@ -86,6 +97,16 @@ const DEFAULT_HEADING: Record<UpsellSurface, string> = {
   checkout: "Add to your trip",
   discover_location: "Recommended for you",
 };
+
+function formatPrice(amount: number | null, currency: string): string {
+  if (amount === null) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency || "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 export function UpsellSlot({
   surface,
@@ -160,16 +181,61 @@ export function UpsellSlot({
               key={c.offeringId}
               type="button"
               onClick={() => handleExplore(c)}
-              className="w-full flex items-center gap-2 text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
+              className="w-full flex items-center gap-2.5 text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
               data-testid={`upsell-candidate-${surface}-${c.offeringId}`}
             >
+              {c.coveringListing ? (
+                <div className="flex-shrink-0 w-10 h-10 rounded-md overflow-hidden bg-muted border border-border">
+                  {c.coveringListing.coverPhotoUrl ? (
+                    <img
+                      src={c.coveringListing.coverPhotoUrl}
+                      alt={c.coveringListing.serviceName}
+                      className="w-full h-full object-cover"
+                      data-testid={`upsell-candidate-photo-${c.offeringId}`}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                        (e.currentTarget.parentElement as HTMLElement).classList.add("flex", "items-center", "justify-center");
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
+                    </div>
+                  )}
+                </div>
+              ) : null}
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-semibold text-foreground truncate">{c.displayName}</div>
-                {c.tagline && (
-                  <div className="text-[11px] text-muted-foreground truncate">{c.tagline}</div>
+                {c.coveringListing ? (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span
+                      className="text-[11px] text-muted-foreground truncate"
+                      data-testid={`upsell-candidate-provider-${c.offeringId}`}
+                    >
+                      {c.coveringListing.providerName}
+                    </span>
+                    {c.coveringListing.priceAmount !== null && (
+                      <>
+                        <span className="text-[10px] text-muted-foreground/50">·</span>
+                        <span
+                          className="text-[11px] font-medium text-foreground/80 flex-shrink-0"
+                          data-testid={`upsell-candidate-price-${c.offeringId}`}
+                        >
+                          {formatPrice(c.coveringListing.priceAmount, c.coveringListing.priceCurrency)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  c.tagline && (
+                    <div className="text-[11px] text-muted-foreground truncate">{c.tagline}</div>
+                  )
                 )}
-                {c.reason && (
+                {c.reason && !c.coveringListing && (
                   <div className="text-[10px] text-muted-foreground/70 italic truncate">{c.reason}</div>
+                )}
+                {c.reason && c.coveringListing && (
+                  <div className="text-[10px] text-muted-foreground/60 italic truncate">{c.reason}</div>
                 )}
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />

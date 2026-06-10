@@ -142,6 +142,16 @@ export function resolveTemplateKey(input: string | null | undefined): string {
  *   2. marketCity                → coverage anywhere in that city
  *   3. neither                   → any coverage (keeps non-located surfaces non-empty)
  */
+/** Listing-level detail resolved for the best covering provider. */
+export type CoveringListing = {
+  serviceId: string;
+  serviceName: string;
+  providerName: string;
+  priceAmount: number | null;
+  priceCurrency: string;
+  coverPhotoUrl: string | null;
+};
+
 type CoverageMatch = {
   matchedSlug: string;
   verified: boolean;
@@ -149,6 +159,8 @@ type CoverageMatch = {
   price: number | null;
   /** how the matched neighborhood relates to the target scope */
   matchType: "same" | "adjacent" | "market" | "global";
+  /** resolved listing detail for the best covering provider */
+  listing: CoveringListing;
 };
 
 /** node-pg binds JS arrays as a single scalar; pass a Postgres array literal. */
@@ -200,7 +212,12 @@ async function loadCoveringInventory(opts: {
     SELECT DISTINCT ON (c.category_key)
       c.category_key,
       cn.slug AS matched_slug,
+      ps.id AS service_id,
+      ps.service_name,
       ps.price AS listing_price,
+      ps.service_image AS cover_photo_url,
+      u.first_name AS provider_first_name,
+      u.last_name AS provider_last_name,
       (u.provider_verification_status = 'verified'
         AND (sc.requires_background_check = false OR u.background_check_confirmed = true)
       ) AS provider_verified
@@ -234,11 +251,23 @@ async function loadCoveringInventory(opts: {
         : tier === "market" ? "market" : "global";
     const priceNum = r.listing_price === null || r.listing_price === undefined
       ? null : Number(r.listing_price);
+    const price = Number.isFinite(priceNum as number) ? priceNum : null;
+    const firstName = r.provider_first_name ? String(r.provider_first_name) : "";
+    const lastName = r.provider_last_name ? String(r.provider_last_name) : "";
+    const providerName = [firstName, lastName].filter(Boolean).join(" ") || "Provider";
     map.set(String(r.category_key), {
       matchedSlug: slug,
       verified: Boolean(r.provider_verified),
-      price: Number.isFinite(priceNum as number) ? priceNum : null,
+      price,
       matchType,
+      listing: {
+        serviceId: String(r.service_id),
+        serviceName: String(r.service_name),
+        providerName,
+        priceAmount: price,
+        priceCurrency: "USD",
+        coverPhotoUrl: r.cover_photo_url ? String(r.cover_photo_url) : null,
+      },
     });
   }
   return map;
@@ -271,12 +300,18 @@ function computeEarnings(
   return rate * (price ?? NOMINAL_BASKET_USD);
 }
 
+type GatherResult = {
+  candidates: RankInputCandidate[];
+  /** coveringListing per offeringId for platform_provider candidates; absent for affiliates */
+  coveringListings: Map<string, CoveringListing>;
+};
+
 async function gatherOfferingCandidates(opts: {
   templateKey?: string;
   marketCity?: string | null;
   neighborhoodIds?: string[];
   expertEndorsedKeys?: string[];
-}): Promise<RankInputCandidate[]> {
+}): Promise<GatherResult> {
   const endorsedSet = new Set(opts.expertEndorsedKeys ?? []);
   const effectiveTemplate = resolveTemplateKey(opts.templateKey);
 
@@ -325,6 +360,8 @@ async function gatherOfferingCandidates(opts: {
 
     const rows = (result.rows ?? []) as any[];
     const candidates: RankInputCandidate[] = [];
+    const coveringListings = new Map<string, CoveringListing>();
+
     for (const r of rows) {
       const isAffiliate = r.source_type === "affiliate";
       // Platform-provider offerings are inventory-gated: they surface only if
@@ -340,8 +377,9 @@ async function gatherOfferingCandidates(opts: {
         ? computeEarnings(r.aff_band_rate_type, r.aff_band_rate === null ? null : Number(r.aff_band_rate), null)
         : computeEarnings(r.band_rate_type, r.band_rate === null ? null : Number(r.band_rate), inv!.price);
 
+      const offeringId = String(r.offering_id);
       candidates.push({
-        offeringId: String(r.offering_id),
+        offeringId,
         categoryKey: String(r.category_key ?? ""),
         sourceType: (isAffiliate ? "affiliate" : "platform_provider"),
         templateStrength: normalizeStrength(r.template_strength),
@@ -354,16 +392,21 @@ async function gatherOfferingCandidates(opts: {
         providerHasVerifiedBadge: isAffiliate ? true : inv!.verified,
         candidateNeighborhoodSlug: isAffiliate ? null : inv!.matchedSlug,
         expectedPlatformEarningsRaw: earnings,
-        expertEndorsed: endorsedSet.has(String(r.offering_id)),
+        expertEndorsed: endorsedSet.has(offeringId),
         profileMatchScore: 0.5,         // Phase 5.2 baseline; Phase 5.3+ refines
         // Affiliate inventory is broadly available → market-level proximity.
         proximityFit: isAffiliate ? PROXIMITY_FIT.market : PROXIMITY_FIT[inv!.matchType],
       });
+
+      // Attach listing detail for platform_provider candidates only.
+      if (!isAffiliate && inv) {
+        coveringListings.set(offeringId, inv.listing);
+      }
     }
-    return candidates;
+    return { candidates, coveringListings };
   } catch (err) {
     console.error("[upsell] gatherOfferingCandidates failed:", err);
-    return [];
+    return { candidates: [], coveringListings: new Map() };
   }
 }
 
@@ -427,22 +470,22 @@ async function findDateUnavailableOfferingIds(
 async function rankAndLog(
   surface: Surface,
   ctx: UpsellContext,
-  rawCandidates: RankInputCandidate[],
+  gatherResult: GatherResult,
   req: any,
 ): Promise<{
   candidates: ReturnType<typeof rankCandidates>["candidates"];
   suppressed: ReturnType<typeof rankCandidates>["suppressed"];
-  displayLookup: Map<string, { displayName: string; tagline: string | null }>;
+  displayLookup: Map<string, { displayName: string; tagline: string | null; coveringListing: CoveringListing | null }>;
 }> {
   const slotConfig = (await getSlotConfig(surface)) ?? {
     surface, maxItems: 3, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true,
   };
-  const result = rankCandidates(ctx, rawCandidates, slotConfig, DEFAULT_POLICY);
+  const result = rankCandidates(ctx, gatherResult.candidates, slotConfig, DEFAULT_POLICY);
 
   // Resolve display names from service_offering_types so the surface renders
   // human-language (per the catalog brief: "Photography wanted in Gion,"
   // not 'photography'/'aff_activities').
-  const displayLookup = new Map<string, { displayName: string; tagline: string | null }>();
+  const displayLookup = new Map<string, { displayName: string; tagline: string | null; coveringListing: CoveringListing | null }>();
   if (result.candidates.length > 0) {
     try {
       const ids = result.candidates.map(c => c.offeringId);
@@ -453,13 +496,26 @@ async function rankAndLog(
       `);
       for (const r of (lookup.rows ?? [])) {
         const row = r as any;
-        displayLookup.set(String(row.offering_type_key), {
+        const offeringId = String(row.offering_type_key);
+        displayLookup.set(offeringId, {
           displayName: String(row.display_name),
           tagline: row.tagline ?? null,
+          coveringListing: gatherResult.coveringListings.get(offeringId) ?? null,
         });
       }
     } catch (err) {
       console.warn("[upsell] display-name lookup failed:", err);
+    }
+    // For any ranked candidate not found in service_offering_types (shouldn't happen,
+    // but defensive), still attach coveringListing so it isn't silently lost.
+    for (const c of result.candidates) {
+      if (!displayLookup.has(c.offeringId)) {
+        displayLookup.set(c.offeringId, {
+          displayName: c.offeringId,
+          tagline: null,
+          coveringListing: gatherResult.coveringListings.get(c.offeringId) ?? null,
+        });
+      }
     }
   }
 
@@ -471,12 +527,13 @@ async function rankAndLog(
 
 function decorate(
   candidates: ReturnType<typeof rankCandidates>["candidates"],
-  displayLookup: Map<string, { displayName: string; tagline: string | null }>,
+  displayLookup: Map<string, { displayName: string; tagline: string | null; coveringListing: CoveringListing | null }>,
 ) {
   return candidates.map(c => ({
     ...c,
     displayName: displayLookup.get(c.offeringId)?.displayName ?? c.offeringId,
     tagline: displayLookup.get(c.offeringId)?.tagline ?? null,
+    coveringListing: displayLookup.get(c.offeringId)?.coveringListing ?? null,
   }));
 }
 
@@ -500,13 +557,13 @@ router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
       neighborhoodIds: body.neighborhoodIds,
       expertEndorsedKeys: mergedEndorsedKeys,
     };
-    const raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
-    const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, gathered, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -568,13 +625,13 @@ router.post("/api/upsell/discover-location", async (req, res) => {
       neighborhoodId: body.neighborhoodId,
       expertEndorsedKeys: mergedEndorsedKeys,
     };
-    const raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: marketCity ? marketCity.toLowerCase() : null,
       neighborhoodIds: [body.neighborhoodId],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
-    const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, gathered, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -605,13 +662,17 @@ router.post("/api/upsell/discover-date", async (req, res) => {
     // Hard date filter: drop offerings whose category requires specific date
     // availability and where no inventory exists for the requested range.
     const unavailable = await findDateUnavailableOfferingIds(body.city, body.dateRange);
-    const raw = (await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: body.city.toLowerCase(),
       expertEndorsedKeys: mergedEndorsedKeys,
-    })).filter(c => !unavailable.has(c.offeringId));
+    });
+    const filteredGathered: GatherResult = {
+      candidates: gathered.candidates.filter(c => !unavailable.has(c.offeringId)),
+      coveringListings: gathered.coveringListings,
+    };
 
-    const { candidates, suppressed, displayLookup } = await rankAndLog("discover_date", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("discover_date", ctx, filteredGathered, req);
 
     res.json({
       candidates: decorate(candidates, displayLookup),
@@ -698,7 +759,7 @@ router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
       neighborhoodIds: body.neighborhoodIds,
       expertEndorsedKeys: body.expertEndorsedKeys,
     };
-    const raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
@@ -713,7 +774,7 @@ router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
       frequencyCapHours: 0,
       enabled: true,
     };
-    const { candidates } = rankCandidates(ctx, raw, slotConfig, DEFAULT_POLICY);
+    const { candidates } = rankCandidates(ctx, gathered.candidates, slotConfig, DEFAULT_POLICY);
 
     // Log impressions for engine-side tracking (the candidates DID rank;
     // we just don't reveal them to the user).
@@ -762,7 +823,7 @@ router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) =>
       neighborhoodIds: body.neighborhoodIds,
       expertEndorsedKeys: mergedEndorsedKeys,
     };
-    let raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
@@ -804,12 +865,16 @@ router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) =>
     }
 
     // Apply the server-derived filter. The client param is NEVER used to steer.
+    let filteredGathered: GatherResult = gathered;
     if (serverDerivedSlots.length > 0) {
       const slotSet = new Set(serverDerivedSlots);
-      raw = raw.filter(c => slotSet.has(c.categoryKey));
+      filteredGathered = {
+        candidates: gathered.candidates.filter(c => slotSet.has(c.categoryKey)),
+        coveringListings: gathered.coveringListings,
+      };
     }
 
-    const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_pretrip", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_pretrip", ctx, filteredGathered, req);
 
     // Transparency: tell the client what was actually used + whether the
     // advisory param (if any) was ignored.
@@ -849,7 +914,7 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
       neighborhoodIds: body.neighborhoodIds,
       expertEndorsedKeys: body.expertEndorsedKeys,
     };
-    let raw = await gatherOfferingCandidates({
+    let gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: [body.currentNeighborhoodId, ...(body.neighborhoodIds ?? [])].filter((x): x is string => Boolean(x)),
@@ -870,13 +935,18 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
             AND shown_at > NOW() - (${slotConfig.frequencyCapHours} || ' hours')::INTERVAL
         `);
         const recentSet = new Set((recent.rows ?? []).map((r: any) => String(r.offering_id)));
-        if (recentSet.size > 0) raw = raw.filter(c => !recentSet.has(c.offeringId));
+        if (recentSet.size > 0) {
+          gathered = {
+            candidates: gathered.candidates.filter(c => !recentSet.has(c.offeringId)),
+            coveringListings: gathered.coveringListings,
+          };
+        }
       }
     } catch (err) {
       console.warn("[upsell] plancard-ontrip frequency-cap check skipped:", err);
     }
 
-    const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_ontrip", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_ontrip", ctx, gathered, req);
     res.json({
       candidates: decorate(candidates, displayLookup),
       suppressed,
@@ -1058,13 +1128,13 @@ router.post("/api/upsell/expert-review", isAuthenticated, async (req, res) => {
       neighborhoodIds: body.neighborhoodIds,
       expertEndorsedKeys: fetched,
     };
-    const raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: fetched,
     });
-    const { candidates, suppressed, displayLookup } = await rankAndLog("expert_review", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("expert_review", ctx, gathered, req);
 
     // List THIS expert's own endorsements for the curation UI.
     const myEndorsements = await db.execute(sql`
@@ -1202,12 +1272,12 @@ router.delete("/api/upsell/expert-review/endorse", isAuthenticated, async (req, 
  * stays at the surface seam.
  */
 async function filterByFrequencyCap(
-  raw: RankInputCandidate[],
+  gathered: GatherResult,
   tripId: string | undefined,
   surface: Surface,
   windowHours: number,
-): Promise<RankInputCandidate[]> {
-  if (!tripId || windowHours <= 0) return raw;
+): Promise<GatherResult> {
+  if (!tripId || windowHours <= 0) return gathered;
   try {
     const recent = await db.execute(sql`
       SELECT DISTINCT offering_id
@@ -1217,11 +1287,14 @@ async function filterByFrequencyCap(
         AND shown_at > NOW() - (${windowHours} || ' hours')::INTERVAL
     `);
     const seen = new Set((recent.rows ?? []).map((r: any) => String(r.offering_id)));
-    if (seen.size === 0) return raw;
-    return raw.filter(c => !seen.has(c.offeringId));
+    if (seen.size === 0) return gathered;
+    return {
+      candidates: gathered.candidates.filter(c => !seen.has(c.offeringId)),
+      coveringListings: gathered.coveringListings,
+    };
   } catch (err) {
     console.warn(`[upsell] frequency-cap check skipped for ${surface}:`, err);
-    return raw;
+    return gathered;
   }
 }
 
@@ -1264,13 +1337,13 @@ router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
       expertEndorsedKeys: mergedEndorsedKeys,
       tripIsPostOptimize: body.tripIsPostOptimize,
     };
-    const raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
-    const { candidates, suppressed, displayLookup } = await rankAndLog("checkout", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("checkout", ctx, gathered, req);
     res.json({
       candidates: decorate(candidates, displayLookup),
       suppressed,
@@ -1315,15 +1388,15 @@ router.post("/api/upsell/post-booking", isAuthenticated, async (req, res) => {
       expertEndorsedKeys: mergedEndorsedKeys,
     };
     const slotConfig = await getSlotConfig("post_booking");
-    let raw = await gatherOfferingCandidates({
+    let gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
-    raw = await filterByFrequencyCap(raw, body.tripId, "post_booking", slotConfig?.frequencyCapHours ?? 48);
+    gathered = await filterByFrequencyCap(gathered, body.tripId, "post_booking", slotConfig?.frequencyCapHours ?? 48);
 
-    const { candidates, suppressed, displayLookup } = await rankAndLog("post_booking", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("post_booking", ctx, gathered, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -1369,13 +1442,13 @@ router.post("/api/upsell/ai-concierge", isAuthenticated, async (req, res) => {
       neighborhoodIds: body.neighborhoodIds,
       expertEndorsedKeys: mergedEndorsedKeys,
     };
-    const raw = await gatherOfferingCandidates({
+    const gathered = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
       neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
-    const { candidates, suppressed, displayLookup } = await rankAndLog("ai_concierge", ctx, raw, req);
+    const { candidates, suppressed, displayLookup } = await rankAndLog("ai_concierge", ctx, gathered, req);
     res.json({
       candidates: decorate(candidates, displayLookup),
       suppressed,
