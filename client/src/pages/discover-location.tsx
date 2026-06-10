@@ -1162,11 +1162,41 @@ export default function DiscoverLocationPage() {
               </div>
             )}
 
-            {/* ── Spine: "offering wanted in city" recruitment slots ─── */}
-            {experts.length === 0 && (
+            {/* ── Spine: per-neighborhood recruitment slots (uncovered categories) ── */}
+            {experts.length === 0 && neighborhoods.length > 0 && (
+              <div className="space-y-2" data-testid="section-expert-recruitment">
+                {neighborhoods.slice(0, 3).map((nb: any) => {
+                  const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
+                  return (
+                    <div
+                      key={nb.id ?? nb.slug ?? nbName}
+                      className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
+                      data-testid={`section-recruitment-${nb.id ?? nb.slug ?? "nb"}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-primary truncate">
+                          Local expert guide wanted in {nbName}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          Be the first expert covering {nbName} for travellers
+                        </p>
+                      </div>
+                      <a
+                        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(nbName)}`}
+                        className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
+                        data-testid={`link-recruitment-earn-${nb.id ?? nb.slug ?? "nb"}`}
+                      >
+                        Apply <ChevronRight className="w-3 h-3" />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {experts.length === 0 && neighborhoods.length === 0 && (
               <div
                 className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
-                data-testid="section-expert-recruitment"
+                data-testid="section-expert-recruitment-generic"
               >
                 <p className="text-sm font-semibold text-primary mb-1">
                   Local experts wanted in {toTitleCase(city)}
@@ -1175,7 +1205,7 @@ export default function DiscoverLocationPage() {
                   Know this city well? Travellers are looking for guides, advisors, and service providers here.
                 </p>
                 <a
-                  href={`/earn?track=expert&city=${encodeURIComponent(city)}`}
+                  href={`/become-expert?city=${encodeURIComponent(city)}`}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
                   data-testid="link-expert-recruitment-earn"
                 >
@@ -1187,7 +1217,9 @@ export default function DiscoverLocationPage() {
             {/* ── Spine: UpsellSlot recommendation cards ────────────── */}
             <UpsellSlot
               surface="discover_location"
-              contextPayload={{ city, country: heroCountry ?? undefined }}
+              contextPayload={neighborhoods[0]?.id
+                ? { neighborhoodId: String(neighborhoods[0].id) }
+                : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }}
               className="px-0"
               data-testid="upsell-slot-discover-location"
             />

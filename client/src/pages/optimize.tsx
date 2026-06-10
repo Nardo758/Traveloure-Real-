@@ -196,17 +196,22 @@ function useTierPrice(bandKey: string | undefined, fallback: number): number {
   return data.default_rate;
 }
 
-interface OptimizeGateTeaser {
+interface OptimizeGateTeaserData {
+  addOnsAvailable: number;
   categoryHints: string[];
-  improvableCount: number;
+  teaser: string | null;
+  delta?: unknown;
 }
 
 function OptimizeGateTeaser({ tripId }: { tripId?: string }) {
-  const { data, isLoading } = useQuery<OptimizeGateTeaser>({
+  const { data, isLoading } = useQuery<OptimizeGateTeaserData>({
     queryKey: ["/api/upsell/optimize-gate", tripId],
     queryFn: async () => {
-      const res = await fetch("/api/upsell/optimize-gate" + (tripId ? `?tripId=${encodeURIComponent(tripId)}` : ""), {
+      const res = await fetch("/api/upsell/optimize-gate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ tripId: tripId ?? null, cartItems: [] }),
       });
       if (!res.ok) throw new Error("No gate data");
       return res.json();
@@ -215,7 +220,7 @@ function OptimizeGateTeaser({ tripId }: { tripId?: string }) {
     retry: false,
   });
 
-  if (isLoading || !data || (!data.improvableCount && !data.categoryHints?.length)) return null;
+  if (isLoading || !data || (!data.addOnsAvailable && !data.categoryHints?.length)) return null;
 
   return (
     <div
@@ -226,9 +231,9 @@ function OptimizeGateTeaser({ tripId }: { tripId?: string }) {
         <Sparkles className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
         <div>
           <p className="font-semibold text-purple-900 text-sm">
-            {data.improvableCount > 0
-              ? `${data.improvableCount} area${data.improvableCount !== 1 ? "s" : ""} could be improved`
-              : "Improvements available"}
+            {data.teaser ?? (data.addOnsAvailable > 0
+              ? `${data.addOnsAvailable} add-on${data.addOnsAvailable !== 1 ? "s" : ""} could improve this plan`
+              : "Improvements available")}
           </p>
           {data.categoryHints && data.categoryHints.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">

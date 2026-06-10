@@ -240,11 +240,11 @@ export default function EarnPage() {
   }, [trackParam]);
 
   const handleProviderSelect = (offeringKey: string, displayName: string) => {
-    navigate(`/provider/apply?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
+    navigate(`/become-provider?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
   };
 
   const handleExpertSelect = (offeringKey: string, displayName: string) => {
-    navigate(`/expert/apply?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
+    navigate(`/become-expert?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
   };
 
   return (

@@ -1403,9 +1403,10 @@ export default function CartPage() {
                       <UpsellSlot
                         surface="cart"
                         contextPayload={user ? {
-                          userId: (user as any).id ?? (user as any).claims?.sub,
-                          role: (user as any).role ?? (user as any).claims?.role,
-                          email: (user as any).email ?? (user as any).claims?.email,
+                          userProfile: {
+                            partySize: undefined,
+                            interests: undefined,
+                          },
                         } : undefined}
                       />
                     </div>

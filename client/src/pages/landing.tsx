@@ -863,7 +863,7 @@ export default function LandingPage() {
               viewport={{ once: true }}
               transition={{ delay: 0.1 }}
             >
-              <Link href="/earn?track=local">
+              <Link href="/earn?track=provider">
                 <div
                   className="rounded-2xl border border-white/20 bg-white/10 hover:bg-white/20 p-6 cursor-pointer transition-colors h-full"
                   data-testid="card-earn-local"
