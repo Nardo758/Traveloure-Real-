@@ -162,6 +162,9 @@ export default function TravelExpertsPage() {
   const expertTypeFromUrl = urlParams.get('type') || 'travel_expert';
   const cityFromUrl = urlParams.get('city') || '';
   const countryFromUrl = urlParams.get('country') || '';
+  // Offering carried from /earn ("I do this →") — pre-selects this offering in the application.
+  const offeringKeyFromUrl = urlParams.get('offeringTypeKey') || '';
+  const offeringNameFromUrl = urlParams.get('offeringName') || '';
   
   // Map expert type to display title
   const isLocalExpert = expertTypeFromUrl === "local_expert";
@@ -378,7 +381,9 @@ export default function TravelExpertsPage() {
         specialties: formData.specialties,
         languages: formData.languages,
         experienceTypes: formData.experienceTypes,
-        specializations: formData.specializations,
+        specializations: offeringNameFromUrl
+          ? Array.from(new Set([offeringNameFromUrl, ...formData.specializations]))
+          : formData.specializations,
         selectedServices: formData.selectedServices,
         yearsOfExperience: formData.yearsExperience,
         bio: formData.bio,
@@ -490,6 +495,18 @@ export default function TravelExpertsPage() {
       </div>
 
       <div className="container mx-auto px-4 max-w-2xl py-8">
+        {offeringNameFromUrl && (
+          <div
+            className="mb-6 flex items-center gap-2 rounded-lg border border-[#2E8B8B]/30 bg-[#2E8B8B]/5 px-4 py-3 text-sm"
+            data-testid="banner-preselected-offering"
+            data-offering-type-key={offeringKeyFromUrl}
+          >
+            <Check className="w-4 h-4 text-[#2E8B8B] flex-shrink-0" />
+            <span className="text-[#1F2733]">
+              You're applying to offer: <span className="font-semibold">{offeringNameFromUrl}</span>
+            </span>
+          </div>
+        )}
         <motion.div
           key={currentStep}
           initial={{ opacity: 0, x: 20 }}

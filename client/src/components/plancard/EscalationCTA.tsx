@@ -7,12 +7,38 @@
  * availability (Phase 4 service → /api/concierge/quote).
  *
  * Always visible, soft style (D2). Bookable-now vs queued copy per D4.
+ *
+ * The "polish this" CTA resolves to the ai_plan_polish expert offering type ($49.99 tier).
  */
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { UserCheck, Loader2, CheckCircle2, Clock } from "lucide-react";
+
+interface ExpertOfferingType {
+  offering_type_key: string;
+  service_tier: string;
+  display_name: string;
+  tagline: string | null;
+  base_price_cents: number | null;
+}
+
+function useAiPlanPolishOffering() {
+  return useQuery<ExpertOfferingType | null>({
+    queryKey: ["/api/offering-types/experts"],
+    queryFn: async () => {
+      const res = await fetch("/api/offering-types/experts");
+      if (!res.ok) return null;
+      const list: ExpertOfferingType[] = await res.json();
+      return list.find((o) => o.offering_type_key === "ai_plan_polish") ?? null;
+    },
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+}
 
 interface ExpertAvailability {
   priceCents?: number;
@@ -37,6 +63,7 @@ export function EscalationCTA({
   planSnapshot?: unknown;
 }) {
   const { toast } = useToast();
+  const { data: polishOffering } = useAiPlanPolishOffering();
   const [availability, setAvailability] = useState<ExpertAvailability | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<{ queued: boolean; etaHours?: number } | null>(null);
@@ -82,12 +109,14 @@ export function EscalationCTA({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          requestType: "review",
+          requestType: "ai_plan_polish",
+          offeringTypeKey: "ai_plan_polish",
           tripId,
-          destinationCity: destination,
+          destination,
           notes: "Please review and polish my AI-generated plan.",
           optimizationContext: {
             source: "plancard_escalation",
+            offeringTypeKey: "ai_plan_polish",
             tripId,
             destination,
             eventType,
@@ -129,19 +158,32 @@ export function EscalationCTA({
   const priceLabel = formatPrice(availability?.priceCents);
   const isQueued = availability !== null && !availability.available;
 
+  const polishDisplayName = polishOffering?.display_name ?? "AI Plan Polish";
+  const polishPriceCents = polishOffering?.base_price_cents ?? null;
+  const polishPriceLabel = formatPrice(polishPriceCents ?? undefined);
+
   return (
     <Card className="border-border" data-testid="plancard-escalation-cta">
       <CardContent className="py-3 px-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
           <UserCheck className="w-4 h-4 text-primary flex-shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-medium">Have an expert polish this</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-medium">{polishDisplayName}</p>
+              {polishPriceLabel && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                  {polishPriceLabel}
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               {isQueued ? (
                 <>
                   Queued — ETA ~{availability?.etaHours ?? 24}h
                   {priceLabel && <> · from {priceLabel}</>}
                 </>
+              ) : polishOffering?.tagline ? (
+                <>{polishOffering.tagline}</>
               ) : priceLabel ? (
                 <>From {priceLabel} — a local/travel expert reviews and tweaks your plan.</>
               ) : (

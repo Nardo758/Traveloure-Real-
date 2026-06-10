@@ -80,6 +80,7 @@ import {
   type ProviderBlackoutDate, type InsertProviderBlackoutDate,
   type ProviderBookingRequest, type InsertProviderBookingRequest,
   type ExpertVendorCoordination, type InsertExpertVendorCoordination,
+  expertOfferingTypes,
   expertMatchAnalytics, destinationSearchPatterns, destinationMetricsHistory,
   type ExpertMatchAnalytics, type InsertExpertMatchAnalytics,
   type DestinationSearchPattern, type InsertDestinationSearchPattern,
@@ -92,6 +93,8 @@ import {
   type ProviderSettings, type InsertProviderSettings,
   affiliateBookingRequests,
   type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
+  providerNeighborhoodCoverage,
+  cityNeighborhoods,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -150,6 +153,9 @@ export interface IStorage {
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
 
+  // Provider Verification (publish-gate Step 1)
+  updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void>;
+
   // Service Provider Forms
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
   getServiceProviderForms(status?: string): Promise<ServiceProviderForm[]>;
@@ -162,6 +168,10 @@ export interface IStorage {
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
+  upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void>;
+
+  // Category Field Schema
+  getCategoryFieldSchema(categoryKey: string): Promise<any[]>;
 
   // Service Categories (Enhanced for Admin Management)
   getServiceCategories(type?: string): Promise<ServiceCategory[]>;
@@ -287,6 +297,7 @@ export interface IStorage {
   // Expert Service Categories & Offerings
   getExpertServiceCategories(): Promise<any[]>;
   getExpertServiceOfferings(categoryId?: string): Promise<any[]>;
+  getActiveExpertOfferingTypes(): Promise<any[]>;
   getExpertSelectedServices(expertId: string): Promise<any[]>;
   addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any>;
   removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void>;
@@ -772,6 +783,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId));
   }
 
+  async updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void> {
+    const patch: Record<string, any> = {};
+    if (updates.providerVerificationStatus !== undefined) patch.providerVerificationStatus = updates.providerVerificationStatus;
+    if (updates.backgroundCheckConfirmed !== undefined) patch.backgroundCheckConfirmed = updates.backgroundCheckConfirmed;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(users).set(patch).where(eq(users.id, userId));
+  }
+
   // Service Provider Forms
   async getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined> {
     const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId));
@@ -849,6 +868,35 @@ export class DatabaseStorage implements IStorage {
     await db.delete(providerServices).where(eq(providerServices.id, id));
   }
 
+  async upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void> {
+    if (!categoryKey) return;
+    await db.transaction(async (tx) => {
+      await tx.delete(providerNeighborhoodCoverage).where(
+        and(
+          eq(providerNeighborhoodCoverage.providerId, providerId),
+          eq(providerNeighborhoodCoverage.categoryKey, categoryKey)
+        )
+      );
+      if (neighborhoodSlugs.length === 0) return;
+      const resolved = await tx
+        .select({ id: cityNeighborhoods.id, slug: cityNeighborhoods.slug })
+        .from(cityNeighborhoods)
+        .where(inArray(cityNeighborhoods.slug, neighborhoodSlugs));
+      if (resolved.length === 0) return;
+      const slugOrder = new Map(neighborhoodSlugs.map((s, i) => [s, i]));
+      const sorted = resolved.sort((a, b) => (slugOrder.get(a.slug) ?? 99) - (slugOrder.get(b.slug) ?? 99));
+      await tx.insert(providerNeighborhoodCoverage).values(
+        sorted.map((n, idx) => ({
+          providerId,
+          neighborhoodId: n.id,
+          categoryKey,
+          isPrimary: idx === 0,
+          sortOrder: idx,
+        }))
+      );
+    });
+  }
+
   // Service Categories
   async getServiceCategories(type?: string): Promise<ServiceCategory[]> {
     if (type) {
@@ -865,6 +913,26 @@ export class DatabaseStorage implements IStorage {
   async getServiceCategoryBySlug(slug: string): Promise<ServiceCategory | undefined> {
     const [category] = await db.select().from(serviceCategories).where(eq(serviceCategories.slug, slug));
     return category;
+  }
+
+  async getCategoryFieldSchema(categoryKey: string): Promise<any[]> {
+    const rows = await db.execute(
+      sql`SELECT id, category_key, field_key, label, type, required, options, sort_order, default_price_type
+          FROM category_field_schema
+          WHERE category_key = ${categoryKey}
+          ORDER BY sort_order ASC`
+    );
+    return (rows.rows ?? []).map((r: any) => ({
+      id: r.id,
+      categoryKey: r.category_key,
+      fieldKey: r.field_key,
+      label: r.label,
+      type: r.type,
+      required: r.required,
+      options: r.options,
+      sortOrder: r.sort_order,
+      defaultPriceType: r.default_price_type ?? null,
+    }));
   }
 
   async createServiceCategory(category: InsertServiceCategory): Promise<ServiceCategory> {
@@ -2007,6 +2075,22 @@ export class DatabaseStorage implements IStorage {
   // expert_service_categories was dropped by migration 013 — return empty array so callers don't break.
   async getExpertServiceCategories(): Promise<any[]> {
     return [];
+  }
+
+  async getActiveExpertOfferingTypes(): Promise<any[]> {
+    return await db.select({
+      id: expertOfferingTypes.id,
+      offeringTypeKey: expertOfferingTypes.offeringTypeKey,
+      serviceTier: expertOfferingTypes.serviceTier,
+      displayName: expertOfferingTypes.displayName,
+      tagline: expertOfferingTypes.tagline,
+      deliveryFormats: expertOfferingTypes.deliveryFormats,
+      isSurprising: expertOfferingTypes.isSurprising,
+      sortOrder: expertOfferingTypes.sortOrder,
+    })
+    .from(expertOfferingTypes)
+    .where(eq(expertOfferingTypes.isActive, true))
+    .orderBy(expertOfferingTypes.sortOrder);
   }
 
   async getExpertServiceOfferings(categoryId?: string): Promise<any[]> {

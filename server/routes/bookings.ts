@@ -42,7 +42,16 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/bookings/confirm-payment
- * Confirm booking after payment success
+ *
+ * FALLBACK / POLLING ENDPOINT — the authoritative confirmation path is the
+ * Stripe webhook (payment_intent.succeeded → stripePaymentService.handlePaymentSucceeded).
+ * This endpoint exists so the client can recover when the browser was closed before
+ * the webhook fired, or in local dev where webhooks aren't delivered.
+ *
+ * Behaviour:
+ *   1. If the booking is already confirmed (webhook beat us here) → return 200 immediately.
+ *   2. If the booking is still pending_payment → run the full server-side verification
+ *      and confirm it (idempotent fallback).
  */
 router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
@@ -52,25 +61,90 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const success = await bookingService.confirmBookingPayment(bookingId, paymentIntentId);
-
-    if (success) {
-      res.json({
-        success: true,
-        message: 'Booking confirmed',
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: 'Failed to confirm booking',
-      });
+    // Extract userId handling both Replit Auth (user.id) and email-auth (user.claims.sub)
+    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
+
+    // Fast-path: if the webhook already confirmed this booking, return success immediately
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+    const existing = await db.execute(sql`
+      SELECT status FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1
+    `);
+    const currentStatus = (existing.rows?.[0] as any)?.status;
+
+    if (currentStatus === 'confirmed') {
+      console.log(`[confirm-payment] booking ${bookingId} already confirmed by webhook — returning success`);
+      return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+    }
+
+    // Fallback: webhook hasn't fired yet (or this is local dev) — confirm it now
+    console.log(`[confirm-payment] webhook hasn't confirmed booking ${bookingId} yet — running fallback confirmation`);
+    await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
+
+    res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
   } catch (error: any) {
+    const code = error?.code;
+    if (code === 'PAYMENT_NOT_SUCCEEDED' || code === 'STRIPE_LOOKUP_FAILED') {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    if (code === 'BOOKING_OWNERSHIP_MISMATCH') {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    if (code === 'BOOKING_NOT_FOUND') {
+      return res.status(404).json({ success: false, error: error.message });
+    }
+    if (code === 'BOOKING_ALREADY_CONFIRMED' || code === 'PAYMENT_INTENT_ALREADY_USED') {
+      return res.status(409).json({ success: false, error: error.message });
+    }
     console.error('Confirm payment error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/bookings/bulk-status
+ * Return the current status for a list of booking IDs belonging to the authenticated user.
+ * Used by the client to poll whether the Stripe webhook has already confirmed the bookings
+ * before falling back to the confirm-payment endpoint.
+ */
+router.post('/bulk-status', isAuthenticated, async (req, res) => {
+  try {
+    const { bookingIds } = req.body;
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      return res.status(400).json({ error: 'bookingIds must be a non-empty array' });
+    }
+
+    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
+    }
+
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    // Query status for each booking ID individually (safe, no dynamic IN clause needed)
+    const statuses: Record<string, { status: string; confirmationCode: string | null }> = {};
+    for (const bookingId of bookingIds) {
+      const result = await db.execute(sql`
+        SELECT id, status, confirmation_code
+        FROM bookings
+        WHERE id = ${bookingId} AND user_id = ${userId}
+        LIMIT 1
+      `);
+      const row = result.rows?.[0] as any;
+      if (row) {
+        statuses[row.id] = { status: row.status, confirmationCode: row.confirmation_code ?? null };
+      }
+    }
+
+    const allConfirmed = bookingIds.every((id: string) => statuses[id]?.status === 'confirmed');
+    res.json({ statuses, allConfirmed });
+  } catch (error: any) {
+    console.error('Bulk status error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

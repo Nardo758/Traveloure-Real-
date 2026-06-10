@@ -121,10 +121,160 @@ export function resolveTemplateKey(input: string | null | undefined): string {
   return trimmed.length === 0 ? "travel" : trimmed;
 }
 
+/**
+ * Best qualifying covering provider per categoryKey — the real-inventory
+ * source for platform-provider candidates (Engine Inventory-Sourcing brief).
+ *
+ * A provider qualifies for a category when their listing is active, their
+ * coverage row matches the target scope, and — mirroring the publish gate in
+ * routes.ts — for gated categories (requires_background_check OR
+ * insurance_band >= 2) they are verified (and background-check-confirmed
+ * where the category requires it). Unverified providers never qualify for a
+ * gated category, so a gated offering with no verified covering provider
+ * does not surface at all.
+ *
+ * Target scope tiers (no cascade — chosen by available context):
+ *   1. explicit neighborhoodIds  → coverage in those neighborhoods, plus
+ *      their adjacent neighborhoods (city_neighborhoods.adjacent_keys, same
+ *      city, checked symmetrically) so proximity can rank same > adjacent.
+ *      Degrades gracefully to exact-neighborhood while adjacency data is
+ *      unpopulated.
+ *   2. marketCity                → coverage anywhere in that city
+ *   3. neither                   → any coverage (keeps non-located surfaces non-empty)
+ */
+type CoverageMatch = {
+  matchedSlug: string;
+  verified: boolean;
+  /** best covering provider's listing price (null when column empty) */
+  price: number | null;
+  /** how the matched neighborhood relates to the target scope */
+  matchType: "same" | "adjacent" | "market" | "global";
+};
+
+/** node-pg binds JS arrays as a single scalar; pass a Postgres array literal. */
+function pgTextArray(values: string[]): string {
+  return `{${values.map(v => `"${v.replace(/["\\]/g, "")}"`).join(",")}}`;
+}
+
+async function loadCoveringInventory(opts: {
+  neighborhoodIds?: string[];
+  marketCity?: string | null;
+}): Promise<Map<string, CoverageMatch>> {
+  const ids = (opts.neighborhoodIds ?? []).filter(Boolean);
+
+  let scopeFilter = sql`TRUE`;
+  let tier: "neighborhood" | "market" | "global" = "global";
+  const targetSlugs = new Set<string>();
+  const adjacentSlugs = new Set<string>();
+
+  if (ids.length > 0) {
+    tier = "neighborhood";
+    // Resolve the targets' slugs + adjacency so the pool can include
+    // adjacent-neighborhood coverage (ranked down via proximityFit).
+    const targets = await db.execute(sql`
+      SELECT slug, LOWER(city) AS city, adjacent_keys
+      FROM city_neighborhoods WHERE id = ANY(${pgTextArray(ids)}::text[])
+    `);
+    const targetCities = new Set<string>();
+    for (const t of (targets.rows ?? []) as any[]) {
+      targetSlugs.add(String(t.slug));
+      targetCities.add(String(t.city));
+      for (const a of (t.adjacent_keys ?? []) as string[]) adjacentSlugs.add(String(a));
+    }
+    const citiesArr = pgTextArray(Array.from(targetCities));
+    const adjArr = pgTextArray(Array.from(adjacentSlugs));
+    const slugsArr = pgTextArray(Array.from(targetSlugs));
+    scopeFilter = sql`(
+      c.neighborhood_id = ANY(${pgTextArray(ids)}::text[])
+      OR (
+        LOWER(cn.city) = ANY(${citiesArr}::text[])
+        AND (cn.slug = ANY(${adjArr}::text[]) OR cn.adjacent_keys && ${slugsArr}::text[])
+      )
+    )`;
+  } else if (opts.marketCity) {
+    tier = "market";
+    scopeFilter = sql`LOWER(cn.city) = ${opts.marketCity}`;
+  }
+
+  const inv = await db.execute(sql`
+    SELECT DISTINCT ON (c.category_key)
+      c.category_key,
+      cn.slug AS matched_slug,
+      ps.price AS listing_price,
+      (u.provider_verification_status = 'verified'
+        AND (sc.requires_background_check = false OR u.background_check_confirmed = true)
+      ) AS provider_verified
+    FROM provider_neighborhood_coverage c
+    JOIN city_neighborhoods cn ON cn.id = c.neighborhood_id
+    JOIN provider_services ps  ON ps.user_id = c.provider_id AND ps.status = 'active'
+    JOIN service_categories sc ON sc.id = ps.category_id AND sc.category_key = c.category_key
+    JOIN users u ON u.id = c.provider_id
+    WHERE ${scopeFilter}
+      AND (
+        -- non-gated categories: any covering provider counts (badge stays honest)
+        (sc.requires_background_check = false AND COALESCE(sc.insurance_band, 0) < 2)
+        -- gated categories: only verified covering providers count
+        OR (u.provider_verification_status = 'verified'
+            AND (sc.requires_background_check = false OR u.background_check_confirmed = true))
+      )
+    ORDER BY c.category_key,
+      (u.provider_verification_status = 'verified'
+        AND (sc.requires_background_check = false OR u.background_check_confirmed = true)) DESC,
+      (cn.slug = ANY(${pgTextArray(Array.from(targetSlugs))}::text[])) DESC,
+      c.is_primary DESC,
+      c.sort_order ASC
+  `);
+
+  const map = new Map<string, CoverageMatch>();
+  for (const r of (inv.rows ?? []) as any[]) {
+    const slug = String(r.matched_slug);
+    const matchType: CoverageMatch["matchType"] =
+      tier === "neighborhood"
+        ? (targetSlugs.has(slug) ? "same" : "adjacent")
+        : tier === "market" ? "market" : "global";
+    const priceNum = r.listing_price === null || r.listing_price === undefined
+      ? null : Number(r.listing_price);
+    map.set(String(r.category_key), {
+      matchedSlug: slug,
+      verified: Boolean(r.provider_verified),
+      price: Number.isFinite(priceNum as number) ? priceNum : null,
+      matchType,
+    });
+  }
+  return map;
+}
+
+/**
+ * Proximity tiers per the Inventory-Sourcing brief: same neighborhood >
+ * adjacent > same market > elsewhere. Surfaces without neighborhood context
+ * (market or global pools) get the neutral market level — proximity is then
+ * uniform within the set and never reorders it.
+ */
+const PROXIMITY_FIT = { same: 1.0, adjacent: 0.7, market: 0.4, global: 0.4 } as const;
+
+/**
+ * Nominal affiliate basket (USD) for earnings comparability: affiliate
+ * inventory has no listing price, so margin-band rates are applied to this
+ * constant until real affiliate basket telemetry exists. Platform candidates
+ * use the covering provider's actual listing price (same fallback when a
+ * listing has no price).
+ */
+const NOMINAL_BASKET_USD = 100;
+
+function computeEarnings(
+  rateType: string | null,
+  rate: number | null,
+  price: number | null,
+): number {
+  if (rate === null || !Number.isFinite(rate)) return 1; // band unresolved → pre-brief neutral
+  if (rateType === "flat") return rate;
+  return rate * (price ?? NOMINAL_BASKET_USD);
+}
+
 async function gatherOfferingCandidates(opts: {
   templateKey?: string;
   marketCity?: string | null;
-  neighborhoodId?: string | null;
+  neighborhoodIds?: string[];
   expertEndorsedKeys?: string[];
 }): Promise<RankInputCandidate[]> {
   const endorsedSet = new Set(opts.expertEndorsedKeys ?? []);
@@ -134,58 +284,83 @@ async function gatherOfferingCandidates(opts: {
   // Returns one row per offering with everything the engine needs to score.
   // Filters by isActive + market scope (universal OR matching market).
   try {
-    const result = await db.execute(sql`
-      SELECT
-        sot.offering_type_key                   AS offering_id,
-        sot.display_name,
-        sot.tagline,
-        sot.is_surprising,
-        sot.risk_override,
-        sot.market_scoped,
-        sc.category_key,
-        sc.source_type,
-        sc.risk_profile,
-        sc.requires_background_check,
-        sc.commission_band_key,
-        tcm.strength                            AS template_strength
-      FROM service_offering_types sot
-      LEFT JOIN service_categories sc
-        ON sc.category_key = sot.category_key
-      LEFT JOIN template_category_matrix tcm
-        ON tcm.template_key = ${effectiveTemplate}
-        AND tcm.category_key = sot.category_key
-      WHERE sot.is_active = true
-        AND (
-          ${opts.marketCity}::text IS NULL
-          OR sot.market_scoped IS NULL
-          OR ${opts.marketCity}::text = ANY(sot.market_scoped)
-        )
-    `);
+    const [result, inventory] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          sot.offering_type_key                   AS offering_id,
+          sot.display_name,
+          sot.tagline,
+          sot.is_surprising,
+          sot.risk_override,
+          sot.market_scoped,
+          sc.category_key,
+          sc.source_type,
+          sc.risk_profile,
+          sc.requires_background_check,
+          sc.commission_band_key,
+          tcm.strength                            AS template_strength,
+          fb.rate_type                            AS band_rate_type,
+          fb.default_rate                         AS band_rate,
+          fba.rate_type                           AS aff_band_rate_type,
+          fba.default_rate                        AS aff_band_rate
+        FROM service_offering_types sot
+        LEFT JOIN service_categories sc
+          ON sc.category_key = sot.category_key
+        LEFT JOIN template_category_matrix tcm
+          ON tcm.template_key = ${effectiveTemplate}
+          AND tcm.category_key = sot.category_key
+        LEFT JOIN fee_bands fb
+          ON fb.band_key = sc.commission_band_key AND fb.is_active = true
+        LEFT JOIN fee_bands fba
+          ON fba.band_key = 'affiliate:' || sc.affiliate_partner_key AND fba.is_active = true
+        WHERE sot.is_active = true
+          AND (
+            ${opts.marketCity}::text IS NULL
+            OR sot.market_scoped IS NULL
+            OR ${opts.marketCity}::text = ANY(sot.market_scoped)
+          )
+      `),
+      loadCoveringInventory(opts),
+    ]);
 
     const rows = (result.rows ?? []) as any[];
-    return rows.map((r): RankInputCandidate => {
-      // Map raw row → engine input.
-      // expectedPlatformEarningsRaw is a Phase 5.2 stub: 1 for all candidates
-      // unless we have a richer signal. Step 5.3+ wires actual fee-band rate ×
-      // expected booking amount when provider inventory comes online.
-      const earnings = 1;
-      return {
+    const candidates: RankInputCandidate[] = [];
+    for (const r of rows) {
+      const isAffiliate = r.source_type === "affiliate";
+      // Platform-provider offerings are inventory-gated: they surface only if
+      // a qualifying covering provider exists in the target scope. Affiliate
+      // offerings are catalog-sourced (their inventory is broadly available).
+      const inv = isAffiliate ? null : inventory.get(String(r.category_key ?? "")) ?? null;
+      if (!isAffiliate && !inv) continue;
+
+      // Real per-candidate earnings: category commission band × the covering
+      // provider's listing price (platform), or the affiliate-margin band ×
+      // the nominal basket (affiliate). normalizeRevenue rescales the set.
+      const earnings = isAffiliate
+        ? computeEarnings(r.aff_band_rate_type, r.aff_band_rate === null ? null : Number(r.aff_band_rate), null)
+        : computeEarnings(r.band_rate_type, r.band_rate === null ? null : Number(r.band_rate), inv!.price);
+
+      candidates.push({
         offeringId: String(r.offering_id),
         categoryKey: String(r.category_key ?? ""),
-        sourceType: (r.source_type === "affiliate" ? "affiliate" : "platform_provider"),
+        sourceType: (isAffiliate ? "affiliate" : "platform_provider"),
         templateStrength: normalizeStrength(r.template_strength),
         riskProfile: normalizeRisk(r.risk_profile),
         riskOverride: normalizeRisk(r.risk_override),
         requiresBackgroundCheck: Boolean(r.requires_background_check),
-        // Phase 5.2 stub: assume verified. Phase 5.3 will look up real provider.
-        providerHasVerifiedBadge: true,
-        candidateNeighborhoodSlug: null,
+        // Real verification status of the best covering provider. For gated
+        // categories this is guaranteed true (unverified ones never qualify),
+        // so the ranker's bg-check hard filter and this source agree.
+        providerHasVerifiedBadge: isAffiliate ? true : inv!.verified,
+        candidateNeighborhoodSlug: isAffiliate ? null : inv!.matchedSlug,
         expectedPlatformEarningsRaw: earnings,
         expertEndorsed: endorsedSet.has(String(r.offering_id)),
         profileMatchScore: 0.5,         // Phase 5.2 baseline; Phase 5.3+ refines
-        proximityFit: opts.neighborhoodId ? 0.7 : 0.4,  // boost when neighborhood is focused
-      };
-    });
+        // Affiliate inventory is broadly available → market-level proximity.
+        proximityFit: isAffiliate ? PROXIMITY_FIT.market : PROXIMITY_FIT[inv!.matchType],
+      });
+    }
+    return candidates;
   } catch (err) {
     console.error("[upsell] gatherOfferingCandidates failed:", err);
     return [];
@@ -328,7 +503,7 @@ router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, raw, req);
@@ -351,10 +526,37 @@ router.post("/api/upsell/discover-location", async (req, res) => {
     const nbhRow = nbh.rows?.[0] as any;
     const marketCity = nbhRow?.city ?? null;
 
+    // Resolve expert user IDs → endorsed offering_type_keys.
+    // The client passes expert user IDs from the location experts query; we resolve
+    // them to offering types via provider_services → service_categories → service_offering_types.
+    // This is the authoritative endorsement signal: offerings backed by active local providers.
+    let resolvedEndorsedKeys = body.expertEndorsedKeys ?? [];
+    if (resolvedEndorsedKeys.length > 0) {
+      try {
+        const resolved = await db.execute(sql`
+          SELECT DISTINCT sot.offering_type_key
+          FROM provider_services ps
+          JOIN service_categories sc ON sc.id = ps.category_id
+          JOIN service_offering_types sot ON sot.category_key = sc.category_key
+          WHERE ps.user_id = ANY(ARRAY[${sql.raw(resolvedEndorsedKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(","))}]::text[])
+            AND ps.status = 'active'
+            AND sot.is_active = true
+        `);
+        const fromProviders = (resolved.rows ?? []).map((r: any) => String(r.offering_type_key));
+        if (fromProviders.length > 0) {
+          resolvedEndorsedKeys = fromProviders;
+        }
+        // If no provider_services rows found (e.g. experts with no services yet), keep original list
+        // so the ranking gracefully degrades rather than clearing all endorsement signal.
+      } catch (resErr) {
+        console.warn("[upsell] discover-location endorsement resolution failed, using raw keys:", resErr);
+      }
+    }
+
     // Phase 5.4: merge persisted endorsements (trip- and neighborhood-scoped).
     // Discover-by-location reads neighborhood endorsements regardless of trip.
     const fetched = await loadEndorsementsForContext(body.tripId, [body.neighborhoodId]);
-    const mergedEndorsedKeys = Array.from(new Set([...(body.expertEndorsedKeys ?? []), ...fetched]));
+    const mergedEndorsedKeys = Array.from(new Set([...resolvedEndorsedKeys, ...fetched]));
 
     const ctx: UpsellContext = {
       surface: "discover_location",
@@ -369,7 +571,7 @@ router.post("/api/upsell/discover-location", async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: marketCity ? marketCity.toLowerCase() : null,
-      neighborhoodId: body.neighborhoodId,
+      neighborhoodIds: [body.neighborhoodId],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
@@ -499,7 +701,7 @@ router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
 
@@ -563,7 +765,7 @@ router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) =>
     let raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
 
@@ -650,7 +852,7 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
     let raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.currentNeighborhoodId ?? body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: [body.currentNeighborhoodId, ...(body.neighborhoodIds ?? [])].filter((x): x is string => Boolean(x)),
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
 
@@ -859,7 +1061,7 @@ router.post("/api/upsell/expert-review", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: fetched,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("expert_review", ctx, raw, req);
@@ -1065,7 +1267,7 @@ router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("checkout", ctx, raw, req);
@@ -1116,7 +1318,7 @@ router.post("/api/upsell/post-booking", isAuthenticated, async (req, res) => {
     let raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
     raw = await filterByFrequencyCap(raw, body.tripId, "post_booking", slotConfig?.frequencyCapHours ?? 48);
@@ -1170,7 +1372,7 @@ router.post("/api/upsell/ai-concierge", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("ai_concierge", ctx, raw, req);
@@ -1179,6 +1381,40 @@ router.post("/api/upsell/ai-concierge", isAuthenticated, async (req, res) => {
       suppressed,
       conciergeTaskId: body.conciergeTaskId ?? null,
     });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/upsell/impression — client-side impression logging.
+ *
+ * UpsellSlot fires this after candidates are rendered. Accepts a batch
+ * of offeringIds so one request covers the entire rendered slate.
+ * No auth required — discover surfaces are public and still need
+ * impression tracking. tripId is optional (cart/checkout have it;
+ * discover surfaces may not).
+ */
+const impressionBodySchema = z.object({
+  surface: z.string(),
+  offeringIds: z.array(z.string()).min(1),
+  tripId: z.string().optional(),
+});
+
+router.post("/api/upsell/impression", async (req, res) => {
+  try {
+    const { surface, offeringIds, tripId } = impressionBodySchema.parse(req.body);
+    // Insert one row per offering; ON CONFLICT DO NOTHING avoids duplicate noise
+    // from double-renders (StrictMode dev, HMR, etc.).
+    for (const offeringId of offeringIds) {
+      await db.execute(sql`
+        INSERT INTO upsell_impressions (surface, offering_id, trip_id, shown_at, clicked)
+        VALUES (${surface}, ${offeringId}, ${tripId ?? null}, NOW(), false)
+        ON CONFLICT DO NOTHING
+      `);
+    }
+    res.json({ ok: true, logged: offeringIds.length });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
     res.status(500).json({ error: err.message });

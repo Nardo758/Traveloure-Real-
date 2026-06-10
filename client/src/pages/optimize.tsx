@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -196,8 +196,68 @@ function useTierPrice(bandKey: string | undefined, fallback: number): number {
   return data.default_rate;
 }
 
+interface OptimizeGateTeaserData {
+  addOnsAvailable: number;
+  categoryHints: string[];
+  teaser: string | null;
+  delta?: unknown;
+}
+
+function OptimizeGateTeaser({ tripId }: { tripId?: string }) {
+  const { data, isLoading } = useQuery<OptimizeGateTeaserData>({
+    queryKey: ["/api/upsell/optimize-gate", tripId],
+    queryFn: async () => {
+      const res = await fetch("/api/upsell/optimize-gate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tripId: tripId ?? null, cartItems: [] }),
+      });
+      if (!res.ok) throw new Error("No gate data");
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  if (isLoading || !data || (!data.addOnsAvailable && !data.categoryHints?.length)) return null;
+
+  return (
+    <div
+      className="rounded-lg border border-purple-200 bg-purple-50 p-4"
+      data-testid="optimize-gate-teaser"
+    >
+      <div className="flex items-start gap-3">
+        <Sparkles className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="font-semibold text-purple-900 text-sm">
+            {data.addOnsAvailable > 0
+              ? `${data.addOnsAvailable} add-on${data.addOnsAvailable !== 1 ? "s" : ""} could improve this plan`
+              : "Improvements available"}
+          </p>
+          {data.categoryHints && data.categoryHints.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {data.categoryHints.map((hint) => (
+                <span
+                  key={hint}
+                  className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700"
+                  data-testid="optimize-gate-hint"
+                >
+                  {hint}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OptimizePage() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const tripId = new URLSearchParams(searchString).get("tripId") ?? undefined;
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedTier, setSelectedTier] = useState("ai-expert");
   const [showComparison, setShowComparison] = useState(false);
@@ -338,6 +398,9 @@ export default function OptimizePage() {
                     ))}
                   </RadioGroup>
                 </div>
+
+                {/* Optimize-gate teaser — category hints only; offeringId/displayName never rendered */}
+                <OptimizeGateTeaser tripId={tripId} />
 
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
                   <ShieldCheck className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />

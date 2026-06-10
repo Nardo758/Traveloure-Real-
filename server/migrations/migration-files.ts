@@ -1,19 +1,23 @@
 /**
- * Migration chain registration — side-effect-free.
+ * Canonical migration chain registration — side-effect-free.
  *
- * Lives in its own module so test/CI tooling can import the list without
- * pulling in the DB client (which throws at import time if DATABASE_URL is
- * unset). Imported by both run-migrations.ts (the runtime) and the
- * chain-integrity test.
+ * Keep runtime and tests on this single list. Importing from here avoids
+ * pulling in the DB client during chain-integrity checks.
  *
- * 047 is intentionally absent: it was registered without a backing SQL file
- * during a merge resolution and would crash readFileSync. The 046→048 gap is
- * harmless because runMigrations iterates this array, not the filesystem.
- * Do NOT renumber 048 → 047: 048 has already been applied in environments
- * that recorded it under that name, and a rename would re-apply or desync
- * the migration ledger.
+ * Notes:
+ * - `052_phase5_expert_endorsements.sql` is intentionally excluded. It is a
+ *   superseded duplicate schema attempt for `upsell_expert_endorsements` and
+ *   crashes when the real `050_phase5_expert_endorsements.sql` table already
+ *   exists.
+ * - `051_affiliate_booking_trip_link.sql` keeps its shipped filename even
+ *   though it sorts after later-numbered files in the runtime order.
  */
 export const MIGRATION_FILES = [
+  "001_guest_invite_system.sql",
+  "002_transport_booking_options.sql",
+  "003_fix_test_account_roles.sql",
+  "004_restaurant_cache.sql",
+  "005_affiliate_reconciliation.sql",
   "006_eso_canonicalization.sql",
   "007_eso_workflow_columns.sql",
   "008_content_affinity_tags.sql",
@@ -58,8 +62,17 @@ export const MIGRATION_FILES = [
   "044_phase3_neighborhood_completeness_gate.sql",
   "045_phase1_5_tip_handling_band.sql",
   "046_phase1_5_enumerate_legacy_bands.sql",
+  "047_early_adopter_commission_cutoff.sql",
   "048_phase8_offering_risk_override.sql",
   "049_phase5_upsell_engine_tables.sql",
   "050_phase5_expert_endorsements.sql",
+  "050_service_bookings_service_id_nullable.sql",
+  "051_schema_migrations_ledger_bootstrap.sql",
+  "053_bookings_payment_intent_unique.sql",
+  "054_provider_verification_gate.sql",
+  "055_category_field_schema.sql",
+  "056_pricing_tiers.sql",
+  "057_expert_offering_type_fk.sql",
   "051_affiliate_booking_trip_link.sql",
+  "059_pnc_engine_lookup_index.sql",
 ] as const;

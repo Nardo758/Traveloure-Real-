@@ -14,7 +14,8 @@ import {
   Server,
   Activity,
   ChevronRight,
-  Loader2
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -28,6 +29,20 @@ interface AdminStats {
   newUsersToday: number;
   pendingExpertApplications: number;
   pendingProviderApplications: number;
+}
+
+interface StaleBooking {
+  id: string;
+  user_id: string;
+  trip_id: string;
+  title: string;
+  status: string;
+  total_amount: string;
+  created_at: string;
+  booking_date: string;
+  user_email: string;
+  user_first_name: string;
+  user_last_name: string;
 }
 
 export default function AdminDashboard() {
@@ -47,6 +62,10 @@ export default function AdminDashboard() {
     queryKey: ["/api/admin/system/health"],
   });
 
+  const { data: stalePendingData } = useQuery<{ bookings: StaleBooking[]; count: number }>({
+    queryKey: ["/api/admin/bookings/stale-pending"],
+  });
+
   const systemHealth = healthData?.services?.slice(0, 4).map(s => ({
     metric: s.service,
     value: s.status === "operational" ? s.uptime || "Operational" : s.status,
@@ -55,6 +74,7 @@ export default function AdminDashboard() {
 
   const pendingExperts = expertApps?.filter(e => e.status === "pending") || [];
   const pendingProviders = providerApps?.filter(p => p.status === "pending") || [];
+  const staleBookings = stalePendingData?.bookings || [];
 
   if (statsLoading) {
     return (
@@ -91,6 +111,53 @@ export default function AdminDashboard() {
             </Card>
           ))}
         </div>
+
+        {/* Stale Pending Bookings alert — only shown when there are any */}
+        {staleBookings.length > 0 && (
+          <Card className="border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20" data-testid="card-stale-bookings">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="flex items-center gap-2 text-base text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                Stale Pending Bookings ({staleBookings.length})
+              </CardTitle>
+              <Badge variant="outline" className="text-amber-700 border-amber-400 text-xs">
+                &gt;24h in pending_payment
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                These bookings have been stuck in <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">pending_payment</code> for over 24 hours.
+                This usually means the user closed their browser before payment completed and no Stripe webhook was received.
+                Investigate each booking and check the associated PaymentIntent in the Stripe dashboard.
+              </p>
+              {staleBookings.slice(0, 5).map((booking, index) => {
+                const createdAt = new Date(booking.created_at);
+                const hoursAgo = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60));
+                const userName = [booking.user_first_name, booking.user_last_name].filter(Boolean).join(" ") || booking.user_email || booking.user_id;
+                return (
+                  <div
+                    key={booking.id}
+                    className="flex items-center justify-between py-2 border-b border-amber-200 dark:border-amber-700 last:border-0"
+                    data-testid={`row-stale-booking-${index}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{booking.title || `Booking #${booking.id.slice(0, 8)}`}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{userName} · ${parseFloat(booking.total_amount || "0").toFixed(2)}</p>
+                    </div>
+                    <Badge variant="outline" className="ml-2 text-xs text-amber-700 border-amber-400 whitespace-nowrap flex-shrink-0">
+                      {hoursAgo}h ago
+                    </Badge>
+                  </div>
+                );
+              })}
+              {staleBookings.length > 5 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                  +{staleBookings.length - 5} more stale bookings
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
@@ -216,6 +283,21 @@ export default function AdminDashboard() {
                   <Clock className="w-8 h-8 text-blue-600" />
                 </div>
               </div>
+              {stalePendingData !== undefined && (
+                <div className={`p-4 rounded-lg ${staleBookings.length > 0 ? "bg-amber-50 dark:bg-amber-900/20" : "bg-gray-50 dark:bg-gray-800/40"}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-sm ${staleBookings.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-gray-600 dark:text-gray-400"}`}>
+                        Stale Pending Payments
+                      </p>
+                      <p className={`text-xl font-bold ${staleBookings.length > 0 ? "text-amber-800 dark:text-amber-300" : "text-gray-700 dark:text-gray-300"}`}>
+                        {staleBookings.length}
+                      </p>
+                    </div>
+                    <AlertTriangle className={`w-8 h-8 ${staleBookings.length > 0 ? "text-amber-600" : "text-gray-400"}`} />
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

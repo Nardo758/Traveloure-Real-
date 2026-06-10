@@ -289,7 +289,16 @@ export default function ProviderServices() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredServices.map((service) => {
               const displayName = service.serviceName || service.name || "Untitled Service";
-              const price = service.price ?? service.basePrice ?? "—";
+              const rawPrice = service.price ?? service.basePrice;
+              const priceDisplay = rawPrice == null || rawPrice === ""
+                ? "—"
+                : service.priceType === "hourly"
+                ? `$${rawPrice} / hr`
+                : service.priceType === "package_tiers"
+                ? `from $${rawPrice}`
+                : service.priceType === "per_event"
+                ? `$${rawPrice} / event`
+                : `$${rawPrice}`;
               const categoryName = service.categoryId ? (categoryNameById[service.categoryId] || service.serviceType || "") : (service.serviceType || "");
               const isActive = service.status === "active";
 
@@ -320,7 +329,7 @@ export default function ProviderServices() {
 
                         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
                           <span className="flex items-center gap-1 font-semibold text-green-600" data-testid={`text-price-${service.id}`}>
-                            <DollarSign className="w-4 h-4" /> {price}
+                            <DollarSign className="w-4 h-4" /> {priceDisplay}
                           </span>
                           {service.deliveryTimeframe && (
                             <span className="flex items-center gap-1 text-console-mid">

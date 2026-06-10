@@ -18,6 +18,7 @@ import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
+import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import {
   logger,
   httpLogger,
@@ -124,15 +125,9 @@ async function runDatabaseSeeding() {
 
   // Apply SQL schema migrations first. The runner tracks applied files in
   // `schema_migrations` (ledger), so re-runs are fast (already-recorded files
-  // are skipped). Wrapped in try/catch so a FATAL in a single migration file
-  // does not permanently prevent seedingComplete from flipping — the server is
-  // already listening and the selection-controls / e2e tests don't depend on
-  // every seed row being present.
-  try {
-    await runMigrations();
-  } catch (err) {
-    logger.error({ err }, "Migration error — server continues; some seed rows may be missing");
-  }
+  // are skipped). Any failure throws — do NOT catch here so that
+  // seedingComplete never flips to true with a broken schema.
+  await runMigrations();
 
   // DISABLED: ESO backfill (see architectural decision in CLAUDE.md).
   //
@@ -321,6 +316,10 @@ async function runDatabaseSeeding() {
       // Start cache scheduler
       cacheSchedulerService.start();
       logger.info("Cache scheduler started");
+
+      // Start booking expiry scheduler (auto-cancels stale pending_payment bookings)
+      bookingExpiryScheduler.start();
+      logger.info("Booking expiry scheduler started");
       
       // One-time admin promotion
       import("./db").then(({ pool }) => {
@@ -344,7 +343,8 @@ async function runDatabaseSeeding() {
             });
         })
         .catch(err => {
-          logger.error({ err }, "Background seeding failed");
+          logger.error({ err }, "FATAL: Database migration/seeding failed — shutting down to prevent serving with broken schema");
+          process.exit(1);
         });
     },
   );
