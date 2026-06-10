@@ -1,0 +1,62 @@
+~/workspace$ git pull origin main
+remote: Enumerating objects: 686, done.
+remote: Counting objects: 100% (441/441), done.
+remote: Compressing objects: 100% (142/142), done.
+remote: Total 311 (delta 240), reused 231 (delta 166), pack-reused 0 (from 0)
+Receiving objects: 100% (311/311), 134.95 KiB | 544.00 KiB/s, done.
+Resolving deltas: 100% (240/240), completed with 69 local objects.
+From https://github.com/Nardo758/Traveloure-Real-
+ * branch              main       -> FETCH_HEAD
+   5c7d57c0..6c4f2205  main       -> origin/main
+Updating de2b1b4a..6c4f2205
+Fast-forward
+ .github/workflows/selection-controls-gate.yml         |   8 +
+ CLAUDE.md                                             |  27 +++
+ client/src/App.tsx                                    |   4 +
+ client/src/components/admin-sidebar.tsx               |   1 +
+ client/src/components/city-feed-card.tsx              |  38 ++--
+ client/src/components/layout.tsx                      |  22 +--
+ client/src/components/neighborhood-container.tsx      |   5 +-
+ client/src/pages/admin/offering-types.tsx             | 375 +++++++++++++++++++++++++++++++++++++++
+ client/src/pages/earn.tsx                             | 487 +++++++++++++++++++++++++++++++++------------------
+ client/src/pages/expert/workspace.tsx                 |   4 +-
+ client/src/pages/services-provider.tsx                |  19 +-
+ client/src/pages/travel-experts.tsx                   |  19 +-
+ docs/planning/plancard-mobile-delivery-model.md       | 125 +++++++++++++
+ docs/planning/plancard-surface-manifest.md            |  30 ++--
+ playwright/tests/selection-controls.spec.ts           |  38 ++++
+ scripts/verify-fee-config-parity.ts                   |  79 +++++++++
+ server/migrations/009_curated_by_expert.sql           |   2 -
+ server/migrations/024_provider_commission.sql         |   6 -
+ server/migrations/025_ai_cost_tracking.sql            |  22 ---
+ server/migrations/050_phase5_expert_endorsements.sql  |  47 +++++
+ server/migrations/051_affiliate_booking_trip_link.sql |  12 ++
+ server/migrations/059_pnc_engine_lookup_index.sql     |   9 +
+ server/migrations/__tests__/chain-integrity.test.ts   |  41 +++++
+ server/migrations/migration-files.ts                  |  78 +++++++++
+ server/migrations/run-migrations.ts                   |  68 +------
+ server/routes.ts                                      |  14 +-
+ server/routes/admin.routes.ts                         | 160 ++++++++++++++++-
+ server/routes/content.routes.ts                       |  26 ++-
+ server/routes/upsell.routes.ts                        | 856 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------
+ server/services/__tests__/upsell-engine.test.ts       | 508 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ server/services/location-view.service.ts              |  10 +-
+ server/services/upsell-engine.service.ts              |  26 ++-
+ server/storage.ts                                     |  14 +-
+ server/utils/trip-role.ts                             |  47 +++--
+ shared/bookability.ts                                 |  64 +++++++
+ shared/schema.ts                                      |  77 +++++++-
+ 36 files changed, 2925 insertions(+), 443 deletions(-)
+ create mode 100644 client/src/pages/admin/offering-types.tsx
+ create mode 100644 docs/planning/plancard-mobile-delivery-model.md
+ create mode 100644 scripts/verify-fee-config-parity.ts
+ delete mode 100644 server/migrations/009_curated_by_expert.sql
+ delete mode 100644 server/migrations/024_provider_commission.sql
+ delete mode 100644 server/migrations/025_ai_cost_tracking.sql
+ create mode 100644 server/migrations/050_phase5_expert_endorsements.sql
+ create mode 100644 server/migrations/051_affiliate_booking_trip_link.sql
+ create mode 100644 server/migrations/059_pnc_engine_lookup_index.sql
+ create mode 100644 server/migrations/__tests__/chain-integrity.test.ts
+ create mode 100644 server/migrations/migration-files.ts
+ create mode 100644 shared/bookability.ts
+~/workspace$ 
