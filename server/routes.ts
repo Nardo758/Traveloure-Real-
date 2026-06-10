@@ -1915,13 +1915,27 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
       // field is present in the payload — including empty arrays, which must
       // delete any existing stale rows for this provider+category.
-      if (Array.isArray(neighborhoodSlugs) && updated) {
-        const effectiveCategoryId = (updated.categoryId ?? ownedService.categoryId) as string | undefined;
-        if (effectiveCategoryId) {
-          const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
-            .from(serviceCategories).where(eq(serviceCategories.id, effectiveCategoryId));
-          if (cat?.categoryKey) {
-            await storage.upsertProviderNeighborhoodCoverage(userId, cat.categoryKey, neighborhoodSlugs);
+      // Additionally, if the category changed, purge coverage for the OLD
+      // category key so stale rows can't produce wrong engine matches.
+      if (updated) {
+        const prevCategoryId = ownedService.categoryId as string | undefined;
+        const newCategoryId = (updated.categoryId ?? prevCategoryId) as string | undefined;
+        const categoryChanged = prevCategoryId && newCategoryId && prevCategoryId !== newCategoryId;
+
+        if (categoryChanged) {
+          // Clear all coverage rows for the old category key first
+          const [oldCat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+            .from(serviceCategories).where(eq(serviceCategories.id, prevCategoryId!));
+          if (oldCat?.categoryKey) {
+            await storage.upsertProviderNeighborhoodCoverage(userId, oldCat.categoryKey, []);
+          }
+        }
+
+        if (Array.isArray(neighborhoodSlugs) && newCategoryId) {
+          const [newCat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+            .from(serviceCategories).where(eq(serviceCategories.id, newCategoryId));
+          if (newCat?.categoryKey) {
+            await storage.upsertProviderNeighborhoodCoverage(userId, newCat.categoryKey, neighborhoodSlugs);
           }
         }
       }
