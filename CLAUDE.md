@@ -91,6 +91,16 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - This was uncoordinated and left the transaction path orphaned
 - Fixed by this architecture document + provider_services canonicality
 
+**Recorded migration — Expert-Assisted Booking, Phase 2 (Jun 10, 2026):**
+- Migration `051_affiliate_booking_trip_link.sql` adds a **nullable** `trip_id` FK
+  (→ `trips`, `ON DELETE SET NULL`) to `affiliate_booking_requests`. This closes the
+  Trip-logging gap on the **existing** affiliate-booking rail — no new rail, no
+  provider_services / ESO / approval / category change. Set at expert-confirmation
+  (the create trigger is a no-trip discover surface); on confirm the facilitated
+  booking is logged onto `itinerary_items` (the canonical Trip/PlanCard item model).
+- Registered in `run-migrations.ts` (runtime) and `migration-files.ts` (chain test).
+  Ratified by the decision-maker via the Phase 2 GO.
+
 ---
 
 ## FAQ

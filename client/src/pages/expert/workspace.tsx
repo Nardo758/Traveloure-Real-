@@ -373,8 +373,10 @@ export default function ExpertWorkspace() {
   });
 
   const updateBookingMutation = useMutation({
+    // Pass the trip-scoped workspace tripId so confirming a booking logs the
+    // booked item onto this Trip (Phase 2.2). The server only logs on confirm.
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
-      apiRequest("PATCH", `/api/affiliate-booking-requests/${id}`, { status }),
+      apiRequest("PATCH", `/api/affiliate-booking-requests/${id}`, { status, tripId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
       toast({ title: "Booking updated" });
