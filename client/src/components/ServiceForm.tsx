@@ -26,9 +26,21 @@ interface ServiceCategory {
   id: string;
   name: string;
   slug: string;
+  categoryKey?: string | null;
   description: string | null;
   requiresBackgroundCheck?: boolean;
   insuranceBand?: number | null;
+}
+
+interface CategoryField {
+  id: string;
+  categoryKey: string;
+  fieldKey: string;
+  label: string;
+  type: "text" | "number" | "select" | "boolean" | "url" | "multiselect";
+  required: boolean;
+  options: string[] | null;
+  sortOrder: number;
 }
 
 interface ServiceSubcategory {
@@ -70,6 +82,8 @@ interface ServiceFormData {
   // Media
   serviceImage: string;
   galleryImages: string[];
+  // Per-category dynamic attributes
+  categoryAttributes: Record<string, any>;
 }
 
 interface ServiceFormProps {
@@ -118,6 +132,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     leadTime: "",
     serviceImage: "",
     galleryImages: [],
+    categoryAttributes: {},
   };
 }
 
@@ -149,6 +164,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     leadTime: s.leadTime || "",
     serviceImage: s.serviceImage || "",
     galleryImages: Array.isArray(s.galleryImages) ? s.galleryImages : [],
+    categoryAttributes: (s.categoryAttributes && typeof s.categoryAttributes === "object") ? s.categoryAttributes : {},
   };
 }
 
@@ -174,6 +190,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const { data: allNeighborhoods = [] } = useQuery<Array<{ id: string; city: string; country: string; name: string; slug: string }>>({
     queryKey: ["/api/city-neighborhoods"],
+  });
+
+  // Fetch the selected category's categoryKey so we can load its dynamic fields
+  const selectedCategoryKey = (categories as ServiceCategory[]).find((c) => c.id === formData.categoryId)?.categoryKey ?? null;
+
+  const { data: categoryFields = [] } = useQuery<CategoryField[]>({
+    queryKey: ["/api/service-categories", selectedCategoryKey, "fields"],
+    enabled: !!selectedCategoryKey,
   });
 
   const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
@@ -297,6 +321,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
+        categoryAttributes: formData.categoryAttributes,
       };
 
       // Role-specific fields
@@ -442,7 +467,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <Select
               value={formData.categoryId}
               onValueChange={(v) => {
-                setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "" }));
+                setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "", categoryAttributes: {} }));
               }}
             >
               <SelectTrigger id="category" className="mt-2">
@@ -578,6 +603,114 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
         </CardContent>
       </Card>
+
+      {/* ── Category-Specific Dynamic Fields ── */}
+      {categoryFields.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {(categories as ServiceCategory[]).find((c) => c.id === formData.categoryId)?.name ?? "Category"} Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {categoryFields.map((field) => {
+              const value = formData.categoryAttributes[field.fieldKey] ?? "";
+              const setCatAttr = (val: any) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  categoryAttributes: { ...prev.categoryAttributes, [field.fieldKey]: val },
+                }));
+
+              if (field.type === "boolean") {
+                return (
+                  <div key={field.fieldKey} className="flex items-center justify-between">
+                    <Label htmlFor={`cat-${field.fieldKey}`} className="flex items-center gap-1">
+                      {field.label}
+                      {field.required && <span className="text-destructive">*</span>}
+                    </Label>
+                    <Switch
+                      id={`cat-${field.fieldKey}`}
+                      checked={Boolean(value)}
+                      onCheckedChange={setCatAttr}
+                      data-testid={`switch-cat-${field.fieldKey}`}
+                    />
+                  </div>
+                );
+              }
+
+              if (field.type === "select" && Array.isArray(field.options)) {
+                return (
+                  <div key={field.fieldKey}>
+                    <Label htmlFor={`cat-${field.fieldKey}`}>
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-0.5">*</span>}
+                    </Label>
+                    <Select value={String(value || "")} onValueChange={setCatAttr}>
+                      <SelectTrigger id={`cat-${field.fieldKey}`} className="mt-2" data-testid={`select-cat-${field.fieldKey}`}>
+                        <SelectValue placeholder={`Select ${field.label}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {field.options.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              }
+
+              if (field.type === "multiselect" && Array.isArray(field.options)) {
+                const selected: string[] = Array.isArray(value) ? value : [];
+                return (
+                  <div key={field.fieldKey}>
+                    <Label>
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-0.5">*</span>}
+                    </Label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {field.options.map((opt) => {
+                        const active = selected.includes(opt);
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() =>
+                              setCatAttr(active ? selected.filter((s) => s !== opt) : [...selected, opt])
+                            }
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${active ? "bg-[#FF385C] text-white border-[#FF385C]" : "bg-background text-foreground border-border hover:border-[#FF385C]"}`}
+                            data-testid={`chip-cat-${field.fieldKey}-${opt}`}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              // text / number / url
+              return (
+                <div key={field.fieldKey}>
+                  <Label htmlFor={`cat-${field.fieldKey}`}>
+                    {field.label}
+                    {field.required && <span className="text-destructive ml-0.5">*</span>}
+                  </Label>
+                  <Input
+                    id={`cat-${field.fieldKey}`}
+                    type={field.type === "number" ? "number" : "text"}
+                    value={String(value ?? "")}
+                    onChange={(e) => setCatAttr(field.type === "number" ? (parseFloat(e.target.value) || "") : e.target.value)}
+                    placeholder={field.type === "url" ? "https://..." : `Enter ${field.label.toLowerCase()}`}
+                    className="mt-2"
+                    data-testid={`input-cat-${field.fieldKey}`}
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── What's Included ── */}
       <Card>

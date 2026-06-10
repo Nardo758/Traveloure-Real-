@@ -2093,6 +2093,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json(subcategories);
   });
 
+  // GET /api/service-categories/:categoryKey/fields — per-category dynamic field schema
+  app.get("/api/service-categories/:categoryKey/fields", async (req, res) => {
+    try {
+      const fields = await storage.getCategoryFieldSchema(req.params.categoryKey);
+      res.json(fields);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch category fields" });
+    }
+  });
+
   // Create subcategory (admin)
   app.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
