@@ -1410,6 +1410,12 @@ export default function CartPage() {
                               (item.contentMeta as any)?.location ??
                               undefined,
                           })).filter((ci: any) => ci.category || ci.destinationCity),
+                          userProfile: {
+                            mobilityLevel: (user as any).mobility_level ?? (user as any).mobilityLevel ?? undefined,
+                            budgetTier: (user as any).budget_tier ?? (user as any).budgetTier ?? undefined,
+                            partySize: (user as any).default_party_size ?? (user as any).partySize ?? undefined,
+                            interests: Array.isArray((user as any).interests) ? (user as any).interests : undefined,
+                          },
                         } : undefined}
                       />
                     </div>

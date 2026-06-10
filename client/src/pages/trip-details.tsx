@@ -150,6 +150,7 @@ export default function TripDetails() {
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
   const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
   const [expertMessage, setExpertMessage] = useState("");
+  const [selectedOfferingType, setSelectedOfferingType] = useState<{ key: string; label: string; tier: string } | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
@@ -229,6 +230,18 @@ export default function TripDetails() {
     enabled: expertPickerOpen && !!trip?.destination,
   });
 
+  interface ExpertOfferingOption { offering_type_key: string; display_name: string; service_tier: string; tagline: string | null; }
+  const { data: expertOfferingOptions } = useQuery<ExpertOfferingOption[]>({
+    queryKey: ["/api/offering-types/experts"],
+    queryFn: async () => {
+      const res = await fetch("/api/offering-types/experts");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: expertPickerOpen,
+    staleTime: 15 * 60_000,
+  });
+
   interface TripSuggestion {
     id: string;
     trip_id: string;
@@ -273,8 +286,8 @@ export default function TripDetails() {
   });
 
   const assignExpertMutation = useMutation({
-    mutationFn: async ({ expertUserId, message }: { expertUserId: string; message: string }) => {
-      const res = await apiRequest("POST", `/api/trips/${id}/expert-advisor`, { expertUserId, message });
+    mutationFn: async ({ expertUserId, message, offeringTypeKey }: { expertUserId: string; message: string; offeringTypeKey?: string }) => {
+      const res = await apiRequest("POST", `/api/trips/${id}/expert-advisor`, { expertUserId, message, offeringTypeKey });
       return res.json() as Promise<{ success: boolean; advisorId: string; status: string }>;
     },
     onSuccess: () => {
@@ -282,6 +295,7 @@ export default function TripDetails() {
       setExpertPickerOpen(false);
       setSelectedExpert(null);
       setExpertMessage("");
+      setSelectedOfferingType(null);
       toast({ title: "Expert request sent!", description: "They will review and respond soon." });
     },
     onError: (err: any) => {
@@ -1076,17 +1090,52 @@ export default function TripDetails() {
       {/* Expert Picker Dialog */}
       <Dialog open={expertPickerOpen} onOpenChange={(open) => {
         setExpertPickerOpen(open);
-        if (!open) { setSelectedExpert(null); setExpertMessage(""); }
+        if (!open) { setSelectedExpert(null); setExpertMessage(""); setSelectedOfferingType(null); }
       }}>
         <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-expert-picker">
           <DialogHeader>
-            <DialogTitle>Choose an expert for {trip?.destination}</DialogTitle>
+            <DialogTitle>
+              {selectedOfferingType
+                ? `Choose an expert for ${trip?.destination}`
+                : "What kind of help do you need?"}
+            </DialogTitle>
             <DialogDescription>
-              Select an expert to help curate your trip. They'll review your plan and reach out.
+              {selectedOfferingType
+                ? `${selectedOfferingType.label} — select an expert to help curate your trip.`
+                : "Pick the type of expert service you're looking for."}
             </DialogDescription>
           </DialogHeader>
 
-          {selectedExpert ? (
+          {/* Step 0 — pick offering type */}
+          {!selectedOfferingType && (
+            <div className="mt-2 space-y-2" data-testid="expert-picker-offering-step">
+              {(expertOfferingOptions ?? []).length === 0 ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <Skeleton key={i} className="h-14 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                (expertOfferingOptions ?? []).map((o) => (
+                  <button
+                    key={o.offering_type_key}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"
+                    onClick={() => setSelectedOfferingType({ key: o.offering_type_key, label: o.display_name, tier: o.service_tier })}
+                    data-testid={`button-offering-type-${o.offering_type_key}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-foreground">{o.display_name}</div>
+                      {o.tagline && <p className="text-xs text-muted-foreground truncate">{o.tagline}</p>}
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] capitalize flex-shrink-0">{o.service_tier.replace(/_/g, " ")}</Badge>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {selectedOfferingType && selectedExpert ? (
             <div className="space-y-4 mt-2">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                 <Avatar className="w-10 h-10">
@@ -1119,7 +1168,7 @@ export default function TripDetails() {
               </div>
               <Button
                 className="w-full"
-                onClick={() => assignExpertMutation.mutate({ expertUserId: selectedExpert.user_id, message: expertMessage })}
+                onClick={() => assignExpertMutation.mutate({ expertUserId: selectedExpert.user_id, message: expertMessage, offeringTypeKey: selectedOfferingType?.key })}
                 disabled={assignExpertMutation.isPending}
                 data-testid="button-confirm-expert"
               >
@@ -1131,8 +1180,15 @@ export default function TripDetails() {
                 Send request to {selectedExpert.first_name}
               </Button>
             </div>
-          ) : (
-            <div className="mt-2 space-y-3">
+          ) : selectedOfferingType ? (
+            <div className="mt-2 space-y-3" data-testid="expert-picker-expert-step">
+              <button
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
+                onClick={() => { setSelectedExpert(null); setSelectedOfferingType(null); }}
+                data-testid="button-picker-back"
+              >
+                <ArrowLeft className="w-3 h-3" /> Change service type
+              </button>
               {expertsLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (

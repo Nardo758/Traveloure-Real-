@@ -1175,7 +1175,7 @@ export default function DiscoverLocationPage() {
             )}
 
             {/* ── Spine: per-neighborhood recruitment slots (uncovered offering categories) ── */}
-            {experts.length === 0 && neighborhoods.length > 0 && (
+            {neighborhoods.length > 0 && (
               <div className="space-y-2" data-testid="section-expert-recruitment">
                 {neighborhoods.slice(0, 3).map((nb: any, idx: number) => {
                   const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
