@@ -92,6 +92,12 @@ export interface ResolveOptions {
   /** EXP-OVR.P2: when provided, the resolver checks for a per-expert override
    *  before falling back to the band lookup. */
   expertId?: string | null;
+  /** Early-adopter gate: pass the provider's userId for provider-source bookings.
+   *  Resolver compares users.created_at against early_adopter_cutoff_date in
+   *  platform_settings. Providers registered before the cutoff get beta_flat (10%);
+   *  those on/after get expert_standard (25%). Omitting this falls back to beta_flat
+   *  (safe for existing call-sites). */
+  providerId?: string | null;
 }
 
 const noInsurance = { insuranceEnabled: false, insuranceRatePercent: 0, insuranceAppliesTo: [] as string[] };
@@ -153,6 +159,32 @@ export function buildRatesFromBand(bandRate: number, insurance = noInsurance): C
   };
 }
 
+/** /api/booking-fee-config response shape (consumed by the itinerary Booking Summary). */
+export interface BookingFeeConfigResponse {
+  platform_fee_percent: number;
+  expert_share_percent: number;
+  ai_keeps_100: boolean;
+  min_fee: number | null;
+  max_fee: number | null;
+}
+
+/**
+ * Map resolved CommissionRates → the /api/booking-fee-config response shape.
+ * This is the SINGLE place the display-facing fee config is derived from the
+ * canonical resolver, so the itinerary fee DISPLAY and the checkout CHARGE
+ * cannot diverge in source or conversion. Pure function.
+ */
+export function feeConfigFromRates(rates: CommissionRates): BookingFeeConfigResponse {
+  const pct = (n: number) => Math.round(n * 100 * 100) / 100; // fraction → percent, 2dp
+  return {
+    platform_fee_percent: pct(rates.platformFeeRate),
+    expert_share_percent: pct(rates.expertShareRate),
+    ai_keeps_100: true,
+    min_fee: null,
+    max_fee: null,
+  };
+}
+
 // ─── DB lookup helpers (I/O — wrapped in try/catch for resilience) ───────────
 
 async function getBandRate(bandKey: string): Promise<number | null> {
@@ -181,6 +213,29 @@ async function getSetting(key: string): Promise<string | null> {
     return row?.setting_value ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Early-adopter gate: returns true if the provider registered before the
+ * platform's early_adopter_cutoff_date. Safe fallback is true (beta rate)
+ * so existing call-sites that omit providerId stay on beta_flat.
+ */
+async function isEarlyAdopterProvider(providerId: string): Promise<boolean> {
+  try {
+    const cutoffStr = await getSetting("early_adopter_cutoff_date");
+    if (!cutoffStr) return true; // gate disabled → everyone is early adopter
+    const cutoff = new Date(cutoffStr);
+    if (isNaN(cutoff.getTime())) return true; // invalid date → safe fallback
+
+    const result = await db.execute(sql`
+      SELECT created_at FROM users WHERE id = ${providerId} LIMIT 1
+    `);
+    const row = result.rows?.[0] as { created_at: Date | string | null } | undefined;
+    if (!row?.created_at) return true; // unknown registration date → safe fallback
+    return new Date(row.created_at) < cutoff;
+  } catch {
+    return true; // DB error → safe fallback (never punish a provider for a DB issue)
   }
 }
 
@@ -224,12 +279,14 @@ export async function resolveCommissionRates(
   let source: ResolveOptions["source"];
   let revenueType: string | null | undefined;
   let expertId: string | null | undefined;
+  let providerId: string | null | undefined;
 
   if (typeof categoryOrOptions === "object" && categoryOrOptions !== null) {
     category = categoryOrOptions.category;
     source = categoryOrOptions.source;
     revenueType = categoryOrOptions.revenueType;
     expertId = categoryOrOptions.expertId;
+    providerId = categoryOrOptions.providerId;
   } else {
     category = categoryOrOptions;
   }
@@ -275,11 +332,25 @@ export async function resolveCommissionRates(
   // Tier 4 / 5 — fee_bands band lookup
   const policy = (await getSetting("active_provider_commission_policy")) ?? "beta_flat";
   const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "beta_flat";
-  const bandKey = decideBandKey(
-    { source, category, categoryCommissionBand: null /* tiered lookup wires in a later phase */ },
-    policy,
-    defaultBandKey,
-  );
+
+  // Early-adopter gate for provider-source bookings.
+  // When a providerId is supplied, compare their registration date to
+  // early_adopter_cutoff_date in platform_settings:
+  //   before cutoff  → beta_flat (10% platform / 90% provider)
+  //   on/after cutoff → expert_standard (25% platform / 75% provider)
+  // Omitting providerId (existing call-sites) always resolves to beta_flat — safe.
+  const isProviderLine = source === "provider" || category === "provider_commission_percent";
+  let bandKey: string;
+  if (isProviderLine && providerId) {
+    const earlyAdopter = await isEarlyAdopterProvider(providerId);
+    bandKey = earlyAdopter ? "beta_flat" : "expert_standard";
+  } else {
+    bandKey = decideBandKey(
+      { source, category, categoryCommissionBand: null /* tiered lookup wires in a later phase */ },
+      policy,
+      defaultBandKey,
+    );
+  }
 
   const bandRate = await getBandRate(bandKey);
   if (bandRate !== null) {

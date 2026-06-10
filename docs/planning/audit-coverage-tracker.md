@@ -2,6 +2,10 @@
 
 Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an owner and status, so it's clear at a glance what's claimed vs orphaned. Update the **Status** column as work lands.
 
+> **Related:** PlanCard build no-regress baseline lives in
+> [`plancard-surface-manifest.md`](./plancard-surface-manifest.md) — the affordance
+> inventory + California metric baseline that Phases 3/4 gate against.
+
 **Owners**
 - `LB-Pn` — Launch Blocker Fix Brief, phase n (execution-ready)
 - `CON-A/B/C` — Concierge plan, phase A/B/C (plan pending Claude Code)
