@@ -86,6 +86,12 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
+**Migration 058 (Jun 10, 2026):** index-only — `idx_pnc_neighborhood_category` on
+`provider_neighborhood_coverage(neighborhood_id, category_key)`. The upsell engine's
+candidate gather (Engine Inventory-Sourcing brief) reads coverage by
+`(neighborhood_id, category_key)`; the existing unique constraint leads with
+`provider_id` and cannot serve that path. No schema/data semantics change.
+
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
 - This was uncoordinated and left the transaction path orphaned
