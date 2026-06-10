@@ -1404,12 +1404,9 @@ export default function CartPage() {
                         surface="cart"
                         contextPayload={user ? {
                           cartItems: (cart?.items ?? []).map((item: any) => ({
-                            category: item.category ?? item.itemType ?? undefined,
-                            destinationCity:
-                              (item.contentMeta as any)?.city ??
-                              (item.contentMeta as any)?.location ??
-                              undefined,
-                          })).filter((ci: any) => ci.category || ci.destinationCity),
+                            offeringId: item.serviceId ?? item.contentId ?? item.offeringId ?? String(item.id ?? ""),
+                            categoryKey: item.category ?? item.itemType ?? item.contentType ?? "general",
+                          })).filter((ci: any) => ci.offeringId),
                           userProfile: {
                             mobilityLevel: (user as any).mobility_level ?? (user as any).mobilityLevel ?? undefined,
                             budgetTier: (user as any).budget_tier ?? (user as any).budgetTier ?? undefined,

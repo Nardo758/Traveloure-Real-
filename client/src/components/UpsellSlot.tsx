@@ -43,6 +43,8 @@ interface UpsellSlotProps {
   heading?: string;
   className?: string;
   "data-testid"?: string;
+  /** Called once with the ranked candidates after the slot resolves. */
+  onSlotData?: (candidates: UpsellCandidate[]) => void;
 }
 
 interface ErrorBoundaryState { hasError: boolean }
@@ -82,9 +84,11 @@ export function UpsellSlot({
   heading,
   className,
   "data-testid": testId,
+  onSlotData,
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
   const impressionFiredRef = useRef(false);
+  const slotDataFiredRef = useRef(false);
 
   const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
   if (tripId) body.tripId = tripId;
@@ -116,8 +120,12 @@ export function UpsellSlot({
       impressionFiredRef.current = true;
       logImpression.mutate(candidates.map((c) => c.offeringId));
     }
+    if (data !== undefined && !slotDataFiredRef.current) {
+      slotDataFiredRef.current = true;
+      onSlotData?.(candidates);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates.length]);
+  }, [candidates.length, data]);
 
   if (candidates.length === 0) return null;
 

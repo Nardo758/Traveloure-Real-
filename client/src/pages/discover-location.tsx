@@ -12,7 +12,7 @@ import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVen
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
-import { UpsellSlot } from "@/components/UpsellSlot";
+import { UpsellSlot, type UpsellCandidate } from "@/components/UpsellSlot";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1015,10 +1015,24 @@ export default function DiscoverLocationPage() {
     });
   }, [mediaData]);
 
+  // Slot data state — filled by UpsellSlot's onSlotData once it resolves
+  const [discoverySlotCandidates, setDiscoverySlotCandidates] = useState<UpsellCandidate[]>([]);
+
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
-  const experts = expertsData ?? [];
+
+  // Sort experts: those whose city/neighborhood data overlaps a page neighborhood first
+  const neighborhoodNames = new Set(
+    neighborhoods.map((nb: any) =>
+      (nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? "").toLowerCase()
+    )
+  );
+  const experts = [...(expertsData ?? [])].sort((a: any, b: any) => {
+    const aMatch = neighborhoodNames.has((a.city ?? a.neighborhood ?? "").toLowerCase()) ? 1 : 0;
+    const bMatch = neighborhoodNames.has((b.city ?? b.neighborhood ?? "").toLowerCase()) ? 1 : 0;
+    return bMatch - aMatch;
+  });
   const events = data?.events?.data?.events ?? [];
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
@@ -1179,9 +1193,14 @@ export default function DiscoverLocationPage() {
               <div className="space-y-2" data-testid="section-expert-recruitment">
                 {neighborhoods.slice(0, 3).map((nb: any, idx: number) => {
                   const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
-                  // Rotate through available offering types to show specific uncovered roles
-                  const offeringList = expertOfferingTypes ?? [];
-                  const offering = offeringList[idx % Math.max(offeringList.length, 1)];
+                  // Derive uncovered offering types: exclude categories already ranked in the slot
+                  const coveredKeys = new Set(discoverySlotCandidates.map((c) => c.categoryKey));
+                  const offeringList = (expertOfferingTypes ?? []).filter(
+                    (o) => !coveredKeys.has(o.offering_type_key) && !coveredKeys.has(o.service_tier)
+                  );
+                  // Fall back to full list when slot data hasn't loaded yet
+                  const candidates = offeringList.length > 0 ? offeringList : (expertOfferingTypes ?? []);
+                  const offering = candidates[idx % Math.max(candidates.length, 1)];
                   const offeringLabel = offering?.display_name ?? "Local expert guide";
                   const offeringKey = offering?.offering_type_key ?? "guide";
                   return (
@@ -1239,6 +1258,7 @@ export default function DiscoverLocationPage() {
                 : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }}
               className="px-0"
               data-testid="upsell-slot-discover-location"
+              onSlotData={setDiscoverySlotCandidates}
             />
 
             {/* ── Blended bento feed ────────────────────────────────── */}
