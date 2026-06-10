@@ -1831,16 +1831,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const service = await storage.createProviderService({ ...input, userId });
 
-      // Write neighborhood coverage rows if neighborhoods were submitted
-      if (Array.isArray(neighborhoodSlugs) && neighborhoodSlugs.length > 0 && service.categoryId) {
-        try {
-          const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
-            .from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
-          if (cat?.categoryKey) {
-            await storage.upsertProviderNeighborhoodCoverage(userId, cat.categoryKey, neighborhoodSlugs);
-          }
-        } catch (coverageErr) {
-          console.warn("[Coverage] Could not write neighborhood coverage:", coverageErr);
+      // Write (or clear) neighborhood coverage rows whenever the neighborhoods
+      // field is present in the payload — including empty arrays, which must
+      // delete any existing stale rows for this provider+category.
+      if (Array.isArray(neighborhoodSlugs) && service.categoryId) {
+        const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+          .from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
+        if (cat?.categoryKey) {
+          await storage.upsertProviderNeighborhoodCoverage(userId, cat.categoryKey, neighborhoodSlugs);
         }
       }
 
@@ -1914,19 +1912,17 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const { userId: _, ...safeInput } = input as any;
       const updated = await storage.updateProviderService(req.params.id, safeInput);
 
-      // Write neighborhood coverage rows if neighborhoods were submitted
+      // Write (or clear) neighborhood coverage rows whenever the neighborhoods
+      // field is present in the payload — including empty arrays, which must
+      // delete any existing stale rows for this provider+category.
       if (Array.isArray(neighborhoodSlugs) && updated) {
-        try {
-          const effectiveCategoryId = (updated.categoryId ?? ownedService.categoryId) as string | undefined;
-          if (effectiveCategoryId) {
-            const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
-              .from(serviceCategories).where(eq(serviceCategories.id, effectiveCategoryId));
-            if (cat?.categoryKey) {
-              await storage.upsertProviderNeighborhoodCoverage(userId, cat.categoryKey, neighborhoodSlugs);
-            }
+        const effectiveCategoryId = (updated.categoryId ?? ownedService.categoryId) as string | undefined;
+        if (effectiveCategoryId) {
+          const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+            .from(serviceCategories).where(eq(serviceCategories.id, effectiveCategoryId));
+          if (cat?.categoryKey) {
+            await storage.upsertProviderNeighborhoodCoverage(userId, cat.categoryKey, neighborhoodSlugs);
           }
-        } catch (coverageErr) {
-          console.warn("[Coverage] Could not write neighborhood coverage:", coverageErr);
         }
       }
 
