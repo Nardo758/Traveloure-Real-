@@ -35,6 +35,12 @@ export interface UpsellCandidate {
   reason: string;
 }
 
+export interface SlotResult {
+  candidates: UpsellCandidate[];
+  /** Offerings the engine filtered out — includes their offeringId so callers can build a "covered" set. */
+  suppressed: Array<{ offeringId: string; reason?: string }>;
+}
+
 interface UpsellSlotProps {
   surface: UpsellSurface;
   tripId?: string;
@@ -43,8 +49,13 @@ interface UpsellSlotProps {
   heading?: string;
   className?: string;
   "data-testid"?: string;
-  /** Called once with the ranked candidates after the slot resolves. */
-  onSlotData?: (candidates: UpsellCandidate[]) => void;
+  /**
+   * Called once with the full slot result after the server responds.
+   * Use `result.candidates` for what to render; use `result.suppressed` to
+   * determine which offering types the engine already has coverage for
+   * (so recruitment widgets can show only truly uncovered categories).
+   */
+  onSlotData?: (result: SlotResult) => void;
 }
 
 interface ErrorBoundaryState { hasError: boolean }
@@ -93,7 +104,7 @@ export function UpsellSlot({
   const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
   if (tripId) body.tripId = tripId;
 
-  const { data } = useQuery<{ candidates: UpsellCandidate[] }>({
+  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }> }>({
     queryKey: [ENDPOINT[surface], tripId, JSON.stringify(contextPayload)],
     queryFn: async () => {
       const res = await apiRequest("POST", ENDPOINT[surface], body);
@@ -122,7 +133,7 @@ export function UpsellSlot({
     }
     if (data !== undefined && !slotDataFiredRef.current) {
       slotDataFiredRef.current = true;
-      onSlotData?.(candidates);
+      onSlotData?.({ candidates, suppressed: data.suppressed ?? [] });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates.length, data]);

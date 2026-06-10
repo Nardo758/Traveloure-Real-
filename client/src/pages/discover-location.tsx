@@ -12,7 +12,7 @@ import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVen
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
-import { UpsellSlot, type UpsellCandidate } from "@/components/UpsellSlot";
+import { UpsellSlot, type SlotResult } from "@/components/UpsellSlot";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1015,24 +1015,15 @@ export default function DiscoverLocationPage() {
     });
   }, [mediaData]);
 
-  // Slot data state — filled by UpsellSlot's onSlotData once it resolves
-  const [discoverySlotCandidates, setDiscoverySlotCandidates] = useState<UpsellCandidate[]>([]);
+  // Full slot result — candidates and suppressed — filled by UpsellSlot's onSlotData once it resolves.
+  // Using the combined set (candidates + suppressed) as the authoritative "has-coverage" signal
+  // means recruitment cards only appear for offering types the engine found NO candidates for at all.
+  const [discoverySlotResult, setDiscoverySlotResult] = useState<SlotResult>({ candidates: [], suppressed: [] });
 
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
-
-  // Sort experts: those whose city/neighborhood data overlaps a page neighborhood first
-  const neighborhoodNames = new Set(
-    neighborhoods.map((nb: any) =>
-      (nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? "").toLowerCase()
-    )
-  );
-  const experts = [...(expertsData ?? [])].sort((a: any, b: any) => {
-    const aMatch = neighborhoodNames.has((a.city ?? a.neighborhood ?? "").toLowerCase()) ? 1 : 0;
-    const bMatch = neighborhoodNames.has((b.city ?? b.neighborhood ?? "").toLowerCase()) ? 1 : 0;
-    return bMatch - aMatch;
-  });
+  const experts = expertsData ?? [];
   const events = data?.events?.data?.events ?? [];
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
@@ -1162,43 +1153,63 @@ export default function DiscoverLocationPage() {
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
 
             {/* ── Spine: featured lead expert for this neighborhood/city ── */}
-            {experts.length > 0 && (
-              <div
-                className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
-                data-testid="section-lead-expert"
-              >
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <UserCheck className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-foreground truncate">
-                    {experts[0].displayName ?? (`${experts[0].firstName ?? ""} ${experts[0].lastName ?? ""}`.trim() || "Local Expert")}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    {experts[0].headline ?? experts[0].bio?.slice(0, 60) ?? "Featured local expert"}
-                  </p>
-                </div>
-                <a
-                  href={`/experts/${experts[0].id}`}
-                  className="flex items-center gap-1 text-[11px] font-semibold text-primary whitespace-nowrap"
-                  data-testid="link-lead-expert-profile"
+            {/* Lead expert is derived from the top slot candidate's categoryKey:
+                the server ranked the offering endorsed by local experts, so
+                the expert whose specialties overlap the top offering is the
+                authoritative neighborhood lead. Falls back to first expert
+                when no overlap is found. */}
+            {experts.length > 0 && (() => {
+              const topCategoryKey = discoverySlotResult.candidates[0]?.categoryKey ?? "";
+              const leadExpert = (topCategoryKey
+                ? (experts.find((e: any) =>
+                    (e.specialties as string[] | undefined)?.some(
+                      (s) => s.toLowerCase().replace(/\s+/g, "_") === topCategoryKey
+                    )
+                  ) ?? experts[0])
+                : experts[0]) as any;
+              return (
+                <div
+                  className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
+                  data-testid="section-lead-expert"
                 >
-                  View profile <ChevronRight className="w-3 h-3" />
-                </a>
-              </div>
-            )}
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <UserCheck className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-foreground truncate">
+                      {leadExpert.displayName ?? (`${leadExpert.firstName ?? leadExpert.first_name ?? ""} ${leadExpert.lastName ?? leadExpert.last_name ?? ""}`.trim() || "Local Expert")}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {leadExpert.headline ?? leadExpert.bio?.slice(0, 60) ?? "Featured local expert"}
+                    </p>
+                  </div>
+                  <a
+                    href={`/experts/${leadExpert.id}`}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-primary whitespace-nowrap"
+                    data-testid="link-lead-expert-profile"
+                  >
+                    View profile <ChevronRight className="w-3 h-3" />
+                  </a>
+                </div>
+              );
+            })()}
 
             {/* ── Spine: per-neighborhood recruitment slots (uncovered offering categories) ── */}
             {neighborhoods.length > 0 && (
               <div className="space-y-2" data-testid="section-expert-recruitment">
                 {neighborhoods.slice(0, 3).map((nb: any, idx: number) => {
                   const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
-                  // Derive uncovered offering types: exclude categories already ranked in the slot
-                  const coveredKeys = new Set(discoverySlotCandidates.map((c) => c.categoryKey));
+                  // "Covered" = offerings the engine found providers for (candidates ranked + suppressed
+                  // but ranked). Suppressed means coverage exists but was filtered. Truly uncovered =
+                  // not in either set. This avoids false "wanted" slots for categories that have coverage.
+                  const coveredOfferingIds = new Set([
+                    ...discoverySlotResult.candidates.map((c) => c.offeringId),
+                    ...discoverySlotResult.suppressed.map((s) => s.offeringId),
+                  ]);
                   const offeringList = (expertOfferingTypes ?? []).filter(
-                    (o) => !coveredKeys.has(o.offering_type_key) && !coveredKeys.has(o.service_tier)
+                    (o) => !coveredOfferingIds.has(o.offering_type_key)
                   );
-                  // Fall back to full list when slot data hasn't loaded yet
+                  // Fall back to full list when slot data hasn't loaded yet (both arrays empty)
                   const candidates = offeringList.length > 0 ? offeringList : (expertOfferingTypes ?? []);
                   const offering = candidates[idx % Math.max(candidates.length, 1)];
                   const offeringLabel = offering?.display_name ?? "Local expert guide";
@@ -1251,14 +1262,20 @@ export default function DiscoverLocationPage() {
             )}
 
             {/* ── Spine: UpsellSlot recommendation cards ────────────── */}
+            {/* expertEndorsedKeys passes local expert IDs so the server boosts
+                offerings endorsed by those experts — this is the authoritative
+                endorsement signal driving both the slot ranking and lead expert. */}
             <UpsellSlot
               surface="discover_location"
-              contextPayload={neighborhoods[0]?.id
-                ? { neighborhoodId: String(neighborhoods[0].id) }
-                : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }}
+              contextPayload={{
+                ...(neighborhoods[0]?.id
+                  ? { neighborhoodId: String(neighborhoods[0].id) }
+                  : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
+                expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
+              }}
               className="px-0"
               data-testid="upsell-slot-discover-location"
-              onSlotData={setDiscoverySlotCandidates}
+              onSlotData={setDiscoverySlotResult}
             />
 
             {/* ── Blended bento feed ────────────────────────────────── */}
