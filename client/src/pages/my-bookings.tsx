@@ -36,6 +36,8 @@ import {
   ThumbsDown,
   AlertCircle,
   ListChecks,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
@@ -77,6 +79,7 @@ interface Booking {
   cancelledAt: string | null;
   cancellationReason: string | null;
   createdAt: string;
+  confirmationCode: string | null;
   hasReview?: boolean;
 }
 
@@ -377,11 +380,46 @@ export default function MyBookingsPage() {
   );
 }
 
+function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300"
+      data-testid={`confirmation-code-${bookingId}`}
+    >
+      <FileCheck className="w-3 h-3 flex-shrink-0" />
+      <span className="text-xs font-mono font-semibold tracking-wide">{code}</span>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="ml-0.5 p-0.5 rounded hover:bg-green-200 dark:hover:bg-green-800 transition-colors"
+        title="Copy confirmation code"
+        data-testid={`button-copy-code-${bookingId}`}
+      >
+        {copied ? (
+          <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+        ) : (
+          <Copy className="w-3 h-3 text-green-600 dark:text-green-400" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
+  const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
@@ -409,6 +447,25 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 Booked on {format(new Date(booking.createdAt), "MMM d, yyyy")}
               </span>
             </div>
+
+            {isConfirmedOrBeyond && (
+              <div className="mb-2">
+                {booking.confirmationCode ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground">Confirmation:</span>
+                    <ConfirmationCodeBadge code={booking.confirmationCode} bookingId={booking.id} />
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground" data-testid={`no-code-${booking.id}`}>
+                    Confirmation code not yet available.{" "}
+                    <a href="mailto:support@traveloure.com" className="underline hover:text-foreground transition-colors">
+                      Contact support
+                    </a>{" "}
+                    if you need help.
+                  </p>
+                )}
+              </div>
+            )}
             
             <div className="text-sm text-muted-foreground space-y-1">
               {booking.bookingDetails?.scheduledDate && (

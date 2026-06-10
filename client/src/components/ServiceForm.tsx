@@ -16,7 +16,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
-  MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText,
+  MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -26,7 +26,28 @@ interface ServiceCategory {
   id: string;
   name: string;
   slug: string;
+  categoryKey?: string | null;
   description: string | null;
+  requiresBackgroundCheck?: boolean;
+  insuranceBand?: number | null;
+}
+
+interface CategoryField {
+  id: string;
+  categoryKey: string;
+  fieldKey: string;
+  label: string;
+  type: "text" | "number" | "select" | "boolean" | "url" | "multiselect";
+  required: boolean;
+  options: string[] | null;
+  sortOrder: number;
+  defaultPriceType?: string | null;
+}
+
+interface PricingTier {
+  label: string;
+  price: number;
+  description: string;
 }
 
 interface ServiceSubcategory {
@@ -35,16 +56,31 @@ interface ServiceSubcategory {
   sortOrder: number | null;
 }
 
+interface ExpertOfferingType {
+  id: string;
+  offeringTypeKey: string;
+  serviceTier: string;
+  displayName: string;
+  tagline: string | null;
+  deliveryFormats: string[];
+  isSurprising: boolean;
+  sortOrder: number;
+}
+
 interface ServiceFormData {
   name: string;
   categoryId: string;
   subcategoryId: string;
   description: string;
   basePrice: number;
-  priceType: "Fixed" | "Range" | "Per-person";
+  priceType: "Fixed" | "Range" | "Per-person" | "Hourly" | "Package tiers" | "Per-event";
+  pricingTiers: PricingTier[];
+  guestMin: number;
+  guestMax: number;
   duration: string;
   deliveryMethod: "in-person" | "video-call" | "hybrid";
-  // Expert-specific: approval workflow
+  // Expert-specific: tier + approval workflow
+  expertOfferingTypeId: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
   // Provider-specific: status + features
   active: boolean;
@@ -57,6 +93,7 @@ interface ServiceFormData {
   // Logistics
   serviceArea: string;
   neighborhood: string;
+  neighborhoods: string[];
   meetingPoint: string;
   pickupAvailable: boolean;
   pickupAddress: string;
@@ -67,6 +104,8 @@ interface ServiceFormData {
   // Media
   serviceImage: string;
   galleryImages: string[];
+  // Per-category dynamic attributes
+  categoryAttributes: Record<string, any>;
 }
 
 interface ServiceFormProps {
@@ -95,8 +134,12 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     description: "",
     basePrice: 0,
     priceType: "Fixed",
+    pricingTiers: [],
+    guestMin: 0,
+    guestMax: 0,
     duration: "",
     deliveryMethod: "in-person",
+    expertOfferingTypeId: "",
     approvalStatus: "draft",
     active: true,
     revisionsIncluded: 0,
@@ -106,6 +149,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     maxConcurrentClients: 1,
     serviceArea: "",
     neighborhood: "",
+    neighborhoods: [],
     meetingPoint: "",
     pickupAvailable: false,
     pickupAddress: "",
@@ -114,19 +158,64 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     leadTime: "",
     serviceImage: "",
     galleryImages: [],
+    categoryAttributes: {},
   };
 }
 
+function mapPriceTypeFromBackend(raw: string | null | undefined): ServiceFormData["priceType"] {
+  switch (raw) {
+    case "hourly":        return "Hourly";
+    case "package_tiers": return "Package tiers";
+    case "per_event":     return "Per-event";
+    case "range":         return "Range";
+    case "per_person":    return "Per-person";
+    default:              return "Fixed";
+  }
+}
+
+function mapPriceTypeToBackend(display: ServiceFormData["priceType"]): string {
+  switch (display) {
+    case "Hourly":         return "hourly";
+    case "Package tiers":  return "package_tiers";
+    case "Per-event":      return "per_event";
+    case "Range":          return "range";
+    case "Per-person":     return "per_person";
+    default:               return "fixed";
+  }
+}
+
+function mapDefaultPriceTypeHint(hint: string): ServiceFormData["priceType"] | null {
+  switch (hint) {
+    case "hourly":         return "Hourly";
+    case "package_tiers":  return "Package tiers";
+    case "per_event":      return "Per-event";
+    case "range":          return "Range";
+    case "per_person":     return "Per-person";
+    case "fixed":          return "Fixed";
+    default:               return null;
+  }
+}
+
 function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData {
+  // Parse guest range from priceBasedOn if per_event (e.g. "per_event_10_100")
+  let guestMin = 0, guestMax = 0;
+  if (s.priceBasedOn && typeof s.priceBasedOn === "string") {
+    const m = s.priceBasedOn.match(/per_event_(\d+)_(\d+)/);
+    if (m) { guestMin = parseInt(m[1]); guestMax = parseInt(m[2]); }
+  }
   return {
     name: s.serviceName || "",
     categoryId: s.categoryId || "",
     subcategoryId: s.subcategoryId || "",
     description: s.description || "",
     basePrice: Number(s.price || 0),
-    priceType: "Fixed",
+    priceType: mapPriceTypeFromBackend(s.priceType),
+    pricingTiers: Array.isArray(s.pricingTiers) ? s.pricingTiers : [],
+    guestMin,
+    guestMax,
     duration: s.deliveryTimeframe || s.duration || "",
     deliveryMethod: s.deliveryMethod || "in-person",
+    expertOfferingTypeId: s.expertOfferingTypeId || "",
     approvalStatus: s.approvalStatus || "draft",
     active: s.status === "active",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
@@ -136,6 +225,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     maxConcurrentClients: s.maxConcurrentBookings || 1,
     serviceArea: s.location || "",
     neighborhood: s.neighborhood || "",
+    neighborhoods: Array.isArray(s.neighborhoods) ? s.neighborhoods : (s.neighborhood ? [s.neighborhood] : []),
     meetingPoint: s.meetingPoint || "",
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
@@ -144,7 +234,26 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     leadTime: s.leadTime || "",
     serviceImage: s.serviceImage || "",
     galleryImages: Array.isArray(s.galleryImages) ? s.galleryImages : [],
+    categoryAttributes: (s.categoryAttributes && typeof s.categoryAttributes === "object") ? s.categoryAttributes : {},
   };
+}
+
+// Map tier deliveryFormats to the form's deliveryMethod values
+function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
+  const methodMap: Record<string, string[]> = {
+    "video": ["video-call"],
+    "live_text": ["video-call"],
+    "chat": ["video-call", "in-person"],
+    "written": ["in-person"],
+    "done_for_you": ["in-person", "hybrid"],
+    "hybrid": ["hybrid"],
+    "in_person": ["in-person"],
+  };
+  const allowed = new Set<string>();
+  for (const fmt of formats) {
+    for (const m of (methodMap[fmt] ?? [])) allowed.add(m);
+  }
+  return allowed;
 }
 
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
@@ -160,6 +269,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     queryKey: ["/api/service-categories"],
   });
 
+  // Expert 5-tier offering types catalog
+  const { data: expertOfferingTypes = [] } = useQuery<ExpertOfferingType[]>({
+    queryKey: ["/api/expert/offering-types"],
+    enabled: role === "expert",
+    staleTime: 5 * 60_000,
+  });
+
   const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm(role));
 
   const { data: subcategories = [] } = useQuery<ServiceSubcategory[]>({
@@ -171,12 +287,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     queryKey: ["/api/city-neighborhoods"],
   });
 
+  // Fetch the selected category's categoryKey so we can load its dynamic fields
+  const selectedCategoryKey = (categories as ServiceCategory[]).find((c) => c.id === formData.categoryId)?.categoryKey ?? null;
+
+  const { data: categoryFields = [] } = useQuery<CategoryField[]>({
+    queryKey: ["/api/service-categories", selectedCategoryKey, "fields"],
+    enabled: !!selectedCategoryKey,
+  });
+
   const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
     queryKey: ["/api/provider/services", id],
     enabled: isEditMode,
   });
 
   const categoryPreSelected = useRef(false);
+  const offeringTypeKeyPreSelected = useRef(false);
 
   const templatePreFilled = useRef(false);
 
@@ -219,6 +344,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [isEditMode]);
 
+  // Pre-select tier from ?offeringTypeKey= URL param (used by /earn CTA)
+  useEffect(() => {
+    if (
+      role !== "expert" ||
+      isEditMode ||
+      expertOfferingTypes.length === 0 ||
+      offeringTypeKeyPreSelected.current
+    ) return;
+    const raw = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("offeringTypeKey") || ""
+      : "";
+    if (!raw) return;
+    const match = expertOfferingTypes.find((t) => t.offeringTypeKey === raw);
+    if (match) {
+      offeringTypeKeyPreSelected.current = true;
+      setFormData((prev) => ({ ...prev, expertOfferingTypeId: match.id }));
+    }
+  }, [expertOfferingTypes, isEditMode, role]);
+
   // Pre-select category from ?category= URL param
   useEffect(() => {
     if (!isEditMode && categories.length > 0 && !categoryPreSelected.current) {
@@ -247,6 +391,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [existingService, role]);
 
+  // Pre-select category's default price type when creating a new service.
+  // We only stamp prevCategoryIdRef *after* categoryFields has loaded so
+  // the effect re-fires once the async query resolves.
+  const prevCategoryIdRef = useRef<string>("");
+  useEffect(() => {
+    if (isEditMode) return;
+    if (!formData.categoryId) return;
+    if (formData.categoryId === prevCategoryIdRef.current) return;
+    // Wait until fields for this category have actually arrived
+    if (categoryFields.length === 0) return;
+    // Mark as processed now that we have data
+    prevCategoryIdRef.current = formData.categoryId;
+    const hint = categoryFields[0]?.defaultPriceType;
+    if (hint) {
+      const mapped = mapDefaultPriceTypeHint(hint);
+      if (mapped) setFormData((prev) => ({ ...prev, priceType: mapped, pricingTiers: [] }));
+    }
+  }, [categoryFields, formData.categoryId, isEditMode]);
+
   const set = (key: keyof ServiceFormData, value: any) =>
     setFormData((prev) => ({ ...prev, [key]: value }));
 
@@ -270,19 +433,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const createMutation = useMutation({
     mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
+      // Compute price scalar and priceBasedOn from the selected pricing model
+      let priceScalar = String(formData.basePrice);
+      let pricingTiersPayload: PricingTier[] = [];
+      let priceBasedOn: string | null = null;
+
+      if (formData.priceType === "Package tiers" && formData.pricingTiers.length > 0) {
+        pricingTiersPayload = formData.pricingTiers;
+        const validPrices = formData.pricingTiers.map((t) => t.price).filter((p) => p > 0);
+        if (validPrices.length > 0) priceScalar = String(Math.min(...validPrices));
+      } else if (formData.priceType === "Per-event") {
+        if (formData.guestMin > 0 && formData.guestMax > 0) {
+          priceBasedOn = `per_event_${formData.guestMin}_${formData.guestMax}`;
+        } else {
+          priceBasedOn = "per_event";
+        }
+      }
+
       const payload: Record<string, any> = {
         serviceName: formData.name,
         categoryId: formData.categoryId || undefined,
         subcategoryId: formData.subcategoryId || undefined,
         description: formData.description,
-        price: String(formData.basePrice),
-        priceType: formData.priceType.toLowerCase().replace("-", "_"),
+        price: priceScalar,
+        priceType: mapPriceTypeToBackend(formData.priceType),
+        pricingTiers: pricingTiersPayload,
+        priceBasedOn,
         deliveryTimeframe: formData.duration,
         deliveryMethod: formData.deliveryMethod,
         whatIncluded: formData.whatIncluded,
         maxConcurrentBookings: formData.maxConcurrentClients,
         location: formData.serviceArea || "Unknown",
-        neighborhood: formData.neighborhood || null,
+        neighborhood: formData.neighborhoods.length > 0 ? formData.neighborhoods[0] : (formData.neighborhood || null),
+        neighborhoods: formData.neighborhoods,
         meetingPoint: formData.meetingPoint || null,
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
@@ -291,16 +474,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
+        categoryAttributes: formData.categoryAttributes,
       };
 
       // Role-specific fields
       if (role === "provider") {
-        payload.revisionsIncluded = formData.revisionsIncluded;
         payload.includesExpertNotes = formData.includesExpertNotes;
         payload.contentAffinityTags = formData.contentAffinityTags;
         payload.status = submitAction === "publish" ? "active" : "draft";
       } else {
-        // Expert: send approvalStatus for workflow
+        // Expert: send tier FK + approvalStatus for workflow
+        if (formData.expertOfferingTypeId) {
+          payload.expertOfferingTypeId = formData.expertOfferingTypeId;
+        }
         if (submitAction === "draft") {
           payload.approvalStatus = "draft";
           payload.status = "draft";
@@ -309,6 +495,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           payload.status = "draft";
         }
       }
+      // revisionsIncluded is shared (expert + provider)
+      payload.revisionsIncluded = formData.revisionsIncluded;
 
       if (isEditMode) {
         return apiRequest("PATCH", `/api/provider/services/${id}`, payload);
@@ -341,8 +529,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     },
   });
 
+  const { data: verificationStatus } = useQuery<{ providerVerificationStatus: string; backgroundCheckConfirmed: boolean }>({
+    queryKey: ["/api/provider/verification-status"],
+    enabled: role === "provider",
+  });
+
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+  const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
+  const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
+  const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
 
   if (isEditMode && loadingExisting) {
     return (
@@ -428,7 +624,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <Select
               value={formData.categoryId}
               onValueChange={(v) => {
-                setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "" }));
+                setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "", categoryAttributes: {} }));
               }}
             >
               <SelectTrigger id="category" className="mt-2">
@@ -446,6 +642,29 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
             )}
           </div>
+
+          {/* Verification banner — shown when selected category requires background check / elevated insurance */}
+          {role === "provider" && isCategoryGated && (
+            <div
+              className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${isProviderVerified ? "bg-green-50 border-green-200 text-green-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}
+              data-testid="banner-verification-required"
+            >
+              <ShieldAlert className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isProviderVerified ? "text-green-600" : "text-amber-600"}`} />
+              <div>
+                {isProviderVerified ? (
+                  <p className="font-medium">Background verification complete — you can publish this service.</p>
+                ) : (
+                  <>
+                    <p className="font-medium">Background check required before going live</p>
+                    <p className="text-xs mt-0.5 opacity-80">
+                      This category requires a background check and/or elevated insurance verification.
+                      You can save as a draft now and contact support to complete verification before publishing.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Subcategory */}
           {subcategories.length > 0 && (
@@ -483,31 +702,223 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
 
           {/* Pricing */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <Label htmlFor="basePrice">Base Price ($) *</Label>
-              <Input
-                id="basePrice"
-                type="number"
-                value={formData.basePrice}
-                onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="priceType">Price Type</Label>
-              <Select value={formData.priceType} onValueChange={(v: any) => set("priceType", v)}>
-                <SelectTrigger id="priceType" className="mt-2">
+              <Label htmlFor="priceType">Pricing Model</Label>
+              <Select
+                value={formData.priceType}
+                onValueChange={(v: any) => set("priceType", v)}
+              >
+                <SelectTrigger id="priceType" className="mt-2" data-testid="select-price-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Fixed">Fixed</SelectItem>
-                  <SelectItem value="Range">Range</SelectItem>
-                  <SelectItem value="Per-person">Per-person</SelectItem>
+                  <SelectItem value="Fixed">Fixed price</SelectItem>
+                  <SelectItem value="Range">Price range</SelectItem>
+                  <SelectItem value="Per-person">Per person</SelectItem>
+                  <SelectItem value="Hourly">Hourly rate</SelectItem>
+                  <SelectItem value="Package tiers">Package tiers</SelectItem>
+                  <SelectItem value="Per-event">Per event (flat fee)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Hourly — single rate + /hr label */}
+            {formData.priceType === "Hourly" && (
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <Label htmlFor="basePrice">Hourly Rate ($) *</Label>
+                  <Input
+                    id="basePrice"
+                    type="number"
+                    min="0"
+                    value={formData.basePrice || ""}
+                    onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    className="mt-2"
+                    data-testid="input-hourly-rate"
+                  />
+                </div>
+                <span className="text-sm font-medium text-muted-foreground pb-2.5">/ hr</span>
+              </div>
+            )}
+
+            {/* Package tiers — dynamic tier builder */}
+            {formData.priceType === "Package tiers" && (
+              <div className="space-y-3">
+                <Label>Pricing Tiers</Label>
+                {formData.pricingTiers.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Add tiers like Basic, Standard, or Premium — each with a price and short description.
+                  </p>
+                )}
+                {formData.pricingTiers.map((tier, idx) => (
+                  <div key={idx} className="flex items-start gap-2 p-3 bg-secondary/40 rounded-lg border" data-testid={`tier-row-${idx}`}>
+                    <div className="flex-1 grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Tier name (e.g. Basic)"
+                        value={tier.label}
+                        onChange={(e) => {
+                          const updated = [...formData.pricingTiers];
+                          updated[idx] = { ...updated[idx], label: e.target.value };
+                          set("pricingTiers", updated);
+                        }}
+                        data-testid={`input-tier-label-${idx}`}
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm text-muted-foreground">$</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Price"
+                          value={tier.price || ""}
+                          onChange={(e) => {
+                            const updated = [...formData.pricingTiers];
+                            updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                            set("pricingTiers", updated);
+                          }}
+                          data-testid={`input-tier-price-${idx}`}
+                        />
+                      </div>
+                      <Input
+                        placeholder="Short description (optional)"
+                        value={tier.description}
+                        onChange={(e) => {
+                          const updated = [...formData.pricingTiers];
+                          updated[idx] = { ...updated[idx], description: e.target.value };
+                          set("pricingTiers", updated);
+                        }}
+                        className="col-span-2"
+                        data-testid={`input-tier-desc-${idx}`}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={() => set("pricingTiers", formData.pricingTiers.filter((_, i) => i !== idx))}
+                      data-testid={`button-remove-tier-${idx}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => set("pricingTiers", [...formData.pricingTiers, { label: "", price: 0, description: "" }])}
+                  data-testid="button-add-tier"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Add tier
+                </Button>
+              </div>
+            )}
+
+            {/* Per-event — flat rate + optional guest range */}
+            {formData.priceType === "Per-event" && (
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="basePrice">Flat Event Rate ($) *</Label>
+                  <Input
+                    id="basePrice"
+                    type="number"
+                    min="0"
+                    value={formData.basePrice || ""}
+                    onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    className="mt-2"
+                    data-testid="input-event-rate"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="guestMin">Min guests (optional)</Label>
+                    <Input
+                      id="guestMin"
+                      type="number"
+                      min="0"
+                      value={formData.guestMin || ""}
+                      onChange={(e) => set("guestMin", parseInt(e.target.value) || 0)}
+                      placeholder="e.g. 10"
+                      className="mt-2"
+                      data-testid="input-guest-min"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="guestMax">Max guests (optional)</Label>
+                    <Input
+                      id="guestMax"
+                      type="number"
+                      min="0"
+                      value={formData.guestMax || ""}
+                      onChange={(e) => set("guestMax", parseInt(e.target.value) || 0)}
+                      placeholder="e.g. 100"
+                      className="mt-2"
+                      data-testid="input-guest-max"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Fixed / Range / Per-person — scalar price input */}
+            {(formData.priceType === "Fixed" || formData.priceType === "Range" || formData.priceType === "Per-person") && (
+              <div>
+                <Label htmlFor="basePrice">
+                  {formData.priceType === "Range"
+                    ? "Starting Price ($) *"
+                    : formData.priceType === "Per-person"
+                    ? "Price Per Person ($) *"
+                    : "Base Price ($) *"}
+                </Label>
+                <Input
+                  id="basePrice"
+                  type="number"
+                  min="0"
+                  value={formData.basePrice || ""}
+                  onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                  className="mt-2"
+                  data-testid="input-base-price"
+                />
+              </div>
+            )}
           </div>
+
+          {/* Expert Tier Picker */}
+          {role === "expert" && (
+            <div>
+              <Label>Service Tier *</Label>
+              {expertOfferingTypes.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-2">Loading tiers…</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  {expertOfferingTypes.map((tier) => (
+                    <button
+                      key={tier.id}
+                      type="button"
+                      onClick={() => {
+                        set("expertOfferingTypeId", tier.id);
+                      }}
+                      className={`text-left p-3 rounded-lg border-2 transition-colors ${
+                        formData.expertOfferingTypeId === tier.id
+                          ? "border-[#FF385C] bg-[#FF385C]/5"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                      data-testid={`option-tier-${tier.offeringTypeKey}`}
+                    >
+                      <p className="font-medium text-sm text-gray-900">{tier.displayName}</p>
+                      {tier.tagline && (
+                        <p className="text-xs text-gray-500 mt-0.5">{tier.tagline}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Duration */}
           <div>
@@ -522,25 +933,157 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
 
           {/* Delivery Method */}
-          <div>
-            <Label htmlFor="deliveryMethod">Delivery Method *</Label>
-            <Select
-              value={formData.deliveryMethod}
-              onValueChange={(v: any) => set("deliveryMethod", v)}
-            >
-              <SelectTrigger id="deliveryMethod" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="in-person">In-Person</SelectItem>
-                <SelectItem value="video-call">Video Call</SelectItem>
-                <SelectItem value="hybrid">Hybrid (In-Person + Video)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {(() => {
+            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
+            const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
+              ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
+              : null;
+            const allMethods = [
+              { value: "in-person", label: "In-Person" },
+              { value: "video-call", label: "Video Call" },
+              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
+            ];
+            const visibleMethods = allowed
+              ? allMethods.filter((m) => allowed.has(m.value))
+              : allMethods;
+            return (
+              <div>
+                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
+                <Select
+                  value={formData.deliveryMethod}
+                  onValueChange={(v: any) => set("deliveryMethod", v)}
+                >
+                  <SelectTrigger id="deliveryMethod" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibleMethods.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                    {visibleMethods.length === 0 && (
+                      <SelectItem value="in-person">In-Person</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {allowed && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Options filtered to your selected tier's delivery formats.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
         </CardContent>
       </Card>
+
+      {/* ── Category-Specific Dynamic Fields ── */}
+      {categoryFields.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {(categories as ServiceCategory[]).find((c) => c.id === formData.categoryId)?.name ?? "Category"} Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {categoryFields.map((field) => {
+              const value = formData.categoryAttributes[field.fieldKey] ?? "";
+              const setCatAttr = (val: any) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  categoryAttributes: { ...prev.categoryAttributes, [field.fieldKey]: val },
+                }));
+
+              if (field.type === "boolean") {
+                return (
+                  <div key={field.fieldKey} className="flex items-center justify-between">
+                    <Label htmlFor={`cat-${field.fieldKey}`} className="flex items-center gap-1">
+                      {field.label}
+                      {field.required && <span className="text-destructive">*</span>}
+                    </Label>
+                    <Switch
+                      id={`cat-${field.fieldKey}`}
+                      checked={Boolean(value)}
+                      onCheckedChange={setCatAttr}
+                      data-testid={`switch-cat-${field.fieldKey}`}
+                    />
+                  </div>
+                );
+              }
+
+              if (field.type === "select" && Array.isArray(field.options)) {
+                return (
+                  <div key={field.fieldKey}>
+                    <Label htmlFor={`cat-${field.fieldKey}`}>
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-0.5">*</span>}
+                    </Label>
+                    <Select value={String(value || "")} onValueChange={setCatAttr}>
+                      <SelectTrigger id={`cat-${field.fieldKey}`} className="mt-2" data-testid={`select-cat-${field.fieldKey}`}>
+                        <SelectValue placeholder={`Select ${field.label}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {field.options.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              }
+
+              if (field.type === "multiselect" && Array.isArray(field.options)) {
+                const selected: string[] = Array.isArray(value) ? value : [];
+                return (
+                  <div key={field.fieldKey}>
+                    <Label>
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-0.5">*</span>}
+                    </Label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {field.options.map((opt) => {
+                        const active = selected.includes(opt);
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() =>
+                              setCatAttr(active ? selected.filter((s) => s !== opt) : [...selected, opt])
+                            }
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${active ? "bg-[#FF385C] text-white border-[#FF385C]" : "bg-background text-foreground border-border hover:border-[#FF385C]"}`}
+                            data-testid={`chip-cat-${field.fieldKey}-${opt}`}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              // text / number / url
+              return (
+                <div key={field.fieldKey}>
+                  <Label htmlFor={`cat-${field.fieldKey}`}>
+                    {field.label}
+                    {field.required && <span className="text-destructive ml-0.5">*</span>}
+                  </Label>
+                  <Input
+                    id={`cat-${field.fieldKey}`}
+                    type={field.type === "number" ? "number" : "text"}
+                    value={String(value ?? "")}
+                    onChange={(e) => setCatAttr(field.type === "number" ? (parseFloat(e.target.value) || "") : e.target.value)}
+                    placeholder={field.type === "url" ? "https://..." : `Enter ${field.label.toLowerCase()}`}
+                    className="mt-2"
+                    data-testid={`input-cat-${field.fieldKey}`}
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── What's Included ── */}
       <Card>
@@ -598,25 +1141,57 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               />
             </div>
 
-            {/* Neighborhood */}
+            {/* Neighborhoods multi-select */}
             <div>
-              <Label htmlFor="neighborhood">Neighborhood (Optional)</Label>
-              <Select
-                value={formData.neighborhood}
-                onValueChange={(v) => set("neighborhood", v)}
-              >
-                <SelectTrigger id="neighborhood" className="mt-2">
-                  <SelectValue placeholder="Select a neighborhood" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allNeighborhoods.map((n) => (
-                    <SelectItem key={n.slug} value={n.slug}>
-                      {n.name}
-                    </SelectItem>
+              <Label>Neighborhoods (Optional)</Label>
+              <p className="text-xs text-muted-foreground mt-1 mb-2">
+                Select all neighborhoods you serve. The first selected becomes the primary display neighborhood.
+              </p>
+              {allNeighborhoods.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No neighborhoods available.</p>
+              ) : (
+                <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1 mt-1">
+                  {Object.entries(
+                    allNeighborhoods.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
+                      const key = `${n.city}, ${n.country}`;
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(n);
+                      return acc;
+                    }, {})
+                  ).map(([cityLabel, items]) => (
+                    <div key={cityLabel}>
+                      <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">{cityLabel}</p>
+                      {items.map((n) => {
+                        const checked = formData.neighborhoods.includes(n.slug);
+                        const isPrimary = formData.neighborhoods[0] === n.slug;
+                        return (
+                          <label
+                            key={n.slug}
+                            className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer text-sm"
+                            data-testid={`checkbox-neighborhood-${n.slug}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300"
+                              checked={checked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...formData.neighborhoods, n.slug]
+                                  : formData.neighborhoods.filter((s) => s !== n.slug);
+                                set("neighborhoods", next);
+                              }}
+                            />
+                            <span className="flex-1">{n.name}</span>
+                            {checked && isPrimary && (
+                              <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">primary</Badge>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">Helps travelers find services in their area</p>
+                </div>
+              )}
             </div>
 
             {/* Service Area */}
@@ -902,6 +1477,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </p>
             </div>
             <div>
+              <Label htmlFor="revisionsIncluded-expert">Revisions Included</Label>
+              <Input
+                id="revisionsIncluded-expert"
+                type="number"
+                value={formData.revisionsIncluded}
+                onChange={(e) => set("revisionsIncluded", parseInt(e.target.value) || 0)}
+                min="0"
+                className="mt-2"
+                data-testid="input-revisions-expert"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Number of revisions or refinements included</p>
+            </div>
+            <div>
               <Label className="text-sm font-medium">Current Status</Label>
               <div className="mt-2">
                 <Badge variant={formData.approvalStatus === "submitted" ? "default" : "secondary"}>
@@ -959,10 +1547,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <Button
                   className="bg-[#FF385C] hover:bg-[#FF385C]/90 flex-1"
                   onClick={() => createMutation.mutate("publish")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId}
+                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked}
+                  title={publishBlocked ? "Complete background verification before publishing this category" : undefined}
+                  data-testid="button-publish-service"
                 >
                   {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Publish Service
+                  {publishBlocked ? "Verification Required" : "Publish Service"}
                 </Button>
               </>
             )}

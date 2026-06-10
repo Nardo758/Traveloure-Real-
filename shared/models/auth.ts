@@ -57,6 +57,11 @@ export const users = pgTable("users", {
   // NULL = use booking_fee_configs category default. Honors §6.9 beta-recruitment terms.
   // Resolved server-side in commission.ts:resolveCommissionRates before the category lookup.
   commissionOverrideExpertSharePercent: decimal("commission_override_expert_share_percent", { precision: 5, scale: 2 }),
+  // Listing Engine publish-gate (Step 1). Admins flip providerVerificationStatus to "verified"
+  // and backgroundCheckConfirmed to true after manual review. Until then any category with
+  // requiresBackgroundCheck=true or insuranceBand >= 2 blocks publish and returns HTTP 422.
+  providerVerificationStatus: varchar("provider_verification_status", { length: 20 }).default("pending"),
+  backgroundCheckConfirmed: boolean("background_check_confirmed").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

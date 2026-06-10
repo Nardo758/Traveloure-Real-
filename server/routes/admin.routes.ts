@@ -4,6 +4,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
+import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -228,9 +229,9 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
       const status = req.query.status as string | undefined;
       const allBookings = await storage.getServiceBookings(status ? { status } : {});
       const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
-        const traveler = await storage.getUser(booking.travelerId);
-        const provider = await storage.getUser(booking.providerId);
-        const service = await storage.getProviderServiceById(booking.serviceId);
+        const traveler = booking.travelerId ? await storage.getUser(booking.travelerId) : null;
+        const provider = booking.providerId ? await storage.getUser(booking.providerId) : null;
+        const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
         return {
           ...booking,
           traveler: traveler ? { id: traveler.id, firstName: traveler.firstName, lastName: traveler.lastName, email: traveler.email } : null,
@@ -245,6 +246,104 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
     }
   });
 
+
+/**
+ * GET /api/admin/bookings/stale-pending
+ * Returns bookings stuck in pending_payment status for more than 24 hours.
+ * These are bookings where the client never called confirm-payment AND no
+ * Stripe webhook arrived (e.g. browser closed mid-payment).
+ */
+router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        b.id,
+        b.user_id,
+        b.trip_id,
+        b.title,
+        b.status,
+        b.total_amount,
+        b.created_at,
+        b.booking_date,
+        u.email AS user_email,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name
+      FROM bookings b
+      LEFT JOIN users u ON u.id = b.user_id
+      WHERE b.status = 'pending_payment'
+        AND b.created_at < NOW() - INTERVAL '24 hours'
+      ORDER BY b.created_at ASC
+      LIMIT 100
+    `);
+    res.json({ bookings: result.rows, count: result.rows.length });
+  } catch (err) {
+    console.error("Stale pending bookings error:", err);
+    res.status(500).json({ message: "Failed to fetch stale pending bookings" });
+  }
+});
+
+/**
+ * GET /api/admin/bookings/auto-cancel/config
+ * Returns the current auto-cancel scheduler configuration.
+ */
+router.get("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  res.json({
+    config: bookingExpiryScheduler.getConfig(),
+    lastRun: bookingExpiryScheduler.getLastStats(),
+    isRunning: bookingExpiryScheduler.isCurrentlyRunning(),
+  });
+});
+
+/**
+ * PATCH /api/admin/bookings/auto-cancel/config
+ * Updates the staleness threshold (hours) used by the auto-cancel scheduler.
+ */
+router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const schema = z.object({ staleThresholdHours: z.number().min(1).max(720) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid config", errors: parsed.error.flatten() });
+  }
+  try {
+    const updated = bookingExpiryScheduler.updateConfig(parsed.data);
+    res.json({ config: updated });
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/bookings/auto-cancel/run
+ * Manually triggers the auto-cancel sweep immediately.
+ */
+router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  if (bookingExpiryScheduler.isCurrentlyRunning()) {
+    return res.status(409).json({ message: "Auto-cancel sweep is already in progress" });
+  }
+  try {
+    const stats = await bookingExpiryScheduler.triggerManualRun();
+    res.json({ message: "Auto-cancel sweep completed", stats });
+  } catch (err: any) {
+    console.error("Manual auto-cancel sweep error:", err);
+    res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
+  }
+});
 
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
@@ -385,6 +484,28 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
   // reads before falling back to category. Stored value is the expert-share
   // percent (e.g. 80 → expert keeps 80%, platform takes 20%).
 
+router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, res) => {
+  const admin = await db.select({ role: users.role }).from(users)
+    .where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+  const schema = z.object({
+    providerVerificationStatus: z.enum(["pending", "verified", "rejected"]).optional(),
+    backgroundCheckConfirmed: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+
+  await storage.updateProviderVerification(req.params.id, parsed.data);
+  const [updated] = await db.select({
+    id: users.id,
+    providerVerificationStatus: users.providerVerificationStatus,
+    backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+  }).from(users).where(eq(users.id, req.params.id));
+  if (!updated) return res.status(404).json({ message: "User not found" });
+  res.json(updated);
+});
+
 router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
     const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
     if (!admin || admin.role !== "admin") {
@@ -459,7 +580,7 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
 
     // For each provider, fetch their services and user info
     const enriched = await Promise.all(approvedForms.map(async (form) => {
-      const [providerUser] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, profileImageUrl: users.profileImageUrl })
+      const [providerUser] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, profileImageUrl: users.profileImageUrl, providerVerificationStatus: users.providerVerificationStatus, backgroundCheckConfirmed: users.backgroundCheckConfirmed })
         .from(users).where(eq(users.id, form.userId));
 
       const services = await db
@@ -488,7 +609,13 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
       const totalRevenue = services.reduce((s, sv) => s + parseFloat(sv.totalRevenue ?? "0"), 0);
       const activeServices = services.filter(sv => sv.status === "active").length;
 
-      return { ...form, user: providerUser ?? null, services, totalBookings, totalRevenue, activeServices };
+      return {
+        ...form,
+        user: providerUser ? { id: providerUser.id, name: [providerUser.firstName, providerUser.lastName].filter(Boolean).join(" "), email: providerUser.email, profileImageUrl: providerUser.profileImageUrl } : null,
+        providerVerificationStatus: providerUser?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: providerUser?.backgroundCheckConfirmed ?? false,
+        services, totalBookings, totalRevenue, activeServices,
+      };
     }));
 
     res.json(enriched);

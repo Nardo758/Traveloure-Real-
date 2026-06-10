@@ -95,6 +95,9 @@ export default function ServicesProviderPage() {
   const _urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const _cityFromUrl = _urlParams.get('city') || '';
   const _countryFromUrl = _urlParams.get('country') || '';
+  // Offering carried from /earn ("I do this →") — pre-selects this offering in the application.
+  const offeringKeyFromUrl = _urlParams.get('offeringType') || '';
+  const offeringNameFromUrl = _urlParams.get('offeringName') || '';
 
   const [formData, setFormData] = useState({
     businessName: "",
@@ -179,7 +182,9 @@ export default function ServicesProviderPage() {
         businessType: formData.businessType,
         website: formData.website || undefined,
         gst: formData.registrationNumber || undefined,
-        serviceOffers: formData.serviceCategories,
+        serviceOffers: offeringNameFromUrl
+          ? Array.from(new Set([offeringNameFromUrl, ...formData.serviceCategories]))
+          : formData.serviceCategories,
         description: formData.description,
         termsAndConditions: formData.agreeToTerms,
         infoConfirmation: formData.hasLicense,
@@ -272,6 +277,18 @@ export default function ServicesProviderPage() {
       </div>
 
       <div className="container mx-auto px-4 max-w-2xl py-8">
+        {offeringNameFromUrl && (
+          <div
+            className="mb-6 flex items-center gap-2 rounded-lg border border-[#2E8B8B]/30 bg-[#2E8B8B]/5 px-4 py-3 text-sm"
+            data-testid="banner-preselected-offering"
+            data-offering-type-key={offeringKeyFromUrl}
+          >
+            <Check className="w-4 h-4 text-[#2E8B8B] flex-shrink-0" />
+            <span className="text-[#1F2733]">
+              You're applying to offer: <span className="font-semibold">{offeringNameFromUrl}</span>
+            </span>
+          </div>
+        )}
         <motion.div
           key={currentStep}
           initial={{ opacity: 0, x: 20 }}

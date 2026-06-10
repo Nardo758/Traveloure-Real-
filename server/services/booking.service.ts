@@ -5,10 +5,16 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import Stripe from 'stripe';
 import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
+import { sendBookingConfirmationEmail } from './email.service';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-12-18.acacia' as any,
+});
 
 export interface CartItem {
   id: string;
@@ -282,10 +288,21 @@ class BookingService {
           }
         }
 
-        // Get price - use item price if no provider
-        const finalPrice = item.providerId 
-          ? await pricingService.getPrice(item.providerId, item.date, 1)
-          : item.price;
+        // Get price — always read from DB when a real providerId is present.
+        // Never trust the client-supplied price for real provider items.
+        let finalPrice: number;
+        if (item.providerId && item.providerId.trim().length > 0) {
+          const dbPrice = await pricingService.getPrice(item.providerId, item.date, 1);
+          if (item.price !== dbPrice) {
+            console.warn(
+              `[BookingService] Price mismatch for "${item.title}" (providerId=${item.providerId}): ` +
+              `client sent ${item.price}, DB price is ${dbPrice}. Using DB price.`
+            );
+          }
+          finalPrice = dbPrice;
+        } else {
+          finalPrice = item.price;
+        }
 
         // Calculate fees
         const feeBreakdown = await pricingService.calculatePlatformFees(
@@ -441,31 +458,126 @@ class BookingService {
   }
 
   /**
-   * Confirm booking after successful payment
+   * Confirm booking after successful payment.
+   *
+   * Security gates (in order):
+   *  1. Stripe PaymentIntent must have status === 'succeeded'; reject 402 otherwise.
+   *  2. Booking must exist; reject 404 otherwise.
+   *  3. Booking's user_id must equal the requesting userId; reject 403 otherwise.
+   *  4. Booking must still be in 'pending_payment' status — reject 409 if already confirmed
+   *     (prevents re-confirmation of the same booking).
+   *  5. PaymentIntent ID must not already be recorded on a different booking — reject 409 if so
+   *     (prevents replay of the same pi_xxx across multiple bookings).
    */
-  async confirmBookingPayment(bookingId: string, paymentIntentId: string): Promise<boolean> {
+  async confirmBookingPayment(
+    bookingId: string,
+    paymentIntentId: string,
+    userId: string
+  ): Promise<void> {
+    // Gate 1: verify with Stripe that the PaymentIntent actually succeeded.
+    let intent: Stripe.PaymentIntent;
     try {
-      const confirmationCode = this.generateConfirmationCode();
-
-      await db.execute(sql`
-        UPDATE bookings SET
-          status = 'confirmed',
-          payment_status = 'succeeded',
-          confirmed_at = NOW(),
-          confirmation_code = ${confirmationCode},
-          deposit_paid = true
-        WHERE id = ${bookingId}
-      `);
-
-      // TODO: Update provider earnings
-      // TODO: Decrease availability
-      // TODO: Send notifications
-
-      return true;
-    } catch (error) {
-      console.error('Error confirming booking:', error);
-      return false;
+      intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    } catch (stripeErr: any) {
+      const err = new Error(`Stripe lookup failed: ${stripeErr?.message ?? stripeErr}`);
+      (err as any).code = 'STRIPE_LOOKUP_FAILED';
+      throw err;
     }
+
+    if (intent.status !== 'succeeded') {
+      const err = new Error(
+        `PaymentIntent ${paymentIntentId} has status "${intent.status}", not "succeeded"`
+      );
+      (err as any).code = 'PAYMENT_NOT_SUCCEEDED';
+      throw err;
+    }
+
+    // Gate 2: load the booking row for all subsequent checks.
+    const bookingRow = await db.execute(sql`
+      SELECT user_id, status FROM bookings WHERE id = ${bookingId}
+    `);
+
+    if (!bookingRow.rows || bookingRow.rows.length === 0) {
+      const err = new Error(`Booking ${bookingId} not found`);
+      (err as any).code = 'BOOKING_NOT_FOUND';
+      throw err;
+    }
+
+    const booking = bookingRow.rows[0] as { user_id: string; status: string };
+
+    // Gate 3: verify the booking belongs to the requesting user.
+    if (booking.user_id !== userId) {
+      const err = new Error(`Booking ${bookingId} does not belong to user ${userId}`);
+      (err as any).code = 'BOOKING_OWNERSHIP_MISMATCH';
+      throw err;
+    }
+
+    // Gate 4: idempotency / double-confirmation guard.
+    if (booking.status !== 'pending_payment') {
+      const err = new Error(
+        `Booking ${bookingId} is already in status "${booking.status}" — confirmation rejected`
+      );
+      (err as any).code = 'BOOKING_ALREADY_CONFIRMED';
+      throw err;
+    }
+
+    // Gate 5: replay-attack guard — reject if this pi_xxx is already recorded on another booking.
+    const replayCheck = await db.execute(sql`
+      SELECT id FROM bookings
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND id != ${bookingId}
+      LIMIT 1
+    `);
+
+    if (replayCheck.rows && replayCheck.rows.length > 0) {
+      const err = new Error(
+        `PaymentIntent ${paymentIntentId} has already been used to confirm a different booking`
+      );
+      (err as any).code = 'PAYMENT_INTENT_ALREADY_USED';
+      throw err;
+    }
+
+    const confirmationCode = this.generateConfirmationCode();
+
+    await db.execute(sql`
+      UPDATE bookings SET
+        status = 'confirmed',
+        payment_status = 'succeeded',
+        confirmed_at = NOW(),
+        confirmation_code = ${confirmationCode},
+        deposit_paid = true,
+        stripe_payment_intent_id = ${paymentIntentId}
+      WHERE id = ${bookingId}
+        AND status = 'pending_payment'
+    `);
+
+    // TODO: Update provider earnings
+    // TODO: Decrease availability
+
+    // Fire-and-forget confirmation email — must not block the caller
+    db.execute(sql`
+      SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
+      FROM bookings b
+      JOIN users u ON u.id = b.user_id
+      WHERE b.id = ${bookingId}
+      LIMIT 1
+    `).then(result => {
+      const row = result?.rows?.[0] as any;
+      if (row?.email) {
+        sendBookingConfirmationEmail({
+          toEmail: row.email,
+          userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
+          bookingId,
+          bookingTitle: row.title || 'Your booking',
+          bookingDate: row.booking_date ?? null,
+          confirmationCode,
+        }).catch(err =>
+          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
+        );
+      }
+    }).catch(err =>
+      console.error(`[email] failed to fetch booking details for confirmation email (booking ${bookingId}):`, err)
+    );
   }
 
   /**

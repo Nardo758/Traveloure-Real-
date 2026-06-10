@@ -57,7 +57,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -418,6 +418,12 @@ export async function registerRoutes(
   // Contains GET /api/booking-fee-config (itinerary fee display) and
   // GET /api/fee-bands/:bandKey (live band rates for pricing surfaces).
   app.use(paymentsRoutes);
+
+  // Content routes — extracted in the defrag, unmounted by the fb77adb merge
+  // resolution (same regression class 91ffcab fixed for paymentsRoutes).
+  // Contains GET /api/offering-types/services + /experts (powers /earn),
+  // /api/health, /api/status, /api/contact, and other content surfaces.
+  app.use(contentRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
@@ -1522,7 +1528,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
     // For each provider, fetch their services and user info
     const enriched = await Promise.all(approvedForms.map(async (form) => {
-      const [providerUser] = await db.select({ id: users.id, name: users.name, email: users.email, profileImageUrl: users.profileImageUrl })
+      const [providerUser] = await db.select({ id: users.id, name: users.name, email: users.email, profileImageUrl: users.profileImageUrl, providerVerificationStatus: users.providerVerificationStatus, backgroundCheckConfirmed: users.backgroundCheckConfirmed })
         .from(users).where(eq(users.id, form.userId));
 
       const services = await db
@@ -1551,10 +1557,31 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const totalRevenue = services.reduce((s, sv) => s + parseFloat(sv.totalRevenue ?? "0"), 0);
       const activeServices = services.filter(sv => sv.status === "active").length;
 
-      return { ...form, user: providerUser ?? null, services, totalBookings, totalRevenue, activeServices };
+      return {
+        ...form,
+        user: providerUser ?? null,
+        providerVerificationStatus: providerUser?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: providerUser?.backgroundCheckConfirmed ?? false,
+        services, totalBookings, totalRevenue, activeServices,
+      };
     }));
 
     res.json(enriched);
+  });
+
+  // Admin: Set provider background-check verification status
+  app.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, res) => {
+    const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { providerVerificationStatus, backgroundCheckConfirmed } = req.body;
+    const newStatus = providerVerificationStatus === "verified" ? "verified" : "pending";
+    await storage.updateProviderVerification(req.params.id, {
+      providerVerificationStatus: newStatus,
+      backgroundCheckConfirmed: backgroundCheckConfirmed === true,
+    });
+    res.json({ userId: req.params.id, providerVerificationStatus: newStatus, backgroundCheckConfirmed: backgroundCheckConfirmed === true });
   });
 
   // Admin: Update provider application status
@@ -1749,7 +1776,26 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found" });
       }
-      res.json(service);
+      // Attach current coverage neighborhood slugs so the form can pre-populate the multi-select
+      let neighborhoods: string[] = [];
+      if (service.categoryId) {
+        const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+          .from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
+        const catKey = cat?.categoryKey;
+        if (catKey) {
+          const rows = await db
+            .select({ slug: cityNeighborhoods.slug })
+            .from(providerNeighborhoodCoverage)
+            .innerJoin(cityNeighborhoods, eq(providerNeighborhoodCoverage.neighborhoodId, cityNeighborhoods.id))
+            .where(and(
+              eq(providerNeighborhoodCoverage.providerId, userId),
+              eq(providerNeighborhoodCoverage.categoryKey, catKey)
+            ))
+            .orderBy(providerNeighborhoodCoverage.sortOrder);
+          neighborhoods = rows.map(r => r.slug);
+        }
+      }
+      res.json({ ...service, neighborhoods });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
     }
@@ -1759,8 +1805,58 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.post("/api/provider/services", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const input = insertProviderServiceSchema.parse(req.body);
+      // Extract neighborhoods before schema parse (not a DB column)
+      const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
+      const input = insertProviderServiceSchema.parse(bodyWithoutNeighborhoods);
+
+      // Verification publish-gate: block status:"active" on gated categories
+      if (input.status === "active") {
+        const categoryId = (input as any).categoryId as string | undefined;
+        if (categoryId) {
+          const [cat] = await db.select({
+            requiresBackgroundCheck: serviceCategories.requiresBackgroundCheck,
+            insuranceBand: serviceCategories.insuranceBand,
+          }).from(serviceCategories).where(eq(serviceCategories.id, categoryId));
+          const needsGate = cat?.requiresBackgroundCheck || ((cat?.insuranceBand ?? 0) >= 2);
+          if (needsGate) {
+            const [userRow] = await db.select({
+              providerVerificationStatus: users.providerVerificationStatus,
+              backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+            }).from(users).where(eq(users.id, userId));
+            const verified = userRow?.providerVerificationStatus === "verified";
+            const bgOk = !cat?.requiresBackgroundCheck || userRow?.backgroundCheckConfirmed;
+            if (!verified || !bgOk) {
+              return res.status(422).json({
+                message: "This category requires background verification before publishing. Save as draft and complete your provider verification first.",
+                code: "VERIFICATION_REQUIRED",
+              });
+            }
+          }
+        }
+      }
+
+      // Compute price scalar from lowest tier when package_tiers pricing is used
+      const pricingTiersInput = (input as any).pricingTiers;
+      if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersInput) && pricingTiersInput.length > 0) {
+        const prices = pricingTiersInput.map((t: any) => Number(t.price)).filter((p: number) => p > 0);
+        if (prices.length > 0) {
+          (input as any).price = String(Math.min(...prices));
+        }
+      }
+
       const service = await storage.createProviderService({ ...input, userId });
+
+      // Write (or clear) neighborhood coverage rows whenever the neighborhoods
+      // field is present in the payload — including empty arrays, which must
+      // delete any existing stale rows for this provider+category.
+      if (Array.isArray(neighborhoodSlugs) && service.categoryId) {
+        const [cat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+          .from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
+        if (cat?.categoryKey) {
+          await storage.upsertProviderNeighborhoodCoverage(userId, cat.categoryKey, neighborhoodSlugs);
+        }
+      }
+
       res.status(201).json(service);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1768,6 +1864,23 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       }
       console.error("Error creating provider service:", err);
       res.status(500).json({ message: "Failed to create service" });
+    }
+  });
+
+  // Verification status for the current authenticated provider/expert
+  app.get("/api/provider/verification-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [userRow] = await db.select({
+        providerVerificationStatus: users.providerVerificationStatus,
+        backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+      }).from(users).where(eq(users.id, userId));
+      res.json({
+        providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch verification status" });
     }
   });
 
@@ -1780,10 +1893,83 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (!ownedService) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
-      const input = insertProviderServiceSchema.partial().parse(req.body);
+      // Extract neighborhoods before schema parse (not a DB column)
+      const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
+      const input = insertProviderServiceSchema.partial().parse(bodyWithoutNeighborhoods);
+
+      // Verification publish-gate: block activating on gated categories
+      if (input.status === "active") {
+        const categoryId = ((input as any).categoryId ?? ownedService.categoryId) as string | undefined;
+        if (categoryId) {
+          const [cat] = await db.select({
+            requiresBackgroundCheck: serviceCategories.requiresBackgroundCheck,
+            insuranceBand: serviceCategories.insuranceBand,
+          }).from(serviceCategories).where(eq(serviceCategories.id, categoryId));
+          const needsGate = cat?.requiresBackgroundCheck || ((cat?.insuranceBand ?? 0) >= 2);
+          if (needsGate) {
+            const [userRow] = await db.select({
+              providerVerificationStatus: users.providerVerificationStatus,
+              backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+            }).from(users).where(eq(users.id, userId));
+            const verified = userRow?.providerVerificationStatus === "verified";
+            const bgOk = !cat?.requiresBackgroundCheck || userRow?.backgroundCheckConfirmed;
+            if (!verified || !bgOk) {
+              return res.status(422).json({
+                message: "This category requires background verification before publishing. Save as draft and complete your provider verification first.",
+                code: "VERIFICATION_REQUIRED",
+              });
+            }
+          }
+        }
+      }
+
+      // Compute price scalar from lowest tier when package_tiers pricing is used
+      const pricingTiersUpd = (input as any).pricingTiers;
+      if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersUpd) && pricingTiersUpd.length > 0) {
+        const prices = pricingTiersUpd.map((t: any) => Number(t.price)).filter((p: number) => p > 0);
+        if (prices.length > 0) {
+          (input as any).price = String(Math.min(...prices));
+        }
+      }
+
       // Remove userId from input to prevent ownership transfer
       const { userId: _, ...safeInput } = input as any;
-      const updated = await storage.updateProviderService(req.params.id, safeInput);
+      // A neighborhoods-only PATCH leaves no listing columns to update —
+      // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
+      // save before the coverage writer below could run. Skip the row update
+      // and let the coverage writer operate against the existing row.
+      const updated = Object.keys(safeInput).length > 0
+        ? await storage.updateProviderService(req.params.id, safeInput)
+        : ownedService;
+
+      // Write (or clear) neighborhood coverage rows whenever the neighborhoods
+      // field is present in the payload — including empty arrays, which must
+      // delete any existing stale rows for this provider+category.
+      // Additionally, if the category changed, purge coverage for the OLD
+      // category key so stale rows can't produce wrong engine matches.
+      if (updated) {
+        const prevCategoryId = ownedService.categoryId as string | undefined;
+        const newCategoryId = (updated.categoryId ?? prevCategoryId) as string | undefined;
+        const categoryChanged = prevCategoryId && newCategoryId && prevCategoryId !== newCategoryId;
+
+        if (categoryChanged) {
+          // Clear all coverage rows for the old category key first
+          const [oldCat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+            .from(serviceCategories).where(eq(serviceCategories.id, prevCategoryId!));
+          if (oldCat?.categoryKey) {
+            await storage.upsertProviderNeighborhoodCoverage(userId, oldCat.categoryKey, []);
+          }
+        }
+
+        if (Array.isArray(neighborhoodSlugs) && newCategoryId) {
+          const [newCat] = await db.select({ categoryKey: serviceCategories.categoryKey })
+            .from(serviceCategories).where(eq(serviceCategories.id, newCategoryId));
+          if (newCat?.categoryKey) {
+            await storage.upsertProviderNeighborhoodCoverage(userId, newCat.categoryKey, neighborhoodSlugs);
+          }
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1935,6 +2121,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/service-categories/:categoryId/subcategories", async (req, res) => {
     const subcategories = await storage.getServiceSubcategories(req.params.categoryId);
     res.json(subcategories);
+  });
+
+  // GET /api/service-categories/:categoryKey/fields — per-category dynamic field schema
+  app.get("/api/service-categories/:categoryKey/fields", async (req, res) => {
+    try {
+      const fields = await storage.getCategoryFieldSchema(req.params.categoryKey);
+      res.json(fields);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch category fields" });
+    }
   });
 
   // Create subcategory (admin)
@@ -5016,6 +5212,18 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (err) {
       console.error("AI Recommendations error:", err);
       res.status(500).json({ message: "Failed to generate recommendations" });
+    }
+  });
+
+  // GET /api/expert/offering-types — returns active expert offering type rows (5-tier catalog)
+  // Public (no auth required) so the /earn page and unauthenticated service form can load it.
+  app.get("/api/expert/offering-types", async (req, res) => {
+    try {
+      const rows = await storage.getActiveExpertOfferingTypes();
+      res.json(rows);
+    } catch (err) {
+      console.error("Failed to fetch expert offering types:", err);
+      res.status(500).json({ message: "Failed to fetch offering types" });
     }
   });
 

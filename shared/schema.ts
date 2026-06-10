@@ -518,8 +518,10 @@ export const providerServices = pgTable("provider_services", {
 
   // Pricing
   price: decimal("price", { precision: 10, scale: 2 }),
-  priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote
+  priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote, hourly, package_tiers, per_event, range, per_person
   priceBasedOn: varchar("price_based_on", { length: 100 }),
+  // Structured pricing tiers: [{label, price, unit, description}] — used when priceType="package_tiers"
+  pricingTiers: jsonb("pricing_tiers"),
   
   // Delivery
   deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // pdf, video, call, in_person, voice_notes, async_messaging
@@ -575,18 +577,43 @@ export const providerServices = pgTable("provider_services", {
   // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
   revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
 
-  // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug;
-  // populated by provider in listing form + admin backfill for legacy rows.
-  neighborhood: varchar("neighborhood", { length: 100 }),
-
   // Content-affinity tags — canonical slugs indicating which traveller contexts
   // surface this service. e.g. ['hotel_arrival','photo_shoot'].
   // Empty array → system falls back to serviceType inference in content-matching.service.
   contentAffinityTags: text("content_affinity_tags").array().default([]),
 
+  // Per-category dynamic attributes (jsonb, data-driven fields per category_field_schema)
+  categoryAttributes: jsonb("category_attributes"),
+
+  // Expert 5-tier connection (FK managed at DB level by migration 057)
+  expertOfferingTypeId: uuid("expert_offering_type_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// === Category Field Schema (admin-configurable per-category dynamic fields) ===
+
+export const categoryFieldSchema = pgTable("category_field_schema", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  fieldKey: varchar("field_key", { length: 100 }).notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // text | number | select | boolean | url | multiselect
+  required: boolean("required").notNull().default(false),
+  options: jsonb("options"), // string[] for select/multiselect
+  sortOrder: integer("sort_order").notNull().default(0),
+  // Category-level pricing hint — same value across all rows for a given category_key.
+  // Values: hourly | package_tiers | per_event | fixed | range | per_person
+  defaultPriceType: varchar("default_price_type", { length: 30 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqCategoryField: unique("category_field_schema_category_key_field_key_key").on(table.categoryKey, table.fieldKey),
+}));
+
+export const insertCategoryFieldSchemaSchema = createInsertSchema(categoryFieldSchema).omit({ id: true, createdAt: true });
+export type CategoryFieldSchema = typeof categoryFieldSchema.$inferSelect;
+export type InsertCategoryFieldSchema = z.infer<typeof insertCategoryFieldSchemaSchema>;
 
 // === Service Templates (Pre-defined service templates experts can use) ===
 

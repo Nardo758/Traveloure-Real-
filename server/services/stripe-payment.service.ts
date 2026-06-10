@@ -24,6 +24,7 @@ import Stripe from 'stripe';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
+import { sendBookingConfirmationEmail } from './email.service';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -138,9 +139,22 @@ class StripePaymentService {
   }
 
   /**
-   * Handle successful payment
+   * Generate a unique booking confirmation code
    */
-  private async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  private generateConfirmationCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = 'TRV';
+    for (let i = 0; i < 10; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  /**
+   * Handle successful payment — authoritative confirmation path via Stripe webhook.
+   * Idempotent: already-confirmed bookings are skipped.
+   */
+  async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     const { userId, bookingIds, isDeposit } = paymentIntent.metadata;
 
     // Update payment intent status
@@ -148,15 +162,32 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update bookings
-    const bookingIdList = bookingIds.split(',');
+    if (!bookingIds) {
+      console.log(`[webhook] payment_intent.succeeded: no bookingIds in metadata for ${paymentIntent.id}`);
+      return;
+    }
+
+    const bookingIdList = bookingIds.split(',').map((id: string) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
+      // Idempotency: skip bookings that are already confirmed
+      const existing = await db.execute(sql`
+        SELECT status FROM bookings WHERE id = ${bookingId} LIMIT 1
+      `);
+      const currentStatus = (existing.rows?.[0] as any)?.status;
+      if (currentStatus === 'confirmed') {
+        console.log(`[webhook] booking ${bookingId} already confirmed — skipping`);
+        continue;
+      }
+
+      const confirmationCode = this.generateConfirmationCode();
+
       if (isDeposit === 'true') {
         await db.execute(sql`
           UPDATE bookings SET
             status = 'confirmed',
             payment_status = 'succeeded',
             confirmed_at = NOW(),
+            confirmation_code = ${confirmationCode},
             deposit_paid = true
           WHERE id = ${bookingId}
         `);
@@ -166,14 +197,37 @@ class StripePaymentService {
             status = 'confirmed',
             payment_status = 'succeeded',
             confirmed_at = NOW(),
+            confirmation_code = ${confirmationCode},
             deposit_paid = true,
             balance_paid = true
           WHERE id = ${bookingId}
         `);
       }
 
-      // TODO: Notify user and provider
-      // TODO: Update provider earnings
+      console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
+
+      // Fire-and-forget confirmation email — must not block the webhook response
+      const bookingDetails = await db.execute(sql`
+        SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
+        FROM bookings b
+        JOIN users u ON u.id = b.user_id
+        WHERE b.id = ${bookingId}
+        LIMIT 1
+      `).catch(() => null);
+
+      const row = bookingDetails?.rows?.[0] as any;
+      if (row?.email) {
+        sendBookingConfirmationEmail({
+          toEmail: row.email,
+          userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
+          bookingId,
+          bookingTitle: row.title || 'Your booking',
+          bookingDate: row.booking_date ?? null,
+          confirmationCode,
+        }).catch(err =>
+          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
+        );
+      }
     }
   }
 
