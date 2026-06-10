@@ -33,7 +33,6 @@ import {
   FileText,
   ShoppingCart,
   PartyPopper,
-  GraduationCap,
   Baby,
   Gift,
   TreePine,
@@ -43,7 +42,6 @@ import {
   Crown,
   Flower2,
   HandHeart,
-  Trophy,
   Umbrella,
   User
 } from "lucide-react";
@@ -150,20 +148,7 @@ const navItems = [
       },
     ],
   },
-  {
-    name: "Become a Partner",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "EARN ON TRAVELOURE",
-        items: [
-          { name: "Earn as a Local", href: "/earn?track=provider", icon: MapPin, description: "Offer services on the ground in your city" },
-          { name: "Share Your Expertise", href: "/earn?track=expert", icon: GraduationCap, description: "Advise travellers remotely or in-person" },
-          { name: "All Earning Options", href: "/earn", icon: Trophy, description: "See every way to earn on Traveloure" },
-        ],
-      },
-    ],
-  },
+  { name: "Ways to earn", href: "/earn" },
   { name: "Contact", href: "/contact" },
 ];
 
@@ -358,6 +343,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
                         { label: "Event Planner", desc: "Plan your event — weddings, proposals & group celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
                         { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
+                        { label: "Executive Assistant", desc: "Manage travel & events for high-net-worth clients", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                       ].map(({ label, desc, href, icon: Icon }) => (
                         <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
                           <Link href={href} data-testid={`link-partner-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
@@ -492,6 +478,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
                       { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
                       { label: "Service Provider", href: "/become-provider", icon: Building2 },
+                      { label: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                     ].map(({ label, href, icon: Icon }) => (
                       <Link key={label} href={href} onClick={() => setIsMobileMenuOpen(false)}>
                         <Button variant="outline" className="w-full justify-start gap-2" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
@@ -586,8 +573,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">Company</h4>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li><Link href="/about" className="hover:text-foreground transition-colors" data-testid="link-footer-about">About Us</Link></li>
-                <li><Link href="/partner-with-us" className="hover:text-foreground transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
-                <li><Link href="/earn" className="hover:text-foreground transition-colors" data-testid="link-footer-earn">Earn on Traveloure</Link></li>
+                <li><Link href="/earn" className="hover:text-foreground transition-colors" data-testid="link-footer-earn">Ways to earn</Link></li>
                 <li><Link href="/careers" className="hover:text-foreground transition-colors" data-testid="link-footer-careers">Careers</Link></li>
                 <li><Link href="/blog" className="hover:text-foreground transition-colors" data-testid="link-footer-blog">Blog</Link></li>
                 <li><Link href="/press" className="hover:text-foreground transition-colors" data-testid="link-footer-press">Press</Link></li>

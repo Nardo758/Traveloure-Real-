@@ -419,6 +419,12 @@ export async function registerRoutes(
   // GET /api/fee-bands/:bandKey (live band rates for pricing surfaces).
   app.use(paymentsRoutes);
 
+  // Content routes — extracted in the defrag, unmounted by the fb77adb merge
+  // resolution (same regression class 91ffcab fixed for paymentsRoutes).
+  // Contains GET /api/offering-types/services + /experts (powers /earn),
+  // /api/health, /api/status, /api/contact, and other content surfaces.
+  app.use(contentRoutes);
+
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
