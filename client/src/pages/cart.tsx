@@ -1403,10 +1403,13 @@ export default function CartPage() {
                       <UpsellSlot
                         surface="cart"
                         contextPayload={user ? {
-                          userProfile: {
-                            partySize: undefined,
-                            interests: undefined,
-                          },
+                          cartItems: (cart?.items ?? []).map((item: any) => ({
+                            category: item.category ?? item.itemType ?? undefined,
+                            destinationCity:
+                              (item.contentMeta as any)?.city ??
+                              (item.contentMeta as any)?.location ??
+                              undefined,
+                          })).filter((ci: any) => ci.category || ci.destinationCity),
                         } : undefined}
                       />
                     </div>

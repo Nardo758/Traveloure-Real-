@@ -109,12 +109,14 @@ export function EscalationCTA({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          requestType: "review",
+          requestType: "ai_plan_polish",
+          offeringTypeKey: "ai_plan_polish",
           tripId,
-          destinationCity: destination,
+          destination,
           notes: "Please review and polish my AI-generated plan.",
           optimizationContext: {
             source: "plancard_escalation",
+            offeringTypeKey: "ai_plan_polish",
             tripId,
             destination,
             eventType,

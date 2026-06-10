@@ -940,6 +940,18 @@ export default function DiscoverLocationPage() {
     setAddToExperienceOpen(true);
   };
 
+  // Expert offering types — used to build specific recruitment slot labels
+  const { data: expertOfferingTypes } = useQuery<Array<{ offering_type_key: string; display_name: string; service_tier: string }>>({
+    queryKey: ["/api/offering-types/experts"],
+    queryFn: async () => {
+      const res = await fetch("/api/offering-types/experts");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 15 * 60_000,
+    retry: false,
+  });
+
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country],
     queryFn: async () => {
@@ -1162,11 +1174,16 @@ export default function DiscoverLocationPage() {
               </div>
             )}
 
-            {/* ── Spine: per-neighborhood recruitment slots (uncovered categories) ── */}
+            {/* ── Spine: per-neighborhood recruitment slots (uncovered offering categories) ── */}
             {experts.length === 0 && neighborhoods.length > 0 && (
               <div className="space-y-2" data-testid="section-expert-recruitment">
-                {neighborhoods.slice(0, 3).map((nb: any) => {
+                {neighborhoods.slice(0, 3).map((nb: any, idx: number) => {
                   const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
+                  // Rotate through available offering types to show specific uncovered roles
+                  const offeringList = expertOfferingTypes ?? [];
+                  const offering = offeringList[idx % Math.max(offeringList.length, 1)];
+                  const offeringLabel = offering?.display_name ?? "Local expert guide";
+                  const offeringKey = offering?.offering_type_key ?? "guide";
                   return (
                     <div
                       key={nb.id ?? nb.slug ?? nbName}
@@ -1175,14 +1192,14 @@ export default function DiscoverLocationPage() {
                     >
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-primary truncate">
-                          Local expert guide wanted in {nbName}
+                          {offeringLabel} wanted in {nbName}
                         </p>
                         <p className="text-[11px] text-muted-foreground truncate">
-                          Be the first expert covering {nbName} for travellers
+                          Be the first to offer {offeringLabel.toLowerCase()} for travellers in {nbName}
                         </p>
                       </div>
                       <a
-                        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(nbName)}`}
+                        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(nbName)}&offeringType=${encodeURIComponent(offeringKey)}`}
                         className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
                         data-testid={`link-recruitment-earn-${nb.id ?? nb.slug ?? "nb"}`}
                       >

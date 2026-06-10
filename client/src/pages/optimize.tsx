@@ -231,9 +231,9 @@ function OptimizeGateTeaser({ tripId }: { tripId?: string }) {
         <Sparkles className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
         <div>
           <p className="font-semibold text-purple-900 text-sm">
-            {data.teaser ?? (data.addOnsAvailable > 0
+            {data.addOnsAvailable > 0
               ? `${data.addOnsAvailable} add-on${data.addOnsAvailable !== 1 ? "s" : ""} could improve this plan`
-              : "Improvements available")}
+              : "Improvements available"}
           </p>
           {data.categoryHints && data.categoryHints.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
