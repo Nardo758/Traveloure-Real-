@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS upsell_expert_endorsements (
   -- Optional FK to a specific provider service being endorsed.
   -- NULL when the endorsement is at the offering-type / city level rather
   -- than a specific service listing.
-  service_id          UUID        REFERENCES provider_services(id) ON DELETE SET NULL,
+  -- provider_services.id is varchar, so this column must match.
+  service_id          VARCHAR(255) REFERENCES provider_services(id) ON DELETE SET NULL,
 
   -- Offering type key (e.g. "private_photography", "cooking_class") — lets
   -- the engine match endorsements to candidates by category even when no
