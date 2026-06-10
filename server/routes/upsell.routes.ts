@@ -1217,10 +1217,5 @@ router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-  } catch (err: any) {
-    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
-    res.status(500).json({ error: err.message });
-  }
-});
 
 export default router;
