@@ -64,6 +64,11 @@ export interface UpsellContext {
   /** Neighborhood spine integration (§NEIGHBORHOOD_SPINE.5). */
   neighborhoodId?: string;
   neighborhoodIds?: string[];
+  /** Phase 5.5 (step 7): set true on `checkout` to allow transport add-ons
+   *  (transfer offerings) after the optimizer has computed transport legs.
+   *  Has no effect on other surfaces — transport on pre-optimize surfaces
+   *  remains suppressed regardless. */
+  tripIsPostOptimize?: boolean;
 }
 
 export interface SlotConfig {
@@ -216,10 +221,23 @@ export function holdsDominance(
 
 // ─── HARD-FILTER HELPERS (also pure) ─────────────────────────────────────────
 
-/** Per §B4: transport categories are suppressed on every surface except plancard_ontrip. */
-export function isTransportSuppressed(categoryKey: string, surface: Surface): boolean {
+/**
+ * Per §B4 / §B5: transport categories are suppressed on every surface except
+ * `plancard_ontrip`. Phase 5.5: `checkout` may surface a transfer add-on if
+ * AND ONLY IF the trip is post-optimize (the optimizer has computed transport
+ * legs already; we know what's needed). The caller passes the post-optimize
+ * flag in `options`. Without the flag, checkout suppresses transport.
+ */
+export function isTransportSuppressed(
+  categoryKey: string,
+  surface: Surface,
+  options?: { tripIsPostOptimize?: boolean },
+): boolean {
   const isTransport = categoryKey === "private_transportation" || categoryKey === "aff_ground_transport";
-  return isTransport && surface !== "plancard_ontrip";
+  if (!isTransport) return false;
+  if (surface === "plancard_ontrip") return false;
+  if (surface === "checkout" && options?.tripIsPostOptimize === true) return false;
+  return true;
 }
 
 /**
@@ -302,7 +320,7 @@ export function rankCandidates(
       suppressed.push({ offeringId: c.offeringId, reason: "already_in_plan" });
       continue;
     }
-    if (isTransportSuppressed(c.categoryKey, ctx.surface)) {
+    if (isTransportSuppressed(c.categoryKey, ctx.surface, { tripIsPostOptimize: ctx.tripIsPostOptimize })) {
       suppressed.push({ offeringId: c.offeringId, reason: "transport_pre_optimize" });
       continue;
     }
