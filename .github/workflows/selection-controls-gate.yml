@@ -143,6 +143,14 @@ jobs:
             exit 1
           fi
           echo "Build identity confirmed: $ACTUAL_SHA ✅"
+      - name: Verify fee-config parity (display == charge, #2)
+        # Billing invariant: GET /api/booking-fee-config (itinerary fee display) must
+        # resolve the same rate the checkout charge does for the same context. Fails
+        # if the endpoint regressed to booking_fee_configs or dropped a resolver input.
+        run: npx tsx scripts/verify-fee-config-parity.ts
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Selection-controls DOM test
         run: npx playwright test selection-controls --project=chromium
         env:
