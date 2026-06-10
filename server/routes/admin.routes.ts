@@ -4,6 +4,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
+import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -280,6 +281,65 @@ router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res
   } catch (err) {
     console.error("Stale pending bookings error:", err);
     res.status(500).json({ message: "Failed to fetch stale pending bookings" });
+  }
+});
+
+/**
+ * GET /api/admin/bookings/auto-cancel/config
+ * Returns the current auto-cancel scheduler configuration.
+ */
+router.get("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  res.json({
+    config: bookingExpiryScheduler.getConfig(),
+    lastRun: bookingExpiryScheduler.getLastStats(),
+    isRunning: bookingExpiryScheduler.isCurrentlyRunning(),
+  });
+});
+
+/**
+ * PATCH /api/admin/bookings/auto-cancel/config
+ * Updates the staleness threshold (hours) used by the auto-cancel scheduler.
+ */
+router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const schema = z.object({ staleThresholdHours: z.number().min(1).max(720) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid config", errors: parsed.error.flatten() });
+  }
+  try {
+    const updated = bookingExpiryScheduler.updateConfig(parsed.data);
+    res.json({ config: updated });
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/bookings/auto-cancel/run
+ * Manually triggers the auto-cancel sweep immediately.
+ */
+router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  if (bookingExpiryScheduler.isCurrentlyRunning()) {
+    return res.status(409).json({ message: "Auto-cancel sweep is already in progress" });
+  }
+  try {
+    const stats = await bookingExpiryScheduler.triggerManualRun();
+    res.json({ message: "Auto-cancel sweep completed", stats });
+  } catch (err: any) {
+    console.error("Manual auto-cancel sweep error:", err);
+    res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
   }
 });
 

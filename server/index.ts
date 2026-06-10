@@ -18,6 +18,7 @@ import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
+import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import {
   logger,
   httpLogger,
@@ -315,6 +316,10 @@ async function runDatabaseSeeding() {
       // Start cache scheduler
       cacheSchedulerService.start();
       logger.info("Cache scheduler started");
+
+      // Start booking expiry scheduler (auto-cancels stale pending_payment bookings)
+      bookingExpiryScheduler.start();
+      logger.info("Booking expiry scheduler started");
       
       // One-time admin promotion
       import("./db").then(({ pool }) => {
