@@ -41,6 +41,13 @@ interface CategoryField {
   required: boolean;
   options: string[] | null;
   sortOrder: number;
+  defaultPriceType?: string | null;
+}
+
+interface PricingTier {
+  label: string;
+  price: number;
+  description: string;
 }
 
 interface ServiceSubcategory {
@@ -55,7 +62,10 @@ interface ServiceFormData {
   subcategoryId: string;
   description: string;
   basePrice: number;
-  priceType: "Fixed" | "Range" | "Per-person";
+  priceType: "Fixed" | "Range" | "Per-person" | "Hourly" | "Package tiers" | "Per-event";
+  pricingTiers: PricingTier[];
+  guestMin: number;
+  guestMax: number;
   duration: string;
   deliveryMethod: "in-person" | "video-call" | "hybrid";
   // Expert-specific: approval workflow
@@ -112,6 +122,9 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     description: "",
     basePrice: 0,
     priceType: "Fixed",
+    pricingTiers: [],
+    guestMin: 0,
+    guestMax: 0,
     duration: "",
     deliveryMethod: "in-person",
     approvalStatus: "draft",
@@ -136,14 +149,57 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
   };
 }
 
+function mapPriceTypeFromBackend(raw: string | null | undefined): ServiceFormData["priceType"] {
+  switch (raw) {
+    case "hourly":        return "Hourly";
+    case "package_tiers": return "Package tiers";
+    case "per_event":     return "Per-event";
+    case "range":         return "Range";
+    case "per_person":    return "Per-person";
+    default:              return "Fixed";
+  }
+}
+
+function mapPriceTypeToBackend(display: ServiceFormData["priceType"]): string {
+  switch (display) {
+    case "Hourly":         return "hourly";
+    case "Package tiers":  return "package_tiers";
+    case "Per-event":      return "per_event";
+    case "Range":          return "range";
+    case "Per-person":     return "per_person";
+    default:               return "fixed";
+  }
+}
+
+function mapDefaultPriceTypeHint(hint: string): ServiceFormData["priceType"] | null {
+  switch (hint) {
+    case "hourly":         return "Hourly";
+    case "package_tiers":  return "Package tiers";
+    case "per_event":      return "Per-event";
+    case "range":          return "Range";
+    case "per_person":     return "Per-person";
+    case "fixed":          return "Fixed";
+    default:               return null;
+  }
+}
+
 function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData {
+  // Parse guest range from priceBasedOn if per_event (e.g. "per_event_10_100")
+  let guestMin = 0, guestMax = 0;
+  if (s.priceBasedOn && typeof s.priceBasedOn === "string") {
+    const m = s.priceBasedOn.match(/per_event_(\d+)_(\d+)/);
+    if (m) { guestMin = parseInt(m[1]); guestMax = parseInt(m[2]); }
+  }
   return {
     name: s.serviceName || "",
     categoryId: s.categoryId || "",
     subcategoryId: s.subcategoryId || "",
     description: s.description || "",
     basePrice: Number(s.price || 0),
-    priceType: "Fixed",
+    priceType: mapPriceTypeFromBackend(s.priceType),
+    pricingTiers: Array.isArray(s.pricingTiers) ? s.pricingTiers : [],
+    guestMin,
+    guestMax,
     duration: s.deliveryTimeframe || s.duration || "",
     deliveryMethod: s.deliveryMethod || "in-person",
     approvalStatus: s.approvalStatus || "draft",
@@ -276,6 +332,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [existingService, role]);
 
+  // Pre-select category's default price type when creating a new service.
+  // We only stamp prevCategoryIdRef *after* categoryFields has loaded so
+  // the effect re-fires once the async query resolves.
+  const prevCategoryIdRef = useRef<string>("");
+  useEffect(() => {
+    if (isEditMode) return;
+    if (!formData.categoryId) return;
+    if (formData.categoryId === prevCategoryIdRef.current) return;
+    // Wait until fields for this category have actually arrived
+    if (categoryFields.length === 0) return;
+    // Mark as processed now that we have data
+    prevCategoryIdRef.current = formData.categoryId;
+    const hint = categoryFields[0]?.defaultPriceType;
+    if (hint) {
+      const mapped = mapDefaultPriceTypeHint(hint);
+      if (mapped) setFormData((prev) => ({ ...prev, priceType: mapped, pricingTiers: [] }));
+    }
+  }, [categoryFields, formData.categoryId, isEditMode]);
+
   const set = (key: keyof ServiceFormData, value: any) =>
     setFormData((prev) => ({ ...prev, [key]: value }));
 
@@ -299,13 +374,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const createMutation = useMutation({
     mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
+      // Compute price scalar and priceBasedOn from the selected pricing model
+      let priceScalar = String(formData.basePrice);
+      let pricingTiersPayload: PricingTier[] = [];
+      let priceBasedOn: string | null = null;
+
+      if (formData.priceType === "Package tiers" && formData.pricingTiers.length > 0) {
+        pricingTiersPayload = formData.pricingTiers;
+        const validPrices = formData.pricingTiers.map((t) => t.price).filter((p) => p > 0);
+        if (validPrices.length > 0) priceScalar = String(Math.min(...validPrices));
+      } else if (formData.priceType === "Per-event") {
+        if (formData.guestMin > 0 && formData.guestMax > 0) {
+          priceBasedOn = `per_event_${formData.guestMin}_${formData.guestMax}`;
+        } else {
+          priceBasedOn = "per_event";
+        }
+      }
+
       const payload: Record<string, any> = {
         serviceName: formData.name,
         categoryId: formData.categoryId || undefined,
         subcategoryId: formData.subcategoryId || undefined,
         description: formData.description,
-        price: String(formData.basePrice),
-        priceType: formData.priceType.toLowerCase().replace("-", "_"),
+        price: priceScalar,
+        priceType: mapPriceTypeToBackend(formData.priceType),
+        pricingTiers: pricingTiersPayload,
+        priceBasedOn,
         deliveryTimeframe: formData.duration,
         deliveryMethod: formData.deliveryMethod,
         whatIncluded: formData.whatIncluded,
@@ -545,30 +639,189 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
 
           {/* Pricing */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <Label htmlFor="basePrice">Base Price ($) *</Label>
-              <Input
-                id="basePrice"
-                type="number"
-                value={formData.basePrice}
-                onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="priceType">Price Type</Label>
-              <Select value={formData.priceType} onValueChange={(v: any) => set("priceType", v)}>
-                <SelectTrigger id="priceType" className="mt-2">
+              <Label htmlFor="priceType">Pricing Model</Label>
+              <Select
+                value={formData.priceType}
+                onValueChange={(v: any) => set("priceType", v)}
+              >
+                <SelectTrigger id="priceType" className="mt-2" data-testid="select-price-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Fixed">Fixed</SelectItem>
-                  <SelectItem value="Range">Range</SelectItem>
-                  <SelectItem value="Per-person">Per-person</SelectItem>
+                  <SelectItem value="Fixed">Fixed price</SelectItem>
+                  <SelectItem value="Range">Price range</SelectItem>
+                  <SelectItem value="Per-person">Per person</SelectItem>
+                  <SelectItem value="Hourly">Hourly rate</SelectItem>
+                  <SelectItem value="Package tiers">Package tiers</SelectItem>
+                  <SelectItem value="Per-event">Per event (flat fee)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Hourly — single rate + /hr label */}
+            {formData.priceType === "Hourly" && (
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <Label htmlFor="basePrice">Hourly Rate ($) *</Label>
+                  <Input
+                    id="basePrice"
+                    type="number"
+                    min="0"
+                    value={formData.basePrice || ""}
+                    onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    className="mt-2"
+                    data-testid="input-hourly-rate"
+                  />
+                </div>
+                <span className="text-sm font-medium text-muted-foreground pb-2.5">/ hr</span>
+              </div>
+            )}
+
+            {/* Package tiers — dynamic tier builder */}
+            {formData.priceType === "Package tiers" && (
+              <div className="space-y-3">
+                <Label>Pricing Tiers</Label>
+                {formData.pricingTiers.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Add tiers like Basic, Standard, or Premium — each with a price and short description.
+                  </p>
+                )}
+                {formData.pricingTiers.map((tier, idx) => (
+                  <div key={idx} className="flex items-start gap-2 p-3 bg-secondary/40 rounded-lg border" data-testid={`tier-row-${idx}`}>
+                    <div className="flex-1 grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Tier name (e.g. Basic)"
+                        value={tier.label}
+                        onChange={(e) => {
+                          const updated = [...formData.pricingTiers];
+                          updated[idx] = { ...updated[idx], label: e.target.value };
+                          set("pricingTiers", updated);
+                        }}
+                        data-testid={`input-tier-label-${idx}`}
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm text-muted-foreground">$</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Price"
+                          value={tier.price || ""}
+                          onChange={(e) => {
+                            const updated = [...formData.pricingTiers];
+                            updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                            set("pricingTiers", updated);
+                          }}
+                          data-testid={`input-tier-price-${idx}`}
+                        />
+                      </div>
+                      <Input
+                        placeholder="Short description (optional)"
+                        value={tier.description}
+                        onChange={(e) => {
+                          const updated = [...formData.pricingTiers];
+                          updated[idx] = { ...updated[idx], description: e.target.value };
+                          set("pricingTiers", updated);
+                        }}
+                        className="col-span-2"
+                        data-testid={`input-tier-desc-${idx}`}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={() => set("pricingTiers", formData.pricingTiers.filter((_, i) => i !== idx))}
+                      data-testid={`button-remove-tier-${idx}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => set("pricingTiers", [...formData.pricingTiers, { label: "", price: 0, description: "" }])}
+                  data-testid="button-add-tier"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Add tier
+                </Button>
+              </div>
+            )}
+
+            {/* Per-event — flat rate + optional guest range */}
+            {formData.priceType === "Per-event" && (
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="basePrice">Flat Event Rate ($) *</Label>
+                  <Input
+                    id="basePrice"
+                    type="number"
+                    min="0"
+                    value={formData.basePrice || ""}
+                    onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    className="mt-2"
+                    data-testid="input-event-rate"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="guestMin">Min guests (optional)</Label>
+                    <Input
+                      id="guestMin"
+                      type="number"
+                      min="0"
+                      value={formData.guestMin || ""}
+                      onChange={(e) => set("guestMin", parseInt(e.target.value) || 0)}
+                      placeholder="e.g. 10"
+                      className="mt-2"
+                      data-testid="input-guest-min"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="guestMax">Max guests (optional)</Label>
+                    <Input
+                      id="guestMax"
+                      type="number"
+                      min="0"
+                      value={formData.guestMax || ""}
+                      onChange={(e) => set("guestMax", parseInt(e.target.value) || 0)}
+                      placeholder="e.g. 100"
+                      className="mt-2"
+                      data-testid="input-guest-max"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Fixed / Range / Per-person — scalar price input */}
+            {(formData.priceType === "Fixed" || formData.priceType === "Range" || formData.priceType === "Per-person") && (
+              <div>
+                <Label htmlFor="basePrice">
+                  {formData.priceType === "Range"
+                    ? "Starting Price ($) *"
+                    : formData.priceType === "Per-person"
+                    ? "Price Per Person ($) *"
+                    : "Base Price ($) *"}
+                </Label>
+                <Input
+                  id="basePrice"
+                  type="number"
+                  min="0"
+                  value={formData.basePrice || ""}
+                  onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                  className="mt-2"
+                  data-testid="input-base-price"
+                />
+              </div>
+            )}
           </div>
 
           {/* Duration */}

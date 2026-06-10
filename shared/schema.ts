@@ -518,8 +518,10 @@ export const providerServices = pgTable("provider_services", {
 
   // Pricing
   price: decimal("price", { precision: 10, scale: 2 }),
-  priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote
+  priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote, hourly, package_tiers, per_event, range, per_person
   priceBasedOn: varchar("price_based_on", { length: 100 }),
+  // Structured pricing tiers: [{label, price, unit, description}] — used when priceType="package_tiers"
+  pricingTiers: jsonb("pricing_tiers"),
   
   // Delivery
   deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // pdf, video, call, in_person, voice_notes, async_messaging
@@ -602,6 +604,9 @@ export const categoryFieldSchema = pgTable("category_field_schema", {
   required: boolean("required").notNull().default(false),
   options: jsonb("options"), // string[] for select/multiselect
   sortOrder: integer("sort_order").notNull().default(0),
+  // Category-level pricing hint — same value across all rows for a given category_key.
+  // Values: hourly | package_tiers | per_event | fixed | range | per_person
+  defaultPriceType: varchar("default_price_type", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   uniqCategoryField: unique("category_field_schema_category_key_field_key_key").on(table.categoryKey, table.fieldKey),
