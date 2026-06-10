@@ -124,7 +124,7 @@ class BookingExpirySchedulerService {
         try {
           const reason = `Auto-cancelled: payment not received within ${this.config.staleThresholdHours} hours`;
 
-          await db.execute(sql`
+          const updateResult = await db.execute(sql`
             UPDATE bookings
             SET
               status = 'canceled',
@@ -134,7 +134,16 @@ class BookingExpirySchedulerService {
               cancelled_by = 'system'
             WHERE id = ${booking.id}
               AND status = 'pending_payment'
+            RETURNING id
           `);
+
+          // Only count and notify if the row was actually updated.
+          // rowCount = 0 means the booking was confirmed/cancelled concurrently
+          // between the SELECT and this UPDATE — skip it silently.
+          if (!updateResult.rows || updateResult.rows.length === 0) {
+            console.log(`[BookingExpiry] Skipping booking ${booking.id} — status changed before update (concurrent update)`);
+            continue;
+          }
 
           stats.cancelledCount++;
           stats.bookingIds.push(booking.id);
