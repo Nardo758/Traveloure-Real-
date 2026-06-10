@@ -121,10 +121,77 @@ export function resolveTemplateKey(input: string | null | undefined): string {
   return trimmed.length === 0 ? "travel" : trimmed;
 }
 
+/**
+ * Best qualifying covering provider per categoryKey — the real-inventory
+ * source for platform-provider candidates (Engine Inventory-Sourcing brief).
+ *
+ * A provider qualifies for a category when their listing is active, their
+ * coverage row matches the target scope, and — mirroring the publish gate in
+ * routes.ts — for gated categories (requires_background_check OR
+ * insurance_band >= 2) they are verified (and background-check-confirmed
+ * where the category requires it). Unverified providers never qualify for a
+ * gated category, so a gated offering with no verified covering provider
+ * does not surface at all.
+ *
+ * Target scope tiers (no cascade — chosen by available context):
+ *   1. explicit neighborhoodIds  → coverage in those neighborhoods
+ *   2. marketCity                → coverage anywhere in that city
+ *   3. neither                   → any coverage (keeps non-located surfaces non-empty)
+ */
+async function loadCoveringInventory(opts: {
+  neighborhoodIds?: string[];
+  marketCity?: string | null;
+}): Promise<Map<string, { matchedSlug: string; verified: boolean }>> {
+  const ids = (opts.neighborhoodIds ?? []).filter(Boolean);
+  // node-pg binds JS arrays as a single scalar; pass a Postgres array literal.
+  const idsLiteral = `{${ids.map(id => `"${id.replace(/["\\]/g, "")}"`).join(",")}}`;
+  const scopeFilter = ids.length > 0
+    ? sql`c.neighborhood_id = ANY(${idsLiteral}::text[])`
+    : opts.marketCity
+      ? sql`LOWER(cn.city) = ${opts.marketCity}`
+      : sql`TRUE`;
+
+  const inv = await db.execute(sql`
+    SELECT DISTINCT ON (c.category_key)
+      c.category_key,
+      cn.slug AS matched_slug,
+      (u.provider_verification_status = 'verified'
+        AND (sc.requires_background_check = false OR u.background_check_confirmed = true)
+      ) AS provider_verified
+    FROM provider_neighborhood_coverage c
+    JOIN city_neighborhoods cn ON cn.id = c.neighborhood_id
+    JOIN provider_services ps  ON ps.user_id = c.provider_id AND ps.status = 'active'
+    JOIN service_categories sc ON sc.id = ps.category_id AND sc.category_key = c.category_key
+    JOIN users u ON u.id = c.provider_id
+    WHERE ${scopeFilter}
+      AND (
+        -- non-gated categories: any covering provider counts (badge stays honest)
+        (sc.requires_background_check = false AND COALESCE(sc.insurance_band, 0) < 2)
+        -- gated categories: only verified covering providers count
+        OR (u.provider_verification_status = 'verified'
+            AND (sc.requires_background_check = false OR u.background_check_confirmed = true))
+      )
+    ORDER BY c.category_key,
+      (u.provider_verification_status = 'verified'
+        AND (sc.requires_background_check = false OR u.background_check_confirmed = true)) DESC,
+      c.is_primary DESC,
+      c.sort_order ASC
+  `);
+
+  const map = new Map<string, { matchedSlug: string; verified: boolean }>();
+  for (const r of (inv.rows ?? []) as any[]) {
+    map.set(String(r.category_key), {
+      matchedSlug: String(r.matched_slug),
+      verified: Boolean(r.provider_verified),
+    });
+  }
+  return map;
+}
+
 async function gatherOfferingCandidates(opts: {
   templateKey?: string;
   marketCity?: string | null;
-  neighborhoodId?: string | null;
+  neighborhoodIds?: string[];
   expertEndorsedKeys?: string[];
 }): Promise<RankInputCandidate[]> {
   const endorsedSet = new Set(opts.expertEndorsedKeys ?? []);
@@ -134,58 +201,69 @@ async function gatherOfferingCandidates(opts: {
   // Returns one row per offering with everything the engine needs to score.
   // Filters by isActive + market scope (universal OR matching market).
   try {
-    const result = await db.execute(sql`
-      SELECT
-        sot.offering_type_key                   AS offering_id,
-        sot.display_name,
-        sot.tagline,
-        sot.is_surprising,
-        sot.risk_override,
-        sot.market_scoped,
-        sc.category_key,
-        sc.source_type,
-        sc.risk_profile,
-        sc.requires_background_check,
-        sc.commission_band_key,
-        tcm.strength                            AS template_strength
-      FROM service_offering_types sot
-      LEFT JOIN service_categories sc
-        ON sc.category_key = sot.category_key
-      LEFT JOIN template_category_matrix tcm
-        ON tcm.template_key = ${effectiveTemplate}
-        AND tcm.category_key = sot.category_key
-      WHERE sot.is_active = true
-        AND (
-          ${opts.marketCity}::text IS NULL
-          OR sot.market_scoped IS NULL
-          OR ${opts.marketCity}::text = ANY(sot.market_scoped)
-        )
-    `);
+    const [result, inventory] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          sot.offering_type_key                   AS offering_id,
+          sot.display_name,
+          sot.tagline,
+          sot.is_surprising,
+          sot.risk_override,
+          sot.market_scoped,
+          sc.category_key,
+          sc.source_type,
+          sc.risk_profile,
+          sc.requires_background_check,
+          sc.commission_band_key,
+          tcm.strength                            AS template_strength
+        FROM service_offering_types sot
+        LEFT JOIN service_categories sc
+          ON sc.category_key = sot.category_key
+        LEFT JOIN template_category_matrix tcm
+          ON tcm.template_key = ${effectiveTemplate}
+          AND tcm.category_key = sot.category_key
+        WHERE sot.is_active = true
+          AND (
+            ${opts.marketCity}::text IS NULL
+            OR sot.market_scoped IS NULL
+            OR ${opts.marketCity}::text = ANY(sot.market_scoped)
+          )
+      `),
+      loadCoveringInventory(opts),
+    ]);
 
     const rows = (result.rows ?? []) as any[];
-    return rows.map((r): RankInputCandidate => {
-      // Map raw row → engine input.
-      // expectedPlatformEarningsRaw is a Phase 5.2 stub: 1 for all candidates
-      // unless we have a richer signal. Step 5.3+ wires actual fee-band rate ×
-      // expected booking amount when provider inventory comes online.
-      const earnings = 1;
-      return {
+    const candidates: RankInputCandidate[] = [];
+    for (const r of rows) {
+      const isAffiliate = r.source_type === "affiliate";
+      // Platform-provider offerings are inventory-gated: they surface only if
+      // a qualifying covering provider exists in the target scope. Affiliate
+      // offerings are catalog-sourced (their inventory is broadly available).
+      const inv = isAffiliate ? null : inventory.get(String(r.category_key ?? "")) ?? null;
+      if (!isAffiliate && !inv) continue;
+
+      // expectedPlatformEarningsRaw remains a stub (1) until Commit 2 wires
+      // the fee resolver against the covering provider's listing price.
+      candidates.push({
         offeringId: String(r.offering_id),
         categoryKey: String(r.category_key ?? ""),
-        sourceType: (r.source_type === "affiliate" ? "affiliate" : "platform_provider"),
+        sourceType: (isAffiliate ? "affiliate" : "platform_provider"),
         templateStrength: normalizeStrength(r.template_strength),
         riskProfile: normalizeRisk(r.risk_profile),
         riskOverride: normalizeRisk(r.risk_override),
         requiresBackgroundCheck: Boolean(r.requires_background_check),
-        // Phase 5.2 stub: assume verified. Phase 5.3 will look up real provider.
-        providerHasVerifiedBadge: true,
-        candidateNeighborhoodSlug: null,
-        expectedPlatformEarningsRaw: earnings,
+        // Real verification status of the best covering provider. For gated
+        // categories this is guaranteed true (unverified ones never qualify),
+        // so the ranker's bg-check hard filter and this source agree.
+        providerHasVerifiedBadge: isAffiliate ? true : inv!.verified,
+        candidateNeighborhoodSlug: isAffiliate ? null : inv!.matchedSlug,
+        expectedPlatformEarningsRaw: 1,
         expertEndorsed: endorsedSet.has(String(r.offering_id)),
         profileMatchScore: 0.5,         // Phase 5.2 baseline; Phase 5.3+ refines
-        proximityFit: opts.neighborhoodId ? 0.7 : 0.4,  // boost when neighborhood is focused
-      };
-    });
+        proximityFit: (opts.neighborhoodIds?.length ?? 0) > 0 ? 0.7 : 0.4,  // un-stubbed in Commit 2
+      });
+    }
+    return candidates;
   } catch (err) {
     console.error("[upsell] gatherOfferingCandidates failed:", err);
     return [];
@@ -324,7 +402,7 @@ router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, raw, req);
@@ -387,7 +465,7 @@ router.post("/api/upsell/discover-location", async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: marketCity ? marketCity.toLowerCase() : null,
-      neighborhoodId: body.neighborhoodId,
+      neighborhoodIds: [body.neighborhoodId],
       expertEndorsedKeys: resolvedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
@@ -512,7 +590,7 @@ router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
 
@@ -571,7 +649,7 @@ router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) =>
     let raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
 
@@ -618,7 +696,7 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
     let raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.currentNeighborhoodId ?? body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: [body.currentNeighborhoodId, ...(body.neighborhoodIds ?? [])].filter((x): x is string => Boolean(x)),
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
 
@@ -677,7 +755,7 @@ router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: null,
-      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: body.expertEndorsedKeys,
     });
     // Checkout cap: surface at most 2 candidates regardless of slot_config max.
