@@ -244,6 +244,45 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
   });
 
 
+/**
+ * GET /api/admin/bookings/stale-pending
+ * Returns bookings stuck in pending_payment status for more than 24 hours.
+ * These are bookings where the client never called confirm-payment AND no
+ * Stripe webhook arrived (e.g. browser closed mid-payment).
+ */
+router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res) => {
+  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        b.id,
+        b.user_id,
+        b.trip_id,
+        b.title,
+        b.status,
+        b.total_amount,
+        b.created_at,
+        b.booking_date,
+        u.email AS user_email,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name
+      FROM bookings b
+      LEFT JOIN users u ON u.id = b.user_id
+      WHERE b.status = 'pending_payment'
+        AND b.created_at < NOW() - INTERVAL '24 hours'
+      ORDER BY b.created_at ASC
+      LIMIT 100
+    `);
+    res.json({ bookings: result.rows, count: result.rows.length });
+  } catch (err) {
+    console.error("Stale pending bookings error:", err);
+    res.status(500).json({ message: "Failed to fetch stale pending bookings" });
+  }
+});
+
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
     if (!user || user.role !== "admin") {
