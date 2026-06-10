@@ -347,6 +347,33 @@ router.post("/api/upsell/discover-location", async (req, res) => {
     const nbhRow = nbh.rows?.[0] as any;
     const marketCity = nbhRow?.city ?? null;
 
+    // Resolve expert user IDs → endorsed offering_type_keys.
+    // The client passes expert user IDs from the location experts query; we resolve
+    // them to offering types via provider_services → service_categories → service_offering_types.
+    // This is the authoritative endorsement signal: offerings backed by active local providers.
+    let resolvedEndorsedKeys = body.expertEndorsedKeys ?? [];
+    if (resolvedEndorsedKeys.length > 0) {
+      try {
+        const resolved = await db.execute(sql`
+          SELECT DISTINCT sot.offering_type_key
+          FROM provider_services ps
+          JOIN service_categories sc ON sc.id = ps.category_id
+          JOIN service_offering_types sot ON sot.category_key = sc.category_key
+          WHERE ps.user_id = ANY(ARRAY[${sql.raw(resolvedEndorsedKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(","))}]::text[])
+            AND ps.status = 'active'
+            AND sot.is_active = true
+        `);
+        const fromProviders = (resolved.rows ?? []).map((r: any) => String(r.offering_type_key));
+        if (fromProviders.length > 0) {
+          resolvedEndorsedKeys = fromProviders;
+        }
+        // If no provider_services rows found (e.g. experts with no services yet), keep original list
+        // so the ranking gracefully degrades rather than clearing all endorsement signal.
+      } catch (resErr) {
+        console.warn("[upsell] discover-location endorsement resolution failed, using raw keys:", resErr);
+      }
+    }
+
     const ctx: UpsellContext = {
       surface: "discover_location",
       tripId: body.tripId,
@@ -355,13 +382,13 @@ router.post("/api/upsell/discover-location", async (req, res) => {
       cartItems: body.cartItems as CartItemRef[],
       userProfile: body.userProfile as UserProfile | undefined,
       neighborhoodId: body.neighborhoodId,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: resolvedEndorsedKeys,
     };
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: marketCity ? marketCity.toLowerCase() : null,
       neighborhoodId: body.neighborhoodId,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: resolvedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
