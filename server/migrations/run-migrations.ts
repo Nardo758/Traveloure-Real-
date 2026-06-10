@@ -104,6 +104,7 @@ const MIGRATION_FILES = [
   "054_provider_verification_gate.sql",
   "055_category_field_schema.sql",
   "056_pricing_tiers.sql",
+  "057_expert_offering_type_fk.sql",
 ];
 
 export type MigrationResult =
