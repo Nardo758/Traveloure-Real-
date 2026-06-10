@@ -354,15 +354,17 @@ export default function ItineraryPage() {
     staleTime: 30000,
   });
 
-  // LB-P2: admin-editable platform fee, resolved from booking_fee_configs.
-  // No fee literals in this file — the percent is fetched at render time so an
-  // admin rate change shows in the Booking Summary immediately on next mount.
-  const { data: bookingFeeConfig } = useQuery<{
-    platform_fee_percent: number;
-    expert_share_percent: number;
+  // Per-item fee preview: mirrors the exact per-item resolution the checkout uses
+  // (source tier, expert override, provider beta_flat, revenueShareRate final override).
+  // GET — no body needed; the server resolves the cart from the authenticated session.
+  const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
+    subtotal: number;
+    platformFeeTotal: number;
+    total: number;
+    itemCount: number;
   }>({
-    queryKey: ["/api/booking-fee-config"],
-    staleTime: 5 * 60 * 1000,
+    queryKey: ["/api/cart/fee-preview"],
+    staleTime: 30 * 1000,
   });
 
   const totalBooked = itinerary.days.flatMap((d: any) => d.activities).filter((a: any) => a.booked).length;
@@ -709,19 +711,17 @@ export default function ItineraryPage() {
                     const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                    const pendingTotal = inAppTotal + partnerTotal;
-                    // LB-P2: fee rate resolves from /api/booking-fee-config (the existing
-                    // admin-editable endpoint); no hardcoded percent literals here.
-                    // bookingFeeConfig is loaded by the useQuery declared above the
-                    // Booking Summary card. While the rate is loading, we show Subtotal
-                    // only — never compute against an undefined rate.
-                    const platformFeeRate = typeof bookingFeeConfig?.platform_fee_percent === "number"
-                      ? bookingFeeConfig.platform_fee_percent / 100
+                    // Use server-resolved subtotal when available so the displayed subtotal
+                    // matches the same cart snapshot the fee calculation uses.
+                    const pendingTotal = feePreview != null ? feePreview.subtotal : inAppTotal + partnerTotal;
+                    // Per-item fee preview: exact same resolution logic as POST /api/checkout.
+                    // Hide fee row while loading or when cart is empty / unauthenticated.
+                    const feeAmount = !feePreviewLoading && feePreview != null && feePreview.platformFeeTotal > 0
+                      ? feePreview.platformFeeTotal
                       : null;
-                    const feeAmount = platformFeeRate !== null
-                      ? Math.round(pendingTotal * platformFeeRate * 100) / 100
+                    const totalWithFees = !feePreviewLoading && feePreview != null && feePreview.total > 0
+                      ? feePreview.total
                       : null;
-                    const totalWithFees = feeAmount !== null ? pendingTotal + feeAmount : null;
                     return (
                       <>
                         <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
