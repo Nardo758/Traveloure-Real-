@@ -53,7 +53,7 @@ import {
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-import { UpsellSlot } from "@/components/UpsellSlot";
+import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -1402,7 +1402,11 @@ export default function CartPage() {
                     <div className="px-6 pb-0">
                       <UpsellSlot
                         surface="cart"
-                        contextPayload={user ? { profileMatch: true } : undefined}
+                        contextPayload={user ? {
+                          userId: (user as any).id ?? (user as any).claims?.sub,
+                          role: (user as any).role ?? (user as any).claims?.role,
+                          email: (user as any).email ?? (user as any).claims?.email,
+                        } : undefined}
                       />
                     </div>
                     <CardFooter className="flex flex-col gap-3">
@@ -1949,19 +1953,13 @@ export default function CartPage() {
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                   {/* Checkout add-ons — error-bounded so slot failure never blocks payment */}
-                  {(() => {
-                    try {
-                      return (
-                        <UpsellSlot
-                          surface="checkout"
-                          maxItems={2}
-                          heading="Add to your booking"
-                        />
-                      );
-                    } catch {
-                      return null;
-                    }
-                  })()}
+                  <UpsellErrorBoundary fallback={null}>
+                    <UpsellSlot
+                      surface="checkout"
+                      maxItems={2}
+                      heading="Add to your booking"
+                    />
+                  </UpsellErrorBoundary>
                   {checkoutPaymentIntent ? (
                     <Card>
                       <CardHeader>

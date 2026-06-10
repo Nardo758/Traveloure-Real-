@@ -17,7 +17,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Sparkles, ChevronRight } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
 
 export type UpsellSurface =
@@ -42,6 +42,20 @@ interface UpsellSlotProps {
   maxItems?: number;
   heading?: string;
   className?: string;
+  "data-testid"?: string;
+}
+
+interface ErrorBoundaryState { hasError: boolean }
+export class UpsellErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = { hasError: false };
+  static getDerivedStateFromError(): ErrorBoundaryState { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) return this.props.fallback ?? null;
+    return this.props.children;
+  }
 }
 
 const ENDPOINT: Record<UpsellSurface, string> = {
@@ -67,6 +81,7 @@ export function UpsellSlot({
   maxItems,
   heading,
   className,
+  "data-testid": testId,
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
   const impressionFiredRef = useRef(false);
@@ -114,7 +129,7 @@ export function UpsellSlot({
   };
 
   return (
-    <div className={className} data-testid={`upsell-slot-${surface}`}>
+    <div className={className} data-testid={testId ?? `upsell-slot-${surface}`}>
       <div className="rounded-xl border border-border bg-muted/20 p-3">
         <div className="flex items-center gap-1.5 mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
