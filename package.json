@@ -25,7 +25,9 @@
     "test:e2e:phase4-7": "playwright test phase-4-7",
     "test:e2e:smoke": "playwright test --grep 'Phase 1' --max-workers 2",
     "test:e2e:report": "playwright show-report",
-    "test:e2e:trace": "playwright show-trace"
+    "test:e2e:trace": "playwright show-trace",
+    "migrate:dry-run": "tsx server/migrations/dry-run-entry.ts",
+    "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",

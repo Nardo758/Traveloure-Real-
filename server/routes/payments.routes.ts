@@ -476,6 +476,80 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
     }
   });
 
+  // Read-only fee preview: mirrors checkout per-item resolution without creating bookings.
+  // Returns { subtotal, platformFeeTotal, total, itemCount } for the current user's cart.
+
+router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const cartData = await storage.getCartItems(userId);
+
+      if (cartData.length === 0) {
+        return res.json({ subtotal: 0, platformFeeTotal: 0, total: 0, itemCount: 0 });
+      }
+
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+
+      // Preload category slugs once to avoid N+1 queries.
+      const distinctCatIds = Array.from(new Set(
+        cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+      ));
+      const catSlugMap = new Map<string, string>();
+      if (distinctCatIds.length > 0) {
+        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+          .from(serviceCategories)
+          .where(inArray(serviceCategories.id, distinctCatIds));
+        for (const row of catRows) {
+          catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+        }
+      }
+
+      let previewSubtotal = 0;
+      let previewPlatformFeeTotal = 0;
+
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        let feeCategory = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        if (item.service.userId) {
+          const [providerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, item.service.userId))
+            .limit(1);
+          if (providerRow?.role === "provider") {
+            feeCategory = "provider_commission_percent";
+          }
+        }
+        const itemRates = await resolveCommissionRates({
+          category: feeCategory,
+          expertId: item.service.userId ?? null,
+        });
+        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate);
+        previewSubtotal += itemPrice;
+        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
+        previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+      }
+
+      res.json({
+        subtotal: Math.round(previewSubtotal * 100) / 100,
+        platformFeeTotal: Math.round(previewPlatformFeeTotal * 100) / 100,
+        total: Math.round((previewSubtotal + previewPlatformFeeTotal) * 100) / 100,
+        itemCount: cartData.filter(i => i.service).length,
+      });
+    } catch (err) {
+      console.error("Fee preview error:", err);
+      res.status(500).json({ message: "Fee preview failed" });
+    }
+  });
+
   // Get contract details
 
 router.get("/api/invoices/my", isAuthenticated, async (req, res) => {

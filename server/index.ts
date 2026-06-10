@@ -124,15 +124,9 @@ async function runDatabaseSeeding() {
 
   // Apply SQL schema migrations first. The runner tracks applied files in
   // `schema_migrations` (ledger), so re-runs are fast (already-recorded files
-  // are skipped). Wrapped in try/catch so a FATAL in a single migration file
-  // does not permanently prevent seedingComplete from flipping — the server is
-  // already listening and the selection-controls / e2e tests don't depend on
-  // every seed row being present.
-  try {
-    await runMigrations();
-  } catch (err) {
-    logger.error({ err }, "Migration error — server continues; some seed rows may be missing");
-  }
+  // are skipped). Any failure throws — do NOT catch here so that
+  // seedingComplete never flips to true with a broken schema.
+  await runMigrations();
 
   // DISABLED: ESO backfill (see architectural decision in CLAUDE.md).
   //
@@ -344,7 +338,8 @@ async function runDatabaseSeeding() {
             });
         })
         .catch(err => {
-          logger.error({ err }, "Background seeding failed");
+          logger.error({ err }, "FATAL: Database migration/seeding failed — shutting down to prevent serving with broken schema");
+          process.exit(1);
         });
     },
   );
