@@ -81,7 +81,16 @@ const MIGRATION_FILES = [
   "048_phase8_offering_risk_override.sql",
   "049_phase5_upsell_engine_tables.sql",
   "050_service_bookings_service_id_nullable.sql",
+  // 051 must be last: it marks every prior file as applied (ON CONFLICT DO NOTHING),
+  // which is a no-op on a normal dev/CI DB (all already recorded) and acts as a
+  // ledger bootstrap on a prod DB that was seeded from Drizzle snapshots with no
+  // migration history.
+  "051_schema_migrations_ledger_bootstrap.sql",
 ];
+
+export type MigrationResult =
+  | { dryRun: false; applied: string[]; skipped: string[] }
+  | { dryRun: true; wouldApply: string[]; skipped: string[] };
 
 /**
  * Applies each file in MIGRATION_FILES exactly once per database, tracked in a
@@ -89,6 +98,11 @@ const MIGRATION_FILES = [
  *   - ensure the ledger table exists,
  *   - for each file NOT yet recorded: run it, then record it,
  *   - skip files already recorded.
+ *
+ * Dry-run mode (MIGRATION_DRY_RUN=true):
+ *   Logs which files would be applied without executing any SQL or updating the
+ *   ledger. Returns { dryRun: true, wouldApply, skipped }. Safe to run against
+ *   prod to audit pending migrations before a live run.
  *
  * The IF NOT EXISTS / ON CONFLICT guards in the SQL files are retained as a
  * TRANSITION SAFETY NET: on a pre-ledger database the first run re-applies every
@@ -98,8 +112,12 @@ const MIGRATION_FILES = [
  * Returns a summary so callers / CI can assert idempotency (a second run must
  * apply nothing). Still fail-fast: a real SQL error aborts startup.
  */
-export async function runMigrations(): Promise<{ applied: string[]; skipped: string[] }> {
+export async function runMigrations(): Promise<MigrationResult> {
+  const isDryRun = process.env.MIGRATION_DRY_RUN === "true";
+
   // The ledger itself, created idempotently before anything else.
+  // In dry-run mode we still create the ledger (read-only queries need it to exist)
+  // but we never INSERT into it.
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       migration_name TEXT PRIMARY KEY,
@@ -109,6 +127,26 @@ export async function runMigrations(): Promise<{ applied: string[]; skipped: str
 
   const recorded = await db.execute(sql`SELECT migration_name FROM schema_migrations`);
   const already = new Set<string>((recorded.rows ?? []).map((r: any) => r.migration_name));
+
+  if (isDryRun) {
+    const wouldApply: string[] = [];
+    const skipped: string[] = [];
+
+    for (const file of MIGRATION_FILES) {
+      if (already.has(file)) {
+        skipped.push(file);
+      } else {
+        wouldApply.push(file);
+        console.log(`[Migrations][DRY-RUN] Would apply: ${file}`);
+      }
+    }
+
+    console.log(
+      `[Migrations][DRY-RUN] Summary — would apply ${wouldApply.length}, ` +
+      `already recorded (skip) ${skipped.length}.`
+    );
+    return { dryRun: true, wouldApply, skipped };
+  }
 
   const applied: string[] = [];
   const skipped: string[] = [];
@@ -140,5 +178,5 @@ export async function runMigrations(): Promise<{ applied: string[]; skipped: str
   }
 
   console.log(`[Migrations] Done — applied ${applied.length}, skipped ${skipped.length} (already recorded).`);
-  return { applied, skipped };
+  return { dryRun: false, applied, skipped };
 }
