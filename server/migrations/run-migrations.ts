@@ -103,6 +103,7 @@ const MIGRATION_FILES = [
   "053_bookings_payment_intent_unique.sql",
   "054_provider_verification_gate.sql",
   "055_category_field_schema.sql",
+  "056_pricing_tiers.sql",
 ];
 
 export type MigrationResult =
