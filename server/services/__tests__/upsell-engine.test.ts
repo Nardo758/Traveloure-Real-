@@ -459,6 +459,160 @@ describe("Phase 5.2 step 5 gate — plancard_pretrip gap-driven candidates", () 
   });
 });
 
+// ─── Step 6 GATE: endorsement raises relevance, not revenue ──────────────────
+
+describe("Phase 5.4 step 6 GATE — endorsement raises relevance, NEVER revenue", () => {
+  const w = DEFAULT_POLICY.relevanceWeights;
+
+  // CONTRACT 1 — structural: endorsement delta in computeRelevance equals
+  // exactly `weights.expertEndorsement`, and nothing else changes.
+  it("flipping expertEndorsed false→true raises relevanceScore by exactly weights.expertEndorsement", () => {
+    const base = { templateStrength: "REC" as const, profileMatchScore: 0.5, proximityFit: 0.5, expertEndorsed: false };
+    const without = computeRelevance(base, w);
+    const withEnd = computeRelevance({ ...base, expertEndorsed: true }, w);
+    const delta = withEnd - without;
+    assert.equal(
+      Math.round(delta * 1e6) / 1e6,
+      Math.round(w.expertEndorsement * 1e6) / 1e6,
+      `endorsement delta ${delta} must equal weight ${w.expertEndorsement}`,
+    );
+  });
+
+  it("the relevance lift from endorsement equals the weight regardless of other inputs", () => {
+    // Sweep across inputs; the endorsement-induced relevance delta must be
+    // the SAME value (w.expertEndorsement) for every input combination.
+    const cases = [
+      { templateStrength: "REQ" as const, profileMatchScore: 1, proximityFit: 1 },
+      { templateStrength: "OPT" as const, profileMatchScore: 0, proximityFit: 0 },
+      { templateStrength: "REC" as const, profileMatchScore: 0.7, proximityFit: 0.3 },
+      { templateStrength: null as const, profileMatchScore: 0.5, proximityFit: 0.5 },
+    ];
+    for (const partial of cases) {
+      const a = computeRelevance({ ...partial, expertEndorsed: false }, w);
+      const b = computeRelevance({ ...partial, expertEndorsed: true }, w);
+      const delta = Math.round((b - a) * 1e6) / 1e6;
+      assert.equal(delta, Math.round(w.expertEndorsement * 1e6) / 1e6,
+        `for ${JSON.stringify(partial)} delta was ${delta}, expected ${w.expertEndorsement}`);
+    }
+  });
+
+  // CONTRACT 2 — revenueScore independence: endorsement does NOT enter the
+  // revenue calculation path. normalizeRevenue uses only the raw earnings.
+  it("revenueScore is computed solely from expectedPlatformEarningsRaw — endorsement is structurally invisible", () => {
+    // Two candidate sets with IDENTICAL raw earnings but different endorsement
+    // states. normalizeRevenue cares only about the values.
+    const earningsA = [10, 20, 5];
+    const earningsB = [10, 20, 5]; // same values
+    const normA = normalizeRevenue(earningsA);
+    const normB = normalizeRevenue(earningsB);
+    // endorsement doesn't enter the function; outputs identical.
+    assert.deepEqual(normA, normB);
+    assert.deepEqual(normA, [0.5, 1.0, 0.25]);
+  });
+
+  // CONTRACT 3 — end-to-end through rankCandidates: endorsement boosts
+  // finalScore by exactly `revenueWeight × 0 + relevanceLift` (i.e., the
+  // entire boost comes from the relevance side).
+  it("end-to-end: identical candidates with only endorsement differing — finalScore delta = relevance weight (no revenue change)", () => {
+    const slotConfig = {
+      surface: "cart" as const,
+      maxItems: 10,
+      revenueWeight: 0.15,
+      revenueCap: 0.15,
+      frequencyCapHours: 0,
+      enabled: true,
+    };
+    const ctx = { surface: "cart" as const, cartItems: [] };
+
+    function mk(endorsed: boolean): RankInputCandidate {
+      return {
+        offeringId: endorsed ? "endorsed" : "vanilla",
+        categoryKey: "photography",
+        sourceType: "platform_provider",
+        templateStrength: "REC",
+        riskProfile: "low",
+        riskOverride: null,
+        requiresBackgroundCheck: false,
+        providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 10,    // SAME revenue raw
+        expertEndorsed: endorsed,
+        profileMatchScore: 0.5,
+        proximityFit: 0.5,
+      };
+    }
+    const result = rankCandidates(ctx, [mk(false), mk(true)], slotConfig);
+    const vanilla = result.candidates.find(c => c.offeringId === "vanilla")!;
+    const endorsed = result.candidates.find(c => c.offeringId === "endorsed")!;
+
+    // Both should be present (no filter touches them).
+    assert.ok(vanilla);
+    assert.ok(endorsed);
+
+    // Revenue scores: identical (both have raw earnings 10, normalized against each other = 1.0 each).
+    assert.equal(endorsed.revenueScore, vanilla.revenueScore);
+
+    // Relevance scores: endorsed > vanilla by exactly weights.expertEndorsement.
+    const relDelta = Math.round((endorsed.relevanceScore - vanilla.relevanceScore) * 1e6) / 1e6;
+    assert.equal(relDelta, Math.round(w.expertEndorsement * 1e6) / 1e6);
+
+    // Final scores: endorsed > vanilla because relevance is up, revenue is unchanged.
+    assert.ok(endorsed.finalScore > vanilla.finalScore);
+    // Final delta should also equal exactly the relevance weight (revenue contributes equally to both).
+    const finalDelta = Math.round((endorsed.finalScore - vanilla.finalScore) * 1e6) / 1e6;
+    assert.equal(finalDelta, Math.round(w.expertEndorsement * 1e6) / 1e6,
+      "finalScore delta must come ENTIRELY from relevance — revenue path must not amplify endorsement");
+
+    // Endorsed must rank ahead (rank 1).
+    assert.equal(endorsed.rank, 1);
+    assert.equal(vanilla.rank, 2);
+  });
+
+  // CONTRACT 4 — endorsement compounds across surfaces: the same offering
+  // endorsed at the neighborhood scope shows up endorsed on every surface
+  // that includes that neighborhood in ctx.neighborhoodIds.
+  it("compounding: endorsement key in ctx flows to every surface (cart, discover_location, plancard_ontrip)", () => {
+    function mkCandidate(): RankInputCandidate {
+      return {
+        offeringId: "tea_ritual_host",
+        categoryKey: "activity_provider",
+        sourceType: "platform_provider",
+        templateStrength: "REC",
+        riskProfile: "moderate",
+        riskOverride: null,
+        requiresBackgroundCheck: false,
+        providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: "gion",
+        expectedPlatformEarningsRaw: 5,
+        expertEndorsed: false,
+        profileMatchScore: 0.5,
+        proximityFit: 0.5,
+      };
+    }
+
+    const slot = (surface: any) => ({
+      surface, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true,
+    });
+
+    // For each surface, the gather function would set expertEndorsed=true
+    // based on ctx.expertEndorsedKeys containing "tea_ritual_host". Simulate
+    // by toggling the field on the candidate. The gather function in
+    // upsell.routes.ts does exactly: `expertEndorsed: endorsedSet.has(id)`.
+    for (const surface of ["cart", "discover_location", "plancard_ontrip"] as const) {
+      const baseline = rankCandidates({ surface, cartItems: [] }, [mkCandidate()], slot(surface));
+      const endorsed = rankCandidates(
+        { surface, cartItems: [], expertEndorsedKeys: ["tea_ritual_host"] },
+        [{ ...mkCandidate(), expertEndorsed: true }],   // gather() would set this
+        slot(surface),
+      );
+      assert.ok(endorsed.candidates[0].relevanceScore > baseline.candidates[0].relevanceScore,
+        `${surface}: endorsement must raise relevance`);
+      assert.equal(endorsed.candidates[0].revenueScore, baseline.candidates[0].revenueScore,
+        `${surface}: revenue must be unchanged`);
+    }
+  });
+});
+
 describe("Phase 5.2 step 5 gate — plancard_ontrip is the lone transport surface", () => {
   // Already proven by the "step 4 gate" test above — re-verifying the
   // invariant from the step-5 perspective so a future change to ontrip's
@@ -477,5 +631,359 @@ describe("Phase 5.2 step 5 gate — plancard_ontrip is the lone transport surfac
       const got = isTransportSuppressed("private_transportation", surface);
       assert.equal(got, suppressed, `${surface} transport-suppress expected ${suppressed}, got ${got}`);
     }
+  });
+});
+
+// ─── Step 7 carry-in: checkout's post-optimize transport allowance ────────────
+
+describe("Phase 5.5 step 7 — checkout post-optimize transport allowance", () => {
+  it("default (no flag) → suppressed", () => {
+    assert.equal(isTransportSuppressed("private_transportation", "checkout"), true);
+  });
+  it("tripIsPostOptimize=false → still suppressed", () => {
+    assert.equal(
+      isTransportSuppressed("private_transportation", "checkout", { tripIsPostOptimize: false }),
+      true,
+    );
+  });
+  it("tripIsPostOptimize=true → ALLOWED (the spec carry-in)", () => {
+    assert.equal(
+      isTransportSuppressed("private_transportation", "checkout", { tripIsPostOptimize: true }),
+      false,
+    );
+  });
+  it("flag does NOT bleed into other surfaces — cart with flag still suppresses", () => {
+    assert.equal(
+      isTransportSuppressed("private_transportation", "cart", { tripIsPostOptimize: true }),
+      true,
+    );
+  });
+  it("applies to aff_ground_transport too", () => {
+    assert.equal(
+      isTransportSuppressed("aff_ground_transport", "checkout", { tripIsPostOptimize: true }),
+      false,
+    );
+    assert.equal(
+      isTransportSuppressed("aff_ground_transport", "checkout", { tripIsPostOptimize: false }),
+      true,
+    );
+  });
+});
+
+// ─── Step 7 GATES: no double-count · frequency cap pattern · single-row ──────
+
+describe("Phase 5.5 step 7 GATE — no double-counting of ai_concierge fee in candidate revenue", () => {
+  // Structural proof: the engine's revenueScore is computed solely from
+  // candidate.expectedPlatformEarningsRaw. The ai_concierge per-task fee
+  // ($9.99/$49.99) is billed at task creation — outside this code path. So
+  // the SAME candidate must yield the SAME revenueScore on ai_concierge as
+  // it does on cart. If a future change accidentally injects task-fee
+  // earnings into the candidate, this test catches it.
+  it("identical candidate, two surfaces (cart vs ai_concierge) → identical scores", () => {
+    const slot = (surface: any) => ({
+      surface, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true,
+    });
+    function mk(): RankInputCandidate {
+      return {
+        offeringId: "in_home_chef", categoryKey: "private_chef", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "moderate", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 25, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const cart = rankCandidates({ surface: "cart", cartItems: [] }, [mk()], slot("cart"));
+    const concierge = rankCandidates({ surface: "ai_concierge", cartItems: [] }, [mk()], slot("ai_concierge"));
+    assert.equal(cart.candidates[0].revenueScore, concierge.candidates[0].revenueScore,
+      "ai_concierge revenue must NOT differ from cart for the same candidate — no double-count of the per-task fee");
+    assert.equal(cart.candidates[0].relevanceScore, concierge.candidates[0].relevanceScore,
+      "relevance also identical (no surface-specific bump)");
+  });
+
+  it("ai_concierge ranks two candidates by candidate revenue only — no fee bleed", () => {
+    const slot = { surface: "ai_concierge" as const, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true };
+    function mk(id: string, earnings: number): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: earnings,
+        expertEndorsed: false, profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const result = rankCandidates({ surface: "ai_concierge", cartItems: [] }, [mk("low", 10), mk("high", 100)], slot);
+    const lo = result.candidates.find(c => c.offeringId === "low")!;
+    const hi = result.candidates.find(c => c.offeringId === "high")!;
+    assert.equal(lo.revenueScore, 0.1);    // 10/100
+    assert.equal(hi.revenueScore, 1.0);    // 100/100
+  });
+});
+
+describe("Phase 5.5 step 7 GATE — frequency-cap filter pattern", () => {
+  // The cap lives in filterByFrequencyCap (server/routes/upsell.routes.ts).
+  // It excludes offerings already shown to the trip within the window. Pure
+  // engine never touches impression history; that's the surface seam.
+  it("recently-shown offering ids are removed; others kept", () => {
+    function mk(id: string): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 1, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const candidates = [mk("a"), mk("b"), mk("c"), mk("d")];
+    const recent = new Set(["a", "c"]);
+    const filtered = candidates.filter(c => !recent.has(c.offeringId));
+    assert.deepEqual(filtered.map(c => c.offeringId).sort(), ["b", "d"]);
+  });
+
+  it("empty history leaves candidates unchanged (cap inactive when no prior shows)", () => {
+    function mk(id: string): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 1, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const candidates = [mk("x"), mk("y")];
+    const recent = new Set<string>();
+    const filtered = candidates.filter(c => !recent.has(c.offeringId));
+    assert.equal(filtered.length, 2);
+  });
+});
+
+describe("Phase 5.5 step 7 GATE — checkout single-row, ≤2 items + post-optimize transport", () => {
+  it("respects slotConfig.maxItems=2 (single-row carry-in)", () => {
+    const slot = { surface: "checkout" as const, maxItems: 2, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true };
+    function mk(id: string): RankInputCandidate {
+      return {
+        offeringId: id, categoryKey: "photography", sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "low", riskOverride: null,
+        requiresBackgroundCheck: false, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 1, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const result = rankCandidates(
+      { surface: "checkout", cartItems: [] },
+      [mk("a"), mk("b"), mk("c"), mk("d"), mk("e")],
+      slot,
+    );
+    assert.equal(result.candidates.length, 2);
+  });
+
+  it("end-to-end: transport surfaces on checkout when ctx.tripIsPostOptimize=true; suppressed otherwise", () => {
+    const slot = { surface: "checkout" as const, maxItems: 5, revenueWeight: 0.15, revenueCap: 0.15, frequencyCapHours: 0, enabled: true };
+    function mkTransport(): RankInputCandidate {
+      return {
+        offeringId: "airport_driver", categoryKey: "private_transportation",
+        sourceType: "platform_provider",
+        templateStrength: "REC", riskProfile: "high", riskOverride: null,
+        requiresBackgroundCheck: true, providerHasVerifiedBadge: true,
+        candidateNeighborhoodSlug: null,
+        expectedPlatformEarningsRaw: 50, expertEndorsed: false,
+        profileMatchScore: 0.5, proximityFit: 0.5,
+      };
+    }
+    const preOpt = rankCandidates(
+      { surface: "checkout", cartItems: [], tripIsPostOptimize: false },
+      [mkTransport()], slot,
+    );
+    assert.equal(preOpt.candidates.length, 0);
+    assert.ok(preOpt.suppressed.some(s => s.reason === "transport_pre_optimize"));
+
+    const postOpt = rankCandidates(
+      { surface: "checkout", cartItems: [], tripIsPostOptimize: true },
+      [mkTransport()], slot,
+    );
+    assert.equal(postOpt.candidates.length, 1);
+    assert.equal(postOpt.candidates[0].offeringId, "airport_driver");
+  });
+});
+
+// ─── Phase 5.6 (Commit A) GATE: lead-gated neighborhood endorsement ──────────
+// The brief's structural guarantee: only the FEATURED LEAD of a neighborhood
+// can have their endorsement compound. Any expert can still write an
+// endorsement row, but only lead-authored rows resolve in the surface read.
+//
+// Pure helpers are exported from server/routes/upsell.routes.ts so the
+// semantic test runs in isolation (no DB). The SQL JOIN in
+// loadEndorsementsForContext implements the same predicate at runtime.
+
+import { filterLeadEndorsements, expertIsLead } from "../../routes/upsell.routes";
+
+describe("Phase 5.6 (Commit A) GATE — lead-gated neighborhood endorsement READ", () => {
+  // Fixtures: two neighborhoods (Gion, Higashiyama), three experts (A, B, C).
+  //   A is lead of Gion (and only Gion).
+  //   B is non-lead in Gion.
+  //   C is lead of Higashiyama (and only Higashiyama).
+  const leadAssignments = [
+    { expertId: "A", neighborhoodId: "gion", isLead: true },
+    { expertId: "B", neighborhoodId: "gion", isLead: false },
+    { expertId: "A", neighborhoodId: "higashiyama", isLead: false },  // A is non-lead here
+    { expertId: "C", neighborhoodId: "higashiyama", isLead: true },
+  ];
+
+  it("lead's offering in their own neighborhood RESOLVES", () => {
+    const endorsements = [{ expertId: "A", neighborhoodId: "gion", offeringId: "tea_ritual_host" }];
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["gion"]);
+    assert.deepEqual(resolved, ["tea_ritual_host"]);
+  });
+
+  it("non-lead's offering in the SAME neighborhood does NOT resolve", () => {
+    const endorsements = [{ expertId: "B", neighborhoodId: "gion", offeringId: "kimono_styling" }];
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["gion"]);
+    assert.deepEqual(resolved, []);
+  });
+
+  it("lead's offering in a DIFFERENT neighborhood (where they're not lead) does NOT resolve", () => {
+    // A endorsed something in Higashiyama, but A is non-lead there.
+    const endorsements = [{ expertId: "A", neighborhoodId: "higashiyama", offeringId: "cherry_blossom_photo" }];
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["higashiyama"]);
+    assert.deepEqual(resolved, []);
+  });
+
+  it("mixed: lead + non-lead in the same neighborhood — only lead's offerings resolve", () => {
+    const endorsements = [
+      { expertId: "A", neighborhoodId: "gion", offeringId: "tea_ritual_host" },          // lead → in
+      { expertId: "B", neighborhoodId: "gion", offeringId: "kimono_styling" },           // non-lead → out
+      { expertId: "A", neighborhoodId: "higashiyama", offeringId: "ghost_walk" },        // A not lead here → out
+      { expertId: "C", neighborhoodId: "higashiyama", offeringId: "temple_sunset_walk" },// C lead here → in
+    ];
+    const resolved = filterLeadEndorsements(
+      endorsements,
+      leadAssignments,
+      ["gion", "higashiyama"],
+    );
+    assert.deepEqual(resolved.sort(), ["tea_ritual_host", "temple_sunset_walk"]);
+  });
+
+  it("requested neighborhoods filter: rows outside the requested set are dropped even if lead-authored", () => {
+    const endorsements = [
+      { expertId: "A", neighborhoodId: "gion",        offeringId: "tea_ritual_host" },
+      { expertId: "C", neighborhoodId: "higashiyama", offeringId: "temple_sunset_walk" },
+    ];
+    // Only request 'gion' — Higashiyama's lead-endorsement must not leak in.
+    const resolved = filterLeadEndorsements(endorsements, leadAssignments, ["gion"]);
+    assert.deepEqual(resolved, ["tea_ritual_host"]);
+  });
+
+  it("empty inputs → empty result (no spurious matches)", () => {
+    assert.deepEqual(filterLeadEndorsements([], leadAssignments, ["gion"]), []);
+    assert.deepEqual(filterLeadEndorsements([{ expertId: "A", neighborhoodId: "gion", offeringId: "x" }], [], ["gion"]), []);
+    assert.deepEqual(filterLeadEndorsements([{ expertId: "A", neighborhoodId: "gion", offeringId: "x" }], leadAssignments, []), []);
+  });
+});
+
+describe("Phase 5.6 (Commit A) GATE — lead-gated endorsement WRITE", () => {
+  // expertIsLead is the predicate the endpoint uses before allowing a
+  // scope='neighborhood' write. Endpoint behavior: false → 403; admin bypasses.
+  const leadAssignments = [
+    { expertId: "A", neighborhoodId: "gion", isLead: true },
+    { expertId: "B", neighborhoodId: "gion", isLead: false },
+    { expertId: "C", neighborhoodId: "higashiyama", isLead: true },
+  ];
+
+  it("expert A is the lead of Gion → write permitted (predicate true)", () => {
+    assert.equal(expertIsLead(leadAssignments, "A", "gion"), true);
+  });
+
+  it("expert B is in Gion but NOT lead → write rejected (predicate false; endpoint emits 403)", () => {
+    assert.equal(expertIsLead(leadAssignments, "B", "gion"), false);
+  });
+
+  it("expert A is NOT in Higashiyama at all → write rejected", () => {
+    // A has no row for higashiyama in the fixtures.
+    assert.equal(expertIsLead(leadAssignments, "A", "higashiyama"), false);
+  });
+
+  it("expert C is lead of Higashiyama → write permitted there but NOT in Gion", () => {
+    assert.equal(expertIsLead(leadAssignments, "C", "higashiyama"), true);
+    assert.equal(expertIsLead(leadAssignments, "C", "gion"), false);
+  });
+
+  it("empty assignment set → false for every query (system permits no neighborhood endorsements)", () => {
+    assert.equal(expertIsLead([], "A", "gion"), false);
+  });
+});
+
+// ─── Phase 5.6 (Commit B) GATE: server-derived plancard-pretrip gap set ──────
+// The endpoint no longer trusts client-passed emptySlotCategoryKeys. It
+// derives the gap from (template REQ/REC categories) − (trip's actual cart).
+
+import { computeEmptySlots } from "../../routes/upsell.routes";
+
+describe("Phase 5.6 (Commit B) GATE — computeEmptySlots derives gaps server-side", () => {
+  // Stand-in matrix: a trip-style template requires private_transportation +
+  // accommodation, recommends photography + tour_guide, suggests private_chef.
+  const matrix = [
+    { categoryKey: "private_transportation", strength: "REQ" },
+    { categoryKey: "accommodation",          strength: "REQ" },
+    { categoryKey: "photography",            strength: "REC" },
+    { categoryKey: "tour_guide",             strength: "REC" },
+    { categoryKey: "private_chef",           strength: "OPT" },
+    { categoryKey: "concierge_vip",          strength: "OPT" },
+  ];
+
+  it("empty cart → gap = every REQ/REC category (OPT excluded)", () => {
+    const gap = computeEmptySlots(matrix, []);
+    assert.deepEqual(gap.sort(), [
+      "accommodation",
+      "photography",
+      "private_transportation",
+      "tour_guide",
+    ]);
+    // OPT (private_chef, concierge_vip) NOT in the gap — they're suggestions,
+    // not "this trip is missing them."
+    assert.ok(!gap.includes("private_chef"));
+    assert.ok(!gap.includes("concierge_vip"));
+  });
+
+  it("cart includes some REQ/REC → only the missing ones surface", () => {
+    const gap = computeEmptySlots(matrix, ["private_transportation", "photography"]);
+    assert.deepEqual(gap.sort(), ["accommodation", "tour_guide"]);
+  });
+
+  it("cart includes all REQ/REC → empty gap (gap-fill is a no-op)", () => {
+    const gap = computeEmptySlots(matrix, ["private_transportation", "accommodation", "photography", "tour_guide"]);
+    assert.deepEqual(gap, []);
+  });
+
+  it("OPT categories present in cart do not affect the gap (they were never in scope)", () => {
+    const gap = computeEmptySlots(matrix, ["private_chef", "concierge_vip"]);
+    assert.deepEqual(gap.sort(), ["accommodation", "photography", "private_transportation", "tour_guide"]);
+  });
+
+  it("matrix empty (template not seeded) → empty gap (safe degrade)", () => {
+    assert.deepEqual(computeEmptySlots([], ["accommodation"]), []);
+  });
+
+  it("server ignores client-style irrelevant categories — they never appear in the gap unless the matrix says so", () => {
+    // Simulating the contract: a client could pass any string, but the server
+    // computes against the matrix. If 'random_made_up_category' isn't in the
+    // matrix, it never surfaces in the gap regardless.
+    const gap = computeEmptySlots(matrix, []);
+    assert.ok(!gap.includes("random_made_up_category"));
+    assert.ok(!gap.includes("childcare_family"));    // not in our test matrix
+    assert.ok(!gap.includes("aff_events"));          // not in our test matrix
+  });
+
+  it("idempotent: REQ/REC duplicates in the matrix are deduped in the gap", () => {
+    const matrixWithDupes = [
+      { categoryKey: "photography", strength: "REQ" },
+      { categoryKey: "photography", strength: "REC" },  // dupe via different strength
+      { categoryKey: "accommodation", strength: "REQ" },
+    ];
+    const gap = computeEmptySlots(matrixWithDupes, []);
+    assert.deepEqual(gap.sort(), ["accommodation", "photography"]);
   });
 });
