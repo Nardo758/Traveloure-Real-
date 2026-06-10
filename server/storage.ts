@@ -914,7 +914,7 @@ export class DatabaseStorage implements IStorage {
 
   async getCategoryFieldSchema(categoryKey: string): Promise<any[]> {
     const rows = await db.execute(
-      sql`SELECT id, category_key, field_key, label, type, required, options, sort_order
+      sql`SELECT id, category_key, field_key, label, type, required, options, sort_order, default_price_type
           FROM category_field_schema
           WHERE category_key = ${categoryKey}
           ORDER BY sort_order ASC`
@@ -928,6 +928,7 @@ export class DatabaseStorage implements IStorage {
       required: r.required,
       options: r.options,
       sortOrder: r.sort_order,
+      defaultPriceType: r.default_price_type ?? null,
     }));
   }
 
