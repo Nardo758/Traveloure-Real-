@@ -5,12 +5,14 @@
  * pulling in the DB client during chain-integrity checks.
  *
  * Notes:
- * - `052_phase5_expert_endorsements.sql` is intentionally excluded. It is a
- *   superseded duplicate schema attempt for `upsell_expert_endorsements` and
- *   crashes when the real `050_phase5_expert_endorsements.sql` table already
- *   exists.
- * - `051_affiliate_booking_trip_link.sql` keeps its shipped filename even
- *   though it sorts after later-numbered files in the runtime order.
+ * - `050_phase5_expert_endorsements.sql` is intentionally excluded. It is an
+ *   older, superseded schema for `upsell_expert_endorsements` that was never
+ *   applied. Its CREATE INDEX statements reference columns (scope, trip_id,
+ *   offering_id) that do not exist in the live table — running it would crash
+ *   the server. The correct schema is in 052_phase5_expert_endorsements.sql.
+ * - `051_affiliate_booking_trip_link.sql` was renamed 060_affiliate_booking_trip_link.sql
+ *   to eliminate the duplicate 051_ prefix collision with
+ *   051_schema_migrations_ledger_bootstrap.sql.
  */
 export const MIGRATION_FILES = [
   "001_guest_invite_system.sql",
@@ -65,14 +67,14 @@ export const MIGRATION_FILES = [
   "047_early_adopter_commission_cutoff.sql",
   "048_phase8_offering_risk_override.sql",
   "049_phase5_upsell_engine_tables.sql",
-  "050_phase5_expert_endorsements.sql",
   "050_service_bookings_service_id_nullable.sql",
   "051_schema_migrations_ledger_bootstrap.sql",
+  "052_phase5_expert_endorsements.sql",
   "053_bookings_payment_intent_unique.sql",
   "054_provider_verification_gate.sql",
   "055_category_field_schema.sql",
   "056_pricing_tiers.sql",
   "057_expert_offering_type_fk.sql",
-  "051_affiliate_booking_trip_link.sql",
   "059_pnc_engine_lookup_index.sql",
+  "060_affiliate_booking_trip_link.sql",
 ] as const;
