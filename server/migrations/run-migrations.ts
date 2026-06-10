@@ -102,6 +102,7 @@ const MIGRATION_FILES = [
   "052_phase5_expert_endorsements.sql",
   "053_bookings_payment_intent_unique.sql",
   "054_provider_verification_gate.sql",
+  "055_category_field_schema.sql",
 ];
 
 export type MigrationResult =
