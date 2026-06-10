@@ -220,7 +220,24 @@ export async function runMigrations(): Promise<MigrationResult> {
     }
   }
 
-  console.log(`[Migrations] Done — applied ${applied.length}, skipped ${skipped.length} (already recorded).`);
+  // Ledger gate: after the loop every file must be recorded. A missing entry
+  // means either the INSERT was skipped or a concurrent truncation occurred.
+  // Fail loudly before the caller considers migrations done.
+  const ledgerCheck = await db.execute(sql`SELECT migration_name FROM schema_migrations`);
+  const recorded2 = new Set<string>((ledgerCheck.rows ?? []).map((r: any) => r.migration_name));
+  const missing = MIGRATION_FILES.filter(f => !recorded2.has(f));
+  if (missing.length > 0) {
+    const missingList = missing.join(", ");
+    console.error(`[Migrations] LEDGER GATE FAILED — ${missing.length} file(s) not in schema_migrations: ${missingList}`);
+    throw new Error(
+      `Migration ledger incomplete — ${missing.length}/${MIGRATION_FILES.length} missing: ${missingList}`
+    );
+  }
+
+  console.log(
+    `[Migrations] Done — ${applied.length} newly applied, ${skipped.length} already recorded, ` +
+    `${recorded2.size}/${MIGRATION_FILES.length} total in ledger.`
+  );
   return { dryRun: false, bootstrapOnly: false, applied, skipped };
 }
 
