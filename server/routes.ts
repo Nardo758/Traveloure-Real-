@@ -1569,13 +1569,12 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const { verified, backgroundCheckConfirmed } = req.body;
-    const newStatus = verified === true ? "verified" : "pending";
-    await storage.updateProviderVerification(
-      req.params.id,
-      newStatus,
-      backgroundCheckConfirmed === true
-    );
+    const { providerVerificationStatus, backgroundCheckConfirmed } = req.body;
+    const newStatus = providerVerificationStatus === "verified" ? "verified" : "pending";
+    await storage.updateProviderVerification(req.params.id, {
+      providerVerificationStatus: newStatus,
+      backgroundCheckConfirmed: backgroundCheckConfirmed === true,
+    });
     res.json({ userId: req.params.id, providerVerificationStatus: newStatus, backgroundCheckConfirmed: backgroundCheckConfirmed === true });
   });
 
