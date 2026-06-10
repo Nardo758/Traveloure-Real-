@@ -584,9 +584,32 @@ export const providerServices = pgTable("provider_services", {
   // Empty array → system falls back to serviceType inference in content-matching.service.
   contentAffinityTags: text("content_affinity_tags").array().default([]),
 
+  // Per-category dynamic attributes (jsonb, data-driven fields per category_field_schema)
+  categoryAttributes: jsonb("category_attributes"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// === Category Field Schema (admin-configurable per-category dynamic fields) ===
+
+export const categoryFieldSchema = pgTable("category_field_schema", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  categoryKey: varchar("category_key", { length: 100 }).notNull(),
+  fieldKey: varchar("field_key", { length: 100 }).notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // text | number | select | boolean | url | multiselect
+  required: boolean("required").notNull().default(false),
+  options: jsonb("options"), // string[] for select/multiselect
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqCategoryField: unique("category_field_schema_category_key_field_key_key").on(table.categoryKey, table.fieldKey),
+}));
+
+export const insertCategoryFieldSchemaSchema = createInsertSchema(categoryFieldSchema).omit({ id: true, createdAt: true });
+export type CategoryFieldSchema = typeof categoryFieldSchema.$inferSelect;
+export type InsertCategoryFieldSchema = z.infer<typeof insertCategoryFieldSchemaSchema>;
 
 // === Service Templates (Pre-defined service templates experts can use) ===
 
