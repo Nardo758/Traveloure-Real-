@@ -6248,6 +6248,30 @@ router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req
   });
 
 
+// Map a booking's travelDate onto a 1-based trip day: (travelDate − trip.start) + 1,
+// clamped to the trip's [start, end] range. Falls back to day 1 when travelDate is
+// absent/unparseable or the trip has no start date.
+function deriveItineraryDayNumber(
+  travelDate: string | null | undefined,
+  trip: { startDate?: string | null; endDate?: string | null } | undefined | null,
+): number {
+  if (!travelDate || !trip?.startDate) return 1;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const start = Date.parse(`${trip.startDate}T00:00:00Z`);
+  const travel = Date.parse(`${travelDate}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(travel)) return 1;
+  let day = Math.floor((travel - start) / DAY_MS) + 1;
+  if (day < 1) day = 1;
+  if (trip.endDate) {
+    const end = Date.parse(`${trip.endDate}T00:00:00Z`);
+    if (!Number.isNaN(end)) {
+      const maxDay = Math.floor((end - start) / DAY_MS) + 1;
+      if (maxDay >= 1 && day > maxDay) day = maxDay;
+    }
+  }
+  return day;
+}
+
 router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
@@ -6255,7 +6279,9 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
-      const allowed = ["status", "expertNotes", "confirmationRef", "price", "expertId", "tripId"] as const;
+      // tripId is intentionally NOT in this blind-allow list — it is only attached
+      // after the cross-trip guard below passes (Phase 2.3). Never blindly trust it.
+      const allowed = ["status", "expertNotes", "confirmationRef", "price", "expertId"] as const;
       const data: any = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) data[key] = req.body[key];
@@ -6263,22 +6289,55 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       // Self-assign: if setting expertId, use current user
       if (data.expertId === "self") data.expertId = user.id;
       const prior = await storage.getAffiliateBookingRequestById(id);
+      if (!prior) return res.status(404).json({ message: "Request not found" });
+
+      // Phase 2.3 cross-trip guard. Attaching a booking to a Trip + logging it onto
+      // that Trip's itinerary is gated on a confirm transition AND BOTH:
+      //   (a) the booking belongs to the trip's owner (booking.userId === trip.userId)
+      //   (b) the confirming expert is assigned to that trip (trip_expert_advisors row)
+      // Fail-closed: if either fails, the booking is still marked confirmed but is
+      // NOT attached to / logged onto the trip, and the block is surfaced as an
+      // anomaly (durable note + response flag). Never log onto a trip the traveler
+      // doesn't own.
+      const requestedTripId = typeof req.body.tripId === "string" ? req.body.tripId : null;
+      const isConfirming = data.status === "confirmed" && prior.status !== "confirmed";
+      let trip: Awaited<ReturnType<typeof storage.getTrip>> | undefined;
+      let attachmentBlocked = false;
+      let attachmentReason: string | null = null;
+
+      if (requestedTripId && isConfirming) {
+        trip = await storage.getTrip(requestedTripId);
+        const ownerOk = !!trip && !!prior.userId && prior.userId === trip.userId;
+        const assignedOk = await storage.isExpertAssignedToTrip(requestedTripId, user.id);
+        if (ownerOk && assignedOk) {
+          data.tripId = requestedTripId; // attachment granted
+        } else {
+          attachmentBlocked = true;
+          attachmentReason = !trip
+            ? "trip_not_found"
+            : !ownerOk
+              ? "booking_not_owned_by_trip_traveler"
+              : "expert_not_assigned_to_trip";
+          // Durable, non-destructive anomaly note the expert/admin can see.
+          const marker = `[ATTACHMENT BLOCKED] ${attachmentReason} — confirmed without linking to trip ${requestedTripId} @ ${new Date().toISOString()}`;
+          const baseNotes = data.expertNotes ?? prior.expertNotes ?? "";
+          data.expertNotes = baseNotes ? `${baseNotes}\n${marker}` : marker;
+        }
+      }
+
       const updated = await storage.updateAffiliateBookingRequest(id, data);
       if (!updated) return res.status(404).json({ message: "Request not found" });
 
-      // Phase 2.2: when the expert confirms and a trip is in scope, log the booked
-      // item onto the canonical Trip/PlanCard (complete-by-construction). First
-      // confirm wins — guarded on the transition into "confirmed" so a repeat PATCH
-      // never duplicates the itinerary item. The existing free flow (no tripId, or
-      // any non-confirm status) is unchanged.
-      if (updated.status === "confirmed" && updated.tripId && prior?.status !== "confirmed") {
+      // Log onto the canonical Trip/PlanCard only when attachment was granted (first
+      // confirm wins — guarded on the transition so a repeat PATCH never duplicates).
+      if (updated.status === "confirmed" && updated.tripId && prior.status !== "confirmed") {
         await storage.createItineraryItem({
           tripId: updated.tripId,
           title: updated.itemName,
           description: updated.itemDescription ?? `Booked via ${updated.partnerName}`,
           itemType: "activity",
           status: "confirmed",
-          dayNumber: 1,
+          dayNumber: deriveItineraryDayNumber(updated.travelDate, trip),
           scheduledDate: updated.travelDate ?? null,
           bookingReference: updated.confirmationRef ?? null,
           bookingStatus: "confirmed",
@@ -6287,6 +6346,11 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
         } as any);
+      }
+
+      if (attachmentBlocked) {
+        console.warn(`[AffiliateBooking] attachment blocked for ${id} (expert ${user.id}): ${attachmentReason}`);
+        return res.json({ ...updated, attachmentBlocked: true, attachmentReason });
       }
       // Include affiliateUrl for expert responses
       return res.json(updated);
