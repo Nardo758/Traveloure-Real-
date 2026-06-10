@@ -169,6 +169,9 @@ export interface IStorage {
   deleteProviderService(id: string): Promise<void>;
   upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void>;
 
+  // Category Field Schema
+  getCategoryFieldSchema(categoryKey: string): Promise<any[]>;
+
   // Service Categories (Enhanced for Admin Management)
   getServiceCategories(type?: string): Promise<ServiceCategory[]>;
   getServiceCategoryById(id: string): Promise<ServiceCategory | undefined>;
@@ -907,6 +910,25 @@ export class DatabaseStorage implements IStorage {
   async getServiceCategoryBySlug(slug: string): Promise<ServiceCategory | undefined> {
     const [category] = await db.select().from(serviceCategories).where(eq(serviceCategories.slug, slug));
     return category;
+  }
+
+  async getCategoryFieldSchema(categoryKey: string): Promise<any[]> {
+    const rows = await db.execute(
+      sql`SELECT id, category_key, field_key, label, type, required, options, sort_order
+          FROM category_field_schema
+          WHERE category_key = ${categoryKey}
+          ORDER BY sort_order ASC`
+    );
+    return (rows.rows ?? []).map((r: any) => ({
+      id: r.id,
+      categoryKey: r.category_key,
+      fieldKey: r.field_key,
+      label: r.label,
+      type: r.type,
+      required: r.required,
+      options: r.options,
+      sortOrder: r.sort_order,
+    }));
   }
 
   async createServiceCategory(category: InsertServiceCategory): Promise<ServiceCategory> {
