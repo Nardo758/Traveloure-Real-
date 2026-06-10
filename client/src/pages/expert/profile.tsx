@@ -28,6 +28,8 @@ import {
   BadgeCheck,
   AlertCircle,
   Info,
+  Briefcase,
+  ChevronRight,
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -50,6 +52,102 @@ const LOCALITY_PROOF_OPTIONS = [
   { value: "resident_5yr", label: "Resident (5+ years)" },
   { value: "current_resident", label: "Current resident (1–5 years)" },
 ];
+
+interface ExpertOfferingType {
+  id: number;
+  offering_type_key: string;
+  service_tier: string;
+  display_name: string;
+  tagline: string | null;
+  base_price_cents: number | null;
+  description: string | null;
+}
+
+const TIER_COLORS: Record<string, string> = {
+  entry: "bg-slate-100 text-slate-700 border-slate-200",
+  standard: "bg-blue-50 text-blue-700 border-blue-200",
+  premium: "bg-violet-50 text-violet-700 border-violet-200",
+  elite: "bg-amber-50 text-amber-700 border-amber-200",
+  concierge: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+function formatCents(cents: number | null) {
+  if (cents == null) return null;
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+}
+
+function ExpertOfferingTypesCard() {
+  const { data: offerings, isLoading } = useQuery<ExpertOfferingType[]>({
+    queryKey: ["/api/offering-types/experts"],
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+
+  return (
+    <Card className="border border-console-light" data-testid="card-expert-offering-types">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Briefcase className="w-5 h-5 text-primary" />
+          Your Service Menu
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          All five tiers of expert services available on the platform. Clients browse and book these offerings from your profile.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {isLoading ? (
+          <>
+            <Skeleton className="h-14 rounded-lg" />
+            <Skeleton className="h-14 rounded-lg" />
+            <Skeleton className="h-14 rounded-lg" />
+          </>
+        ) : (offerings ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground py-2">No offering types configured yet.</p>
+        ) : (
+          (offerings ?? []).map((offering) => {
+            const tierClass = TIER_COLORS[offering.service_tier] ?? TIER_COLORS.standard;
+            const price = formatCents(offering.base_price_cents);
+            return (
+              <div
+                key={offering.id}
+                className="flex items-center justify-between gap-3 rounded-lg border p-3 bg-background"
+                data-testid={`row-offering-type-${offering.offering_type_key}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-foreground">
+                      {offering.display_name}
+                    </span>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${tierClass}`}>
+                      {offering.service_tier}
+                    </span>
+                    {price && (
+                      <span className="text-xs text-muted-foreground">
+                        from {price}
+                      </span>
+                    )}
+                  </div>
+                  {offering.tagline && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {offering.tagline}
+                    </p>
+                  )}
+                </div>
+                <a
+                  href={`/expert/services?offeringType=${encodeURIComponent(offering.offering_type_key)}`}
+                  className="flex items-center gap-0.5 text-[11px] text-primary font-semibold whitespace-nowrap"
+                  data-testid={`link-manage-offering-${offering.offering_type_key}`}
+                >
+                  Manage <ChevronRight className="w-3 h-3" />
+                </a>
+              </div>
+            );
+          })
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function ExpertProfile() {
   const { user } = useAuth();
@@ -647,6 +745,9 @@ export default function ExpertProfile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Expert Offering Types — full five-tier service menu */}
+        <ExpertOfferingTypesCard />
 
         {/* Availability */}
         <Card className="border border-console-light">

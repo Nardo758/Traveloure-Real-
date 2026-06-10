@@ -92,6 +92,8 @@ import {
   type ProviderSettings, type InsertProviderSettings,
   affiliateBookingRequests,
   type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
+  providerNeighborhoodCoverage,
+  cityNeighborhoods,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -150,6 +152,9 @@ export interface IStorage {
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
 
+  // Provider Verification (publish-gate Step 1)
+  updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void>;
+
   // Service Provider Forms
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
   getServiceProviderForms(status?: string): Promise<ServiceProviderForm[]>;
@@ -162,6 +167,7 @@ export interface IStorage {
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
+  upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void>;
 
   // Service Categories (Enhanced for Admin Management)
   getServiceCategories(type?: string): Promise<ServiceCategory[]>;
@@ -771,6 +777,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId));
   }
 
+  async updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void> {
+    const patch: Record<string, any> = {};
+    if (updates.providerVerificationStatus !== undefined) patch.providerVerificationStatus = updates.providerVerificationStatus;
+    if (updates.backgroundCheckConfirmed !== undefined) patch.backgroundCheckConfirmed = updates.backgroundCheckConfirmed;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(users).set(patch).where(eq(users.id, userId));
+  }
+
   // Service Provider Forms
   async getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined> {
     const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId));
@@ -846,6 +860,35 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProviderService(id: string): Promise<void> {
     await db.delete(providerServices).where(eq(providerServices.id, id));
+  }
+
+  async upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void> {
+    if (!categoryKey) return;
+    await db.transaction(async (tx) => {
+      await tx.delete(providerNeighborhoodCoverage).where(
+        and(
+          eq(providerNeighborhoodCoverage.providerId, providerId),
+          eq(providerNeighborhoodCoverage.categoryKey, categoryKey)
+        )
+      );
+      if (neighborhoodSlugs.length === 0) return;
+      const resolved = await tx
+        .select({ id: cityNeighborhoods.id, slug: cityNeighborhoods.slug })
+        .from(cityNeighborhoods)
+        .where(inArray(cityNeighborhoods.slug, neighborhoodSlugs));
+      if (resolved.length === 0) return;
+      const slugOrder = new Map(neighborhoodSlugs.map((s, i) => [s, i]));
+      const sorted = resolved.sort((a, b) => (slugOrder.get(a.slug) ?? 99) - (slugOrder.get(b.slug) ?? 99));
+      await tx.insert(providerNeighborhoodCoverage).values(
+        sorted.map((n, idx) => ({
+          providerId,
+          neighborhoodId: n.id,
+          categoryKey,
+          isPrimary: idx === 0,
+          sortOrder: idx,
+        }))
+      );
+    });
   }
 
   // Service Categories

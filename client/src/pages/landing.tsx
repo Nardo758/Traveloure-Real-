@@ -839,6 +839,82 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Earn / Partner dual-path CTA ──────────────────────────────────── */}
+      <section className="py-16 lg:py-20 bg-gradient-to-br from-teal-700 to-emerald-800 text-white" data-testid="section-earn-cta">
+        <div className="container mx-auto px-4 max-w-5xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-3">
+              Know a city well? <span className="text-teal-200">Get paid for it.</span>
+            </h2>
+            <p className="text-teal-100 max-w-xl mx-auto">
+              Join hundreds of local experts and service providers earning on Traveloure.
+              Two paths — pick the one that fits.
+            </p>
+          </motion.div>
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+            >
+              <Link href="/earn?track=provider">
+                <div
+                  className="rounded-2xl border border-white/20 bg-white/10 hover:bg-white/20 p-6 cursor-pointer transition-colors h-full"
+                  data-testid="card-earn-local"
+                >
+                  <div className="w-10 h-10 rounded-full bg-teal-400/30 flex items-center justify-center mb-4">
+                    <MapPin className="w-5 h-5 text-teal-100" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">Earn as a local</h3>
+                  <p className="text-teal-100 text-sm mb-4">
+                    Offer tours, transport, photography, and on-the-ground services.
+                  </p>
+                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-teal-200">
+                    See local offerings <ChevronRight className="w-4 h-4" />
+                  </span>
+                </div>
+              </Link>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+            >
+              <Link href="/earn?track=expert">
+                <div
+                  className="rounded-2xl border border-white/20 bg-white/10 hover:bg-white/20 p-6 cursor-pointer transition-colors h-full"
+                  data-testid="card-earn-expert"
+                >
+                  <div className="w-10 h-10 rounded-full bg-teal-400/30 flex items-center justify-center mb-4">
+                    <UserCheck className="w-5 h-5 text-teal-100" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">Share your expertise</h3>
+                  <p className="text-teal-100 text-sm mb-4">
+                    Advise travellers, review plans, and coordinate logistics — remotely or in-person.
+                  </p>
+                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-teal-200">
+                    See expert offerings <ChevronRight className="w-4 h-4" />
+                  </span>
+                </div>
+              </Link>
+            </motion.div>
+          </div>
+          <p className="text-center text-teal-200/70 text-xs mt-8">
+            Already a partner?{" "}
+            <Link href="/earn" className="underline text-teal-200 hover:text-white">
+              View all earning options
+            </Link>
+          </p>
+        </div>
+      </section>
+
       <section className="py-16 lg:py-24 bg-gradient-to-br from-[#FF385C] via-[#FF5A5F] to-[#FF8E53] text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMtOS45NDEgMC0xOCA4LjA1OS0xOCAxOHM4LjA1OSAxOCAxOCAxOCAxOC04LjA1OSAxOC0xOC04LjA1OS0xOC0xOC0xOHptMCAzMmMtNy43MzIgMC0xNC02LjI2OC0xNC0xNHM2LjI2OC0xNCAxNC0xNCAxNCA2LjI2OCAxNCAxNC02LjI2OCAxNC0xNCAxNHoiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA1Ii8+PC9nPjwvc3ZnPg==')] opacity-30" />
         <div className="container mx-auto px-4 max-w-4xl text-center relative">
