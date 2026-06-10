@@ -150,6 +150,9 @@ export interface IStorage {
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
 
+  // Provider Verification (publish-gate Step 1)
+  updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void>;
+
   // Service Provider Forms
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
   getServiceProviderForms(status?: string): Promise<ServiceProviderForm[]>;
@@ -769,6 +772,14 @@ export class DatabaseStorage implements IStorage {
     await db.update(users)
       .set({ role: expertType })
       .where(eq(users.id, userId));
+  }
+
+  async updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void> {
+    const patch: Record<string, any> = {};
+    if (updates.providerVerificationStatus !== undefined) patch.providerVerificationStatus = updates.providerVerificationStatus;
+    if (updates.backgroundCheckConfirmed !== undefined) patch.backgroundCheckConfirmed = updates.backgroundCheckConfirmed;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(users).set(patch).where(eq(users.id, userId));
   }
 
   // Service Provider Forms

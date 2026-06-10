@@ -1760,6 +1760,33 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     try {
       const userId = (req.user as any).claims.sub;
       const input = insertProviderServiceSchema.parse(req.body);
+
+      // Verification publish-gate: block status:"active" on gated categories
+      if (input.status === "active") {
+        const categoryId = (input as any).categoryId as string | undefined;
+        if (categoryId) {
+          const [cat] = await db.select({
+            requiresBackgroundCheck: serviceCategories.requiresBackgroundCheck,
+            insuranceBand: serviceCategories.insuranceBand,
+          }).from(serviceCategories).where(eq(serviceCategories.id, categoryId));
+          const needsGate = cat?.requiresBackgroundCheck || ((cat?.insuranceBand ?? 0) >= 2);
+          if (needsGate) {
+            const [userRow] = await db.select({
+              providerVerificationStatus: users.providerVerificationStatus,
+              backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+            }).from(users).where(eq(users.id, userId));
+            const verified = userRow?.providerVerificationStatus === "verified";
+            const bgOk = !cat?.requiresBackgroundCheck || userRow?.backgroundCheckConfirmed;
+            if (!verified || !bgOk) {
+              return res.status(422).json({
+                message: "This category requires background verification before publishing. Save as draft and complete your provider verification first.",
+                code: "VERIFICATION_REQUIRED",
+              });
+            }
+          }
+        }
+      }
+
       const service = await storage.createProviderService({ ...input, userId });
       res.status(201).json(service);
     } catch (err) {
@@ -1768,6 +1795,23 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       }
       console.error("Error creating provider service:", err);
       res.status(500).json({ message: "Failed to create service" });
+    }
+  });
+
+  // Verification status for the current authenticated provider/expert
+  app.get("/api/provider/verification-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [userRow] = await db.select({
+        providerVerificationStatus: users.providerVerificationStatus,
+        backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+      }).from(users).where(eq(users.id, userId));
+      res.json({
+        providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch verification status" });
     }
   });
 
@@ -1781,6 +1825,33 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
       const input = insertProviderServiceSchema.partial().parse(req.body);
+
+      // Verification publish-gate: block activating on gated categories
+      if (input.status === "active") {
+        const categoryId = ((input as any).categoryId ?? ownedService.categoryId) as string | undefined;
+        if (categoryId) {
+          const [cat] = await db.select({
+            requiresBackgroundCheck: serviceCategories.requiresBackgroundCheck,
+            insuranceBand: serviceCategories.insuranceBand,
+          }).from(serviceCategories).where(eq(serviceCategories.id, categoryId));
+          const needsGate = cat?.requiresBackgroundCheck || ((cat?.insuranceBand ?? 0) >= 2);
+          if (needsGate) {
+            const [userRow] = await db.select({
+              providerVerificationStatus: users.providerVerificationStatus,
+              backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+            }).from(users).where(eq(users.id, userId));
+            const verified = userRow?.providerVerificationStatus === "verified";
+            const bgOk = !cat?.requiresBackgroundCheck || userRow?.backgroundCheckConfirmed;
+            if (!verified || !bgOk) {
+              return res.status(422).json({
+                message: "This category requires background verification before publishing. Save as draft and complete your provider verification first.",
+                code: "VERIFICATION_REQUIRED",
+              });
+            }
+          }
+        }
+      }
+
       // Remove userId from input to prevent ownership transfer
       const { userId: _, ...safeInput } = input as any;
       const updated = await storage.updateProviderService(req.params.id, safeInput);
