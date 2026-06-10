@@ -53,11 +53,22 @@ interface ServiceTemplate {
   sortOrder: number | null;
 }
 
+interface ExpertOfferingType {
+  id: string;
+  offeringTypeKey: string;
+  serviceTier: string;
+  displayName: string;
+  tagline: string | null;
+  deliveryFormats: string[];
+  isSurprising: boolean;
+  sortOrder: number;
+}
+
 interface ServiceFormData {
   serviceName: string;
   description: string;
   categoryId: string;
-  serviceType: string;
+  expertOfferingTypeId: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
   price: string;
@@ -73,7 +84,7 @@ const initialFormData: ServiceFormData = {
   serviceName: "",
   description: "",
   categoryId: "",
-  serviceType: "consultation",
+  expertOfferingTypeId: "",
   deliveryMethod: "video",
   deliveryTimeframe: "",
   price: "",
@@ -85,15 +96,25 @@ const initialFormData: ServiceFormData = {
   revisionsIncluded: 0,
 };
 
-const serviceTypes = [
-  { value: "consultation", label: "Consultation", description: "1-on-1 advice sessions" },
-  { value: "planning", label: "Full Planning", description: "Complete trip/event planning" },
-  { value: "review", label: "Cart Review", description: "Review and optimize selections" },
-  { value: "booking", label: "Booking Assistance", description: "Help with reservations" },
-  { value: "custom", label: "Custom Package", description: "Tailored service offering" },
-];
+// Map tier deliveryFormats to the wizard's delivery method values
+function tierFormatsToAllowedWizardMethods(formats: string[]): Set<string> {
+  const methodMap: Record<string, string[]> = {
+    "video": ["video"],
+    "live_text": ["video"],
+    "chat": ["video", "in-person"],
+    "written": ["document"],
+    "done_for_you": ["document", "in-person", "hybrid"],
+    "hybrid": ["hybrid"],
+    "in_person": ["in-person"],
+  };
+  const allowed = new Set<string>();
+  for (const fmt of formats) {
+    for (const m of (methodMap[fmt] ?? [])) allowed.add(m);
+  }
+  return allowed;
+}
 
-const deliveryMethods = [
+const ALL_DELIVERY_METHODS = [
   { value: "video", label: "Video Call", icon: Video, description: "Live video consultation" },
   { value: "in-person", label: "In-Person", icon: MapPin, description: "Meet in person" },
   { value: "document", label: "Document Delivery", icon: FileText, description: "Written deliverable" },
@@ -118,6 +139,11 @@ export default function ServiceWizard() {
 
   const { data: categories = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/service-categories"],
+  });
+
+  const { data: expertOfferingTypes = [] } = useQuery<ExpertOfferingType[]>({
+    queryKey: ["/api/expert/offering-types"],
+    staleTime: 5 * 60_000,
   });
 
   const { data: serviceTemplates = [], isLoading: templatesLoading } = useQuery<ServiceTemplate[]>({
@@ -151,7 +177,6 @@ export default function ServiceWizard() {
       serviceName: t.title,
       description: t.description ?? "",
       categoryId: t.categoryId ?? "",
-      serviceType: t.serviceType ?? "consultation",
       deliveryMethod: t.deliveryMethod ?? "video",
       deliveryTimeframe: t.deliveryTimeframe ?? "",
       price: t.suggestedPrice ?? "",
@@ -196,8 +221,8 @@ export default function ServiceWizard() {
         if (!formData.serviceName.trim()) {
           newErrors.serviceName = "Service name is required";
         }
-        if (!formData.serviceType) {
-          newErrors.serviceType = "Please select a service type";
+        if (!formData.expertOfferingTypeId) {
+          newErrors.expertOfferingTypeId = "Please select a service tier";
         }
         break;
       case 2:
@@ -236,12 +261,16 @@ export default function ServiceWizard() {
     const whatIncluded = formData.whatIncluded
       ? formData.whatIncluded.split("\n").map(s => s.trim()).filter(Boolean)
       : [];
-    createMutation.mutate({
+    const payload: Record<string, any> = {
       ...formData,
       requirements: requirements as any,
       whatIncluded: whatIncluded as any,
       status: asDraft ? "draft" : "active",
-    });
+    };
+    if (formData.expertOfferingTypeId) {
+      payload.expertOfferingTypeId = formData.expertOfferingTypeId;
+    }
+    createMutation.mutate(payload as ServiceFormData);
   };
 
   const renderStepIndicator = () => (
@@ -297,28 +326,34 @@ export default function ServiceWizard() {
       </div>
 
       <div className="space-y-2">
-        <Label>Service Type</Label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {serviceTypes.map((type) => (
-            <div
-              key={type.value}
-              onClick={() => updateField("serviceType", type.value)}
-              className={cn(
-                "p-4 rounded-lg border-2 cursor-pointer transition-colors",
-                formData.serviceType === type.value 
-                  ? "border-[#FF385C] bg-[#FF385C]/5" 
-                  : "border-gray-200 hover:border-gray-300"
-              )}
-              data-testid={`option-service-type-${type.value}`}
-            >
-              <p className="font-medium text-gray-900">{type.label}</p>
-              <p className="text-sm text-gray-600">{type.description}</p>
-            </div>
-          ))}
-        </div>
-        {errors.serviceType && (
+        <Label>Service Tier</Label>
+        {expertOfferingTypes.length === 0 ? (
+          <p className="text-sm text-gray-500">Loading tiers…</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {expertOfferingTypes.map((tier) => (
+              <div
+                key={tier.id}
+                onClick={() => setFormData(prev => ({ ...prev, expertOfferingTypeId: tier.id }))}
+                className={cn(
+                  "p-4 rounded-lg border-2 cursor-pointer transition-colors",
+                  formData.expertOfferingTypeId === tier.id
+                    ? "border-[#FF385C] bg-[#FF385C]/5"
+                    : "border-gray-200 hover:border-gray-300"
+                )}
+                data-testid={`option-tier-${tier.offeringTypeKey}`}
+              >
+                <p className="font-medium text-gray-900">{tier.displayName}</p>
+                {tier.tagline && (
+                  <p className="text-sm text-gray-600">{tier.tagline}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {errors.expertOfferingTypeId && (
           <p className="text-sm text-red-500 flex items-center gap-1">
-            <AlertCircle className="w-4 h-4" /> {errors.serviceType}
+            <AlertCircle className="w-4 h-4" /> {errors.expertOfferingTypeId}
           </p>
         )}
       </div>
@@ -363,28 +398,45 @@ export default function ServiceWizard() {
 
       <div className="space-y-2">
         <Label>Delivery Method</Label>
-        <div className="grid grid-cols-2 gap-3">
-          {deliveryMethods.map((method) => (
-            <div
-              key={method.value}
-              onClick={() => updateField("deliveryMethod", method.value)}
-              className={cn(
-                "p-4 rounded-lg border-2 cursor-pointer transition-colors",
-                formData.deliveryMethod === method.value 
-                  ? "border-[#FF385C] bg-[#FF385C]/5" 
-                  : "border-gray-200 hover:border-gray-300"
+        {(() => {
+          const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
+          const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
+            ? tierFormatsToAllowedWizardMethods(selectedTier.deliveryFormats)
+            : null;
+          const visibleMethods = allowed
+            ? ALL_DELIVERY_METHODS.filter((m) => allowed.has(m.value))
+            : ALL_DELIVERY_METHODS;
+          const methodsToShow = visibleMethods.length > 0 ? visibleMethods : ALL_DELIVERY_METHODS;
+          return (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                {methodsToShow.map((method) => (
+                  <div
+                    key={method.value}
+                    onClick={() => updateField("deliveryMethod", method.value)}
+                    className={cn(
+                      "p-4 rounded-lg border-2 cursor-pointer transition-colors",
+                      formData.deliveryMethod === method.value
+                        ? "border-[#FF385C] bg-[#FF385C]/5"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                    data-testid={`option-delivery-${method.value}`}
+                  >
+                    <method.icon className={cn(
+                      "w-6 h-6 mb-2",
+                      formData.deliveryMethod === method.value ? "text-[#FF385C]" : "text-gray-400"
+                    )} />
+                    <p className="font-medium text-gray-900">{method.label}</p>
+                    <p className="text-sm text-gray-600">{method.description}</p>
+                  </div>
+                ))}
+              </div>
+              {allowed && (
+                <p className="text-xs text-gray-500">Options filtered to your selected tier.</p>
               )}
-              data-testid={`option-delivery-${method.value}`}
-            >
-              <method.icon className={cn(
-                "w-6 h-6 mb-2",
-                formData.deliveryMethod === method.value ? "text-[#FF385C]" : "text-gray-400"
-              )} />
-              <p className="font-medium text-gray-900">{method.label}</p>
-              <p className="text-sm text-gray-600">{method.description}</p>
-            </div>
-          ))}
-        </div>
+            </>
+          );
+        })()}
         {errors.deliveryMethod && (
           <p className="text-sm text-red-500 flex items-center gap-1">
             <AlertCircle className="w-4 h-4" /> {errors.deliveryMethod}
@@ -547,15 +599,15 @@ export default function ServiceWizard() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-sm text-gray-500">Service Type</p>
+              <p className="text-sm text-gray-500">Service Tier</p>
               <p className="font-medium">
-                {serviceTypes.find(t => t.value === formData.serviceType)?.label || "Not set"}
+                {expertOfferingTypes.find(t => t.id === formData.expertOfferingTypeId)?.displayName || "Not set"}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Delivery Method</p>
               <p className="font-medium">
-                {deliveryMethods.find(m => m.value === formData.deliveryMethod)?.label || "Not set"}
+                {ALL_DELIVERY_METHODS.find(m => m.value === formData.deliveryMethod)?.label || "Not set"}
               </p>
             </div>
             <div>

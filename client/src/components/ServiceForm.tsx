@@ -56,6 +56,17 @@ interface ServiceSubcategory {
   sortOrder: number | null;
 }
 
+interface ExpertOfferingType {
+  id: string;
+  offeringTypeKey: string;
+  serviceTier: string;
+  displayName: string;
+  tagline: string | null;
+  deliveryFormats: string[];
+  isSurprising: boolean;
+  sortOrder: number;
+}
+
 interface ServiceFormData {
   name: string;
   categoryId: string;
@@ -68,7 +79,8 @@ interface ServiceFormData {
   guestMax: number;
   duration: string;
   deliveryMethod: "in-person" | "video-call" | "hybrid";
-  // Expert-specific: approval workflow
+  // Expert-specific: tier + approval workflow
+  expertOfferingTypeId: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
   // Provider-specific: status + features
   active: boolean;
@@ -127,6 +139,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     guestMax: 0,
     duration: "",
     deliveryMethod: "in-person",
+    expertOfferingTypeId: "",
     approvalStatus: "draft",
     active: true,
     revisionsIncluded: 0,
@@ -202,6 +215,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     guestMax,
     duration: s.deliveryTimeframe || s.duration || "",
     deliveryMethod: s.deliveryMethod || "in-person",
+    expertOfferingTypeId: s.expertOfferingTypeId || "",
     approvalStatus: s.approvalStatus || "draft",
     active: s.status === "active",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
@@ -224,6 +238,24 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
   };
 }
 
+// Map tier deliveryFormats to the form's deliveryMethod values
+function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
+  const methodMap: Record<string, string[]> = {
+    "video": ["video-call"],
+    "live_text": ["video-call"],
+    "chat": ["video-call", "in-person"],
+    "written": ["in-person"],
+    "done_for_you": ["in-person", "hybrid"],
+    "hybrid": ["hybrid"],
+    "in_person": ["in-person"],
+  };
+  const allowed = new Set<string>();
+  for (const fmt of formats) {
+    for (const m of (methodMap[fmt] ?? [])) allowed.add(m);
+  }
+  return allowed;
+}
+
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -235,6 +267,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
+  });
+
+  // Expert 5-tier offering types catalog
+  const { data: expertOfferingTypes = [] } = useQuery<ExpertOfferingType[]>({
+    queryKey: ["/api/expert/offering-types"],
+    enabled: role === "expert",
+    staleTime: 5 * 60_000,
   });
 
   const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm(role));
@@ -262,6 +301,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   });
 
   const categoryPreSelected = useRef(false);
+  const offeringTypeKeyPreSelected = useRef(false);
 
   const templatePreFilled = useRef(false);
 
@@ -303,6 +343,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       }));
     }
   }, [isEditMode]);
+
+  // Pre-select tier from ?offeringTypeKey= URL param (used by /earn CTA)
+  useEffect(() => {
+    if (
+      role !== "expert" ||
+      isEditMode ||
+      expertOfferingTypes.length === 0 ||
+      offeringTypeKeyPreSelected.current
+    ) return;
+    const raw = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("offeringTypeKey") || ""
+      : "";
+    if (!raw) return;
+    const match = expertOfferingTypes.find((t) => t.offeringTypeKey === raw);
+    if (match) {
+      offeringTypeKeyPreSelected.current = true;
+      setFormData((prev) => ({ ...prev, expertOfferingTypeId: match.id }));
+    }
+  }, [expertOfferingTypes, isEditMode, role]);
 
   // Pre-select category from ?category= URL param
   useEffect(() => {
@@ -420,12 +479,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       // Role-specific fields
       if (role === "provider") {
-        payload.revisionsIncluded = formData.revisionsIncluded;
         payload.includesExpertNotes = formData.includesExpertNotes;
         payload.contentAffinityTags = formData.contentAffinityTags;
         payload.status = submitAction === "publish" ? "active" : "draft";
       } else {
-        // Expert: send approvalStatus for workflow
+        // Expert: send tier FK + approvalStatus for workflow
+        if (formData.expertOfferingTypeId) {
+          payload.expertOfferingTypeId = formData.expertOfferingTypeId;
+        }
         if (submitAction === "draft") {
           payload.approvalStatus = "draft";
           payload.status = "draft";
@@ -434,6 +495,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           payload.status = "draft";
         }
       }
+      // revisionsIncluded is shared (expert + provider)
+      payload.revisionsIncluded = formData.revisionsIncluded;
 
       if (isEditMode) {
         return apiRequest("PATCH", `/api/provider/services/${id}`, payload);
@@ -824,6 +887,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
           </div>
 
+          {/* Expert Tier Picker */}
+          {role === "expert" && (
+            <div>
+              <Label>Service Tier *</Label>
+              {expertOfferingTypes.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-2">Loading tiers…</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  {expertOfferingTypes.map((tier) => (
+                    <button
+                      key={tier.id}
+                      type="button"
+                      onClick={() => {
+                        set("expertOfferingTypeId", tier.id);
+                      }}
+                      className={`text-left p-3 rounded-lg border-2 transition-colors ${
+                        formData.expertOfferingTypeId === tier.id
+                          ? "border-[#FF385C] bg-[#FF385C]/5"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                      data-testid={`option-tier-${tier.offeringTypeKey}`}
+                    >
+                      <p className="font-medium text-sm text-gray-900">{tier.displayName}</p>
+                      {tier.tagline && (
+                        <p className="text-xs text-gray-500 mt-0.5">{tier.tagline}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Duration */}
           <div>
             <Label htmlFor="duration">Duration *</Label>
@@ -837,22 +933,46 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
 
           {/* Delivery Method */}
-          <div>
-            <Label htmlFor="deliveryMethod">Delivery Method *</Label>
-            <Select
-              value={formData.deliveryMethod}
-              onValueChange={(v: any) => set("deliveryMethod", v)}
-            >
-              <SelectTrigger id="deliveryMethod" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="in-person">In-Person</SelectItem>
-                <SelectItem value="video-call">Video Call</SelectItem>
-                <SelectItem value="hybrid">Hybrid (In-Person + Video)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {(() => {
+            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
+            const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
+              ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
+              : null;
+            const allMethods = [
+              { value: "in-person", label: "In-Person" },
+              { value: "video-call", label: "Video Call" },
+              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
+            ];
+            const visibleMethods = allowed
+              ? allMethods.filter((m) => allowed.has(m.value))
+              : allMethods;
+            return (
+              <div>
+                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
+                <Select
+                  value={formData.deliveryMethod}
+                  onValueChange={(v: any) => set("deliveryMethod", v)}
+                >
+                  <SelectTrigger id="deliveryMethod" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibleMethods.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                    {visibleMethods.length === 0 && (
+                      <SelectItem value="in-person">In-Person</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {allowed && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Options filtered to your selected tier's delivery formats.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
         </CardContent>
       </Card>
@@ -1355,6 +1475,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <p className="text-sm text-blue-900">
                 Save your service as a draft, then submit it for approval. Our team will review and approve it within 48 hours.
               </p>
+            </div>
+            <div>
+              <Label htmlFor="revisionsIncluded-expert">Revisions Included</Label>
+              <Input
+                id="revisionsIncluded-expert"
+                type="number"
+                value={formData.revisionsIncluded}
+                onChange={(e) => set("revisionsIncluded", parseInt(e.target.value) || 0)}
+                min="0"
+                className="mt-2"
+                data-testid="input-revisions-expert"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Number of revisions or refinements included</p>
             </div>
             <div>
               <Label className="text-sm font-medium">Current Status</Label>
