@@ -332,19 +332,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [existingService, role]);
 
-  // Pre-select category's default price type when creating a new service
+  // Pre-select category's default price type when creating a new service.
+  // We only stamp prevCategoryIdRef *after* categoryFields has loaded so
+  // the effect re-fires once the async query resolves.
   const prevCategoryIdRef = useRef<string>("");
   useEffect(() => {
     if (isEditMode) return;
     if (!formData.categoryId) return;
     if (formData.categoryId === prevCategoryIdRef.current) return;
+    // Wait until fields for this category have actually arrived
+    if (categoryFields.length === 0) return;
+    // Mark as processed now that we have data
     prevCategoryIdRef.current = formData.categoryId;
-    if (categoryFields.length > 0) {
-      const hint = categoryFields[0]?.defaultPriceType;
-      if (hint) {
-        const mapped = mapDefaultPriceTypeHint(hint);
-        if (mapped) setFormData((prev) => ({ ...prev, priceType: mapped, pricingTiers: [] }));
-      }
+    const hint = categoryFields[0]?.defaultPriceType;
+    if (hint) {
+      const mapped = mapDefaultPriceTypeHint(hint);
+      if (mapped) setFormData((prev) => ({ ...prev, priceType: mapped, pricingTiers: [] }));
     }
   }, [categoryFields, formData.categoryId, isEditMode]);
 
