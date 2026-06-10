@@ -75,4 +75,5 @@ export const MIGRATION_FILES = [
   "057_expert_offering_type_fk.sql",
   "051_affiliate_booking_trip_link.sql",
   "059_pnc_engine_lookup_index.sql",
+  "060_concierge_booking_fee_band.sql",
 ] as const;

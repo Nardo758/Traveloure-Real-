@@ -92,6 +92,14 @@ candidate gather (Engine Inventory-Sourcing brief) reads coverage by
 `(neighborhood_id, category_key)`; the existing unique constraint leads with
 `provider_id` and cannot serve that path. No schema/data semantics change.
 
+**Migration 060 (Jun 10, 2026; registered in `migration-files.ts`) — Paid Booking Concierge, Phase 3.1:**
+seeds ONE flat fee-AMOUNT band `expert_concierge_booking` in `fee_bands` (`rate_type='flat'`,
+`default_rate=9.99` PLACEHOLDER, admin-configurable), idempotent `ON CONFLICT (band_key) DO NOTHING`.
+The resolver routes the `booking_concierge` concern to this band via `decideBandKey` (named mapping,
+no fallthrough), and `resolveCommissionRates` now guards on `rate_type` so a FLAT band is never built
+into a split. The band is the fee AMOUNT only; the 75/25 split rides `expert_standard` (Phase 3.4).
+Rate-neutral for every existing category (nothing routes to it yet). Ratified by the Phase 3.1 GO.
+
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
 - This was uncoordinated and left the transaction path orphaned

@@ -44,6 +44,15 @@ export const PROCESSING_FEE_RATE = 0.03;
 const BETA_FLAT_FALLBACK = 0.10;
 const EXPERT_STANDARD_FALLBACK = 0.25;
 
+/**
+ * Phase 3.1 — Booking Concierge facilitation fee.
+ * `expert_concierge_booking` is a FLAT fee-AMOUNT band (dollars, not a split
+ * fraction). `booking_concierge` is the concern key that routes to it. The fee
+ * AMOUNT is read from this band (Phase 3.4); the 75/25 split is applied
+ * separately via the expert band — a flat band is never built into a split. */
+export const CONCIERGE_BOOKING_CONCERN = "booking_concierge";
+export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
+
 export interface CommissionRates {
   expertShareRate: number;
   platformFeeRate: number;
@@ -125,6 +134,13 @@ export function decideBandKey(
   // Phase 1.5 semantic mappings (override the generic direct-lookup fallback):
   if (opts.category === "tip") return "tip_handling";
 
+  // Phase 3.1: the Booking Concierge concern routes to its dedicated FLAT
+  // fee-amount band — a named mapping so it never silently falls through to the
+  // category-name lookup / expert_standard (the tip-category lesson). NOTE: this
+  // band is the fee AMOUNT, not a split; resolveCommissionRates guards on
+  // rate_type so a flat band is never misread as a platform-take fraction.
+  if (opts.category === CONCIERGE_BOOKING_CONCERN) return CONCIERGE_BOOKING_FEE_BAND_KEY;
+
   const isProviderLine =
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
@@ -187,16 +203,23 @@ export function feeConfigFromRates(rates: CommissionRates): BookingFeeConfigResp
 
 // ─── DB lookup helpers (I/O — wrapped in try/catch for resilience) ───────────
 
-async function getBandRate(bandKey: string): Promise<number | null> {
+/**
+ * Read an active band's numeric `default_rate` AND its `rate_type`. The split
+ * resolver must know the type: a 'percent' band's rate is a platform-take
+ * fraction (splittable); a 'flat' band's rate is a dollar AMOUNT and must never
+ * be built into a split. Single query — no extra round-trip on the hot path.
+ */
+async function getBand(bandKey: string): Promise<{ rate: number; rateType: string } | null> {
   try {
     const result = await db.execute(sql`
-      SELECT CAST(default_rate AS FLOAT) AS rate
+      SELECT CAST(default_rate AS FLOAT) AS rate, rate_type
       FROM fee_bands
       WHERE band_key = ${bandKey} AND is_active = true
       LIMIT 1
     `);
-    const row = result.rows?.[0] as { rate: number | null } | undefined;
-    return row?.rate ?? null;
+    const row = result.rows?.[0] as { rate: number | null; rate_type: string | null } | undefined;
+    if (!row || row.rate === null) return null;
+    return { rate: row.rate, rateType: row.rate_type ?? "percent" };
   } catch {
     return null;
   }
@@ -352,13 +375,19 @@ export async function resolveCommissionRates(
     );
   }
 
-  const bandRate = await getBandRate(bandKey);
-  if (bandRate !== null) {
+  const band = await getBand(bandKey);
+  // Only a PERCENT band expresses a splittable platform-take fraction. A FLAT
+  // fee-amount band (e.g. expert_concierge_booking) stores DOLLARS, not
+  // a fraction — it is the fee AMOUNT and must never be built into a split here.
+  // If the resolved band is flat (or missing), fall through to the split
+  // backstop; the Booking Concierge fee's 75/25 split rides expert_standard,
+  // applied separately in Phase 3.4.
+  if (band !== null && band.rateType === "percent") {
     const insuranceFields = await resolveInsuranceFromCategory(category);
-    return buildRatesFromBand(bandRate, insuranceFields);
+    return buildRatesFromBand(band.rate, insuranceFields);
   }
 
-  // Band-row missing — backstop fallback per known seed defaults.
+  // Band-row missing or non-split (flat) — backstop fallback per known seed defaults.
   if (bandKey === "beta_flat") {
     return buildRatesFromBand(BETA_FLAT_FALLBACK);
   }
