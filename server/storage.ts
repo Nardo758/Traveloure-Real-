@@ -524,9 +524,10 @@ export interface IStorage {
 
   // Affiliate Booking Requests
   createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest>;
+  getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined>;
   getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
   getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
-  updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId">>): Promise<AffiliateBookingRequest | undefined>;
+  updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
 
   // Affiliate Content Registry helpers
   registerAffiliateProduct(product: {
@@ -3904,6 +3905,15 @@ export class DatabaseStorage implements IStorage {
     return record;
   }
 
+  async getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined> {
+    const [row] = await db
+      .select()
+      .from(affiliateBookingRequests)
+      .where(eq(affiliateBookingRequests.id, id))
+      .limit(1);
+    return row;
+  }
+
   async getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
     const rows = await db
       .select()
@@ -3928,7 +3938,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateAffiliateBookingRequest(
     id: string,
-    data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId">>,
+    data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>,
   ): Promise<AffiliateBookingRequest | undefined> {
     const [updated] = await db
       .update(affiliateBookingRequests)

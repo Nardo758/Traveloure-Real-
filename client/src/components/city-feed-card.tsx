@@ -4,23 +4,11 @@ import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe, Tag } f
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { matchedServiceSuggestion, gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
+import { resolveBookability, type Bookability } from "@shared/bookability";
 
-// ─── Shared types ─────────────────────────────────────────────────────────────
-
-export type Bookability = "platform" | "affiliate" | "browse";
-
-/**
- * Derive bookability state from a data record's URL/ID fields.
- * - "platform"  → has an internal provider service ID (in-app booking)
- * - "affiliate" → has an external affiliate / booking URL
- * - "browse"    → no bookable link found
- */
-export function computeBookability(data: any): Bookability {
-  if (!data) return "browse";
-  if (data.providerServiceId || data.platformBookingUrl) return "platform";
-  if (data.affiliateUrl || data.affiliateLink || data.bookingUrl || data.externalUrl) return "affiliate";
-  return "browse";
-}
+// Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
+// source of truth is `resolveBookability` in @shared/bookability — both this client
+// and the server (location-view payload) read it.
 
 /**
  * Build srcSet + sizes for retina delivery.
@@ -94,14 +82,14 @@ function BookingBadge({ level, trending }: { level: Bookability; trending?: bool
       </span>
     );
   }
-  if (level === "platform") {
+  if (level === "native") {
     return (
       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-teal-50 text-teal-700 whitespace-nowrap">
         Book on Traveloure
       </span>
     );
   }
-  if (level === "affiliate") {
+  if (level === "deeplink") {
     return (
       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-blue-50 text-blue-700 whitespace-nowrap">
         Affiliate link
@@ -175,7 +163,7 @@ export function CityFeedCardGem({
   const [imgLoaded, setImgLoaded] = useState(false);
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
 
-  const resolvedBookability: Bookability = bookability ?? computeBookability(gem);
+  const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
   const suggestion = matchedServiceSuggestion(gem.placeType);
   const typeMeta = gemTypeMeta(gem.placeType);
   const isTrending = gem.gemScore !== undefined && Number(gem.gemScore) >= 8.5;
@@ -269,14 +257,14 @@ export function CityFeedCardGem({
       {/* Actions */}
       {!compact && (
         <div className="flex gap-1.5 pt-0.5 flex-wrap">
-          {resolvedBookability !== "browse" && (
+          {resolvedBookability !== "info_only" && (
             <Button
               size="sm"
               className="h-7 text-xs px-3"
               asChild
             >
               <a href={suggestion?.href ?? "#"}>
-                {resolvedBookability === "affiliate" ? "Reserve" : "Book"}
+                {resolvedBookability === "deeplink" ? "Reserve" : "Book"}
               </a>
             </Button>
           )}
@@ -348,7 +336,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     dbImageUrl,
   );
 
-  const bookability: Bookability = computeBookability({ ...event, externalUrl: event.url });
+  const bookability: Bookability = resolveBookability({ ...event, externalUrl: event.url });
   const eventSuggestion: MatchSuggestion = {
     icon: "🎫",
     matchText: "tickets available",
@@ -491,7 +479,7 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
           </div>
         )}
         <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-          <BookingBadge level={computeBookability({ externalUrl })} />
+          <BookingBadge level={resolveBookability({ externalUrl })} />
         </span>
         {service.isFeatured && (
           <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
@@ -510,7 +498,7 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 capitalize">
             {tag}
           </span>
-          <BookingBadge level="platform" />
+          <BookingBadge level="native" />
         </div>
 
         <div className="flex items-start justify-between gap-2">
@@ -638,7 +626,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           )}>
             {isHotel ? "Hotel" : "Activity"}
           </span>
-          <BookingBadge level="platform" />
+          <BookingBadge level="native" />
         </div>
 
         <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{itemName}</h3>
