@@ -419,6 +419,12 @@ export async function registerRoutes(
   // GET /api/fee-bands/:bandKey (live band rates for pricing surfaces).
   app.use(paymentsRoutes);
 
+  // Content routes — extracted in the defrag, unmounted by the fb77adb merge
+  // resolution (same regression class 91ffcab fixed for paymentsRoutes).
+  // Contains GET /api/offering-types/services + /experts (powers /earn),
+  // /api/health, /api/status, /api/contact, and other content surfaces.
+  app.use(contentRoutes);
+
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
@@ -1928,7 +1934,13 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       // Remove userId from input to prevent ownership transfer
       const { userId: _, ...safeInput } = input as any;
-      const updated = await storage.updateProviderService(req.params.id, safeInput);
+      // A neighborhoods-only PATCH leaves no listing columns to update —
+      // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
+      // save before the coverage writer below could run. Skip the row update
+      // and let the coverage writer operate against the existing row.
+      const updated = Object.keys(safeInput).length > 0
+        ? await storage.updateProviderService(req.params.id, safeInput)
+        : ownedService;
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
       // field is present in the payload — including empty arrays, which must

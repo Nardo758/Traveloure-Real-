@@ -86,10 +86,37 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
+**Migration 059 (Jun 10, 2026; registered in the canonical `migration-files.ts` list):** index-only — `idx_pnc_neighborhood_category` on
+`provider_neighborhood_coverage(neighborhood_id, category_key)`. The upsell engine's
+candidate gather (Engine Inventory-Sourcing brief) reads coverage by
+`(neighborhood_id, category_key)`; the existing unique constraint leads with
+`provider_id` and cannot serve that path. No schema/data semantics change.
+
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
 - This was uncoordinated and left the transaction path orphaned
 - Fixed by this architecture document + provider_services canonicality
+
+**Recorded migration — Expert-Assisted Booking, Phase 2 (Jun 10, 2026):**
+- Migration `051_affiliate_booking_trip_link.sql` adds a **nullable** `trip_id` FK
+  (→ `trips`, `ON DELETE SET NULL`) to `affiliate_booking_requests`. This closes the
+  Trip-logging gap on the **existing** affiliate-booking rail — no new rail, no
+  provider_services / ESO / approval / category change. Set at expert-confirmation
+  (the create trigger is a no-trip discover surface); on confirm the facilitated
+  booking is logged onto `itinerary_items` (the canonical Trip/PlanCard item model).
+- Registered in `run-migrations.ts` (runtime) and `migration-files.ts` (chain test).
+  Ratified by the decision-maker via the Phase 2 GO.
+- Keeps its shipped filename `051_…` per the migration-chain repair below; it is
+  registered after 057 in the canonical list (registry order is authoritative,
+  numeric order is not).
+
+**Recorded migration-chain repair (Jun 10, 2026):**
+- `server/migrations/migration-files.ts` is the canonical migration registration
+  list for both runtime and chain-integrity checks. `run-migrations.ts` must
+  import that list rather than carrying its own inline copy.
+- `052_phase5_expert_endorsements.sql` is a superseded duplicate schema attempt
+  for `upsell_expert_endorsements`; do **not** register or execute it. The live
+  endorsement schema remains `050_phase5_expert_endorsements.sql`.
 
 ---
 

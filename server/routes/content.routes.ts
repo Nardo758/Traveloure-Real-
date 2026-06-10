@@ -6255,15 +6255,39 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
-      const allowed = ["status", "expertNotes", "confirmationRef", "price", "expertId"] as const;
+      const allowed = ["status", "expertNotes", "confirmationRef", "price", "expertId", "tripId"] as const;
       const data: any = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) data[key] = req.body[key];
       }
       // Self-assign: if setting expertId, use current user
       if (data.expertId === "self") data.expertId = user.id;
+      const prior = await storage.getAffiliateBookingRequestById(id);
       const updated = await storage.updateAffiliateBookingRequest(id, data);
       if (!updated) return res.status(404).json({ message: "Request not found" });
+
+      // Phase 2.2: when the expert confirms and a trip is in scope, log the booked
+      // item onto the canonical Trip/PlanCard (complete-by-construction). First
+      // confirm wins — guarded on the transition into "confirmed" so a repeat PATCH
+      // never duplicates the itinerary item. The existing free flow (no tripId, or
+      // any non-confirm status) is unchanged.
+      if (updated.status === "confirmed" && updated.tripId && prior?.status !== "confirmed") {
+        await storage.createItineraryItem({
+          tripId: updated.tripId,
+          title: updated.itemName,
+          description: updated.itemDescription ?? `Booked via ${updated.partnerName}`,
+          itemType: "activity",
+          status: "confirmed",
+          dayNumber: 1,
+          scheduledDate: updated.travelDate ?? null,
+          bookingReference: updated.confirmationRef ?? null,
+          bookingStatus: "confirmed",
+          confirmationNumber: updated.confirmationRef ?? null,
+          estimatedCost: updated.price ?? null,
+          actualCost: updated.price ?? null,
+          suggestedBy: "expert",
+        } as any);
+      }
       // Include affiliateUrl for expert responses
       return res.json(updated);
     } catch (err: any) {

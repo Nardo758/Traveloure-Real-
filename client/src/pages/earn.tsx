@@ -1,28 +1,50 @@
 /**
- * /earn — Phase 7
+ * /earn — Ways to Earn hub (Phase 7, visual spec: ways-to-earn-ui.html)
  *
  * Two-track acquisition page (provider · expert). Each track lists the
  * offering types from the Phase 2 catalogs (service_offering_types and
- * expert_offering_types), with a "I never knew" surprising row at the top
+ * expert_offering_types), with a surprising "I never knew" row at the top
  * per brief §7.
  *
  * Phase 7 gate: editing an offering-type row (is_active, display_name,
  * is_surprising, etc.) changes this page on next render — no deploy.
- * The "surprising" row reads from is_surprising = true.
+ * The surprising row reads from is_surprising = true.
  *
- * Clicking any offering card triggers the provider/expert application flow
- * with that offering pre-selected as a URL param.
+ * The track toggle reads AND writes ?track=provider|expert so views are
+ * deep-linkable. Clicking any offering routes into the Join-as-Partner
+ * signup flow with that offering carried as URL params.
  */
 
-import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearch, useLocation } from "wouter";
+import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Wrench, BookOpen, MapPin, GraduationCap, ChevronRight } from "lucide-react";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import {
+  Star,
+  ArrowRight,
+  Car,
+  Map,
+  Camera,
+  Building2,
+  UtensilsCrossed,
+  Compass,
+  ChefHat,
+  Crown,
+  HeartHandshake,
+  PartyPopper,
+  Flower2,
+  Music,
+  Scissors,
+  MonitorSpeaker,
+  Package,
+  MessageCircle,
+  Route,
+  ClipboardList,
+  MessageSquare,
+  Sparkles,
+  Briefcase,
+  type LucideIcon,
+} from "lucide-react";
 
 interface ServiceOfferingType {
   offering_type_key: string;
@@ -44,61 +66,161 @@ interface ExpertOfferingType {
   sort_order: number;
 }
 
-const EXPERT_TIER_LABELS: Record<ExpertOfferingType["service_tier"], string> = {
-  advisory: "Advisory",
-  planning: "Planning",
-  coordination: "Coordination",
-  live_support: "Live Support",
-  specialized: "Specialized",
-};
-
-function SurprisingRow({ children }: { children: React.ReactNode }) {
-  return (
-    <Card className="border-amber-300 bg-amber-50/40 mb-6" data-testid="earn-surprising-row">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base text-amber-900">
-          <Sparkles className="w-4 h-4" />
-          You probably didn't know you could offer these
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {children}
-        </div>
-      </CardContent>
-    </Card>
-  );
+interface ServiceCategory {
+  id: string;
+  name: string;
+  categoryKey: string | null;
 }
 
-function OfferingCard({
+const EXPERT_TIER_LABELS: Record<ExpertOfferingType["service_tier"], string> = {
+  advisory: "Quick advice",
+  planning: "Planning",
+  coordination: "Done-for-you",
+  live_support: "While they're there",
+  specialized: "Your niche",
+};
+
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  private_transportation: Car,
+  tour_guide: Map,
+  photography: Camera,
+  accommodation: Building2,
+  dining_venue: UtensilsCrossed,
+  activity_provider: Compass,
+  private_chef: ChefHat,
+  concierge_vip: Crown,
+  childcare_family: HeartHandshake,
+  event_coordinator: PartyPopper,
+  florist: Flower2,
+  entertainment: Music,
+  hair_makeup: Scissors,
+  av_tech: MonitorSpeaker,
+  rentals: Package,
+};
+
+const TIER_ICONS: Record<ExpertOfferingType["service_tier"], LucideIcon> = {
+  advisory: MessageCircle,
+  planning: Route,
+  coordination: ClipboardList,
+  live_support: MessageSquare,
+  specialized: Star,
+};
+
+const SURPRISING_COPY = {
+  provider: "You probably didn't know you could get paid to…",
+  expert: "You can earn from more than itineraries…",
+} as const;
+
+const BROWSE_COPY = {
+  provider: "Browse all the ways to earn",
+  expert: "Browse all the ways to share your expertise",
+} as const;
+
+/** Spec card: surprising-row tile with icon, name, tagline, "I do this →". */
+function SurprisingCard({
+  icon: Icon,
   name,
   tagline,
-  tag,
   testId,
   onClick,
 }: {
+  icon: LucideIcon;
   name: string;
   tagline: string | null;
-  tag?: string;
   testId: string;
-  onClick?: () => void;
+  onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="text-left p-3 rounded-lg border border-gray-200 bg-white hover:border-[#FF385C] hover:shadow-sm transition-all w-full"
+      className="text-left bg-[#F6F5F1] border border-[#E7E4DD] rounded-xl p-3.5 w-full transition-all hover:border-[#2E8B8B] hover:-translate-y-px"
       data-testid={testId}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-medium text-sm text-gray-900">{name}</p>
-        {tag && <Badge variant="outline" className="text-[10px] flex-shrink-0">{tag}</Badge>}
-      </div>
-      {tagline && <p className="text-xs text-gray-600 mt-1">{tagline}</p>}
-      <div className="flex items-center gap-1 mt-2 text-[11px] text-[#FF385C] font-semibold">
-        I do this <ChevronRight className="w-3 h-3" />
-      </div>
+      <Icon className="w-5 h-5 text-[#2E8B8B]" />
+      <h3 className="text-[13.5px] font-semibold text-[#1F2733] mt-2">{name}</h3>
+      {tagline && <p className="text-xs text-[#6A7480] mt-0.5 leading-snug">{tagline}</p>}
+      <div className="text-xs font-medium text-[#0F6E56] mt-2.5">I do this →</div>
     </button>
+  );
+}
+
+/** Spec row inside a category box: offering name + arrow, whole row clickable. */
+function OfferingRow({
+  name,
+  testId,
+  onClick,
+}: {
+  name: string;
+  testId: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex items-center justify-between w-full py-1.5 text-left"
+      data-testid={testId}
+    >
+      <span className="text-[13px] text-[#6A7480] group-hover:text-[#0F6E56] transition-colors">
+        {name}
+      </span>
+      <ArrowRight className="w-3.5 h-3.5 text-[#9AA2AC] group-hover:text-[#2E8B8B] group-hover:translate-x-0.5 transition-all" />
+    </button>
+  );
+}
+
+function CategoryBox({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white border border-[#E7E4DD] rounded-xl px-4 py-4">
+      <div className="flex items-center gap-2 text-[13.5px] font-semibold text-[#1E3A5F] mb-2.5">
+        <Icon className="w-4 h-4 text-[#2E8B8B]" />
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LoadState({ status }: { status: "loading" | "error" | "empty" }) {
+  if (status === "loading") return <p className="text-sm text-[#6A7480]">Loading offerings…</p>;
+  if (status === "error") return <p className="text-sm text-[#E85D55]">Couldn't load offerings.</p>;
+  return <p className="text-sm text-[#6A7480]">No offerings published yet.</p>;
+}
+
+function SurprisingSection({
+  track,
+  children,
+}: {
+  track: "provider" | "expert";
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="bg-white border-b border-[#E7E4DD]">
+      <div className="max-w-5xl mx-auto px-5 py-6">
+        <div
+          className="flex items-center gap-1.5 text-[13px] font-medium text-[#6A7480] mb-3.5"
+          data-testid="earn-surprising-label"
+        >
+          <Star className="w-4 h-4 text-[#E8B339]" />
+          <span>{SURPRISING_COPY[track]}</span>
+        </div>
+        <div
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"
+          data-testid="earn-surprising-row"
+        >
+          {children}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -107,53 +229,79 @@ function ProviderTrack({ onSelect }: { onSelect: (key: string, name: string) => 
     queryKey: ["/api/offering-types/services"],
     staleTime: 5 * 60_000,
   });
+  const { data: categories } = useQuery<ServiceCategory[]>({
+    queryKey: ["/api/service-categories"],
+    staleTime: 5 * 60_000,
+  });
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading offerings…</p>;
-  if (error) return <p className="text-sm text-red-600">Couldn't load offerings.</p>;
-  if (!data || data.length === 0) return <p className="text-sm text-gray-500">No offerings published yet.</p>;
+  if (isLoading) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="loading" /></div>;
+  if (error) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="error" /></div>;
+  if (!data || data.length === 0) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="empty" /></div>;
+
+  const categoryNames = new globalThis.Map<string, string>(
+    (categories ?? [])
+      .filter((c) => c.categoryKey)
+      .map((c) => [c.categoryKey as string, c.name])
+  );
 
   const surprising = data.filter((o) => o.is_surprising);
   const standard = data.filter((o) => !o.is_surprising);
 
+  // Group by category_key preserving the API's sort_order within and across groups.
+  const groups: { key: string; items: ServiceOfferingType[] }[] = [];
+  const groupIndex = new globalThis.Map<string, number>();
+  for (const o of standard) {
+    const idx = groupIndex.get(o.category_key);
+    if (idx === undefined) {
+      groupIndex.set(o.category_key, groups.length);
+      groups.push({ key: o.category_key, items: [o] });
+    } else {
+      groups[idx].items.push(o);
+    }
+  }
+
   return (
     <div data-testid="earn-provider-track">
       {surprising.length > 0 && (
-        <SurprisingRow>
+        <SurprisingSection track="provider">
           {surprising.map((o) => (
-            <OfferingCard
+            <SurprisingCard
               key={o.offering_type_key}
+              icon={CATEGORY_ICONS[o.category_key] ?? Sparkles}
               name={o.display_name}
               tagline={o.tagline}
-              tag={o.market_scoped && o.market_scoped.length > 0 ? o.market_scoped[0] : undefined}
               testId={`earn-provider-surprising-${o.offering_type_key}`}
               onClick={() => onSelect(o.offering_type_key, o.display_name)}
             />
           ))}
-        </SurprisingRow>
+        </SurprisingSection>
       )}
 
-      <Card className="border-gray-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Wrench className="w-4 h-4" />
-            All provider offerings
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="bg-white border-b border-[#E7E4DD]">
+        <div className="max-w-5xl mx-auto px-5 py-6">
+          <div className="text-sm font-medium text-[#1F2733] mb-3.5" data-testid="earn-browse-title">
+            {BROWSE_COPY.provider}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {standard.map((o) => (
-              <OfferingCard
-                key={o.offering_type_key}
-                name={o.display_name}
-                tagline={o.tagline}
-                tag={o.market_scoped && o.market_scoped.length > 0 ? o.market_scoped[0] : undefined}
-                testId={`earn-provider-${o.offering_type_key}`}
-                onClick={() => onSelect(o.offering_type_key, o.display_name)}
-              />
+            {groups.map((g) => (
+              <CategoryBox
+                key={g.key}
+                icon={CATEGORY_ICONS[g.key] ?? Briefcase}
+                title={categoryNames.get(g.key) ?? "More ways to earn"}
+              >
+                {g.items.map((o) => (
+                  <OfferingRow
+                    key={o.offering_type_key}
+                    name={o.display_name}
+                    testId={`earn-provider-${o.offering_type_key}`}
+                    onClick={() => onSelect(o.offering_type_key, o.display_name)}
+                  />
+                ))}
+              </CategoryBox>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
@@ -164,9 +312,9 @@ function ExpertTrack({ onSelect }: { onSelect: (key: string, name: string) => vo
     staleTime: 5 * 60_000,
   });
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading offerings…</p>;
-  if (error) return <p className="text-sm text-red-600">Couldn't load offerings.</p>;
-  if (!data || data.length === 0) return <p className="text-sm text-gray-500">No offerings published yet.</p>;
+  if (isLoading) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="loading" /></div>;
+  if (error) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="error" /></div>;
+  if (!data || data.length === 0) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="empty" /></div>;
 
   const surprising = data.filter((o) => o.is_surprising);
   const standard = data.filter((o) => !o.is_surprising);
@@ -181,46 +329,43 @@ function ExpertTrack({ onSelect }: { onSelect: (key: string, name: string) => vo
   return (
     <div data-testid="earn-expert-track">
       {surprising.length > 0 && (
-        <SurprisingRow>
+        <SurprisingSection track="expert">
           {surprising.map((o) => (
-            <OfferingCard
+            <SurprisingCard
               key={o.offering_type_key}
+              icon={TIER_ICONS[o.service_tier] ?? Sparkles}
               name={o.display_name}
               tagline={o.tagline}
-              tag={EXPERT_TIER_LABELS[o.service_tier]}
               testId={`earn-expert-surprising-${o.offering_type_key}`}
               onClick={() => onSelect(o.offering_type_key, o.display_name)}
             />
           ))}
-        </SurprisingRow>
+        </SurprisingSection>
       )}
 
-      {tierOrder.map((tier) =>
-        byTier[tier] && byTier[tier].length > 0 ? (
-          <Card key={tier} className="border-gray-200 mb-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BookOpen className="w-4 h-4" />
-                {EXPERT_TIER_LABELS[tier]}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {byTier[tier].map((o) => (
-                  <OfferingCard
-                    key={o.offering_type_key}
-                    name={o.display_name}
-                    tagline={o.tagline}
-                    tag={o.delivery_formats.length > 0 ? o.delivery_formats[0] : undefined}
-                    testId={`earn-expert-${o.offering_type_key}`}
-                    onClick={() => onSelect(o.offering_type_key, o.display_name)}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null
-      )}
+      <section className="bg-white border-b border-[#E7E4DD]">
+        <div className="max-w-5xl mx-auto px-5 py-6">
+          <div className="text-sm font-medium text-[#1F2733] mb-3.5" data-testid="earn-browse-title">
+            {BROWSE_COPY.expert}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {tierOrder.map((tier) =>
+              byTier[tier] && byTier[tier].length > 0 ? (
+                <CategoryBox key={tier} icon={TIER_ICONS[tier]} title={EXPERT_TIER_LABELS[tier]}>
+                  {byTier[tier].map((o) => (
+                    <OfferingRow
+                      key={o.offering_type_key}
+                      name={o.display_name}
+                      testId={`earn-expert-${o.offering_type_key}`}
+                      onClick={() => onSelect(o.offering_type_key, o.display_name)}
+                    />
+                  ))}
+                </CategoryBox>
+              ) : null
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -228,109 +373,101 @@ function ExpertTrack({ onSelect }: { onSelect: (key: string, name: string) => vo
 export default function EarnPage() {
   const searchString = useSearch();
   const [, navigate] = useLocation();
+  const { openSignInModal } = useSignInModal();
 
+  // URL is the single source of truth for the active track (deep-linkable).
   const trackParam = new URLSearchParams(searchString).get("track");
-  const [track, setTrack] = useState<"provider" | "expert">(
-    trackParam === "expert" ? "expert" : "provider"
-  );
+  const track: "provider" | "expert" = trackParam === "expert" ? "expert" : "provider";
 
-  useEffect(() => {
-    if (trackParam === "expert") setTrack("expert");
-    else if (trackParam === "provider") setTrack("provider");
-  }, [trackParam]);
-
-  const handleProviderSelect = (offeringKey: string, displayName: string) => {
-    navigate(`/become-provider?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
+  const setTrack = (t: "provider" | "expert") => {
+    navigate(`/earn?track=${t}`, { replace: true });
   };
 
-  const handleExpertSelect = (offeringKey: string, _displayName: string) => {
-    navigate(`/expert/services/new?offeringTypeKey=${encodeURIComponent(offeringKey)}`);
+  const handleProviderSelect = (offeringKey: string, displayName: string) => {
+    navigate(
+      `/become-provider?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`
+    );
+  };
+
+  const handleExpertSelect = (offeringKey: string, displayName: string) => {
+    navigate(
+      `/become-expert?offeringTypeKey=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`
+    );
   };
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50">
-        {/* ── Dual-path hero ─────────────────────────────────────────────── */}
-        <section
-          className="bg-gradient-to-br from-[#0F6E56] to-[#0c5a47] text-white py-14 px-4"
-          data-testid="earn-hero"
-        >
-          <div className="container mx-auto max-w-5xl text-center">
-            <h1 className="text-4xl font-bold mb-3" data-testid="earn-hero-title">
-              Earn on Traveloure
+      <div className="min-h-screen bg-[#F6F5F1]">
+        {/* ── Hero + dual-track toggle ───────────────────────────────────── */}
+        <div className="bg-white border-b border-[#E7E4DD]" data-testid="earn-hero">
+          <div className="max-w-5xl mx-auto px-5 pt-9 pb-7">
+            <h1
+              className="text-[26px] font-semibold text-[#1E3A5F] tracking-tight mb-2"
+              data-testid="earn-hero-title"
+            >
+              Get paid for what you already know
             </h1>
-            <p className="text-green-100 text-lg mb-8 max-w-2xl mx-auto">
-              Two paths. Pick yours.
+            <p className="text-[15px] text-[#6A7480] mb-5 max-w-xl">
+              Travelers in your city need locals like you. Offer a service or share your
+              expertise — on your terms.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
+            <div className="inline-flex gap-2.5 mb-3.5 flex-wrap" data-testid="earn-tabs">
               <button
                 type="button"
                 onClick={() => setTrack("provider")}
-                className={`rounded-xl border-2 p-5 text-left transition-all ${
+                className={`text-sm font-medium px-[18px] py-[9px] rounded-lg border transition-colors ${
                   track === "provider"
-                    ? "border-white bg-white/20"
-                    : "border-white/30 hover:border-white/60 bg-white/5"
+                    ? "bg-[#2E8B8B] text-white border-[#2E8B8B]"
+                    : "bg-white text-[#1F2733] border-[#D8D4CB]"
                 }`}
-                data-testid="earn-cta-provider"
+                data-testid="earn-tab-provider"
               >
-                <MapPin className="w-6 h-6 mb-2 text-green-300" />
-                <div className="font-semibold text-lg">Earn as a local</div>
-                <p className="text-green-100 text-sm mt-1">
-                  Offer on-the-ground services — tours, transport, photography, and more.
-                </p>
-                <div className="mt-3 flex items-center gap-1 text-sm font-semibold text-white/80">
-                  See local offerings <ChevronRight className="w-4 h-4" />
-                </div>
+                Offer a service
               </button>
-
               <button
                 type="button"
                 onClick={() => setTrack("expert")}
-                className={`rounded-xl border-2 p-5 text-left transition-all ${
+                className={`text-sm font-medium px-[18px] py-[9px] rounded-lg border transition-colors ${
                   track === "expert"
-                    ? "border-white bg-white/20"
-                    : "border-white/30 hover:border-white/60 bg-white/5"
+                    ? "bg-[#2E8B8B] text-white border-[#2E8B8B]"
+                    : "bg-white text-[#1F2733] border-[#D8D4CB]"
                 }`}
-                data-testid="earn-cta-expert"
+                data-testid="earn-tab-expert"
               >
-                <GraduationCap className="w-6 h-6 mb-2 text-green-300" />
-                <div className="font-semibold text-lg">Share your expertise</div>
-                <p className="text-green-100 text-sm mt-1">
-                  Advise travellers, review plans, coordinate logistics — remotely or in-person.
-                </p>
-                <div className="mt-3 flex items-center gap-1 text-sm font-semibold text-white/80">
-                  See expert offerings <ChevronRight className="w-4 h-4" />
-                </div>
+                Share your expertise
+              </button>
+            </div>
+            <div className="text-[13px]">
+              <span className="text-[#6A7480]">Already a partner?</span>{" "}
+              <button
+                type="button"
+                onClick={() => openSignInModal()}
+                className="text-[#0F6E56] font-medium"
+                data-testid="earn-signin"
+              >
+                Sign in →
               </button>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* ── Offering catalog ───────────────────────────────────────────── */}
-        <div className="container mx-auto px-4 max-w-5xl py-8">
-          <header className="mb-6" data-testid="earn-header">
-            <p className="text-gray-600 max-w-2xl">
-              Pick any offering below to start your application with it pre-selected.
-            </p>
-          </header>
+        {/* ── Surprising row + browse catalog (data-driven per track) ───── */}
+        {track === "provider" ? (
+          <ProviderTrack onSelect={handleProviderSelect} />
+        ) : (
+          <ExpertTrack onSelect={handleExpertSelect} />
+        )}
 
-          <Tabs value={track} onValueChange={(v) => setTrack(v as typeof track)}>
-            <TabsList className="grid w-full grid-cols-2 max-w-md mb-6" data-testid="earn-tabs">
-              <TabsTrigger value="provider" data-testid="earn-tab-provider">
-                Offer a service
-              </TabsTrigger>
-              <TabsTrigger value="expert" data-testid="earn-tab-expert">
-                Share your expertise
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="provider">
-              <ProviderTrack onSelect={handleProviderSelect} />
-            </TabsContent>
-            <TabsContent value="expert">
-              <ExpertTrack onSelect={handleExpertSelect} />
-            </TabsContent>
-          </Tabs>
+        {/* ── Footer role link ───────────────────────────────────────────── */}
+        <div className="text-center px-5 py-5">
+          <span className="text-[13px] text-[#6A7480]">New here and not sure where you fit?</span>{" "}
+          <Link
+            href="/partner-with-us"
+            className="text-[13px] text-[#0F6E56] font-semibold"
+            data-testid="earn-see-all-roles"
+          >
+            See all partner roles →
+          </Link>
         </div>
       </div>
     </Layout>
