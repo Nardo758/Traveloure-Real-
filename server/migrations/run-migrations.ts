@@ -8,7 +8,6 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { MIGRATION_FILES } from "./migration-files";
 
 // CJS-safe dirname: never use import.meta.url — it is undefined in the
 // production CJS bundle (dist/index.cjs) and the try/catch does not
@@ -27,35 +26,6 @@ const __dirname_local = (() => {
   // Ultimate fallback: workspace root + server/migrations
   return join(process.cwd(), "server", "migrations");
 })()
-
-/**
- * SQL Migration Runner
- * Applies numbered SQL migration files in order, idempotent safe (uses IF NOT EXISTS).
- * Called at startup BEFORE seeding. Throws on failure so the server never starts with
- * a partially migrated schema — this prevents silent runtime failures in ESO write/read paths.
- */
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
-import { db } from "../db";
-import { sql } from "drizzle-orm";
-
-// CJS-safe dirname: never use import.meta.url — it is undefined in the
-// production CJS bundle (dist/index.cjs) and the try/catch does not
-// reliably intercept it after esbuild's transform. Instead probe __dirname
-// (always defined in CJS) then fall back to process.cwd().
-const __dirname_local = (() => {
-  // In the production bundle __dirname === "dist/" — go up one level to reach
-  // "server/migrations". In development tsx sets __dirname per-file correctly.
-  if (typeof __dirname !== "undefined") {
-    const candidate = join(__dirname, "..", "server", "migrations");
-    if (existsSync(candidate)) return candidate;
-    // __dirname already points at server/migrations/ (tsx dev)
-    if (existsSync(join(__dirname, "006_eso_canonicalization.sql")))
-      return __dirname;
-  }
-  // Ultimate fallback: workspace root + server/migrations
-  return join(process.cwd(), "server", "migrations");
-})();
 
 const MIGRATION_FILES = [
   "001_guest_invite_system.sql",
@@ -143,35 +113,6 @@ export async function runMigrations(): Promise<{ applied: string[]; skipped: str
   const applied: string[] = [];
   const skipped: string[] = [];
 
-  for (const file of MIGRATION_FILES) {
-    if (already.has(file)) {
-      skipped.push(file);
-      continue;
-    }
-    const filePath = join(__dirname_local, file);
-    const content = readFileSync(filePath, "utf-8");
-    try {
-      await db.execute(sql.raw(content));
-      // Record only after the file applied cleanly. If the process dies between
-      // apply and record, the next run re-applies (idempotent) — never skips a
-      // half-applied file.
-      await db.execute(sql`
-        INSERT INTO schema_migrations (migration_name) VALUES (${file})
-        ON CONFLICT (migration_name) DO NOTHING
-      `);
-      applied.push(file);
-      console.log(`[Migrations] Applied + recorded: ${file}`);
-    } catch (err: any) {
-      // A real error here (missing column, syntax error, DB unreachable) must be
-      // surfaced immediately — do not swallow it.
-      console.error(`[Migrations] FATAL: ${file} failed:`, err?.message ?? err);
-      throw err; // Fail-fast: prevents server from starting with a bad schema
-    }
-  }
-
-  console.log(`[Migrations] Done — applied ${applied.length}, skipped ${skipped.length} (already recorded).`);
-  return { applied, skipped };
-}
   for (const file of MIGRATION_FILES) {
     if (already.has(file)) {
       skipped.push(file);
