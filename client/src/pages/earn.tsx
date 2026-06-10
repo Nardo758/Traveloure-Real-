@@ -9,15 +9,20 @@
  * Phase 7 gate: editing an offering-type row (is_active, display_name,
  * is_surprising, etc.) changes this page on next render — no deploy.
  * The "surprising" row reads from is_surprising = true.
+ *
+ * Clicking any offering card triggers the provider/expert application flow
+ * with that offering pre-selected as a URL param.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearch, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Wrench, BookOpen } from "lucide-react";
+import { Sparkles, Wrench, BookOpen, MapPin, GraduationCap, ChevronRight } from "lucide-react";
 
 interface ServiceOfferingType {
   offering_type_key: string;
@@ -70,15 +75,19 @@ function OfferingCard({
   tagline,
   tag,
   testId,
+  onClick,
 }: {
   name: string;
   tagline: string | null;
   tag?: string;
   testId: string;
+  onClick?: () => void;
 }) {
   return (
-    <div
-      className="p-3 rounded-lg border border-gray-200 bg-white hover:border-gray-400 transition-colors"
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left p-3 rounded-lg border border-gray-200 bg-white hover:border-[#FF385C] hover:shadow-sm transition-all w-full"
       data-testid={testId}
     >
       <div className="flex items-start justify-between gap-2">
@@ -86,11 +95,14 @@ function OfferingCard({
         {tag && <Badge variant="outline" className="text-[10px] flex-shrink-0">{tag}</Badge>}
       </div>
       {tagline && <p className="text-xs text-gray-600 mt-1">{tagline}</p>}
-    </div>
+      <div className="flex items-center gap-1 mt-2 text-[11px] text-[#FF385C] font-semibold">
+        I do this <ChevronRight className="w-3 h-3" />
+      </div>
+    </button>
   );
 }
 
-function ProviderTrack() {
+function ProviderTrack({ onSelect }: { onSelect: (key: string, name: string) => void }) {
   const { data, isLoading, error } = useQuery<ServiceOfferingType[]>({
     queryKey: ["/api/offering-types/services"],
     staleTime: 5 * 60_000,
@@ -114,6 +126,7 @@ function ProviderTrack() {
               tagline={o.tagline}
               tag={o.market_scoped && o.market_scoped.length > 0 ? o.market_scoped[0] : undefined}
               testId={`earn-provider-surprising-${o.offering_type_key}`}
+              onClick={() => onSelect(o.offering_type_key, o.display_name)}
             />
           ))}
         </SurprisingRow>
@@ -135,6 +148,7 @@ function ProviderTrack() {
                 tagline={o.tagline}
                 tag={o.market_scoped && o.market_scoped.length > 0 ? o.market_scoped[0] : undefined}
                 testId={`earn-provider-${o.offering_type_key}`}
+                onClick={() => onSelect(o.offering_type_key, o.display_name)}
               />
             ))}
           </div>
@@ -144,7 +158,7 @@ function ProviderTrack() {
   );
 }
 
-function ExpertTrack() {
+function ExpertTrack({ onSelect }: { onSelect: (key: string, name: string) => void }) {
   const { data, isLoading, error } = useQuery<ExpertOfferingType[]>({
     queryKey: ["/api/offering-types/experts"],
     staleTime: 5 * 60_000,
@@ -155,8 +169,6 @@ function ExpertTrack() {
   if (!data || data.length === 0) return <p className="text-sm text-gray-500">No offerings published yet.</p>;
 
   const surprising = data.filter((o) => o.is_surprising);
-  // Group standard offerings by tier so the page communicates the 5-tier model
-  // even before the visitor knows it exists.
   const standard = data.filter((o) => !o.is_surprising);
   const byTier = standard.reduce<Record<string, ExpertOfferingType[]>>((acc, o) => {
     (acc[o.service_tier] ??= []).push(o);
@@ -177,6 +189,7 @@ function ExpertTrack() {
               tagline={o.tagline}
               tag={EXPERT_TIER_LABELS[o.service_tier]}
               testId={`earn-expert-surprising-${o.offering_type_key}`}
+              onClick={() => onSelect(o.offering_type_key, o.display_name)}
             />
           ))}
         </SurprisingRow>
@@ -200,6 +213,7 @@ function ExpertTrack() {
                     tagline={o.tagline}
                     tag={o.delivery_formats.length > 0 ? o.delivery_formats[0] : undefined}
                     testId={`earn-expert-${o.offering_type_key}`}
+                    onClick={() => onSelect(o.offering_type_key, o.display_name)}
                   />
                 ))}
               </div>
@@ -212,17 +226,91 @@ function ExpertTrack() {
 }
 
 export default function EarnPage() {
-  const [track, setTrack] = useState<"provider" | "expert">("provider");
+  const searchString = useSearch();
+  const [, navigate] = useLocation();
+
+  const trackParam = new URLSearchParams(searchString).get("track");
+  const [track, setTrack] = useState<"provider" | "expert">(
+    trackParam === "expert" ? "expert" : "provider"
+  );
+
+  useEffect(() => {
+    if (trackParam === "expert") setTrack("expert");
+    else if (trackParam === "provider") setTrack("provider");
+  }, [trackParam]);
+
+  const handleProviderSelect = (offeringKey: string, displayName: string) => {
+    navigate(`/provider/apply?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
+  };
+
+  const handleExpertSelect = (offeringKey: string, displayName: string) => {
+    navigate(`/expert/apply?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
+  };
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 py-8">
-        <div className="container mx-auto px-4 max-w-5xl">
+      <div className="min-h-screen bg-gray-50">
+        {/* ── Dual-path hero ─────────────────────────────────────────────── */}
+        <section
+          className="bg-gradient-to-br from-[#0F6E56] to-[#0c5a47] text-white py-14 px-4"
+          data-testid="earn-hero"
+        >
+          <div className="container mx-auto max-w-5xl text-center">
+            <h1 className="text-4xl font-bold mb-3" data-testid="earn-hero-title">
+              Earn on Traveloure
+            </h1>
+            <p className="text-green-100 text-lg mb-8 max-w-2xl mx-auto">
+              Two paths. Pick yours.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
+              <button
+                type="button"
+                onClick={() => setTrack("provider")}
+                className={`rounded-xl border-2 p-5 text-left transition-all ${
+                  track === "provider"
+                    ? "border-white bg-white/20"
+                    : "border-white/30 hover:border-white/60 bg-white/5"
+                }`}
+                data-testid="earn-cta-provider"
+              >
+                <MapPin className="w-6 h-6 mb-2 text-green-300" />
+                <div className="font-semibold text-lg">Earn as a local</div>
+                <p className="text-green-100 text-sm mt-1">
+                  Offer on-the-ground services — tours, transport, photography, and more.
+                </p>
+                <div className="mt-3 flex items-center gap-1 text-sm font-semibold text-white/80">
+                  See local offerings <ChevronRight className="w-4 h-4" />
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTrack("expert")}
+                className={`rounded-xl border-2 p-5 text-left transition-all ${
+                  track === "expert"
+                    ? "border-white bg-white/20"
+                    : "border-white/30 hover:border-white/60 bg-white/5"
+                }`}
+                data-testid="earn-cta-expert"
+              >
+                <GraduationCap className="w-6 h-6 mb-2 text-green-300" />
+                <div className="font-semibold text-lg">Share your expertise</div>
+                <p className="text-green-100 text-sm mt-1">
+                  Advise travellers, review plans, coordinate logistics — remotely or in-person.
+                </p>
+                <div className="mt-3 flex items-center gap-1 text-sm font-semibold text-white/80">
+                  See expert offerings <ChevronRight className="w-4 h-4" />
+                </div>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Offering catalog ───────────────────────────────────────────── */}
+        <div className="container mx-auto px-4 max-w-5xl py-8">
           <header className="mb-6" data-testid="earn-header">
-            <h1 className="text-3xl font-bold text-gray-900">Earn on Traveloure</h1>
-            <p className="text-gray-600 mt-2 max-w-2xl">
-              Two tracks: offer a service on the ground, or share your expertise remotely.
-              Pick what fits and we'll walk you through onboarding.
+            <p className="text-gray-600 max-w-2xl">
+              Pick any offering below to start your application with it pre-selected.
             </p>
           </header>
 
@@ -237,10 +325,10 @@ export default function EarnPage() {
             </TabsList>
 
             <TabsContent value="provider">
-              <ProviderTrack />
+              <ProviderTrack onSelect={handleProviderSelect} />
             </TabsContent>
             <TabsContent value="expert">
-              <ExpertTrack />
+              <ExpertTrack onSelect={handleExpertSelect} />
             </TabsContent>
           </Tabs>
         </div>

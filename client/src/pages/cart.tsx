@@ -53,6 +53,7 @@ import {
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
+import { UpsellSlot } from "@/components/UpsellSlot";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -1397,6 +1398,13 @@ export default function CartPage() {
                         </p>
                       )}
                     </CardContent>
+                    {/* Cart cross-sell upsell slot */}
+                    <div className="px-6 pb-0">
+                      <UpsellSlot
+                        surface="cart"
+                        contextPayload={user ? { profileMatch: true } : undefined}
+                      />
+                    </div>
                     <CardFooter className="flex flex-col gap-3">
                       {contentItems.length > 0 && (
                         <div className="w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
@@ -1940,6 +1948,20 @@ export default function CartPage() {
             {flowStep === "payment" && (
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
+                  {/* Checkout add-ons — error-bounded so slot failure never blocks payment */}
+                  {(() => {
+                    try {
+                      return (
+                        <UpsellSlot
+                          surface="checkout"
+                          maxItems={2}
+                          heading="Add to your booking"
+                        />
+                      );
+                    } catch {
+                      return null;
+                    }
+                  })()}
                   {checkoutPaymentIntent ? (
                     <Card>
                       <CardHeader>

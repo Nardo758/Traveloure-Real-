@@ -6,12 +6,13 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus, ArrowLeft } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
+import { UpsellSlot } from "@/components/UpsellSlot";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1133,6 +1134,63 @@ export default function DiscoverLocationPage() {
 
             {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
+
+            {/* ── Spine: featured lead expert for this neighborhood/city ── */}
+            {experts.length > 0 && (
+              <div
+                className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
+                data-testid="section-lead-expert"
+              >
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <UserCheck className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">
+                    {experts[0].displayName ?? (`${experts[0].firstName ?? ""} ${experts[0].lastName ?? ""}`.trim() || "Local Expert")}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {experts[0].headline ?? experts[0].bio?.slice(0, 60) ?? "Featured local expert"}
+                  </p>
+                </div>
+                <a
+                  href={`/experts/${experts[0].id}`}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-primary whitespace-nowrap"
+                  data-testid="link-lead-expert-profile"
+                >
+                  View profile <ChevronRight className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+
+            {/* ── Spine: "offering wanted in city" recruitment slots ─── */}
+            {experts.length === 0 && (
+              <div
+                className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
+                data-testid="section-expert-recruitment"
+              >
+                <p className="text-sm font-semibold text-primary mb-1">
+                  Local experts wanted in {toTitleCase(city)}
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Know this city well? Travellers are looking for guides, advisors, and service providers here.
+                </p>
+                <a
+                  href={`/earn?track=expert&city=${encodeURIComponent(city)}`}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
+                  data-testid="link-expert-recruitment-earn"
+                >
+                  Start earning in {toTitleCase(city)} <ChevronRight className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            )}
+
+            {/* ── Spine: UpsellSlot recommendation cards ────────────── */}
+            <UpsellSlot
+              surface="discover_location"
+              contextPayload={{ city, country: heroCountry ?? undefined }}
+              className="px-0"
+              data-testid="upsell-slot-discover-location"
+            />
 
             {/* ── Blended bento feed ────────────────────────────────── */}
             {activeFilter === "all" ? (
