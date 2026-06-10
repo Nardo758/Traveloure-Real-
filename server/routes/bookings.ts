@@ -72,6 +72,9 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
     if (code === 'BOOKING_NOT_FOUND') {
       return res.status(404).json({ success: false, error: error.message });
     }
+    if (code === 'BOOKING_ALREADY_CONFIRMED' || code === 'PAYMENT_INTENT_ALREADY_USED') {
+      return res.status(409).json({ success: false, error: error.message });
+    }
     console.error('Confirm payment error:', error);
     res.status(500).json({ success: false, error: error.message });
   }

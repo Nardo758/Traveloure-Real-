@@ -100,6 +100,7 @@ const MIGRATION_FILES = [
   // seeded from Drizzle snapshots with no migration history.
   "051_schema_migrations_ledger_bootstrap.sql",
   "052_phase5_expert_endorsements.sql",
+  "053_bookings_payment_intent_unique.sql",
 ];
 
 export type MigrationResult =
