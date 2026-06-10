@@ -102,6 +102,50 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * POST /api/bookings/bulk-status
+ * Return the current status for a list of booking IDs belonging to the authenticated user.
+ * Used by the client to poll whether the Stripe webhook has already confirmed the bookings
+ * before falling back to the confirm-payment endpoint.
+ */
+router.post('/bulk-status', isAuthenticated, async (req, res) => {
+  try {
+    const { bookingIds } = req.body;
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      return res.status(400).json({ error: 'bookingIds must be a non-empty array' });
+    }
+
+    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
+    }
+
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    // Query status for each booking ID individually (safe, no dynamic IN clause needed)
+    const statuses: Record<string, { status: string; confirmationCode: string | null }> = {};
+    for (const bookingId of bookingIds) {
+      const result = await db.execute(sql`
+        SELECT id, status, confirmation_code
+        FROM bookings
+        WHERE id = ${bookingId} AND user_id = ${userId}
+        LIMIT 1
+      `);
+      const row = result.rows?.[0] as any;
+      if (row) {
+        statuses[row.id] = { status: row.status, confirmationCode: row.confirmation_code ?? null };
+      }
+    }
+
+    const allConfirmed = bookingIds.every((id: string) => statuses[id]?.status === 'confirmed');
+    res.json({ statuses, allConfirmed });
+  } catch (error: any) {
+    console.error('Bulk status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/bookings/availability/:providerId
  * Check availability for a provider
  */

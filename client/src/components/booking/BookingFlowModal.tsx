@@ -171,23 +171,54 @@ export default function BookingFlowModal({
     }
   };
 
+  /**
+   * Poll /api/bookings/bulk-status up to maxAttempts times, waiting delayMs between
+   * each attempt, until all bookingIds are confirmed by the webhook.
+   * Returns true if all are confirmed, false if the polling window expired.
+   */
+  const pollForWebhookConfirmation = async (ids: string[], maxAttempts: number = 4, delayMs: number = 1200): Promise<boolean> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      try {
+        const res = await fetch('/api/bookings/bulk-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingIds: ids }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.allConfirmed) return true;
+        }
+      } catch {
+        // Ignore network errors during polling — we'll fall back to confirm-payment
+      }
+    }
+    return false;
+  };
+
   const handlePaymentSuccess = async (paymentIntentIdFromStripe: string) => {
     setIsLoading(true);
     setPaymentIntentId(paymentIntentIdFromStripe);
     try {
-      // Give the Stripe webhook a moment to fire and confirm the booking server-side
-      // before we call the fallback confirm-payment endpoint. The endpoint is idempotent:
-      // if the webhook already confirmed the booking it returns success immediately.
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Primary path: poll for webhook confirmation (up to ~5 seconds total)
+      // The Stripe webhook fires server-side and confirms the booking independently.
+      const webhookConfirmed = bookingIds.length > 0
+        ? await pollForWebhookConfirmation(bookingIds)
+        : false;
 
-      const confirmPromises = bookingIds.map(bookingId =>
-        fetch('/api/bookings/confirm-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId, paymentIntentId: paymentIntentIdFromStripe }),
-        })
-      );
-      await Promise.all(confirmPromises);
+      if (!webhookConfirmed) {
+        // Fallback: webhook hasn't landed yet (local dev, slow delivery, or browser raced ahead).
+        // confirm-payment is idempotent — safe to call even if the webhook arrives later.
+        console.log('[BookingFlow] Webhook confirmation timed out — using fallback confirm-payment');
+        const confirmPromises = bookingIds.map(bookingId =>
+          fetch('/api/bookings/confirm-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId, paymentIntentId: paymentIntentIdFromStripe }),
+          })
+        );
+        await Promise.all(confirmPromises);
+      }
 
       setConfirmedBookings(
         cartItems.map((item) => ({
