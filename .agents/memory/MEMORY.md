@@ -5,3 +5,4 @@
 - [Transport commerce layer](transport-commerce-layer.md) — findTransportProviders + findAffiliateTransportOptions both implemented; all rates from booking_fee_configs (migration 031); old Travelpayouts/DiscoverCars/Nomad widgets removed.
 - [Auth user shape mismatch](auth-user-shape.md) — Replit Auth sessions have user.id; email-auth sessions have user.claims.sub — any route that extracts userId must check both.
 - [serviceBookings transport inserts](service-bookings-transport.md) — transport bookings insert into service_bookings; serviceId/travelerId/providerId are nullable (schema + DB altered); use correct Drizzle column names (not userId/serviceProviderId).
+- [Route module mount gap](route-mount-gap.md) — paymentsRoutes (and possibly others) imported in routes.ts but never app.use()'d; always verify mounts when a route returns HTML 404
