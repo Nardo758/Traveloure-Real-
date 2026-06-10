@@ -1,0 +1,70 @@
+The brief is clear — two gated commits, gather-only, ranker untouched. Studying the existing gather, the ranker contract, the dominance test, and the fee resolver before writing anything:
+
+The ranker already has the bg-check drop predicate — it just never fires with the stubbed badge. Now the fee resolver and the city_neighborhoods adjacency column for Commit 2:
+
+Mapping the data constraints before writing the new gather — template matrix membership, affiliate offering rows, and price/band columns:
+
+Baseline dominance test is green (40 pass). Writing Commit 1 — the real-inventory gather:
+
+Now updating the 7 call sites from `neighborhoodId` to `neighborhoodIds`:
+
+Now the index migration and registration:
+
+Per the CLAUDE.md coordination rule for migrations, recording the decision there:
+
+`tsc` gate, then restart and live-test. No auth hoist needed this time — I'll seed test inventory directly via SQL since discover-location is public:
+
+All empty — even affiliates. Checking the gather error in the server log:
+
+Drizzle binds the JS array as a plain string. Fixing with an explicit Postgres array literal:
+
+The three-way split is exactly right — the bypass is closed at zona_t. Completing scenarios 3 and 4b:
+
+All five Commit 1 gate scenarios pass. Re-running `tsc` after the array-literal fix, then committing:
+
+Now the catalog query gains the fee-band joins, and the mapping consumes the real signals:
+
+Back to 253. Restarting and running the Commit 2 gate — seeding the transport provider and temporary adjacency:
+
+Top-4 cap hides the lower-revenue candidates. Zona T (childcare + affiliate only) gives the clean band arithmetic:
+
+Contract holds — 40/40. Re-confirming the Commit 1 invariants still hold post-widening, then the adjacency-revert degrade path, latency, and cleanup:
+
+All green, ~13ms latency. Confirming the index serves the query plan, then cleanup and commit:
+
+Now the migration collision — renumbering mine to 059 and resolving the registry:
+
+Idempotent. Renaming and updating both registries:
+
+249 errors on the merged tree (main's merge fixed 4). Confirming none are in my files, then booting the merged server:
+
+The stash dance destroyed `MERGE_HEAD` — the resolved tree is intact in the working directory, but a plain commit would lose the merge parentage. Repairing by creating the merge commit explicitly with both parents:
+
+Everything green post-merge — 74 tests pass (main's merge brought a bigger suite). Pushing:
+
+Now the proof that matters — the full canonical chain on a **fresh** database, since that's the CI/prod case:
+
+Fresh DB boots clean — all 62 canonical migrations applied. Final smoke + gates, then commit and push immediately:
+
+## Both commits landed and verified; pushed as `c96bffe` + `2d5ff67` (plus two merge commits reconciling a busy branch). The engine now sources from real inventory — the coverage round-trip that failed last session passes end-to-end.
+
+### Commit 1 — real-inventory sourcing (`c96bffe`)
+
+`loadCoveringInventory()` finds the best qualifying covering provider per category via `provider_neighborhood_coverage × provider_services(active) × service_categories × users`, mirroring the publish gate's two-input logic (gated = `requires_background_check` OR `insurance_band ≥ 2`; gated categories count only verified providers). Platform offerings surface only with a qualifying covering provider; affiliates stay catalog-sourced. Badge and matched-neighborhood slug are real now. Scope tiers: explicit neighborhoods → market city → any coverage, no cascade. All 7 surfaces moved to `neighborhoodIds[]`. Migration adds the `(neighborhood_id, category_key)` index the unique constraint can't serve.
+
+**Gate (live, seeded inventory):** verified photographer covering Getsemaní → photography returned there; zero-coverage Grassmarket → no platform offerings; deleting the coverage rows removed photography; gated childcare with an **unverified** covering provider did not surface, flipping them verified surfaced it — the recommendation-layer bypass is closed; a (temporarily seeded) affiliate offering appeared everywhere regardless of coverage. Note: zero affiliate offering-types exist in real seed data, so the affiliate path was vacuous until I seeded one to prove it — flagged for the affiliate-population job.
+
+### Commit 2 — proximity + earnings un-stubbed (`2d5ff67`)
+
+`proximityFit`: same 1.0 > adjacent 0.7 > market 0.4; the neighborhood pool now admits the targets' adjacent neighborhoods (symmetric `adjacent_keys` check) so adjacency ranks below exact. Adjacency data is 0/52 today — degrade path verified. `expectedPlatformEarningsRaw`: category commission band × the covering provider's listing price; affiliates use the `affiliate:{partner}` margin band × a documented $100 nominal basket.
+
+**Gate:** proximity ladder proven on the *same candidate* across surfaces — `0.4850 > 0.4250 > 0.3650`; band arithmetic proven at equal price 150 — limited 12% → 18 vs moderate 8% → 12, with affiliate ratios `8/18=0.4444` and `8/12=0.6667` observed exactly. One correction: seeded rates have **commercial (6%) below limited (12%)** — the brief's "commercial earns more" example is inverted vs real data; what's verified is band-rate × price. Transport candidates source correctly and are suppressed by the pre-existing `transport_pre_optimize` ranker filter (untouched, by design). **Relevance-dominance test re-run with real earnings: pass** (74/74 in the merged suite). Discover-location latency ~13ms, `EXPLAIN` shows Index Only Scan on the new index.
+
+### The branch got busy underneath me — two merges worth knowing about
+
+1. **Your session branch received merges of main (PR #74, affiliate booking Phase 2) mid-work.** Merging it surfaced that the inherited conflict resolution had renamed the affiliate migration's *registry entry* to 058 without renaming the file — a ghost entry that crashes startup on any fresh DB (the "ghost 047" class, again).
+2. **While I was fixing that, a Copilot agent pushed `7ab25fcd` fixing the same mess** with a better design: one canonical list in `migration-files.ts` (runtime imports it), `051_affiliate` keeps its shipped filename registered out of numeric order, and `052_phase5` documented as a crashing duplicate that must stay unregistered. I adopted their scheme wholesale, reverted my interim rename, registered my index migration as `059` in the canonical list, and reconciled the CLAUDE.md notes (`3d9990f1`).
+
+**Final proof on a fresh database:** all 62 canonical migrations apply cleanly, server reaches ready, the engine round-trip holds (covered → photography returned; uncovered → empty), full test suite green, zero `tsc` errors in any touched file.
+
+`claude/rebase-recovery` remains untouched. The funnel is now wired end-to-end and verified at every link: `/earn` → signup carrying the offering → verification-gated publish → coverage rows → engine recommendations gated by real, verified, covered inventory. The remaining known seams: affiliate offering-types need real seed rows, `adjacent_keys` needs population, and listing-level recommendations are the deliberate follow-on.
