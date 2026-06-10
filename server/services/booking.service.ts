@@ -461,7 +461,12 @@ class BookingService {
    *
    * Security gates (in order):
    *  1. Stripe PaymentIntent must have status === 'succeeded'; reject 402 otherwise.
-   *  2. Booking's user_id must equal the requesting userId; reject 403 otherwise.
+   *  2. Booking must exist; reject 404 otherwise.
+   *  3. Booking's user_id must equal the requesting userId; reject 403 otherwise.
+   *  4. Booking must still be in 'pending_payment' status — reject 409 if already confirmed
+   *     (prevents re-confirmation of the same booking).
+   *  5. PaymentIntent ID must not already be recorded on a different booking — reject 409 if so
+   *     (prevents replay of the same pi_xxx across multiple bookings).
    */
   async confirmBookingPayment(
     bookingId: string,
@@ -486,9 +491,9 @@ class BookingService {
       throw err;
     }
 
-    // Gate 2: verify the booking belongs to the requesting user.
+    // Gate 2: load the booking row for all subsequent checks.
     const bookingRow = await db.execute(sql`
-      SELECT user_id FROM bookings WHERE id = ${bookingId}
+      SELECT user_id, status FROM bookings WHERE id = ${bookingId}
     `);
 
     if (!bookingRow.rows || bookingRow.rows.length === 0) {
@@ -497,10 +502,37 @@ class BookingService {
       throw err;
     }
 
-    const bookingUserId = (bookingRow.rows[0] as { user_id: string }).user_id;
-    if (bookingUserId !== userId) {
+    const booking = bookingRow.rows[0] as { user_id: string; status: string };
+
+    // Gate 3: verify the booking belongs to the requesting user.
+    if (booking.user_id !== userId) {
       const err = new Error(`Booking ${bookingId} does not belong to user ${userId}`);
       (err as any).code = 'BOOKING_OWNERSHIP_MISMATCH';
+      throw err;
+    }
+
+    // Gate 4: idempotency / double-confirmation guard.
+    if (booking.status !== 'pending_payment') {
+      const err = new Error(
+        `Booking ${bookingId} is already in status "${booking.status}" — confirmation rejected`
+      );
+      (err as any).code = 'BOOKING_ALREADY_CONFIRMED';
+      throw err;
+    }
+
+    // Gate 5: replay-attack guard — reject if this pi_xxx is already recorded on another booking.
+    const replayCheck = await db.execute(sql`
+      SELECT id FROM bookings
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND id != ${bookingId}
+      LIMIT 1
+    `);
+
+    if (replayCheck.rows && replayCheck.rows.length > 0) {
+      const err = new Error(
+        `PaymentIntent ${paymentIntentId} has already been used to confirm a different booking`
+      );
+      (err as any).code = 'PAYMENT_INTENT_ALREADY_USED';
       throw err;
     }
 
@@ -512,8 +544,10 @@ class BookingService {
         payment_status = 'succeeded',
         confirmed_at = NOW(),
         confirmation_code = ${confirmationCode},
-        deposit_paid = true
+        deposit_paid = true,
+        stripe_payment_intent_id = ${paymentIntentId}
       WHERE id = ${bookingId}
+        AND status = 'pending_payment'
     `);
 
     // TODO: Update provider earnings
