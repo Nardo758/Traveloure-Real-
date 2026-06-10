@@ -94,11 +94,12 @@ const MIGRATION_FILES = [
   "048_phase8_offering_risk_override.sql",
   "049_phase5_upsell_engine_tables.sql",
   "050_service_bookings_service_id_nullable.sql",
-  // 051 must be last: it marks every prior file as applied (ON CONFLICT DO NOTHING),
-  // which is a no-op on a normal dev/CI DB (all already recorded) and acts as a
-  // ledger bootstrap on a prod DB that was seeded from Drizzle snapshots with no
-  // migration history.
+  // 051 must be last among the pre-ledger migrations: it marks every prior file
+  // as applied (ON CONFLICT DO NOTHING), which is a no-op on a normal dev/CI DB
+  // (all already recorded) and acts as a ledger bootstrap on a prod DB that was
+  // seeded from Drizzle snapshots with no migration history.
   "051_schema_migrations_ledger_bootstrap.sql",
+  "052_phase5_expert_endorsements.sql",
 ];
 
 export type MigrationResult =
