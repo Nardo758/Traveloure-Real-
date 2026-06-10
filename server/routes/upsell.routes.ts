@@ -880,7 +880,7 @@ router.post("/api/upsell/expert-review", isAuthenticated, async (req, res) => {
       candidates: decorate(candidates, displayLookup),
       suppressed,
       myEndorsements: myEndorsements.rows ?? [],
-      contextEndorsements: fetched,    // every offering_id active for this trip
+      contextEndorsements: fetched,
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -921,11 +921,6 @@ router.post("/api/upsell/expert-review/endorse", isAuthenticated, async (req, re
         DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
       `);
     } else {
-      // Phase 5.6 (Commit A): lead-gate the write. Only the FEATURED LEAD of
-      // a neighborhood may write a neighborhood-scoped endorsement. Admin role
-      // bypasses for backfill / curation cases — the READ JOIN still protects
-      // the consumer surface (admin endorsement would only compound if admin
-      // also held the is_lead row, which isn't a normal state).
       if (role !== "admin") {
         const leadCheck = await db.execute(sql`
           SELECT 1 FROM expert_neighborhoods
@@ -1036,9 +1031,6 @@ const checkoutBodySchema = z.object({
   userProfile: userProfileSchema,
   neighborhoodIds: z.array(z.string()).optional(),
   expertEndorsedKeys: z.array(z.string()).optional(),
-  /** §B5 carry-in: transport (`private_transportation` / `aff_ground_transport`)
-   *  appears on checkout ONLY when the optimizer has computed transport legs.
-   *  Default false → transport stays suppressed. */
   tripIsPostOptimize: z.boolean().default(false),
 });
 
@@ -1084,8 +1076,6 @@ router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
-    // §B5 "never blocks completion": engine failures return a benign empty result,
-    // not a 5xx that would crash the checkout flow.
     console.error("[upsell] checkout engine error (returning empty):", err);
     res.json({ candidates: [], suppressed: [], error: "engine_unavailable" });
   }
@@ -1147,9 +1137,6 @@ const aiConciergeBodySchema = z.object({
   userProfile: userProfileSchema,
   neighborhoodIds: z.array(z.string()).optional(),
   expertEndorsedKeys: z.array(z.string()).optional(),
-  /** Optional concierge task identifier the candidates relate to (for
-   *  attribution in upsell_impressions). The concierge's per-task fee is
-   *  billed elsewhere — see comment in the handler about double-counting. */
   conciergeTaskId: z.string().optional(),
 });
 
@@ -1192,6 +1179,44 @@ router.post("/api/upsell/ai-concierge", isAuthenticated, async (req, res) => {
       suppressed,
       conciergeTaskId: body.conciergeTaskId ?? null,
     });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/upsell/click — impression→click attribution (issue #49, gates PR #50).
+ *
+ * The engine logs impressions on render; upsell_impressions has a `clicked` column
+ * the schema reserved for "updated by client/server later". This closes that seam.
+ * Marks ONLY the single most-recent matching impression — flipping every row in a
+ * window would inflate click-through, the exact metric this instruments.
+ */
+const clickBodySchema = z.object({
+  tripId: z.string(),
+  surface: z.string(),
+  offeringId: z.string(),
+});
+
+router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId, surface, offeringId } = clickBodySchema.parse(req.body);
+    await db.execute(sql`
+      UPDATE upsell_impressions SET clicked = true
+      WHERE id = (
+        SELECT id FROM upsell_impressions
+        WHERE trip_id = ${tripId} AND surface = ${surface} AND offering_id = ${offeringId}
+        ORDER BY shown_at DESC
+        LIMIT 1
+      )
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
     res.status(500).json({ error: err.message });

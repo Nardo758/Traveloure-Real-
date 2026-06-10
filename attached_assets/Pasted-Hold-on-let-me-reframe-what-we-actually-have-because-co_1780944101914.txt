@@ -1,0 +1,29 @@
+Hold on — let me reframe what we actually have, because "code-level gate is clean" is true but it's **"gate unrun," not "gate passed,"** and the distinction is the whole reason this fix exists.
+
+**The one thing that matters most is still unverified:** `createTransportBookingCheckout` returning a real `checkoutUrl`. Patch A's entire success path is `if (data.checkoutUrl) window.location.href = …`. Code-trace can confirm the *logic* routes there; it cannot confirm Stripe actually mints a session — that depends on Stripe config, the option's price, the variant→comparison→trip chain resolving. We have **never seen a 200 + `checkoutUrl` come back.** That's the deliverable, and it's exactly the class of "looks wired, 400s at runtime" bug the strand was created to fix. Merging on logic-trace alone repeats the original sin one level up.
+
+And note *why* the gate couldn't run: no Tokyo/Kyoto/Paris leg + auth blocked = **the gate is unrunnable in dev as configured**, not "the gate passed." Converting "couldn't run it" into "merged it" is the anti-pattern we've avoided all session.
+
+**My recommendation: run it once for real — it's cheap to make runnable.** Fastest faithful path, no synthetic-row chain needed:
+
+1. **Repoint one existing LA platform-mode leg to a seeded city (reversible):**
+```sql
+-- pick an LA taxi/car/rideshare leg
+UPDATE transport_legs
+SET to_name = 'Tokyo, Japan', destination_profile = 'Tokyo'
+WHERE id = '<an LA platform-mode legId>';   -- note the old values to revert
+```
+2. **Log in as your own account** (`m.dixon5030@…`) in the app to get a real session — that clears the `isAuthenticated` blocker without inventing a test user.
+3. `GET /api/transport-legs/<legId>/options` → confirm a `bookingType:"platform"`, `variantId:null` item.
+4. Click **Book** (or `POST …/book`) → **confirm 200 + `checkoutUrl`**, no "no associated variant" in logs.
+5. Revert the `UPDATE`.
+
+That exercises the real strand path (variantId-via-leg + Stripe) in ~5 minutes and gives you a genuine green.
+
+**If you decide that's not worth it right now:** merging to `main` is *defensible* — but only because **prod is unpublished**, and only on one condition: the live click-through becomes a **hard, recorded pre-publish gate** (and dev gets a Tokyo/Kyoto/Paris seed + a test login so it's runnable before that publish). Merge ≠ strand-verified; don't let the next publish assume it is.
+
+**On triggering the merge: I won't do it unilaterally.** It's outward and the gate is unrun — that needs your explicit call. So, your choice:
+- **(A)** Run the live gate via the UPDATE-repoint above (I can refine the SQL to target a specific leg if you paste the LA legs) → real green → then merge.
+- **(B)** Merge now on code-level verification, with the live click-through pinned as a pre-publish blocker in the coordination record.
+
+I'd take **(A)** — it's a few minutes and turns a believed-fix into a proven one. Tell me which, and for (A) paste the candidate LA legs and I'll hand you the exact one-line repoint + revert.

@@ -29,13 +29,13 @@ WHERE NOT EXISTS (SELECT 1 FROM fee_bands WHERE band_key = 'expert_standard');
 
 INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description, is_active)
 VALUES
-  ('expert_new',      'percent', 0.15, 0.15, 0.25, 'Expert (new / beta)',           'New/beta cohort: platform take 0.15, expert keeps 0.85. Admin-toggled via per-expert isBeta flag.'),
+  ('expert_new',      'percent', 0.15, 0.15, 0.25, 'Expert (new / beta)',           'New/beta cohort: platform take 0.15, expert keeps 0.85. Admin-toggled via per-expert isBeta flag.',           true),
   -- Provider bands (all default_rate values = platform take)
-  ('beta_flat',       'percent', 0.10, 0.05, 0.15, 'Provider beta flat',            'FEE-2: platform take 0.10, provider keeps 0.90. Active when active_provider_commission_policy = beta_flat. Default during beta.'),
-  ('limited',         'percent', 0.12, NULL, NULL, 'Tiered: limited',               'Tiered provider band: 12 % platform take. Seeded dormant — used only when active_provider_commission_policy = tiered.'),
-  ('moderate',        'percent', 0.08, NULL, NULL, 'Tiered: moderate',              'Tiered provider band: 8 % platform take. Seeded dormant.'),
-  ('commercial',      'percent', 0.06, NULL, NULL, 'Tiered: commercial',            'Tiered provider band: 6 % platform take. Seeded dormant.'),
-  ('premium',         'percent', 0.04, NULL, NULL, 'Tiered: premium',               'Tiered provider band: 4 % platform take. Partner flag, not a category. Seeded dormant.')
+  ('beta_flat',       'percent', 0.10, 0.05, 0.15, 'Provider beta flat',            'FEE-2: platform take 0.10, provider keeps 0.90. Active when active_provider_commission_policy = beta_flat. Default during beta.', true),
+  ('limited',         'percent', 0.12, NULL, NULL, 'Tiered: limited',               'Tiered provider band: 12 % platform take. Seeded dormant — used only when active_provider_commission_policy = tiered.',         true),
+  ('moderate',        'percent', 0.08, NULL, NULL, 'Tiered: moderate',              'Tiered provider band: 8 % platform take. Seeded dormant.',                                                                        true),
+  ('commercial',      'percent', 0.06, NULL, NULL, 'Tiered: commercial',            'Tiered provider band: 6 % platform take. Seeded dormant.',                                                                        true),
+  ('premium',         'percent', 0.04, NULL, NULL, 'Tiered: premium',               'Tiered provider band: 4 % platform take. Partner flag, not a category. Seeded dormant.',                                         true)
 ON CONFLICT (band_key) DO NOTHING;
 
 -- Preserve FEE-2's actual live value into beta_flat (in case it's been admin-edited away from 0.10).
@@ -49,15 +49,15 @@ WHERE band_key = 'beta_flat';
 -- ─── Affiliate per-partner bands (platform take of affiliate margin) ──────────
 INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description, is_active)
 VALUES
-  ('affiliate:viator',       'percent', 0.08, 0.04, 0.12, 'Affiliate: Viator',       'Platform takes 0.08 of affiliate margin; partner keeps 0.92. ⚠confirm per contract.'),
-  ('affiliate:getyourguide', 'percent', 0.08, 0.04, 0.12, 'Affiliate: GetYourGuide', 'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
-  ('affiliate:klook',        'percent', 0.08, 0.04, 0.12, 'Affiliate: Klook',        'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
-  ('affiliate:fever',        'percent', 0.08, 0.04, 0.12, 'Affiliate: Fever',        'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
-  ('affiliate:12go',         'percent', 0.08, 0.04, 0.12, 'Affiliate: 12Go',         'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
-  ('affiliate:amadeus',      'percent', 0.06, 0.04, 0.12, 'Affiliate: Amadeus',      'Platform takes 0.06 of affiliate margin (lower band for air/hotel). ⚠confirm.'),
-  ('affiliate:tiqets',       'percent', 0.08, 0.04, 0.12, 'Affiliate: Tiqets',       'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
-  ('affiliate:headout',      'percent', 0.08, 0.04, 0.12, 'Affiliate: Headout',      'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.'),
-  ('affiliate:musement',     'percent', 0.08, 0.04, 0.12, 'Affiliate: Musement',     'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.')
+  ('affiliate:viator',       'percent', 0.08, 0.04, 0.12, 'Affiliate: Viator',       'Platform takes 0.08 of affiliate margin; partner keeps 0.92. ⚠confirm per contract.', true),
+  ('affiliate:getyourguide', 'percent', 0.08, 0.04, 0.12, 'Affiliate: GetYourGuide', 'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true),
+  ('affiliate:klook',        'percent', 0.08, 0.04, 0.12, 'Affiliate: Klook',        'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true),
+  ('affiliate:fever',        'percent', 0.08, 0.04, 0.12, 'Affiliate: Fever',        'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true),
+  ('affiliate:12go',         'percent', 0.08, 0.04, 0.12, 'Affiliate: 12Go',         'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true),
+  ('affiliate:amadeus',      'percent', 0.06, 0.04, 0.12, 'Affiliate: Amadeus',      'Platform takes 0.06 of affiliate margin (lower band for air/hotel). ⚠confirm.',       true),
+  ('affiliate:tiqets',       'percent', 0.08, 0.04, 0.12, 'Affiliate: Tiqets',       'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true),
+  ('affiliate:headout',      'percent', 0.08, 0.04, 0.12, 'Affiliate: Headout',      'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true),
+  ('affiliate:musement',     'percent', 0.08, 0.04, 0.12, 'Affiliate: Musement',     'Platform takes 0.08 of affiliate margin. ⚠confirm per contract.',                     true)
 ON CONFLICT (band_key) DO NOTHING;
 
 -- ─── Flat USD bands (default_rate stores dollars) ─────────────────────────────

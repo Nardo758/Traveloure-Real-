@@ -172,6 +172,7 @@ const PARTNER_STYLES: Record<string, { bg: string; text: string; badge: string }
 
 function LegBookingPanel({ legId }: { legId: string }) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<{ legId: string; options: any[] }>({
     queryKey: [`/api/transport-legs/${legId}/options`],
@@ -182,7 +183,6 @@ function LegBookingPanel({ legId }: { legId: string }) {
   const platformOptions = options.filter((o) => o.bookingType === "platform");
   const affiliateOptions = options.filter((o) => o.bookingType === "affiliate" || o.bookingType === "deep_link");
 
-  const { toast } = useToast();
   const bookMutation = useMutation({
     mutationFn: async (optionId: string) => {
       const res = await apiRequest("POST", `/api/transport-booking-options/${optionId}/book`, {});
@@ -261,11 +261,11 @@ function LegBookingPanel({ legId }: { legId: string }) {
                   <Button
                     size="sm"
                     className="text-[11px] h-7 px-3 shrink-0 bg-green-600 hover:bg-green-700 text-white"
+                    data-testid={`button-book-platform-${opt.id}`}
                     onClick={() => bookMutation.mutate(opt.id)}
                     disabled={bookMutation.isPending}
-                    data-testid={`button-book-platform-${opt.id}`}
                   >
-                    {bookMutation.isPending && bookMutation.variables === opt.id ? "Booking…" : "Book"}
+                    {bookMutation.isPending ? "…" : "Book"}
                   </Button>
                 </div>
               ))}
@@ -340,6 +340,18 @@ function LegBookingPanel({ legId }: { legId: string }) {
 
 export function TransportSection({ tripId, tripDestination, day, allowActions = true }: TransportSectionProps) {
   const { toast } = useToast();
+
+  const acceptLeg = useMutation({
+    mutationFn: (legId: string) =>
+      apiRequest("PATCH", `/api/transport-legs/${legId}/status`, { status: "confirmed", tripId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: "Transport confirmed", description: "Leg locked in." });
+    },
+    onError: () => {
+      toast({ title: "Failed to confirm", description: "Please try again.", variant: "destructive" });
+    },
+  });
 
   const declineLeg = useMutation({
     mutationFn: (legId: string) =>
@@ -461,11 +473,15 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
             </div>
             {tr.status === "suggested" && allowActions && (
               <div className="flex flex-col gap-1.5 flex-shrink-0">
-                <Button size="sm" variant="default" className="text-[11px] h-7 px-3" data-testid={`button-accept-${tr.id}`}>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="text-[11px] h-7 px-3"
+                  onClick={() => acceptLeg.mutate(tr.id)}
+                  disabled={acceptLeg.isPending}
+                  data-testid={`button-accept-${tr.id}`}
+                >
                   Accept
-                </Button>
-                <Button size="sm" variant="outline" className="text-[11px] h-7 px-3" data-testid={`button-change-${tr.id}`}>
-                  Change
                 </Button>
                 <Button
                   size="sm"

@@ -1,0 +1,175 @@
+**Assessment:** PR #46 is **not merge-ready yet**. It adds useful admin tooling, but it also includes a schema migration with no corresponding runtime usage in this PR, and there are **no checks/reviews visible from the fetched data**. More importantly, I see one likely correctness issue in the new admin route layer.
+
+## PR Summary
+
+- **PR:** #46 — `Claude/laughing bardeen ky tuy`
+- **State:** Open, not draft
+- **Mergeable:** `true`, but GitHub reports **mergeable_state: unstable**
+- **Scope:** **6 files changed**, **+888 / -1**, **2 commits**
+- **Reviews:** none returned
+- **Inline review comments:** none returned
+- **CI/checks:** I could not retrieve supported check-run data for this PR with the available API route, so status is **unknown**
+- **Risk:** **Medium**
+  - Large new admin surface
+  - New migration touching production schema
+  - No visible tests/check confirmations
+  - New transactional mutation endpoints in `admin.routes.ts`
+
+## Core Changes
+
+This PR does two main things:
+
+1. **Adds a new admin “Neighborhood Spine” page**
+   - New route at `/admin/neighborhoods`
+   - New UI for:
+     - listing neighborhoods
+     - assigning/clearing a lead expert
+     - managing coverage targets
+     - editing adjacency links
+
+2. **Adds backend admin APIs to support that page**
+   - list neighborhoods
+   - fetch neighborhood detail
+   - upsert/delete coverage targets
+   - assign/clear lead experts
+   - patch adjacency with symmetric writes
+
+It also includes a **separate migration** adding `risk_override` to `service_offering_types`, which appears conceptually unrelated to the neighborhood admin feature.
+
+## Other Changes
+
+### 1) New admin route wiring
+
+The PR cleanly registers the new admin page in the client router.
+
+```diff
+--- client/src/App.tsx
++++ client/src/App.tsx
+@@
++import AdminNeighborhoods from "@/pages/admin/neighborhoods";
+@@
++      <Route path="/admin/neighborhoods">
++        {() => <ProtectedRoute component={AdminNeighborhoods} requiredRole="admin" />}
++      </Route>
+```
+
+That part is straightforward and low-risk.
+
+### 2) New admin page implementation
+
+The new page in `client/src/pages/admin/neighborhoods.tsx` is substantial and reasonably well-structured:
+- list/detail split
+- query invalidation after mutations
+- confirmation dialog before lead reassignment
+- guardrails surfaced in copy
+
+The UI intent matches the server contract well.
+
+### 3) Backend admin endpoints
+
+Most of the real logic is in `server/routes/admin.routes.ts`. The routes add useful guardrails:
+- category existence check before writing coverage targets
+- market mismatch rejection for lead assignment
+- transactional “demote then promote” lead swap
+- symmetric adjacency updates
+
+That’s the heart of the PR.
+
+### 4) New migration for offering risk override
+
+This migration:
+
+```diff
+--- server/migrations/run-migrations.ts
++++ server/migrations/run-migrations.ts
+@@
++  "047_phase8_offering_risk_override.sql",
+```
+
+and schema addition:
+
+```diff
+--- shared/schema.ts
++++ shared/schema.ts
+@@
++  riskOverride: varchar("risk_override", { length: 20 }),
+```
+
+introduce a new field intended for later eligibility logic. The migration is explicit and defensive, but in this PR it is **schema-only**; I do not see application code here actually reading `riskOverride`.
+
+## Merge Readiness and Risk Assessment
+
+### Blocking / important concerns
+
+#### 1) Likely bug: `GET /api/admin/neighborhoods/:id` can expose experts from other markets
+The detail endpoint loads experts by `neighborhood_id` only:
+
+```ts
+SELECT en.expert_id, en.is_lead, en.sort_order,
+       u.first_name, u.last_name, u.email
+FROM expert_neighborhoods en
+JOIN users u ON u.id = en.expert_id
+WHERE en.neighborhood_id = ${id}
+ORDER BY en.is_lead DESC, en.sort_order ASC
+```
+
+But the lead assignment rules emphasize market correctness via `localExpertForms`. If stale or bad `expert_neighborhoods` rows already exist, this panel may show them as valid candidates/context without any annotation. That may be acceptable operationally, but if the intent is “admin-safe neighborhood spine,” this endpoint probably needs either:
+- explicit filtering/flagging by market validity, or
+- a UI-visible warning for experts whose form no longer matches the neighborhood city.
+
+As written, the page may look authoritative while showing inconsistent data.
+
+#### 2) The PR bundles two unrelated concerns
+This PR mixes:
+- **Neighborhood admin tooling**
+- **Offering risk override schema migration**
+
+That makes review and rollback harder. If the admin feature needs urgent iteration, the migration is unnecessary coupling. Unless this PR is intentionally part of a larger locked phase sequence, I’d strongly prefer splitting the migration into its own PR.
+
+#### 3) No visible verification path
+There are no fetched reviews or comments, and no supported check results surfaced. For a PR that adds:
+- transaction-sensitive lead swap logic
+- adjacency graph mutation logic
+- production migration
+
+I’d want at least some evidence of:
+- route-level tests, or
+- manual test notes in the PR description
+
+Right now the PR body is empty, which lowers reviewer confidence.
+
+## Possible Improvements
+
+1. **Split the migration from the neighborhood admin feature**
+   - Keep this PR about the admin spine only.
+   - Move `risk_override` into its own PR unless it is immediately consumed by code in the same change.
+
+2. **Add explicit candidate validation in the detail payload or UI**
+   - Either return a market-validation status per expert, or only show experts eligible for this neighborhood’s market.
+
+3. **Add tests for the dangerous server behaviors**
+   - lead swap demotes old + promotes new atomically
+   - mismatch market rejects assignment
+   - adjacency rejects self-loops
+   - adjacency rejects cross-market slugs
+   - symmetric add/remove behavior
+
+4. **Add a PR description**
+   - summarize endpoints added
+   - list intended manual test cases
+   - explain why the `risk_override` migration is included here
+
+## Recommendation
+
+**Request changes before merge.**
+
+Main reasons:
+- likely data-integrity blind spot in neighborhood detail handling
+- unrelated migration bundled into same PR
+- no visible checks/test evidence from the fetched metadata
+
+If you want, I can next do one of these:
+
+1. **Deep-review `server/routes/admin.routes.ts` for correctness bugs**
+2. **Review `client/src/pages/admin/neighborhoods.tsx` for UX/state issues**
+3. **Draft exact review comments you can paste into PR #46**

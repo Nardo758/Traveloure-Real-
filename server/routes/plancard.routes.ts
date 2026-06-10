@@ -651,8 +651,14 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
 
     // Use "dismissed" as a sentinel value in userSelectedMode so the plancard GET
     // can filter it out. This avoids a schema migration while making dismissal durable.
+    // On confirm: store the leg's current mode (userSelectedMode if already set and not dismissed,
+    // else recommendedMode, else mode) so the GET's `userSelectedMode ? "confirmed" : "suggested"`
+    // derivation returns "confirmed" rather than falling back to "suggested".
+    const confirmedMode = leg.userSelectedMode && leg.userSelectedMode !== "dismissed"
+      ? leg.userSelectedMode
+      : (leg.recommendedMode || leg.mode || "walk");
     await db.update(transportLegs)
-      .set({ userSelectedMode: status === "dismissed" ? "dismissed" : null })
+      .set({ userSelectedMode: status === "dismissed" ? "dismissed" : confirmedMode })
       .where(eq(transportLegs.id, legId));
 
     await logChange(

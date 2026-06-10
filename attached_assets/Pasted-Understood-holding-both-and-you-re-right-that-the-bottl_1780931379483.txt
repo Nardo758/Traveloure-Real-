@@ -1,0 +1,19 @@
+Understood — holding both, and you're right that the bottleneck is orchestration, not a shortage of diffs. I'll stop offering motion.
+
+**Registering the win:** Workspace ↔ PlanCard reconciliation is **closed** — `workspace.tsx:897` renders `<PlanCard role="expert" stage="full" />`, bespoke `DayCard`/`ARow`/`TConn` gone. That was Flag #3, the structural drift risk between the expert's build view and the traveler's delivered view. Phase 4 now builds on **one renderer**. Biggest item on the list, and it's done.
+
+**On item 2 / item 3 — agreed, neither now, and your reasoning holds:**
+- **Item 2 (Accept/Change)** touches `TransportSection.tsx:444/447`, the file the strand is about to rewrite around `:246`. Drafting now = drafting against a file about to change = rework, plus it bloats the strand PR queue while the 🔴 publish-gating change is still unapplied. **Draft it after the strand lands, against the updated file.**
+- **Item 3 (upsell slots)** is a build-from-nothing on `plancard-piece3`, which is still receiving syncs. Starting it pre-freeze is the exact collision we've been preventing. **Waits on the freeze.**
+
+**The sequence, and the ball is in your court:**
+1. **You:** sync-freeze `plancard-piece3` + pin `TransportSection.tsx` → laughing-bardeen. *Nothing unblocks until this is real.*
+2. **Lane:** strand applied + gated (variantId-path neutral, real per-leg click-through) → publish-ready.
+3. **Then me:** draft Accept/Change against the post-strand file (same handoff pattern).
+4. **Then:** upsell slots on the frozen branch.
+
+I'm holding 2 and 3. Not waiting on drafts — waiting on the freeze and the strand landing.
+
+**Item 5 — my call, decisively:** **relabel "Export" → "View."** Today the button just links to `/itinerary/:id` (`HeroSection.tsx:88`), so "View" is honest and clears the ambiguous half-feature immediately; **backlog real PDF/file export** as its own item if/when there's demand — it's a genuine feature (server render + file), not a label tweak, and shouldn't masquerade as shipped. I won't touch it now (it's a `plancard-piece3` edit and we're holding) — I'd fold the one-word relabel into the **first post-freeze PlanCard commit** alongside the upsell-slot work. If you'd rather I clear it as an isolated micro-commit now, say so; otherwise it rides with step 4.
+
+Standing by for the freeze + ownership pin. That's the unblock.
