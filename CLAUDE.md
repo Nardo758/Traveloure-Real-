@@ -101,6 +101,14 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Registered in `run-migrations.ts` (runtime) and `migration-files.ts` (chain test).
   Ratified by the decision-maker via the Phase 2 GO.
 
+**Recorded migration-chain repair (Jun 10, 2026):**
+- `server/migrations/migration-files.ts` is the canonical migration registration
+  list for both runtime and chain-integrity checks. `run-migrations.ts` must
+  import that list rather than carrying its own inline copy.
+- `052_phase5_expert_endorsements.sql` is a superseded duplicate schema attempt
+  for `upsell_expert_endorsements`; do **not** register or execute it. The live
+  endorsement schema remains `050_phase5_expert_endorsements.sql`.
+
 ---
 
 ## FAQ
