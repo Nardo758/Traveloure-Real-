@@ -22,6 +22,7 @@ import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProv
 import { eq, sql, and, ilike } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
+import { resolveBookability } from "@shared/bookability";
 
 export interface SectionResult<T> {
   data: T | null;
@@ -232,7 +233,10 @@ class LocationViewService {
         ...n,
         gemCount: gemCountMap.get(n.slug) ?? 0,
         serviceCount: svcCountMap.get(n.slug) ?? 0,
-        gems: (gemsBySlug.get(n.slug) ?? []).slice(0, 6),
+        // bookability is DERIVED (never stored) via the single shared resolver.
+        gems: (gemsBySlug.get(n.slug) ?? [])
+          .slice(0, 6)
+          .map((gem) => ({ ...gem, bookability: resolveBookability(gem) })),
       }));
     })();
 
@@ -241,7 +245,9 @@ class LocationViewService {
       .select()
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
-      .orderBy(travelPulseHiddenGems.gemScore);
+      .orderBy(travelPulseHiddenGems.gemScore)
+      // bookability is DERIVED (never stored) via the single shared resolver.
+      .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
 
     // Active platform services for this city — joined with vendor form + category
     // so the frontend card can show website link and category label without extra queries.
