@@ -1,0 +1,30 @@
+Here's the read-only audit prompt. It maps every surface we designed to its real frontend state, with file:line evidence, so you get ground truth instead of my inference.
+
+---
+
+**Read-only frontend-wiring audit. Map each user-facing surface to its actual state. No code changes, no DB calls. Output one status table with file:line evidence.**
+
+For each surface, grep `client/` for calls to the endpoint (whatever the codebase uses — `fetch` / `useQuery` / `apiRequest`) and report four things:
+- **Caller** — the component `file:line` that calls it, or NONE.
+- **Renders?** — does that component actually render the response to the user (cards/slots/list), or fetch without rendering? Cite the render site.
+- **Reachable?** — is the component routed in `App.tsx` and linked from nav/footer/another page, or orphaned?
+- **Verdict** — LIVE-WIRED (called + rendered + reachable) / PARTIAL / ENDPOINT-ONLY (no frontend caller).
+
+Surfaces:
+1. **/earn** — confirm `earn.tsx` is routed AND linked from somewhere reachable (the "Become a Partner" nav, footer, etc.). Reads `/api/offering-types/services` + `/api/offering-types/experts`.
+2. **Cart** — `/api/upsell/cart`
+3. **Discover location** — `/api/upsell/discover-location`. Also: does the discover page render neighborhood browsing + the featured lead expert + the "wanted" recruitment slots, or is it still the old TravelPulse city feed untouched by the spine?
+4. **Discover date** — `/api/upsell/discover-date`
+5. **Optimize gate** — `/api/upsell/optimize-gate` (does `optimize.tsx` render the add-ons teaser?)
+6. **PlanCard pre-trip** — `/api/upsell/plancard-pretrip`
+7. **PlanCard on-trip** — `/api/upsell/plancard-ontrip`
+8. **Checkout** — `/api/upsell/checkout`
+9. **Post-booking** — `/api/upsell/post-booking`
+10. **AI concierge** — `/api/upsell/ai-concierge`
+11. **Expert offerings on traveler surfaces** — does any expert-profile / "ask an expert" / "have an expert polish this" component render the expanded `expert_offering_types` menu (beyond itinerary planning)?
+
+Output one table, one row per surface, four columns above plus the endpoint. End with a one-line tally: X of 11 LIVE-WIRED, Y PARTIAL, Z ENDPOINT-ONLY. Make no code changes, no DB calls. Stop.
+
+---
+
+What comes back will tell you exactly how much of the visible product is real today versus still-to-build — and my expectation, from the build reports, is that you'll see `/earn` as the lone LIVE-WIRED row and most of the rest as ENDPOINT-ONLY. If that's what it shows, the next real scope is the frontend-integration phase to actually surface the engine — which we can write up once the audit confirms the gap.
