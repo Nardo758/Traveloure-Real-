@@ -15,6 +15,7 @@ import { localExpertForms, serviceProviderForms, expertPayouts, providerPayouts,
 import { eq, and, sql as drizzleSql } from "drizzle-orm";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
 
 const router = Router();
 
@@ -211,6 +212,19 @@ router.post("/stripe", async (req: any, res) => {
 
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        // ── Step 1: Confirm cart bookings (authoritative path) ──────────────
+        // stripePaymentService.handlePaymentSucceeded() is idempotent — it skips
+        // bookings that are already confirmed and generates confirmation codes for
+        // any that are still in pending_payment status.
+        try {
+          await stripePaymentService.handlePaymentSucceeded(paymentIntent);
+        } catch (bookingErr: any) {
+          console.error("payment_intent.succeeded: booking confirmation error:", bookingErr.message);
+          // Non-fatal: continue to revenue tracking even if booking confirmation fails
+        }
+
+        // ── Step 2: Revenue tracking ────────────────────────────────────────
         const sourceType = paymentIntent.metadata?.sourceType as any;
         const sourceId = paymentIntent.metadata?.sourceId;
         const expertId = paymentIntent.metadata?.expertId;
