@@ -15,8 +15,7 @@
  * `sourceType` only breaks the tie when an item carries both booking signals.
  *
  * Vocabulary note: this supersedes the legacy client vocab
- * `platform | affiliate | browse` (mapped forward by `fromLegacyBookability`).
- * The transport-lane `transport_booking_options.bookingType`
+ * `platform | affiliate | browse`. The transport-lane `transport_booking_options.bookingType`
  * (`platform | affiliate | deep_link | info_only`) convergence is a separate,
  * named follow-up and is intentionally NOT touched here.
  */
@@ -62,21 +61,4 @@ export function resolveBookability(input: BookabilityInput | null | undefined): 
   if (hasNative) return "native";
   if (hasDeeplink) return "deeplink";
   return "info_only";
-}
-
-/** Legacy client vocab, retained only to map persisted/older values forward. */
-export type LegacyBookability = "platform" | "affiliate" | "browse";
-
-/** Map the superseded `platform | affiliate | browse` vocab onto the canonical axis. */
-export function fromLegacyBookability(
-  legacy: LegacyBookability | string | null | undefined,
-): Bookability {
-  switch (legacy) {
-    case "platform":
-      return "native";
-    case "affiliate":
-      return "deeplink";
-    default:
-      return "info_only";
-  }
 }
