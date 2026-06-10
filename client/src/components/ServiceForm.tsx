@@ -59,6 +59,7 @@ interface ServiceFormData {
   // Logistics
   serviceArea: string;
   neighborhood: string;
+  neighborhoods: string[];
   meetingPoint: string;
   pickupAvailable: boolean;
   pickupAddress: string;
@@ -108,6 +109,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     maxConcurrentClients: 1,
     serviceArea: "",
     neighborhood: "",
+    neighborhoods: [],
     meetingPoint: "",
     pickupAvailable: false,
     pickupAddress: "",
@@ -138,6 +140,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     maxConcurrentClients: s.maxConcurrentBookings || 1,
     serviceArea: s.location || "",
     neighborhood: s.neighborhood || "",
+    neighborhoods: Array.isArray(s.neighborhoods) ? s.neighborhoods : (s.neighborhood ? [s.neighborhood] : []),
     meetingPoint: s.meetingPoint || "",
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
@@ -284,7 +287,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         whatIncluded: formData.whatIncluded,
         maxConcurrentBookings: formData.maxConcurrentClients,
         location: formData.serviceArea || "Unknown",
-        neighborhood: formData.neighborhood || null,
+        neighborhood: formData.neighborhoods.length > 0 ? formData.neighborhoods[0] : (formData.neighborhood || null),
+        neighborhoods: formData.neighborhoods,
         meetingPoint: formData.meetingPoint || null,
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
@@ -631,25 +635,57 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               />
             </div>
 
-            {/* Neighborhood */}
+            {/* Neighborhoods multi-select */}
             <div>
-              <Label htmlFor="neighborhood">Neighborhood (Optional)</Label>
-              <Select
-                value={formData.neighborhood}
-                onValueChange={(v) => set("neighborhood", v)}
-              >
-                <SelectTrigger id="neighborhood" className="mt-2">
-                  <SelectValue placeholder="Select a neighborhood" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allNeighborhoods.map((n) => (
-                    <SelectItem key={n.slug} value={n.slug}>
-                      {n.name}
-                    </SelectItem>
+              <Label>Neighborhoods (Optional)</Label>
+              <p className="text-xs text-muted-foreground mt-1 mb-2">
+                Select all neighborhoods you serve. The first selected becomes the primary display neighborhood.
+              </p>
+              {allNeighborhoods.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No neighborhoods available.</p>
+              ) : (
+                <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1 mt-1">
+                  {Object.entries(
+                    allNeighborhoods.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
+                      const key = `${n.city}, ${n.country}`;
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(n);
+                      return acc;
+                    }, {})
+                  ).map(([cityLabel, items]) => (
+                    <div key={cityLabel}>
+                      <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">{cityLabel}</p>
+                      {items.map((n) => {
+                        const checked = formData.neighborhoods.includes(n.slug);
+                        const isPrimary = formData.neighborhoods[0] === n.slug;
+                        return (
+                          <label
+                            key={n.slug}
+                            className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer text-sm"
+                            data-testid={`checkbox-neighborhood-${n.slug}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300"
+                              checked={checked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...formData.neighborhoods, n.slug]
+                                  : formData.neighborhoods.filter((s) => s !== n.slug);
+                                set("neighborhoods", next);
+                              }}
+                            />
+                            <span className="flex-1">{n.name}</span>
+                            {checked && isPrimary && (
+                              <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">primary</Badge>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">Helps travelers find services in their area</p>
+                </div>
+              )}
             </div>
 
             {/* Service Area */}
