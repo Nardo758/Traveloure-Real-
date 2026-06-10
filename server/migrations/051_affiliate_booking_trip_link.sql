@@ -1,5 +1,4 @@
--- Migration 058 (renumbered from 051 — that slot is taken by the ledger bootstrap
--- on this line of history; registry already pointed here): Trip-logging link for the existing affiliate-booking rail.
+-- Phase 2.1: Trip-logging link for the existing affiliate-booking rail.
 --
 -- Adds a nullable trip_id FK to affiliate_booking_requests so a facilitated
 -- affiliate booking can be logged onto the canonical Trip at expert-confirmation
