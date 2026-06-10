@@ -374,12 +374,25 @@ export default function ExpertWorkspace() {
 
   const updateBookingMutation = useMutation({
     // Pass the trip-scoped workspace tripId so confirming a booking logs the
-    // booked item onto this Trip (Phase 2.2). The server only logs on confirm.
-    mutationFn: async ({ id, status }: { id: number; status: string }) =>
-      apiRequest("PATCH", `/api/affiliate-booking-requests/${id}`, { status, tripId }),
-    onSuccess: () => {
+    // booked item onto this Trip (Phase 2.2). The server only logs on confirm and
+    // only after the cross-trip guard passes (Phase 2.3).
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/affiliate-booking-requests/${id}`, { status, tripId });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
-      toast({ title: "Booking updated" });
+      if (data?.attachmentBlocked) {
+        const why =
+          data.attachmentReason === "booking_not_owned_by_trip_traveler"
+            ? "This booking belongs to a different traveler than this trip."
+            : data.attachmentReason === "expert_not_assigned_to_trip"
+              ? "You aren't assigned to this trip."
+              : "It could not be linked to this trip.";
+        toast({ title: "Confirmed, but not added to this trip", description: why, variant: "destructive" });
+      } else {
+        toast({ title: "Booking updated" });
+      }
     },
   });
 
@@ -1401,6 +1414,7 @@ export default function ExpertWorkspace() {
                     </div>
                   )}
                   {req.userNotes && <div style={{ fontSize: 11, color: G[600], background: G[50], borderRadius: 6, padding: "4px 8px", marginBottom: 6 }}>{req.userNotes}</div>}
+                  {req.expertNotes && <div data-testid={`text-expert-notes-${req.id}`} style={{ fontSize: 11, color: req.expertNotes.includes("[ATTACHMENT BLOCKED]") ? "#dc2626" : G[600], background: req.expertNotes.includes("[ATTACHMENT BLOCKED]") ? "#fef2f2" : G[50], borderRadius: 6, padding: "4px 8px", marginBottom: 6, whiteSpace: "pre-wrap" }}>{req.expertNotes}</div>}
                   {req.affiliateUrl && (
                     <a href={req.affiliateUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-booking-${req.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#7c3aed", fontWeight: 600, textDecoration: "none", padding: "4px 9px", border: "1.5px solid #c4b5fd", borderRadius: 7, marginBottom: 8 }}>
                       <ExternalLink style={{ width: 11, height: 11 }} />Open booking link
