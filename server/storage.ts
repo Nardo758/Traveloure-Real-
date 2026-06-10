@@ -80,6 +80,7 @@ import {
   type ProviderBlackoutDate, type InsertProviderBlackoutDate,
   type ProviderBookingRequest, type InsertProviderBookingRequest,
   type ExpertVendorCoordination, type InsertExpertVendorCoordination,
+  expertOfferingTypes,
   expertMatchAnalytics, destinationSearchPatterns, destinationMetricsHistory,
   type ExpertMatchAnalytics, type InsertExpertMatchAnalytics,
   type DestinationSearchPattern, type InsertDestinationSearchPattern,
@@ -296,6 +297,7 @@ export interface IStorage {
   // Expert Service Categories & Offerings
   getExpertServiceCategories(): Promise<any[]>;
   getExpertServiceOfferings(categoryId?: string): Promise<any[]>;
+  getActiveExpertOfferingTypes(): Promise<any[]>;
   getExpertSelectedServices(expertId: string): Promise<any[]>;
   addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any>;
   removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void>;
@@ -2072,6 +2074,22 @@ export class DatabaseStorage implements IStorage {
   // expert_service_categories was dropped by migration 013 — return empty array so callers don't break.
   async getExpertServiceCategories(): Promise<any[]> {
     return [];
+  }
+
+  async getActiveExpertOfferingTypes(): Promise<any[]> {
+    return await db.select({
+      id: expertOfferingTypes.id,
+      offeringTypeKey: expertOfferingTypes.offeringTypeKey,
+      serviceTier: expertOfferingTypes.serviceTier,
+      displayName: expertOfferingTypes.displayName,
+      tagline: expertOfferingTypes.tagline,
+      deliveryFormats: expertOfferingTypes.deliveryFormats,
+      isSurprising: expertOfferingTypes.isSurprising,
+      sortOrder: expertOfferingTypes.sortOrder,
+    })
+    .from(expertOfferingTypes)
+    .where(eq(expertOfferingTypes.isActive, true))
+    .orderBy(expertOfferingTypes.sortOrder);
   }
 
   async getExpertServiceOfferings(categoryId?: string): Promise<any[]> {
