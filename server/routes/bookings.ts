@@ -52,25 +52,28 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const success = await bookingService.confirmBookingPayment(bookingId, paymentIntentId);
-
-    if (success) {
-      res.json({
-        success: true,
-        message: 'Booking confirmed',
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: 'Failed to confirm booking',
-      });
+    // Extract userId handling both Replit Auth (user.id) and email-auth (user.claims.sub)
+    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
+
+    await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
+
+    res.json({ success: true, message: 'Booking confirmed' });
   } catch (error: any) {
+    const code = error?.code;
+    if (code === 'PAYMENT_NOT_SUCCEEDED' || code === 'STRIPE_LOOKUP_FAILED') {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    if (code === 'BOOKING_OWNERSHIP_MISMATCH') {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    if (code === 'BOOKING_NOT_FOUND') {
+      return res.status(404).json({ success: false, error: error.message });
+    }
     console.error('Confirm payment error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
