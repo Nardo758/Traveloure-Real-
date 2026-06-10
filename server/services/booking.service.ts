@@ -5,10 +5,15 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import Stripe from 'stripe';
 import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-12-18.acacia' as any,
+});
 
 export interface CartItem {
   id: string;
@@ -282,10 +287,21 @@ class BookingService {
           }
         }
 
-        // Get price - use item price if no provider
-        const finalPrice = item.providerId 
-          ? await pricingService.getPrice(item.providerId, item.date, 1)
-          : item.price;
+        // Get price — always read from DB when a real providerId is present.
+        // Never trust the client-supplied price for real provider items.
+        let finalPrice: number;
+        if (item.providerId && item.providerId.trim().length > 0) {
+          const dbPrice = await pricingService.getPrice(item.providerId, item.date, 1);
+          if (item.price !== dbPrice) {
+            console.warn(
+              `[BookingService] Price mismatch for "${item.title}" (providerId=${item.providerId}): ` +
+              `client sent ${item.price}, DB price is ${dbPrice}. Using DB price.`
+            );
+          }
+          finalPrice = dbPrice;
+        } else {
+          finalPrice = item.price;
+        }
 
         // Calculate fees
         const feeBreakdown = await pricingService.calculatePlatformFees(
@@ -441,31 +457,68 @@ class BookingService {
   }
 
   /**
-   * Confirm booking after successful payment
+   * Confirm booking after successful payment.
+   *
+   * Security gates (in order):
+   *  1. Stripe PaymentIntent must have status === 'succeeded'; reject 402 otherwise.
+   *  2. Booking's user_id must equal the requesting userId; reject 403 otherwise.
    */
-  async confirmBookingPayment(bookingId: string, paymentIntentId: string): Promise<boolean> {
+  async confirmBookingPayment(
+    bookingId: string,
+    paymentIntentId: string,
+    userId: string
+  ): Promise<void> {
+    // Gate 1: verify with Stripe that the PaymentIntent actually succeeded.
+    let intent: Stripe.PaymentIntent;
     try {
-      const confirmationCode = this.generateConfirmationCode();
-
-      await db.execute(sql`
-        UPDATE bookings SET
-          status = 'confirmed',
-          payment_status = 'succeeded',
-          confirmed_at = NOW(),
-          confirmation_code = ${confirmationCode},
-          deposit_paid = true
-        WHERE id = ${bookingId}
-      `);
-
-      // TODO: Update provider earnings
-      // TODO: Decrease availability
-      // TODO: Send notifications
-
-      return true;
-    } catch (error) {
-      console.error('Error confirming booking:', error);
-      return false;
+      intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    } catch (stripeErr: any) {
+      const err = new Error(`Stripe lookup failed: ${stripeErr?.message ?? stripeErr}`);
+      (err as any).code = 'STRIPE_LOOKUP_FAILED';
+      throw err;
     }
+
+    if (intent.status !== 'succeeded') {
+      const err = new Error(
+        `PaymentIntent ${paymentIntentId} has status "${intent.status}", not "succeeded"`
+      );
+      (err as any).code = 'PAYMENT_NOT_SUCCEEDED';
+      throw err;
+    }
+
+    // Gate 2: verify the booking belongs to the requesting user.
+    const bookingRow = await db.execute(sql`
+      SELECT user_id FROM bookings WHERE id = ${bookingId}
+    `);
+
+    if (!bookingRow.rows || bookingRow.rows.length === 0) {
+      const err = new Error(`Booking ${bookingId} not found`);
+      (err as any).code = 'BOOKING_NOT_FOUND';
+      throw err;
+    }
+
+    const bookingUserId = (bookingRow.rows[0] as { user_id: string }).user_id;
+    if (bookingUserId !== userId) {
+      const err = new Error(`Booking ${bookingId} does not belong to user ${userId}`);
+      (err as any).code = 'BOOKING_OWNERSHIP_MISMATCH';
+      throw err;
+    }
+
+    const confirmationCode = this.generateConfirmationCode();
+
+    await db.execute(sql`
+      UPDATE bookings SET
+        status = 'confirmed',
+        payment_status = 'succeeded',
+        confirmed_at = NOW(),
+        confirmation_code = ${confirmationCode},
+        deposit_paid = true
+      WHERE id = ${bookingId}
+    `);
+
+    // TODO: Update provider earnings
+    // TODO: Decrease availability
+    // TODO: Send notifications
   }
 
   /**
