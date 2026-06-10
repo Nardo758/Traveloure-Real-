@@ -321,7 +321,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
-        categoryAttributes: Object.keys(formData.categoryAttributes).length > 0 ? formData.categoryAttributes : undefined,
+        categoryAttributes: formData.categoryAttributes,
       };
 
       // Role-specific fields

@@ -594,7 +594,7 @@ export const providerServices = pgTable("provider_services", {
 // === Category Field Schema (admin-configurable per-category dynamic fields) ===
 
 export const categoryFieldSchema = pgTable("category_field_schema", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  id: uuid("id").primaryKey().defaultRandom(),
   categoryKey: varchar("category_key", { length: 100 }).notNull(),
   fieldKey: varchar("field_key", { length: 100 }).notNull(),
   label: varchar("label", { length: 255 }).notNull(),
@@ -603,7 +603,9 @@ export const categoryFieldSchema = pgTable("category_field_schema", {
   options: jsonb("options"), // string[] for select/multiselect
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  uniqCategoryField: unique("category_field_schema_category_key_field_key_key").on(table.categoryKey, table.fieldKey),
+}));
 
 export const insertCategoryFieldSchemaSchema = createInsertSchema(categoryFieldSchema).omit({ id: true, createdAt: true });
 export type CategoryFieldSchema = typeof categoryFieldSchema.$inferSelect;
