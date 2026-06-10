@@ -482,6 +482,28 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
   // reads before falling back to category. Stored value is the expert-share
   // percent (e.g. 80 → expert keeps 80%, platform takes 20%).
 
+router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, res) => {
+  const admin = await db.select({ role: users.role }).from(users)
+    .where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+  const schema = z.object({
+    providerVerificationStatus: z.enum(["pending", "verified", "rejected"]).optional(),
+    backgroundCheckConfirmed: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+
+  await storage.updateProviderVerification(req.params.id, parsed.data);
+  const [updated] = await db.select({
+    id: users.id,
+    providerVerificationStatus: users.providerVerificationStatus,
+    backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+  }).from(users).where(eq(users.id, req.params.id));
+  if (!updated) return res.status(404).json({ message: "User not found" });
+  res.json(updated);
+});
+
 router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
     const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
     if (!admin || admin.role !== "admin") {
@@ -556,7 +578,7 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
 
     // For each provider, fetch their services and user info
     const enriched = await Promise.all(approvedForms.map(async (form) => {
-      const [providerUser] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, profileImageUrl: users.profileImageUrl })
+      const [providerUser] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, profileImageUrl: users.profileImageUrl, providerVerificationStatus: users.providerVerificationStatus, backgroundCheckConfirmed: users.backgroundCheckConfirmed })
         .from(users).where(eq(users.id, form.userId));
 
       const services = await db
@@ -585,7 +607,13 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
       const totalRevenue = services.reduce((s, sv) => s + parseFloat(sv.totalRevenue ?? "0"), 0);
       const activeServices = services.filter(sv => sv.status === "active").length;
 
-      return { ...form, user: providerUser ?? null, services, totalBookings, totalRevenue, activeServices };
+      return {
+        ...form,
+        user: providerUser ? { id: providerUser.id, name: [providerUser.firstName, providerUser.lastName].filter(Boolean).join(" "), email: providerUser.email, profileImageUrl: providerUser.profileImageUrl } : null,
+        providerVerificationStatus: providerUser?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: providerUser?.backgroundCheckConfirmed ?? false,
+        services, totalBookings, totalRevenue, activeServices,
+      };
     }));
 
     res.json(enriched);

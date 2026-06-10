@@ -101,6 +101,7 @@ const MIGRATION_FILES = [
   "051_schema_migrations_ledger_bootstrap.sql",
   "052_phase5_expert_endorsements.sql",
   "053_bookings_payment_intent_unique.sql",
+  "054_provider_verification_gate.sql",
 ];
 
 export type MigrationResult =

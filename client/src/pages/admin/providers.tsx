@@ -129,6 +129,27 @@ export default function AdminProviders() {
     },
   });
 
+  const verificationMutation = useMutation({
+    mutationFn: async ({ userId, verified }: { userId: string; verified: boolean }) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}/verification`, {
+        providerVerificationStatus: verified ? "verified" : "pending",
+        backgroundCheckConfirmed: verified,
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-service-providers"] });
+      toast({
+        title: variables.verified ? "Provider verified" : "Verification cleared",
+        description: variables.verified
+          ? "Provider can now publish gated service categories."
+          : "Provider's verification has been reset to pending.",
+      });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to update verification", description: error?.message ?? "Try again." });
+    },
+  });
+
   const filteredPlatformProviders = platformProviders.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -338,6 +359,23 @@ export default function AdminProviders() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          {/* Verification toggle */}
+                          {(() => {
+                            const isVerified = (provider as any).providerVerificationStatus === "verified";
+                            return (
+                              <Button
+                                variant={isVerified ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => verificationMutation.mutate({ userId: provider.userId, verified: !isVerified })}
+                                disabled={verificationMutation.isPending}
+                                data-testid={`button-verify-${provider.id}`}
+                                title={isVerified ? "Click to clear verification" : "Mark provider as background-check verified"}
+                                className={isVerified ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}
+                              >
+                                {isVerified ? "✓ Verified" : "Mark Verified"}
+                              </Button>
+                            );
+                          })()}
                           <Button
                             variant="outline"
                             size="sm"

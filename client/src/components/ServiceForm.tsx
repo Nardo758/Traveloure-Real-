@@ -16,7 +16,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
-  MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText,
+  MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -27,6 +27,8 @@ interface ServiceCategory {
   name: string;
   slug: string;
   description: string | null;
+  requiresBackgroundCheck?: boolean;
+  insuranceBand?: number | null;
 }
 
 interface ServiceSubcategory {
@@ -341,8 +343,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     },
   });
 
+  const { data: verificationStatus } = useQuery<{ providerVerificationStatus: string; backgroundCheckConfirmed: boolean }>({
+    queryKey: ["/api/provider/verification-status"],
+    enabled: role === "provider",
+  });
+
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+  const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
+  const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
+  const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
 
   if (isEditMode && loadingExisting) {
     return (
@@ -446,6 +456,29 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
             )}
           </div>
+
+          {/* Verification banner — shown when selected category requires background check / elevated insurance */}
+          {role === "provider" && isCategoryGated && (
+            <div
+              className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${isProviderVerified ? "bg-green-50 border-green-200 text-green-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}
+              data-testid="banner-verification-required"
+            >
+              <ShieldAlert className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isProviderVerified ? "text-green-600" : "text-amber-600"}`} />
+              <div>
+                {isProviderVerified ? (
+                  <p className="font-medium">Background verification complete — you can publish this service.</p>
+                ) : (
+                  <>
+                    <p className="font-medium">Background check required before going live</p>
+                    <p className="text-xs mt-0.5 opacity-80">
+                      This category requires a background check and/or elevated insurance verification.
+                      You can save as a draft now and contact support to complete verification before publishing.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Subcategory */}
           {subcategories.length > 0 && (
@@ -959,10 +992,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <Button
                   className="bg-[#FF385C] hover:bg-[#FF385C]/90 flex-1"
                   onClick={() => createMutation.mutate("publish")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId}
+                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked}
+                  title={publishBlocked ? "Complete background verification before publishing this category" : undefined}
+                  data-testid="button-publish-service"
                 >
                   {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Publish Service
+                  {publishBlocked ? "Verification Required" : "Publish Service"}
                 </Button>
               </>
             )}
