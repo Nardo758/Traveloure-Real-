@@ -589,6 +589,9 @@ export const providerServices = pgTable("provider_services", {
   // Per-category dynamic attributes (jsonb, data-driven fields per category_field_schema)
   categoryAttributes: jsonb("category_attributes"),
 
+  // Expert 5-tier connection (FK managed at DB level by migration 057)
+  expertOfferingTypeId: uuid("expert_offering_type_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

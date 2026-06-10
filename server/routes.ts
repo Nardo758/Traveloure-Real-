@@ -5203,6 +5203,18 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // GET /api/expert/offering-types — returns active expert offering type rows (5-tier catalog)
+  // Public (no auth required) so the /earn page and unauthenticated service form can load it.
+  app.get("/api/expert/offering-types", async (req, res) => {
+    try {
+      const rows = await storage.getActiveExpertOfferingTypes();
+      res.json(rows);
+    } catch (err) {
+      console.error("Failed to fetch expert offering types:", err);
+      res.status(500).json({ message: "Failed to fetch offering types" });
+    }
+  });
+
   // Get expert's services by status
   app.get("/api/expert/services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;

@@ -243,8 +243,8 @@ export default function EarnPage() {
     navigate(`/become-provider?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
   };
 
-  const handleExpertSelect = (offeringKey: string, displayName: string) => {
-    navigate(`/become-expert?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`);
+  const handleExpertSelect = (offeringKey: string, _displayName: string) => {
+    navigate(`/expert/services/new?offeringTypeKey=${encodeURIComponent(offeringKey)}`);
   };
 
   return (
