@@ -39,6 +39,92 @@ export function getAppBaseUrl(): string {
   return "http://localhost:5000";
 }
 
+interface BookingConfirmationParams {
+  toEmail: string;
+  userName: string;
+  bookingId: string;
+  bookingTitle: string;
+  bookingDate?: string | null;
+  confirmationCode: string;
+}
+
+export async function sendBookingConfirmationEmail(params: BookingConfirmationParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log(
+      "[email] RESEND_API_KEY not set — skipping booking confirmation email for booking",
+      params.bookingId
+    );
+    return;
+  }
+
+  const greeting = params.userName ? `Hi ${params.userName},` : "Hi,";
+  const myBookingsUrl = `${getAppBaseUrl()}/my-bookings`;
+  const dateLine = params.bookingDate
+    ? `<tr style="background: #F3F4F6;">
+         <td style="padding: 12px 16px; color: #6B7280;">Date</td>
+         <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${params.bookingDate}</td>
+       </tr>`
+    : "";
+  const datePlain = params.bookingDate ? `Date:              ${params.bookingDate}\n` : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">Booking Confirmed!</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your booking is confirmed. Here are your details:
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+        <tr>
+          <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Booking</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${params.bookingTitle}</td>
+        </tr>
+        ${dateLine}
+        <tr>
+          <td style="padding: 12px 16px; color: #6B7280;">Confirmation code</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600; font-family: monospace; letter-spacing: 1px;">${params.confirmationCode}</td>
+        </tr>
+      </table>
+      <a href="${myBookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View My Bookings
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you made a booking on Traveloure.<br>
+        View your bookings at <a href="${myBookingsUrl}" style="color: #FF385C;">${myBookingsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Booking Confirmed!`,
+    ``,
+    greeting,
+    ``,
+    `Your booking is confirmed. Here are your details:`,
+    ``,
+    `Booking:           ${params.bookingTitle}`,
+    datePlain.trimEnd(),
+    `Confirmation code: ${params.confirmationCode}`,
+    ``,
+    `View your bookings: ${myBookingsUrl}`,
+  ].filter(line => line !== "").join("\n");
+
+  await client.emails.send({
+    from: getFromAddress(),
+    to: params.toEmail,
+    subject: `Your booking is confirmed — ${params.bookingTitle}`,
+    text,
+    html,
+  });
+
+  console.log(
+    `[email] Booking confirmation sent to ${params.toEmail} for booking ${params.bookingId} (code: ${params.confirmationCode})`
+  );
+}
+
 interface BookingAlertParams {
   providerEmail: string;
   providerName: string;

@@ -24,6 +24,7 @@ import Stripe from 'stripe';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
+import { sendBookingConfirmationEmail } from './email.service';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -204,6 +205,29 @@ class StripePaymentService {
       }
 
       console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
+
+      // Fire-and-forget confirmation email — must not block the webhook response
+      const bookingDetails = await db.execute(sql`
+        SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
+        FROM bookings b
+        JOIN users u ON u.id = b.user_id
+        WHERE b.id = ${bookingId}
+        LIMIT 1
+      `).catch(() => null);
+
+      const row = bookingDetails?.rows?.[0] as any;
+      if (row?.email) {
+        sendBookingConfirmationEmail({
+          toEmail: row.email,
+          userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
+          bookingId,
+          bookingTitle: row.title || 'Your booking',
+          bookingDate: row.booking_date ?? null,
+          confirmationCode,
+        }).catch(err =>
+          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
+        );
+      }
     }
   }
 
