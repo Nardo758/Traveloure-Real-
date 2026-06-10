@@ -175,6 +175,11 @@ export default function BookingFlowModal({
     setIsLoading(true);
     setPaymentIntentId(paymentIntentIdFromStripe);
     try {
+      // Give the Stripe webhook a moment to fire and confirm the booking server-side
+      // before we call the fallback confirm-payment endpoint. The endpoint is idempotent:
+      // if the webhook already confirmed the booking it returns success immediately.
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       const confirmPromises = bookingIds.map(bookingId =>
         fetch('/api/bookings/confirm-payment', {
           method: 'POST',

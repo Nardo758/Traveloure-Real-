@@ -42,7 +42,16 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/bookings/confirm-payment
- * Confirm booking after payment success
+ *
+ * FALLBACK / POLLING ENDPOINT — the authoritative confirmation path is the
+ * Stripe webhook (payment_intent.succeeded → stripePaymentService.handlePaymentSucceeded).
+ * This endpoint exists so the client can recover when the browser was closed before
+ * the webhook fired, or in local dev where webhooks aren't delivered.
+ *
+ * Behaviour:
+ *   1. If the booking is already confirmed (webhook beat us here) → return 200 immediately.
+ *   2. If the booking is still pending_payment → run the full server-side verification
+ *      and confirm it (idempotent fallback).
  */
 router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
@@ -58,9 +67,24 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
 
+    // Fast-path: if the webhook already confirmed this booking, return success immediately
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+    const existing = await db.execute(sql`
+      SELECT status FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1
+    `);
+    const currentStatus = (existing.rows?.[0] as any)?.status;
+
+    if (currentStatus === 'confirmed') {
+      console.log(`[confirm-payment] booking ${bookingId} already confirmed by webhook — returning success`);
+      return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+    }
+
+    // Fallback: webhook hasn't fired yet (or this is local dev) — confirm it now
+    console.log(`[confirm-payment] webhook hasn't confirmed booking ${bookingId} yet — running fallback confirmation`);
     await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
 
-    res.json({ success: true, message: 'Booking confirmed' });
+    res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
   } catch (error: any) {
     const code = error?.code;
     if (code === 'PAYMENT_NOT_SUCCEEDED' || code === 'STRIPE_LOOKUP_FAILED') {
