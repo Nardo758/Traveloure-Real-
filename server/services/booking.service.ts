@@ -10,6 +10,7 @@ import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
+import { sendBookingConfirmationEmail } from './email.service';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -552,7 +553,31 @@ class BookingService {
 
     // TODO: Update provider earnings
     // TODO: Decrease availability
-    // TODO: Send notifications
+
+    // Fire-and-forget confirmation email — must not block the caller
+    db.execute(sql`
+      SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
+      FROM bookings b
+      JOIN users u ON u.id = b.user_id
+      WHERE b.id = ${bookingId}
+      LIMIT 1
+    `).then(result => {
+      const row = result?.rows?.[0] as any;
+      if (row?.email) {
+        sendBookingConfirmationEmail({
+          toEmail: row.email,
+          userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
+          bookingId,
+          bookingTitle: row.title || 'Your booking',
+          bookingDate: row.booking_date ?? null,
+          confirmationCode,
+        }).catch(err =>
+          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
+        );
+      }
+    }).catch(err =>
+      console.error(`[email] failed to fetch booking details for confirmation email (booking ${bookingId}):`, err)
+    );
   }
 
   /**
