@@ -53,6 +53,7 @@ import {
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
+import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -1397,6 +1398,24 @@ export default function CartPage() {
                         </p>
                       )}
                     </CardContent>
+                    {/* Cart cross-sell upsell slot */}
+                    <div className="px-6 pb-0">
+                      <UpsellSlot
+                        surface="cart"
+                        contextPayload={user ? {
+                          cartItems: (cart?.items ?? []).map((item: any) => ({
+                            offeringId: item.serviceId ?? item.contentId ?? item.offeringId ?? String(item.id ?? ""),
+                            categoryKey: item.category ?? item.itemType ?? item.contentType ?? "general",
+                          })).filter((ci: any) => ci.offeringId),
+                          userProfile: {
+                            mobilityLevel: (user as any).mobility_level ?? (user as any).mobilityLevel ?? undefined,
+                            budgetTier: (user as any).budget_tier ?? (user as any).budgetTier ?? undefined,
+                            partySize: (user as any).default_party_size ?? (user as any).partySize ?? undefined,
+                            interests: Array.isArray((user as any).interests) ? (user as any).interests : undefined,
+                          },
+                        } : undefined}
+                      />
+                    </div>
                     <CardFooter className="flex flex-col gap-3">
                       {contentItems.length > 0 && (
                         <div className="w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
@@ -1940,6 +1959,14 @@ export default function CartPage() {
             {flowStep === "payment" && (
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
+                  {/* Checkout add-ons — error-bounded so slot failure never blocks payment */}
+                  <UpsellErrorBoundary fallback={null}>
+                    <UpsellSlot
+                      surface="checkout"
+                      maxItems={2}
+                      heading="Add to your booking"
+                    />
+                  </UpsellErrorBoundary>
                   {checkoutPaymentIntent ? (
                     <Card>
                       <CardHeader>

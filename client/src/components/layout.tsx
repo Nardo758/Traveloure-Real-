@@ -150,7 +150,20 @@ const navItems = [
       },
     ],
   },
-  { name: "Partner With Us", href: "/partner-with-us" },
+  {
+    name: "Become a Partner",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "EARN ON TRAVELOURE",
+        items: [
+          { name: "Earn as a Local", href: "/earn?track=provider", icon: MapPin, description: "Offer services on the ground in your city" },
+          { name: "Share Your Expertise", href: "/earn?track=expert", icon: GraduationCap, description: "Advise travellers remotely or in-person" },
+          { name: "All Earning Options", href: "/earn", icon: Trophy, description: "See every way to earn on Traveloure" },
+        ],
+      },
+    ],
+  },
   { name: "Contact", href: "/contact" },
 ];
 
@@ -574,6 +587,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li><Link href="/about" className="hover:text-foreground transition-colors" data-testid="link-footer-about">About Us</Link></li>
                 <li><Link href="/partner-with-us" className="hover:text-foreground transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
+                <li><Link href="/earn" className="hover:text-foreground transition-colors" data-testid="link-footer-earn">Earn on Traveloure</Link></li>
                 <li><Link href="/careers" className="hover:text-foreground transition-colors" data-testid="link-footer-careers">Careers</Link></li>
                 <li><Link href="/blog" className="hover:text-foreground transition-colors" data-testid="link-footer-blog">Blog</Link></li>
                 <li><Link href="/press" className="hover:text-foreground transition-colors" data-testid="link-footer-press">Press</Link></li>

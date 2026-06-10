@@ -347,6 +347,33 @@ router.post("/api/upsell/discover-location", async (req, res) => {
     const nbhRow = nbh.rows?.[0] as any;
     const marketCity = nbhRow?.city ?? null;
 
+    // Resolve expert user IDs → endorsed offering_type_keys.
+    // The client passes expert user IDs from the location experts query; we resolve
+    // them to offering types via provider_services → service_categories → service_offering_types.
+    // This is the authoritative endorsement signal: offerings backed by active local providers.
+    let resolvedEndorsedKeys = body.expertEndorsedKeys ?? [];
+    if (resolvedEndorsedKeys.length > 0) {
+      try {
+        const resolved = await db.execute(sql`
+          SELECT DISTINCT sot.offering_type_key
+          FROM provider_services ps
+          JOIN service_categories sc ON sc.id = ps.category_id
+          JOIN service_offering_types sot ON sot.category_key = sc.category_key
+          WHERE ps.user_id = ANY(ARRAY[${sql.raw(resolvedEndorsedKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(","))}]::text[])
+            AND ps.status = 'active'
+            AND sot.is_active = true
+        `);
+        const fromProviders = (resolved.rows ?? []).map((r: any) => String(r.offering_type_key));
+        if (fromProviders.length > 0) {
+          resolvedEndorsedKeys = fromProviders;
+        }
+        // If no provider_services rows found (e.g. experts with no services yet), keep original list
+        // so the ranking gracefully degrades rather than clearing all endorsement signal.
+      } catch (resErr) {
+        console.warn("[upsell] discover-location endorsement resolution failed, using raw keys:", resErr);
+      }
+    }
+
     const ctx: UpsellContext = {
       surface: "discover_location",
       tripId: body.tripId,
@@ -355,13 +382,13 @@ router.post("/api/upsell/discover-location", async (req, res) => {
       cartItems: body.cartItems as CartItemRef[],
       userProfile: body.userProfile as UserProfile | undefined,
       neighborhoodId: body.neighborhoodId,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: resolvedEndorsedKeys,
     };
     const raw = await gatherOfferingCandidates({
       templateKey: body.templateKey,
       marketCity: marketCity ? marketCity.toLowerCase() : null,
       neighborhoodId: body.neighborhoodId,
-      expertEndorsedKeys: body.expertEndorsedKeys,
+      expertEndorsedKeys: resolvedEndorsedKeys,
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
@@ -620,6 +647,76 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
       candidates: decorate(candidates, displayLookup),
       suppressed,
     });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/upsell/checkout — checkout-step add-on nudges.
+ *
+ * Shares the cart body schema (same context signals) but is
+ * a distinct surface so slot_config can cap it independently
+ * (e.g. max 2 candidates at checkout vs 3 in cart).
+ * Requires auth — checkout is always a logged-in flow.
+ */
+router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
+  try {
+    const body = cartBodySchema.parse(req.body);
+    const ctx: UpsellContext = {
+      surface: "checkout",
+      tripId: body.tripId,
+      guestSessionId: body.guestSessionId,
+      templateKey: body.templateKey,
+      cartItems: body.cartItems as CartItemRef[],
+      userProfile: body.userProfile as UserProfile | undefined,
+      neighborhoodIds: body.neighborhoodIds,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    };
+    const raw = await gatherOfferingCandidates({
+      templateKey: body.templateKey,
+      marketCity: null,
+      neighborhoodId: body.neighborhoodIds?.[0] ?? null,
+      expertEndorsedKeys: body.expertEndorsedKeys,
+    });
+    // Checkout cap: surface at most 2 candidates regardless of slot_config max.
+    const { candidates, suppressed, displayLookup } = await rankAndLog("checkout", ctx, raw, req);
+    res.json({ candidates: decorate(candidates.slice(0, 2), displayLookup), suppressed });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/upsell/impression — client-side impression logging.
+ *
+ * UpsellSlot fires this after candidates are rendered. Accepts a batch
+ * of offeringIds so one request covers the entire rendered slate.
+ * No auth required — discover surfaces are public and still need
+ * impression tracking. tripId is optional (cart/checkout have it;
+ * discover surfaces may not).
+ */
+const impressionBodySchema = z.object({
+  surface: z.string(),
+  offeringIds: z.array(z.string()).min(1),
+  tripId: z.string().optional(),
+});
+
+router.post("/api/upsell/impression", async (req, res) => {
+  try {
+    const { surface, offeringIds, tripId } = impressionBodySchema.parse(req.body);
+    // Insert one row per offering; ON CONFLICT DO NOTHING avoids duplicate noise
+    // from double-renders (StrictMode dev, HMR, etc.).
+    for (const offeringId of offeringIds) {
+      await db.execute(sql`
+        INSERT INTO upsell_impressions (surface, offering_id, trip_id, shown_at, clicked)
+        VALUES (${surface}, ${offeringId}, ${tripId ?? null}, NOW(), false)
+        ON CONFLICT DO NOTHING
+      `);
+    }
+    res.json({ ok: true, logged: offeringIds.length });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
     res.status(500).json({ error: err.message });
