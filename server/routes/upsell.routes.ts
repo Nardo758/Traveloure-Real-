@@ -134,27 +134,73 @@ export function resolveTemplateKey(input: string | null | undefined): string {
  * does not surface at all.
  *
  * Target scope tiers (no cascade — chosen by available context):
- *   1. explicit neighborhoodIds  → coverage in those neighborhoods
+ *   1. explicit neighborhoodIds  → coverage in those neighborhoods, plus
+ *      their adjacent neighborhoods (city_neighborhoods.adjacent_keys, same
+ *      city, checked symmetrically) so proximity can rank same > adjacent.
+ *      Degrades gracefully to exact-neighborhood while adjacency data is
+ *      unpopulated.
  *   2. marketCity                → coverage anywhere in that city
  *   3. neither                   → any coverage (keeps non-located surfaces non-empty)
  */
+type CoverageMatch = {
+  matchedSlug: string;
+  verified: boolean;
+  /** best covering provider's listing price (null when column empty) */
+  price: number | null;
+  /** how the matched neighborhood relates to the target scope */
+  matchType: "same" | "adjacent" | "market" | "global";
+};
+
+/** node-pg binds JS arrays as a single scalar; pass a Postgres array literal. */
+function pgTextArray(values: string[]): string {
+  return `{${values.map(v => `"${v.replace(/["\\]/g, "")}"`).join(",")}}`;
+}
+
 async function loadCoveringInventory(opts: {
   neighborhoodIds?: string[];
   marketCity?: string | null;
-}): Promise<Map<string, { matchedSlug: string; verified: boolean }>> {
+}): Promise<Map<string, CoverageMatch>> {
   const ids = (opts.neighborhoodIds ?? []).filter(Boolean);
-  // node-pg binds JS arrays as a single scalar; pass a Postgres array literal.
-  const idsLiteral = `{${ids.map(id => `"${id.replace(/["\\]/g, "")}"`).join(",")}}`;
-  const scopeFilter = ids.length > 0
-    ? sql`c.neighborhood_id = ANY(${idsLiteral}::text[])`
-    : opts.marketCity
-      ? sql`LOWER(cn.city) = ${opts.marketCity}`
-      : sql`TRUE`;
+
+  let scopeFilter = sql`TRUE`;
+  let tier: "neighborhood" | "market" | "global" = "global";
+  const targetSlugs = new Set<string>();
+  const adjacentSlugs = new Set<string>();
+
+  if (ids.length > 0) {
+    tier = "neighborhood";
+    // Resolve the targets' slugs + adjacency so the pool can include
+    // adjacent-neighborhood coverage (ranked down via proximityFit).
+    const targets = await db.execute(sql`
+      SELECT slug, LOWER(city) AS city, adjacent_keys
+      FROM city_neighborhoods WHERE id = ANY(${pgTextArray(ids)}::text[])
+    `);
+    const targetCities = new Set<string>();
+    for (const t of (targets.rows ?? []) as any[]) {
+      targetSlugs.add(String(t.slug));
+      targetCities.add(String(t.city));
+      for (const a of (t.adjacent_keys ?? []) as string[]) adjacentSlugs.add(String(a));
+    }
+    const citiesArr = pgTextArray(Array.from(targetCities));
+    const adjArr = pgTextArray(Array.from(adjacentSlugs));
+    const slugsArr = pgTextArray(Array.from(targetSlugs));
+    scopeFilter = sql`(
+      c.neighborhood_id = ANY(${pgTextArray(ids)}::text[])
+      OR (
+        LOWER(cn.city) = ANY(${citiesArr}::text[])
+        AND (cn.slug = ANY(${adjArr}::text[]) OR cn.adjacent_keys && ${slugsArr}::text[])
+      )
+    )`;
+  } else if (opts.marketCity) {
+    tier = "market";
+    scopeFilter = sql`LOWER(cn.city) = ${opts.marketCity}`;
+  }
 
   const inv = await db.execute(sql`
     SELECT DISTINCT ON (c.category_key)
       c.category_key,
       cn.slug AS matched_slug,
+      ps.price AS listing_price,
       (u.provider_verification_status = 'verified'
         AND (sc.requires_background_check = false OR u.background_check_confirmed = true)
       ) AS provider_verified
@@ -174,18 +220,55 @@ async function loadCoveringInventory(opts: {
     ORDER BY c.category_key,
       (u.provider_verification_status = 'verified'
         AND (sc.requires_background_check = false OR u.background_check_confirmed = true)) DESC,
+      (cn.slug = ANY(${pgTextArray(Array.from(targetSlugs))}::text[])) DESC,
       c.is_primary DESC,
       c.sort_order ASC
   `);
 
-  const map = new Map<string, { matchedSlug: string; verified: boolean }>();
+  const map = new Map<string, CoverageMatch>();
   for (const r of (inv.rows ?? []) as any[]) {
+    const slug = String(r.matched_slug);
+    const matchType: CoverageMatch["matchType"] =
+      tier === "neighborhood"
+        ? (targetSlugs.has(slug) ? "same" : "adjacent")
+        : tier === "market" ? "market" : "global";
+    const priceNum = r.listing_price === null || r.listing_price === undefined
+      ? null : Number(r.listing_price);
     map.set(String(r.category_key), {
-      matchedSlug: String(r.matched_slug),
+      matchedSlug: slug,
       verified: Boolean(r.provider_verified),
+      price: Number.isFinite(priceNum as number) ? priceNum : null,
+      matchType,
     });
   }
   return map;
+}
+
+/**
+ * Proximity tiers per the Inventory-Sourcing brief: same neighborhood >
+ * adjacent > same market > elsewhere. Surfaces without neighborhood context
+ * (market or global pools) get the neutral market level — proximity is then
+ * uniform within the set and never reorders it.
+ */
+const PROXIMITY_FIT = { same: 1.0, adjacent: 0.7, market: 0.4, global: 0.4 } as const;
+
+/**
+ * Nominal affiliate basket (USD) for earnings comparability: affiliate
+ * inventory has no listing price, so margin-band rates are applied to this
+ * constant until real affiliate basket telemetry exists. Platform candidates
+ * use the covering provider's actual listing price (same fallback when a
+ * listing has no price).
+ */
+const NOMINAL_BASKET_USD = 100;
+
+function computeEarnings(
+  rateType: string | null,
+  rate: number | null,
+  price: number | null,
+): number {
+  if (rate === null || !Number.isFinite(rate)) return 1; // band unresolved → pre-brief neutral
+  if (rateType === "flat") return rate;
+  return rate * (price ?? NOMINAL_BASKET_USD);
 }
 
 async function gatherOfferingCandidates(opts: {
@@ -215,13 +298,21 @@ async function gatherOfferingCandidates(opts: {
           sc.risk_profile,
           sc.requires_background_check,
           sc.commission_band_key,
-          tcm.strength                            AS template_strength
+          tcm.strength                            AS template_strength,
+          fb.rate_type                            AS band_rate_type,
+          fb.default_rate                         AS band_rate,
+          fba.rate_type                           AS aff_band_rate_type,
+          fba.default_rate                        AS aff_band_rate
         FROM service_offering_types sot
         LEFT JOIN service_categories sc
           ON sc.category_key = sot.category_key
         LEFT JOIN template_category_matrix tcm
           ON tcm.template_key = ${effectiveTemplate}
           AND tcm.category_key = sot.category_key
+        LEFT JOIN fee_bands fb
+          ON fb.band_key = sc.commission_band_key AND fb.is_active = true
+        LEFT JOIN fee_bands fba
+          ON fba.band_key = 'affiliate:' || sc.affiliate_partner_key AND fba.is_active = true
         WHERE sot.is_active = true
           AND (
             ${opts.marketCity}::text IS NULL
@@ -242,8 +333,13 @@ async function gatherOfferingCandidates(opts: {
       const inv = isAffiliate ? null : inventory.get(String(r.category_key ?? "")) ?? null;
       if (!isAffiliate && !inv) continue;
 
-      // expectedPlatformEarningsRaw remains a stub (1) until Commit 2 wires
-      // the fee resolver against the covering provider's listing price.
+      // Real per-candidate earnings: category commission band × the covering
+      // provider's listing price (platform), or the affiliate-margin band ×
+      // the nominal basket (affiliate). normalizeRevenue rescales the set.
+      const earnings = isAffiliate
+        ? computeEarnings(r.aff_band_rate_type, r.aff_band_rate === null ? null : Number(r.aff_band_rate), null)
+        : computeEarnings(r.band_rate_type, r.band_rate === null ? null : Number(r.band_rate), inv!.price);
+
       candidates.push({
         offeringId: String(r.offering_id),
         categoryKey: String(r.category_key ?? ""),
@@ -257,10 +353,11 @@ async function gatherOfferingCandidates(opts: {
         // so the ranker's bg-check hard filter and this source agree.
         providerHasVerifiedBadge: isAffiliate ? true : inv!.verified,
         candidateNeighborhoodSlug: isAffiliate ? null : inv!.matchedSlug,
-        expectedPlatformEarningsRaw: 1,
+        expectedPlatformEarningsRaw: earnings,
         expertEndorsed: endorsedSet.has(String(r.offering_id)),
         profileMatchScore: 0.5,         // Phase 5.2 baseline; Phase 5.3+ refines
-        proximityFit: (opts.neighborhoodIds?.length ?? 0) > 0 ? 0.7 : 0.4,  // un-stubbed in Commit 2
+        // Affiliate inventory is broadly available → market-level proximity.
+        proximityFit: isAffiliate ? PROXIMITY_FIT.market : PROXIMITY_FIT[inv!.matchType],
       });
     }
     return candidates;
