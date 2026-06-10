@@ -1,0 +1,30 @@
+Subscribed and on it. Let me check the current CI/review state on #68 and set up a self check-in (webhooks don't deliver CI *success*, so I can't rely on an event to merge).
+
+`send_later` isn't available this session — so I can't schedule a timed re-check. I'll catch CI *failures*/reviews via the subscription, but not the green transition. Let me read the current check state on #68 to see what the 3 checks are.
+
+CI on #68: build, tsc/verify gates, lockfile, verify-selection-controls — all **green**. But two aren't: **Playwright E2E** (in progress) and **`e2e-selection-controls (DOM gate)` — FAILED**. Let me confirm whether that failure blocks the merge.
+
+`mergeable_state: "unstable"` — that means the failing **`e2e-selection-controls` is a non-required check** (it doesn't block), and it's the **pre-existing main-wide infra red from this session's first task** (a live-`BASE_URL` deploy gate) — a server-only `trip-role.ts` change can't affect a client DOM gate, so: not caused by #68, not required, no action. "Unstable" is mergeable. Retrying the merge.
+
+**Merged** — `getTripRole` fix is on `main` (squash `71727372`). Verifying it landed correctly (merged ≠ correct discipline) and closing the PR subscription.
+
+Confirmed on `main` (`7172737`): 0 role-reads, assignment check present — the squash landed correctly. Closing the now-complete subscription.
+
+Both decisions are done. Summary:
+
+## ✅ Decision 1 — `getTripRole` fix: MERGED
+- **PR #68 merged to `main`** (squash `71727372`; `main` → `7172737`), **verified landed** — 0 role-reads, assignment check present.
+- **The one red check was non-required and not yours:** `e2e-selection-controls (DOM gate)` failed, but `mergeable_state` was `"unstable"` (non-required) — and it's the **pre-existing main-wide infra red from this session's very first task** (live-`BASE_URL` deploy gate). A server-only `trip-role.ts` change can't touch a client DOM gate. Investigated → not caused by #68, not required, **no action**. All required checks were green.
+- **Subscription closed** (PR merged).
+
+**Two things that are now yours, not mine:**
+1. **Run the live both-faces assertions** with the test accounts — *assigned `travel_expert`/`local_expert` (with an advisor row) CAN mutate their trip; unassigned expert of any type → 403.* Tracing ≠ running, and this is permission code; I can't execute them from here.
+2. **Log the pre-launch item:** *"admin cross-trip override — explicit + audit-logged — decide before launch."* Never restore the implicit role path. (Point me at your pre-launch doc and I'll add it; otherwise it's flagged here.)
+
+## ✅ Decision 2 — migration numbering: requirement routed, no second doc
+- **#28 owner = your own orchestration** — the migration-ledger commits are `Claude`, merged by you (PRs #59–63). So the relay target is whichever lane you assign the next migration-ledger task to (or me).
+- **The one-line requirement to hand #28:**
+  > Your `schema_migrations` apply-once tracking doesn't stop two branches claiming the same migration **number** before merge (the `031→036` / `051`-on-parked-branch class). Fold in collision-proof numbering — ideally by **mechanism** (timestamp- or registry-issued numbers), not a manual claim-doc.
+- **No competing doc shipped (A), not dropped (C).** The parked commit (`8e6f95f`, re-authored, unpushed) stays parked — ready to repurpose as the **fallback** (`migration-number-registry.md` on a clean branch, cross-referencing #28) only if #28 can't absorb the requirement.
+
+Net open items, all yours: run the both-faces assertions, log the admin pre-launch item, and hand the numbering requirement to your #28 lane (or tell me to, once you name the branch). Nothing else running on my side.
