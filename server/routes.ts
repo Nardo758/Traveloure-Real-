@@ -414,6 +414,11 @@ export async function registerRoutes(
   // relevance-dominance contract (revenue can never override fit across bands).
   app.use(upsellRoutes);
 
+  // Phase 1.3+: fee-bands + booking-fee-config resolver endpoints.
+  // Contains GET /api/booking-fee-config (itinerary fee display) and
+  // GET /api/fee-bands/:bandKey (live band rates for pricing surfaces).
+  app.use(paymentsRoutes);
+
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
