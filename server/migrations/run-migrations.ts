@@ -105,7 +105,8 @@ const MIGRATION_FILES = [
   "055_category_field_schema.sql",
   "056_pricing_tiers.sql",
   "057_expert_offering_type_fk.sql",
-  "058_pnc_engine_lookup_index.sql",
+  "058_affiliate_booking_trip_link.sql",
+  "059_pnc_engine_lookup_index.sql",
 ];
 
 export type MigrationResult =

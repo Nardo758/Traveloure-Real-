@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { CityFeedCardGem, computeBookability } from "@/components/city-feed-card";
+import { CityFeedCardGem } from "@/components/city-feed-card";
 import { cn } from "@/lib/utils";
+import { resolveBookability } from "@shared/bookability";
 
 interface NeighborhoodContainerProps {
   neighborhood: {
@@ -112,7 +113,7 @@ export function NeighborhoodContainer({
                   gem={gem}
                   city={city}
                   scheduledDate={scheduledDate}
-                  bookability={computeBookability(gem)}
+                  bookability={resolveBookability(gem)}
                   onAdd={onAdd}
                   layout={idx === 0 ? "row" : "column"}
                 />

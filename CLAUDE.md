@@ -86,7 +86,7 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
-**Migration 058 (Jun 10, 2026):** index-only — `idx_pnc_neighborhood_category` on
+**Migration 059 (Jun 10, 2026):** index-only — `idx_pnc_neighborhood_category` on
 `provider_neighborhood_coverage(neighborhood_id, category_key)`. The upsell engine's
 candidate gather (Engine Inventory-Sourcing brief) reads coverage by
 `(neighborhood_id, category_key)`; the existing unique constraint leads with
@@ -96,6 +96,21 @@ candidate gather (Engine Inventory-Sourcing brief) reads coverage by
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
 - This was uncoordinated and left the transaction path orphaned
 - Fixed by this architecture document + provider_services canonicality
+
+**Recorded migration — Expert-Assisted Booking, Phase 2 (Jun 10, 2026):**
+- Migration `051_affiliate_booking_trip_link.sql` adds a **nullable** `trip_id` FK
+  (→ `trips`, `ON DELETE SET NULL`) to `affiliate_booking_requests`. This closes the
+  Trip-logging gap on the **existing** affiliate-booking rail — no new rail, no
+  provider_services / ESO / approval / category change. Set at expert-confirmation
+  (the create trigger is a no-trip discover surface); on confirm the facilitated
+  booking is logged onto `itinerary_items` (the canonical Trip/PlanCard item model).
+- Registered in `run-migrations.ts` (runtime) and `migration-files.ts` (chain test).
+  Ratified by the decision-maker via the Phase 2 GO.
+- **Renumbered 051 → 058** when merged onto the rebase-recovery line (051 there is
+  the ledger bootstrap). The session-branch merge had renamed only the runtime
+  registry entry, leaving a ghost (registry → nonexistent file ⇒ startup crash,
+  the 047 class); fixed by renaming the SQL file to match both registries.
+  Re-application under the new name is harmless (`ADD COLUMN IF NOT EXISTS`).
 
 ---
 

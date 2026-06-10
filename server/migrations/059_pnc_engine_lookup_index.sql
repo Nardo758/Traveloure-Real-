@@ -1,4 +1,4 @@
--- Migration 058: engine-lookup index on provider_neighborhood_coverage.
+-- Migration 059: engine-lookup index on provider_neighborhood_coverage.
 --
 -- The Engine Inventory-Sourcing brief makes the upsell candidate gather read
 -- this table by (neighborhood_id, category_key). The existing unique
