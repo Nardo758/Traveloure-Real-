@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, doublePrecision, uuid, serial, time, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -2556,7 +2556,7 @@ export const neighborhoodCoverageTarget = pgTable("neighborhood_coverage_target"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
-  pk: { name: "neighborhood_coverage_target_pk", columns: [table.neighborhoodId, table.categoryKey] },
+  pk: primaryKey({ name: "neighborhood_coverage_target_pk", columns: [table.neighborhoodId, table.categoryKey] }),
 }));
 export type NeighborhoodCoverageTargetRow = typeof neighborhoodCoverageTarget.$inferSelect;
 export const insertNeighborhoodCoverageTargetSchema = createInsertSchema(neighborhoodCoverageTarget).omit({ createdAt: true, updatedAt: true });
@@ -5665,7 +5665,7 @@ export const templateCategoryMatrix = pgTable("template_category_matrix", {
   strength: varchar("strength", { length: 3 }).notNull(), // 'REQ' | 'REC' | 'OPT'
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  pk: { name: "template_category_matrix_pk", columns: [table.templateKey, table.categoryKey] },
+  pk: primaryKey({ name: "template_category_matrix_pk", columns: [table.templateKey, table.categoryKey] }),
 }));
 export type TemplateCategoryMatrixRow = typeof templateCategoryMatrix.$inferSelect;
 export const insertTemplateCategoryMatrixSchema = createInsertSchema(templateCategoryMatrix).omit({ createdAt: true });
