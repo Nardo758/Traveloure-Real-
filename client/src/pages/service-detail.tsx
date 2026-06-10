@@ -37,6 +37,12 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 
+interface PricingTier {
+  label: string;
+  price: number;
+  description?: string;
+}
+
 interface Service {
   id: string;
   userId: string;
@@ -46,6 +52,8 @@ interface Service {
   categoryId: string;
   price: string;
   priceType: string | null;
+  priceBasedOn: string | null;
+  pricingTiers: PricingTier[] | null;
   location: string;
   averageRating: string;
   reviewCount: number;
@@ -138,16 +146,33 @@ export default function ServiceDetailPage() {
 
   const rating = parseFloat(service.averageRating || "0") || 0;
   const priceNum = parseFloat(service.price || "0") || 0;
-  const priceDisplay = priceNum > 0
-    ? new Intl.NumberFormat("en-EU", {
-        style: "currency",
-        currency: "EUR",
-        maximumFractionDigits: priceNum % 1 === 0 ? 0 : 2,
-      }).format(priceNum)
-    : null;
-  const priceLabel = service.priceType === "variable" && priceDisplay
-    ? `From ${priceDisplay}`
-    : (priceDisplay ?? "Contact for price");
+  const fmtPrice = (n: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: n % 1 === 0 ? 0 : 2,
+    }).format(n);
+  const hasTiers = Array.isArray(service.pricingTiers) && service.pricingTiers.length > 0;
+  const priceLabel = service.priceType === "hourly" && priceNum > 0
+    ? `${fmtPrice(priceNum)} / hr`
+    : service.priceType === "package_tiers" && priceNum > 0
+    ? `from ${fmtPrice(priceNum)}`
+    : service.priceType === "per_event" && priceNum > 0
+    ? `${fmtPrice(priceNum)} / event`
+    : service.priceType === "variable" && priceNum > 0
+    ? `From ${fmtPrice(priceNum)}`
+    : priceNum > 0
+    ? fmtPrice(priceNum)
+    : "Contact for price";
+  const priceSubLabel = service.priceType === "hourly"
+    ? "billed by the hour"
+    : service.priceType === "package_tiers"
+    ? "see tiers below"
+    : service.priceType === "per_event"
+    ? "flat rate per event"
+    : service.priceType === "variable"
+    ? "starting price"
+    : "per service";
 
   return (
     <Layout>
@@ -215,6 +240,29 @@ export default function ServiceDetailPage() {
               </CardContent>
             </Card>
 
+            {hasTiers && (
+              <Card data-testid="card-pricing-tiers">
+                <CardHeader>
+                  <CardTitle>Pricing Tiers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="divide-y">
+                    {service.pricingTiers!.map((tier, idx) => (
+                      <div key={idx} className="py-3 flex items-start justify-between gap-4" data-testid={`pricing-tier-${idx}`}>
+                        <div className="flex-1">
+                          <p className="font-medium">{tier.label}</p>
+                          {tier.description && (
+                            <p className="text-sm text-muted-foreground mt-0.5">{tier.description}</p>
+                          )}
+                        </div>
+                        <p className="font-semibold text-lg shrink-0">{fmtPrice(Number(tier.price))}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {service.whatIncluded && service.whatIncluded.length > 0 && (
               <Card>
                 <CardHeader>
@@ -275,7 +323,7 @@ export default function ServiceDetailPage() {
                     {priceLabel}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {service.priceType === "variable" ? "starting price" : "per service"}
+                    {priceSubLabel}
                   </p>
                   {(service.bookingsCount ?? 0) > 0 && (
                     <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1" data-testid="text-bookings-count">

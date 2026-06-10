@@ -70,6 +70,7 @@ type Service = {
   categoryId: string;
   price?: string;
   basePrice?: string;
+  priceType?: string | null;
   deliveryTimeframe?: string;
   duration?: number;
   location?: string;
@@ -131,6 +132,15 @@ function ServiceCard({ service }: { service: Service }) {
   const rating = parseFloat(service.averageRating ?? service.rating ?? "0") || 0;
   const price = parseFloat(service.price ?? service.basePrice ?? "0") || 0;
   const reviews = service.reviewCount ?? service.totalReviews ?? 0;
+  const priceLabel = price <= 0
+    ? "Custom"
+    : service.priceType === "hourly"
+    ? `$${price} / hr`
+    : service.priceType === "package_tiers"
+    ? `from $${price}`
+    : service.priceType === "per_event"
+    ? `$${price} / event`
+    : `$${price}`;
 
   return (
     <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
@@ -173,9 +183,9 @@ function ServiceCard({ service }: { service: Service }) {
               <span className="font-medium">{rating.toFixed(1)}</span>
               <span className="text-muted-foreground text-sm">({reviews})</span>
             </div>
-            <div className="flex items-center gap-1 font-semibold">
+            <div className="flex items-center gap-1 font-semibold" data-testid={`text-price-${service.id}`}>
               <DollarSign className="w-4 h-4" />
-              <span>{price > 0 ? `$${price}` : "Custom"}</span>
+              <span>{priceLabel}</span>
             </div>
           </div>
         </CardContent>

@@ -1829,6 +1829,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         }
       }
 
+      // Compute price scalar from lowest tier when package_tiers pricing is used
+      const pricingTiersInput = (input as any).pricingTiers;
+      if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersInput) && pricingTiersInput.length > 0) {
+        const prices = pricingTiersInput.map((t: any) => Number(t.price)).filter((p: number) => p > 0);
+        if (prices.length > 0) {
+          (input as any).price = String(Math.min(...prices));
+        }
+      }
+
       const service = await storage.createProviderService({ ...input, userId });
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
@@ -1905,6 +1914,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
               });
             }
           }
+        }
+      }
+
+      // Compute price scalar from lowest tier when package_tiers pricing is used
+      const pricingTiersUpd = (input as any).pricingTiers;
+      if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersUpd) && pricingTiersUpd.length > 0) {
+        const prices = pricingTiersUpd.map((t: any) => Number(t.price)).filter((p: number) => p > 0);
+        if (prices.length > 0) {
+          (input as any).price = String(Math.min(...prices));
         }
       }
 
