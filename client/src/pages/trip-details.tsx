@@ -1251,7 +1251,7 @@ export default function TripDetails() {
                 </div>
               )}
             </div>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
