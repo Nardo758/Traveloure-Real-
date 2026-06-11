@@ -1,7 +1,6 @@
-import { useEffect } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Plus, Loader2, Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,20 +70,9 @@ export default function Dashboard() {
     queryKey: ["/api/credits/balance"],
     retry: false,
   });
-  const [, navigate] = useLocation();
-
   const now = new Date();
   const allPlans = trips ?? [];
   const activePlans = allPlans.filter(t => new Date(t.endDate) >= now);
-
-  // Adaptive routing: skip the summary list when there is exactly one active
-  // plan — go straight to Stage B (the trip control centre). Only fires after
-  // data has fully loaded so we never redirect on a stale/partial response.
-  useEffect(() => {
-    if (!isLoading && !isError && activePlans.length === 1) {
-      navigate(`/trip/${activePlans[0].id}`);
-    }
-  }, [isLoading, isError, activePlans.length, activePlans[0]?.id, navigate]);
 
   if (isLoading) {
     return (
@@ -102,18 +90,6 @@ export default function Dashboard() {
         <div className="py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
           <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  // Suppress flash: if we're about to redirect (single active plan), keep
-  // showing the spinner rather than mounting the summary list for one frame.
-  if (activePlans.length === 1) {
-    return (
-      <DashboardLayout>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin" style={{ color: "#E85D55" }} />
         </div>
       </DashboardLayout>
     );
@@ -225,7 +201,7 @@ export default function Dashboard() {
 
             {activePlans.length > 0 ? (
               <div
-                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
+                className="flex flex-col gap-6 mb-6"
                 data-testid="active-plans-grid"
               >
                 {activePlans.slice(0, 6).map((trip, i) => (
@@ -234,7 +210,7 @@ export default function Dashboard() {
                     trip={trip}
                     index={i}
                     role="owner"
-                    stage="summary"
+                    stage="full"
                   />
                 ))}
               </div>
