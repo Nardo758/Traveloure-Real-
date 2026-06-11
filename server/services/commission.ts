@@ -125,6 +125,11 @@ export function decideBandKey(
   // Phase 1.5 semantic mappings (override the generic direct-lookup fallback):
   if (opts.category === "tip") return "tip_handling";
 
+  // Phase 3.4: Booking Concierge offering type → expert_concierge_booking flat fee band.
+  // The band stores a DOLLAR amount (facilitation fee), not a split fraction.
+  // The 75/25 expert/platform split is applied separately via expert_standard.
+  if (opts.category === "booking_concierge") return "expert_concierge_booking";
+
   const isProviderLine =
     opts.source === "provider" || opts.category === "provider_commission_percent";
 

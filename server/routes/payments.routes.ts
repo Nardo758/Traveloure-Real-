@@ -53,7 +53,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, expertOfferingTypes } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -308,6 +308,21 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
 
+      // Phase 3.4: Preload expert offering type keys to detect booking_concierge services.
+      // Maps expertOfferingTypeId (UUID) → offeringTypeKey string.
+      const distinctOfferingTypeIds = Array.from(new Set(
+        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+      ));
+      const offeringTypeKeyMap = new Map<string, string>();
+      if (distinctOfferingTypeIds.length > 0) {
+        const typeRows = await db.select({ id: expertOfferingTypes.id, key: expertOfferingTypes.offeringTypeKey })
+          .from(expertOfferingTypes)
+          .where(inArray(expertOfferingTypes.id, distinctOfferingTypeIds));
+        for (const row of typeRows) {
+          offeringTypeKeyMap.set(row.id, row.key);
+        }
+      }
+
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
       let checkoutPlatformFeeTotal = 0;
@@ -319,6 +334,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        // Phase 3.4: booking_concierge offering type routes to expert_concierge_booking band
+        if (item.service.expertOfferingTypeId) {
+          const offeringKey = offeringTypeKeyMap.get(item.service.expertOfferingTypeId);
+          if (offeringKey === "booking_concierge") feeCategory = "booking_concierge";
+        }
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
@@ -356,6 +376,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        // Phase 3.4: booking_concierge offering type routes to expert_concierge_booking band
+        if (item.service.expertOfferingTypeId) {
+          const offeringKey = offeringTypeKeyMap.get(item.service.expertOfferingTypeId);
+          if (offeringKey === "booking_concierge") feeCategory2 = "booking_concierge";
+        }
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
