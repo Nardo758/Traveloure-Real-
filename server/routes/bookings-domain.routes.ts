@@ -52,7 +52,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, experienceTypes } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, experienceTypes, expertOfferingTypes } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -83,6 +83,7 @@ import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
+  getConciergeBookingFlatFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -740,6 +741,23 @@ router.get("/api/cart", async (req, res) => {
       }
     }
 
+    // Phase 3.4: Preload expert offering type keys to detect booking_concierge services.
+    const distinctOfferingTypeIds = Array.from(new Set(
+      items.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+    ));
+    const cartOfferingTypeKeyMap = new Map<string, string>();
+    if (distinctOfferingTypeIds.length > 0) {
+      const typeRows = await db.select({ id: expertOfferingTypes.id, key: expertOfferingTypes.offeringTypeKey })
+        .from(expertOfferingTypes)
+        .where(inArray(expertOfferingTypes.id, distinctOfferingTypeIds));
+      for (const row of typeRows) {
+        cartOfferingTypeKeyMap.set(row.id, row.key);
+      }
+    }
+    // Phase 3.4: Load the Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
+    // Added on top of normal 75/25 split for booking_concierge offering type services.
+    const cartConciergeBookingFlatFee = await getConciergeBookingFlatFee();
+
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
 
     let subtotal = 0;
@@ -752,7 +770,11 @@ router.get("/api/cart", async (req, res) => {
       const rates = await resolveCommissionRates(feeCategory);
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
-      platformFeeTotal += price * (1 - expertShare);
+      const isBookingConciergeItem = item.service?.expertOfferingTypeId
+        ? cartOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+        : false;
+      platformFeeTotal += price * (1 - expertShare)
+        + (isBookingConciergeItem ? cartConciergeBookingFlatFee : 0);
     }
 
     res.json({

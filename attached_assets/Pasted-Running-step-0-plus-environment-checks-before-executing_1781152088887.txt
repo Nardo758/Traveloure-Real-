@@ -1,0 +1,57 @@
+Running step 0 plus environment checks before executing any of the steps that touch DB or write files. If any prereq is missing, stop before doing anything.
+
+Container reset again — back to `390c5e1` (pre-Phase-5). Re-syncing then re-checking.
+
+Re-synced to `d6967dfc`. My ghost-047 fix was merged via PR #64; two build-gate cleanups followed. Quick check that the ghost is still gone, then back to env diagnostics.
+
+Ghost reference is back in `run-migrations.ts` after the merge chaos. Let me check.
+
+Big finding: the merge from main brought back the ghost reference (`047_early_adopter_commission_cutoff.sql` at line 80) and reverted my module split — `migration-files.ts` exists but is orphaned; `MIGRATION_FILES` is back inline. Also the array changed structurally (now starts at 001, uses `b`-suffix renames). Checking what's actually on disk vs. registered.
+
+## Step 0 turned up multiple blockers. Stopping per "either one shows something → we stop" rule. NOT running `pg_dump`.
+
+### Environment blockers (cannot host the sandbox here)
+
+| Tool | Status |
+|---|---|
+| `pg_dump`, `createdb`, `psql` | ✅ installed (PG 16.13 client) |
+| `initdb`, `pg_ctl`, `postgres` | ❌ **MISSING** — no Postgres server binaries in this container |
+| `DATABASE_URL` | `postgresql://localhost:5432/traveloure_test` — dev placeholder, **not prod**; nothing listening on that port |
+
+Step 2 of your runbook (`initdb -D /tmp/sandbox-pg && pg_ctl ... start`) cannot run here — only the *client* tools are installed. Even if I had a real prod DSN, I couldn't stand up the local sandbox to restore into. The runbook needs a workstation with a full PG install AND prod read access; this remote ephemeral container has neither.
+
+### Branch regressions surfaced while re-syncing (these are the bigger find)
+
+Two new commits landed since my ghost-047 fix: `583486d6` "Merge branch 'main' into claude/laughing-bardeen-KyTUY" (via PR #64 rebase-recovery), then `9bd01ced` + `d6967dfc` "build gate" cleanups. They reintroduced `MIGRATION_FILES` inline in `run-migrations.ts` while leaving `migration-files.ts` orphaned, and the result is worse than the original ghost:
+
+#### A) 047 was a **real feature on main, not a ghost** — but the matrix gate now needs revision
+
+The merge brought `047_early_adopter_commission_cutoff.sql` onto disk. My earlier "ghost" call was correct *for the branch state at that moment* (the file genuinely didn't exist in any ref) but **obsolete now**. The 36-second renumber dance back in `8bf9408/0cd17df/2f821b2` was actually the agent correctly anticipating main's incoming 047; the SQL file finally arrived via PR #64.
+
+Implication for your run: **the "all-zeros" matrix gate may no longer hold**. If `047_early_adopter_commission_cutoff` is live (read by the resolver), the early-adopter rows should show an intentional non-zero diff. You wanted to know this *before* the run — well, now we know. Before running, you'd want to redo the read-only "is its logic live or dormant" check on the real 047 file's contents to decide which gate applies.
+
+#### B) **CRITICAL regression: `050_phase5_expert_endorsements.sql` was dropped from the chain**
+
+Both files on disk:
+```
+050_phase5_expert_endorsements.sql           ← Phase 5.4 endorsement table (ours)
+050_service_bookings_service_id_nullable.sql ← from main (PR #46 transport fix)
+```
+
+`MIGRATION_FILES` in `run-migrations.ts:83` registers only `050_service_bookings_service_id_nullable.sql`. **`050_phase5_expert_endorsements.sql` is NOT registered anywhere**. At startup, `upsell_expert_endorsements` will not exist — Phase 5 endorsement endpoints break the moment they try to read or write that table.
+
+This is the duplicate-number collision biting: the inline array picked one 050, lost the other. Needs renumbering: rename `050_phase5_expert_endorsements.sql` → `051_phase5_expert_endorsements.sql` and append to the array. (Same b-suffix pattern as 009/024/025 would also work but breaks our "don't renumber an applied migration" rule — and this one hasn't been applied to prod yet, so a clean renumber is fine.)
+
+#### C) My chain-integrity guard is **defeated** (false positive on top of a real miss)
+
+`MIGRATION_FILES` is now declared inline in `run-migrations.ts`, while `migration-files.ts` sits orphaned with the old array. The integrity test imports from the orphan — so it tests the wrong list. It currently reports false dangles on `009_curated_by_expert.sql`, `024_provider_commission.sql`, `025_ai_cost_tracking.sql` (those got `b`-suffix renames in the inline array, which is correct on disk). It does NOT catch the real `050_phase5_expert_endorsements.sql` miss. The guard needs to be re-pointed at the runtime source.
+
+### Net call
+
+Three things need to happen *before* the prod-snapshot run is meaningful:
+
+1. **Fix the chain regressions** (one commit): delete the orphan `migration-files.ts`, re-add a side-effect-free export module pointed at the live runtime array OR have the test re-import from `run-migrations.ts` via a non-DB path, register the dropped Phase 5 endorsements migration as `051_*`, re-run the integrity test → all green.
+2. **Re-do the "is 047 live or dormant" read** on the real SQL file's contents. Decides whether the neutrality gate is "all-zeros" or "all-zeros except early-adopter rows."
+3. **Run the runbook from a workstation that has Postgres server binaries + real prod read access.** This container has neither.
+
+I have NOT run pg_dump, NOT touched the DB. The only filesystem reads were diagnostic. Awaiting your call on whether you want me to land the chain fix (#1), do the 047 live-check (#2), or both — and confirm where the actual runbook will execute (#3, by you).
