@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, format, isValid } from "date-fns";
 import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
+// Badge is still used for the travelers pill below
 import { Link } from "wouter";
 import { getDestinationPhoto, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { MetricStrip } from "./MetricStrip";
@@ -78,7 +79,7 @@ export function HeroSection({
   }
 
   return (
-    <div className="relative h-60 overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40">
+    <div className="relative h-48 sm:h-64 overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40">
       {photoUrl && (
         <img
           src={photoUrl}
@@ -91,10 +92,13 @@ export function HeroSection({
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
       <div className="absolute top-3 left-3 flex gap-2 items-center">
-        <Badge className="bg-primary text-primary-foreground border-0 text-[11px] font-bold gap-1 px-2.5 py-1 uppercase tracking-wide" data-testid={`badge-status-${trip.id}`}>
+        <span
+          className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          data-testid={`badge-status-${trip.id}`}
+        >
           <Zap className="w-3 h-3" />
           {statusLabel}
-        </Badge>
+        </span>
         {trip.numberOfTravelers && trip.numberOfTravelers > 1 && (
           <Badge className="bg-background/50 text-foreground border-0 text-[11px] backdrop-blur-sm gap-1 px-2.5 py-1" data-testid={`badge-travelers-${trip.id}`}>
             <Users className="w-3 h-3" />
@@ -103,53 +107,55 @@ export function HeroSection({
         )}
       </div>
 
-      <div className="absolute top-3 right-3 flex gap-2">
+      <div className="absolute top-3 right-3 flex gap-1.5 items-center">
         {traveloureScore != null && (
-          <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-lg" data-testid={`badge-score-${trip.id}`}>
-            <span className="text-sm font-bold text-foreground" data-testid={`text-score-value-${trip.id}`}>{traveloureScore}</span>
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-card flex items-center justify-center shadow-lg" data-testid={`badge-score-${trip.id}`}>
+            <span className="text-xs sm:text-sm font-bold text-foreground" data-testid={`text-score-value-${trip.id}`}>{traveloureScore}</span>
           </div>
         )}
         <button
           onClick={handleShare}
-          className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-3 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1.5 hover:bg-background/70 transition-colors"
+          className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 sm:px-3 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
           data-testid={`button-share-${trip.id}`}
         >
-          <Share2 className="w-3.5 h-3.5" /> Share
+          <Share2 className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Share</span>
         </button>
-        <Link href={`/itinerary/${trip.id}`}>
+        <Link href={`/itinerary/${trip.id}`} className="hidden sm:block">
           <button
-            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-3 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1.5 hover:bg-background/70 transition-colors"
+            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 sm:px-3 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
             data-testid={`button-export-${trip.id}`}
           >
-            <Download className="w-3.5 h-3.5" /> Export
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
           </button>
         </Link>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 px-5 pb-3 pt-6">
-        <h3 className="font-['DM_Serif_Display',serif] text-[22px] text-white leading-tight drop-shadow-sm" data-testid={`text-plan-title-${trip.id}`}>
+      <div className="absolute bottom-0 left-0 right-0 px-3 sm:px-5 pb-2 pt-4">
+        <h3 className="font-['DM_Serif_Display',serif] text-[17px] sm:text-[22px] text-white leading-tight drop-shadow-sm" data-testid={`text-plan-title-${trip.id}`}>
           {trip.title}
         </h3>
-        <div className="flex flex-wrap gap-4 mt-1.5 mb-2.5">
-          <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-destination-${trip.id}`}>
-            <MapPin className="w-3.5 h-3.5" /> {city}{country && `, ${country}`}
+        <div className="flex flex-wrap gap-2 sm:gap-4 mt-1 mb-1.5">
+          <span className="text-[11px] sm:text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-destination-${trip.id}`}>
+            <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {city}{country && `, ${country}`}
           </span>
-          <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
-            <Calendar className="w-3.5 h-3.5" />
+          <span className="text-[11px] sm:text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
+            <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             {startDate && endDate
-              ? `${format(startDate, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`
+              ? `${format(startDate, "MMM d")} – ${format(endDate, "MMM d, yyyy")}`
               : "Dates not set"}
           </span>
           {displayCost && (
-            <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
+            <span className="text-[11px] sm:text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
               {displayCost}
-              {perPerson && <span className="text-white/60 font-normal ml-1">- {perPerson}</span>}
+              {perPerson && <span className="text-white/60 font-normal ml-1">· {perPerson}</span>}
             </span>
           )}
         </div>
 
-        {/* shared metric strip — same component the summary header uses (continuity) */}
-        <MetricStrip cells={metricCells} className="border-t border-white/10 pt-2.5" />
+        {/* shared metric strip — hidden on very small screens to save space */}
+        <MetricStrip cells={metricCells} className="hidden sm:flex border-t border-white/10 pt-2" />
       </div>
     </div>
   );

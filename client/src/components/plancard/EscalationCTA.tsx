@@ -28,7 +28,7 @@ interface ExpertOfferingType {
 
 function useAiPlanPolishOffering() {
   return useQuery<ExpertOfferingType | null>({
-    queryKey: ["/api/offering-types/experts"],
+    queryKey: ["/api/offering-types/experts", "ai_plan_polish"],
     queryFn: async () => {
       const res = await fetch("/api/offering-types/experts");
       if (!res.ok) return null;
@@ -197,6 +197,7 @@ export function EscalationCTA({
           variant={isQueued ? "secondary" : "default"}
           onClick={handleEscalate}
           disabled={submitting}
+          className={isQueued ? undefined : "text-white"}
           data-testid="button-plancard-escalate"
         >
           {submitting ? (

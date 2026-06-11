@@ -437,9 +437,10 @@ function PlanCardSummary({
   return (
     <>
       <div
-        className="rounded-[14px] overflow-hidden"
+        className="rounded-[14px] overflow-hidden cursor-pointer"
         style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF" }}
         data-testid={`dashboard-plan-card-${trip.id}`}
+        onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
       >
         {/* Shared header (summary↔full continuity) — redesign */}
         <PlanCardHeader
@@ -481,7 +482,7 @@ function PlanCardSummary({
         />
 
         {/* Concierge — front and center (redesign) */}
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-3" onClick={(e) => e.stopPropagation()}>
           <ConciergeModule destination={trip.destination} testId={`concierge-module-summary-${trip.id}`} />
         </div>
 
@@ -494,7 +495,7 @@ function PlanCardSummary({
             {serviceBookingsCount > 0 && (
               <button
                 type="button"
-                onClick={() => navigate(`/trip/${trip.id}?tab=bookings`)}
+                onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=bookings`); }}
                 className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ background: "#E6F1FB", color: "#0C447C" }}
                 data-testid={`pill-services-${trip.id}`}
@@ -505,7 +506,7 @@ function PlanCardSummary({
             {totalLegs > 0 && (
               <button
                 type="button"
-                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary&section=transport`)}
+                onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=itinerary&section=transport`); }}
                 className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ background: "#E1F5EE", color: "#085041" }}
                 data-testid={`pill-transport-${trip.id}`}
@@ -516,7 +517,7 @@ function PlanCardSummary({
             {advisor && (
               <button
                 type="button"
-                onClick={() => navigate(`/trip/${trip.id}?tab=expert`)}
+                onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=expert`); }}
                 className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ background: "#EEEDFE", color: "#3C3489" }}
                 data-testid={`pill-expert-${trip.id}`}
@@ -541,7 +542,7 @@ function PlanCardSummary({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=itinerary`); }}
                       className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                       style={
                         isStale
@@ -585,7 +586,7 @@ function PlanCardSummary({
 
         {/* Advisor strip */}
         {advisor && (
-          <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`}>
+          <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`} onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center gap-2.5 cursor-pointer hover:bg-[#F3F3EE] transition-colors"
               style={{ padding: "9px 14px", borderTop: "0.5px solid #E8E8E2" }}
@@ -609,11 +610,13 @@ function PlanCardSummary({
                 <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>
                   {advisor.first_name} {advisor.last_name}
                 </div>
-                {advisor.status === "accepted" && expertMsgText && (
-                  <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
-                    "{expertMsgText}"
-                  </div>
-                )}
+                <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
+                  {advisor.status === "accepted" && expertMsgText
+                    ? `"${expertMsgText}"`
+                    : advisor.status === "accepted"
+                    ? "Tap to connect with your expert"
+                    : "Matching you with a local expert…"}
+                </div>
               </div>
               {pendingSuggestions > 0 ? (
                 <div
@@ -651,23 +654,23 @@ function PlanCardSummary({
         {/* Footer */}
         <div className="flex gap-[7px]" style={{ padding: "0 14px 12px" }}>
           <button
-            onClick={() => {
-              openMapsDeepLink({ places: [{ name: trip.destination }] });
-            }}
+            onClick={(e) => { e.stopPropagation(); openMapsDeepLink({ places: [{ name: trip.destination }] }); }}
             className="flex-none py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:bg-[#F3F3EE] transition-colors"
             style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF", color: "#1A1A18" }}
             data-testid={`btn-maps-${trip.id}`}
           >
             📍 Maps
           </button>
-          <Link href={`/trip/${trip.id}?tab=itinerary`} className="flex-1">
-            <button
-              className="w-full py-[7px] px-3 rounded-lg text-[11px] font-medium text-white cursor-pointer transition-colors"
-              style={{ background: "#E85D55", border: "none" }}
-              data-testid={`btn-itinerary-${trip.id}`}
-            >
-              📅 View itinerary ›
-            </button>
+          <Link
+            href={`/trip/${trip.id}?tab=itinerary`}
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{ background: "#E85D55" }}
+            data-testid={`btn-itinerary-${trip.id}`}
+          >
+            <Calendar className="w-3 h-3 flex-shrink-0" />
+            View itinerary
+            <ChevronRight className="w-3 h-3 flex-shrink-0" />
           </Link>
         </div>
 
@@ -675,7 +678,7 @@ function PlanCardSummary({
         {showPolishCta && (
           <div style={{ padding: "0 14px 12px", borderTop: "0.5px solid #E8E8E2", paddingTop: 10 }}>
             <button
-              onClick={() => setShowPolishDialog(true)}
+              onClick={(e) => { e.stopPropagation(); setShowPolishDialog(true); }}
               className="w-full flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:opacity-90 transition-opacity"
               style={{ background: "#FAEEDA", color: "#633806", border: "0.5px solid #F5D08A" }}
               data-testid={`btn-expert-polish-${trip.id}`}
@@ -892,26 +895,30 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         {/* Concierge — front and center (redesign Phase 2); always visible across card/map views */}
-        <div className="px-5 pt-3">
+        <div className="px-3 sm:px-5 pt-2.5">
           <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
         </div>
 
-        <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
+        <div className="px-3 sm:px-5 pt-2 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <Button
             onClick={() => setViewMode("card")}
             variant={viewMode === "card" ? "default" : "secondary"}
-            className="flex-1"
+            size="sm"
+            className="flex-1 text-xs"
             data-testid={`btn-card-view-${trip.id}`}
           >
-            <LayoutList className="w-4 h-4 mr-2" /> Card View
+            <LayoutList className="w-3.5 h-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Card View</span>
           </Button>
           <Button
             onClick={() => setViewMode("map")}
             variant={viewMode === "map" ? "default" : "secondary"}
-            className="flex-1"
+            size="sm"
+            className="flex-1 text-xs"
             data-testid={`btn-map-view-${trip.id}`}
           >
-            <MapIcon className="w-4 h-4 mr-2" /> Map Control Center
+            <MapIcon className="w-3.5 h-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Map View</span>
           </Button>
         </div>
 
@@ -931,10 +938,83 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               perPerson={perPersonDisplay}
             />
 
-            {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
-                Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
+            <DaySelector
+              tripId={trip.id}
+              days={days}
+              selectedDay={selectedDay}
+              onSelectDay={setSelectedDay}
+            />
+
+            <SectionTabs
+              tripId={trip.id}
+              section={section}
+              onSetSection={setSection}
+              showChanges={showChanges}
+              onToggleChanges={() => setShowChanges(!showChanges)}
+              templateConfig={templateConfig}
+              dayActivityCount={day?.activities?.length || 0}
+              dayTransportCount={day?.transports?.length || 0}
+              confirmedActivities={confirmedActivities}
+              totalActivities={totalActivities}
+              transportLocked={transportLocked}
+              changeLogCount={isViewer ? 0 : changeLog.length}
+              expertChanges={expertChanges}
+            />
+
+            {!isViewer && (
+              <ChangeLogPanel
+                tripId={trip.id}
+                showChanges={showChanges}
+                changeLog={changeLog}
+              />
+            )}
+
+            <div className="max-h-[360px] overflow-y-auto scrollbar-hide">
+              {section === "activities" && (
+                <ActivitiesSection
+                  tripId={trip.id}
+                  day={day}
+                  templateConfig={templateConfig}
+                  legs={dayLegs}
+                />
+              )}
+
+              {section === "transport" && !transportLocked && (
+                <TransportSection
+                  tripId={trip.id}
+                  tripDestination={trip.destination}
+                  day={day}
+                  allowActions={!isViewer}
+                />
+              )}
+            </div>
+
+            {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window. */}
             {!isViewer && stage === "full" && (
-              <div className="px-5">
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_ontrip"
+              />
+            )}
+
+            {/* Upsell pretrip slot — "what's missing" gap-fill, after content per mockup v3.
+                Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_pretrip"
+              />
+            )}
+
+            {/* CON-A.P7 / N3: expert-escalation CTA — after content, before bottom bar (mockup v3). */}
+            {!isViewer && stage === "full" && (
+              <div className="px-3 sm:px-5 pt-2">
                 <EscalationCTA
                   tripId={trip.id}
                   destination={trip.destination}
@@ -951,90 +1031,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 />
               </div>
             )}
-
-            {/* Upsell pretrip slot — "what's missing" gap-fill, owner-only, full-stage.
-                Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
-            {!isViewer && stage === "full" && (
-              <PlanCardUpsellSlot
-                tripId={trip.id}
-                eventType={(trip as any).eventType}
-                startDate={trip.startDate}
-                endDate={trip.endDate}
-                surface="plancard_pretrip"
-              />
-            )}
-
-            <DaySelector
-              tripId={trip.id}
-              days={days}
-              selectedDay={selectedDay}
-              onSelectDay={setSelectedDay}
-            />
-
-            {!isViewer && (
-              <SectionTabs
-                tripId={trip.id}
-                section={section}
-                onSetSection={setSection}
-                showChanges={showChanges}
-                onToggleChanges={() => setShowChanges(!showChanges)}
-                templateConfig={templateConfig}
-                dayActivityCount={day?.activities?.length || 0}
-                dayTransportCount={day?.transports?.length || 0}
-                confirmedActivities={confirmedActivities}
-                totalActivities={totalActivities}
-                transportLocked={transportLocked}
-                changeLogCount={changeLog.length}
-                expertChanges={expertChanges}
-              />
-            )}
-
-            {!isViewer && (
-              <ChangeLogPanel
-                tripId={trip.id}
-                showChanges={showChanges}
-                changeLog={changeLog}
-              />
-            )}
-
-            {/* Upsell ontrip slot — live "near you" nudge, anchored above the
-                day's activities. Self-guards to the in-trip window. */}
-            {!isViewer && stage === "full" && (
-              <PlanCardUpsellSlot
-                tripId={trip.id}
-                eventType={(trip as any).eventType}
-                startDate={trip.startDate}
-                endDate={trip.endDate}
-                surface="plancard_ontrip"
-              />
-            )}
-
-            {(section === "activities" || isViewer) && (
-              <ActivitiesSection
-                tripId={trip.id}
-                day={day}
-                templateConfig={templateConfig}
-                legs={dayLegs}
-              />
-            )}
-
-            {section === "transport" && !transportLocked && !isViewer && (
-              <TransportSection
-                tripId={trip.id}
-                tripDestination={trip.destination}
-                day={day}
-                allowActions={role !== "viewer"}
-              />
-            )}
-
-            {isViewer && (
-              <TransportSection
-                tripId={trip.id}
-                tripDestination={trip.destination}
-                day={day}
-                allowActions={false}
-              />
-            )}
           </>
         ) : (
           <MapControlCenter
@@ -1047,7 +1043,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         {!isViewer && (
-          <div className="px-5 pb-5 pt-2 flex gap-2">
+          <div className="px-3 sm:px-5 pb-4 pt-2 flex gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -1062,7 +1058,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"
-                className="w-full text-xs font-semibold"
+                className="w-full text-xs font-semibold text-white"
                 data-testid={`button-view-itinerary-${trip.id}`}
               >
                 <Calendar className="w-3.5 h-3.5 mr-1" />
