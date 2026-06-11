@@ -330,7 +330,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
-      let checkoutPlatformFeeTotal = 0;
+      let checkoutBasePlatformFeeTotal = 0;
+      let checkoutConciergeFeeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
@@ -362,13 +363,16 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const isBookingConcierge = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
-        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee
-          + (isBookingConcierge ? conciergeBookingFlatFee : 0);
+        checkoutBasePlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+        if (isBookingConcierge) {
+          checkoutConciergeFeeTotal += conciergeBookingFlatFee;
+        }
       }
       const subtotal = checkoutSubtotal;
-      // For Stripe total, charge subtotal + weighted-average platform fee (includes insurance)
-      const platformFee = checkoutPlatformFeeTotal;
-      const total = subtotal + platformFee;
+      const platformFee = checkoutBasePlatformFeeTotal;
+      const conciergeFee = checkoutConciergeFeeTotal;
+      // For Stripe total, charge subtotal + base platform fee + concierge facilitation fee
+      const total = subtotal + platformFee + conciergeFee;
       
       // Create bookings for each cart item
       const bookings = [];
@@ -497,6 +501,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       res.status(201).json({
         success: true,
         bookings,
+        subtotal: subtotal.toFixed(2),
+        platformFee: platformFee.toFixed(2),
+        conciergeFee: conciergeFee.toFixed(2),
         total: total.toFixed(2),
         paymentIntent,
         message: "Booking created successfully. Complete payment.",

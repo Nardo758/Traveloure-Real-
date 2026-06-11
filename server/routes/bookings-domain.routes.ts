@@ -761,7 +761,8 @@ router.get("/api/cart", async (req, res) => {
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
 
     let subtotal = 0;
-    let platformFeeTotal = 0;
+    let basePlatformFeeTotal = 0;
+    let conciergeFeeTotal = 0;
     for (const item of items) {
       const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
       const feeCategory = item.service?.categoryId
@@ -773,15 +774,18 @@ router.get("/api/cart", async (req, res) => {
       const isBookingConciergeItem = item.service?.expertOfferingTypeId
         ? cartOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
         : false;
-      platformFeeTotal += price * (1 - expertShare)
-        + (isBookingConciergeItem ? cartConciergeBookingFlatFee : 0);
+      basePlatformFeeTotal += price * (1 - expertShare);
+      if (isBookingConciergeItem) {
+        conciergeFeeTotal += cartConciergeBookingFlatFee;
+      }
     }
 
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
-      platformFee: platformFeeTotal.toFixed(2),
-      total: (subtotal + platformFeeTotal).toFixed(2),
+      platformFee: basePlatformFeeTotal.toFixed(2),
+      conciergeFee: conciergeFeeTotal.toFixed(2),
+      total: (subtotal + basePlatformFeeTotal + conciergeFeeTotal).toFixed(2),
       itemCount: items.length,
     });
   } catch (err) {
