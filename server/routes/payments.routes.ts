@@ -370,13 +370,14 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
-        // Phase 3.4: add flat Booking Concierge facilitation fee on top of normal split
+        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
+        // conciergeBookingFlatFee is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
         const isBookingConcierge = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
         checkoutBasePlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
         if (isBookingConcierge) {
-          checkoutConciergeFeeTotal += conciergeBookingFlatFee;
+          checkoutConciergeFeeTotal += itemPrice * conciergeBookingFlatFee;
         }
       }
       const subtotal = checkoutSubtotal;
@@ -416,12 +417,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
         const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
-        // Phase 3.4: Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
-        // Added to platform take on top of the normal 75/25 expert_standard split.
+        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
+        // conciergeBookingFlatFee is a RATE (fraction), so multiply by item price.
         const isBookingConcierge2 = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
-        const conciergeFeaAmt = isBookingConcierge2 ? conciergeBookingFlatFee : 0;
+        const conciergeFeaAmt = isBookingConcierge2 ? price * conciergeBookingFlatFee : 0;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
