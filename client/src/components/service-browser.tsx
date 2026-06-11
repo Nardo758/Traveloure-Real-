@@ -1,16 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Link } from "wouter";
 import {
   Search,
@@ -93,16 +86,17 @@ interface ServiceBrowserProps {
   defaultLocation?: string;
   categoryFilter?: string;
   categorySlug?: string;
+  distanceFilter?: string;
   onAddToCart?: (service: Service) => void;
   title?: string;
 }
 
-function ServiceCard({ 
-  service, 
+function ServiceCard({
+  service,
   category,
   onAddToCart,
-}: { 
-  service: Service; 
+}: {
+  service: Service;
   category?: ServiceCategory;
   onAddToCart?: (service: Service) => void;
 }) {
@@ -122,7 +116,7 @@ function ServiceCard({
               <Icon className="w-8 h-8 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 
+              <h3
                 className="font-semibold text-foreground truncate"
                 data-testid={`text-service-name-${service.id}`}
               >
@@ -209,11 +203,10 @@ export function ServiceBrowser({
   defaultLocation = "",
   categoryFilter = "",
   categorySlug = "",
+  distanceFilter = "any",
   onAddToCart,
   title,
 }: ServiceBrowserProps) {
-  const [selectedCategory, setSelectedCategory] = useState(categoryFilter || "all");
-  const [distanceFilter, setDistanceFilter] = useState("any");
   const [page, setPage] = useState(0);
   const limit = 12;
 
@@ -225,13 +218,7 @@ export function ServiceBrowser({
     ? categories.find(c => c.slug === categorySlug)?.id || ""
     : "";
 
-  const effectiveCategoryId = lockedCategoryId || (selectedCategory !== "all" ? selectedCategory : "");
-
-  useEffect(() => {
-    if (categoryFilter) {
-      setSelectedCategory(categoryFilter);
-    }
-  }, [categoryFilter]);
+  const effectiveCategoryId = lockedCategoryId || (categoryFilter && categoryFilter !== "all" ? categoryFilter : "");
 
   const { data: result, isLoading } = useQuery<DiscoverResult>({
     queryKey: [
@@ -267,35 +254,6 @@ export function ServiceBrowser({
         <h3 className="text-lg font-semibold">{title}</h3>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Select value={selectedCategory} onValueChange={(v) => { setSelectedCategory(v); setPage(0); }}>
-          <SelectTrigger className="flex-1 sm:flex-none sm:w-44" data-testid="select-service-category">
-            <SelectValue placeholder="All categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {categories?.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={distanceFilter} onValueChange={(v) => { setDistanceFilter(v); setPage(0); }}>
-          <SelectTrigger className="flex-1 sm:flex-none sm:w-52" data-testid="select-service-distance">
-            <SelectValue placeholder="Any distance" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="any">Any distance</SelectItem>
-            <SelectItem value="1">Within 1 km</SelectItem>
-            <SelectItem value="2">Within 2 km</SelectItem>
-            <SelectItem value="5">Within 5 km</SelectItem>
-            <SelectItem value="10">Within 10 km</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -328,7 +286,7 @@ export function ServiceBrowser({
               />
             ))}
           </div>
-          
+
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 pt-4">
               <Button
