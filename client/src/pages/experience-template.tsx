@@ -2421,7 +2421,6 @@ export default function ExperienceTemplatePage() {
             <div className="mb-6">
               <ServiceBrowser
                 defaultLocation={destination}
-                showCategoryFilter={true}
                 onAddToCart={(service) => {
                   addToCart({
                     id: `service-${service.id}`,
