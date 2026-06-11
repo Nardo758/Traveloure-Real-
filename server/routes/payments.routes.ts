@@ -87,6 +87,7 @@ import {
   feeConfigFromRates,
   calcInsuranceFee,
   getConciergeBookingFlatFee,
+  requireConciergeBookingFlatFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -326,11 +327,22 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // Phase 3.4: Load the Booking Concierge flat facilitation fee amount once.
       // expert_concierge_booking is rate_type='flat' (dollar amount, NOT a split fraction).
       // This fee is added ON TOP of the normal 75/25 expert_standard split.
-      const conciergeBookingFlatFee = await getConciergeBookingFlatFee();
+      // Money gate: if any cart item is booking_concierge, use the strict loader
+      // which throws "Booking Concierge fee band not configured" if the band is
+      // missing or zero — preventing a $0 charge on a misconfigured prod DB.
+      const hasAnyBookingConciergeItem = cartData.some(i =>
+        i.service?.expertOfferingTypeId
+          ? offeringTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
+          : false,
+      );
+      const conciergeBookingFlatFee = hasAnyBookingConciergeItem
+        ? await requireConciergeBookingFlatFee()
+        : await getConciergeBookingFlatFee();
 
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
-      let checkoutPlatformFeeTotal = 0;
+      let checkoutBasePlatformFeeTotal = 0;
+      let checkoutConciergeFeeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
@@ -358,17 +370,21 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
-        // Phase 3.4: add flat Booking Concierge facilitation fee on top of normal split
+        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
+        // conciergeBookingFlatFee is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
         const isBookingConcierge = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
-        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee
-          + (isBookingConcierge ? conciergeBookingFlatFee : 0);
+        checkoutBasePlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+        if (isBookingConcierge) {
+          checkoutConciergeFeeTotal += itemPrice * conciergeBookingFlatFee;
+        }
       }
       const subtotal = checkoutSubtotal;
-      // For Stripe total, charge subtotal + weighted-average platform fee (includes insurance)
-      const platformFee = checkoutPlatformFeeTotal;
-      const total = subtotal + platformFee;
+      const platformFee = checkoutBasePlatformFeeTotal;
+      const conciergeFee = checkoutConciergeFeeTotal;
+      // For Stripe total, charge subtotal + base platform fee + concierge facilitation fee
+      const total = subtotal + platformFee + conciergeFee;
       
       // Create bookings for each cart item
       const bookings = [];
@@ -401,12 +417,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
         const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
-        // Phase 3.4: Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
-        // Added to platform take on top of the normal 75/25 expert_standard split.
+        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
+        // conciergeBookingFlatFee is a RATE (fraction), so multiply by item price.
         const isBookingConcierge2 = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
-        const conciergeFeaAmt = isBookingConcierge2 ? conciergeBookingFlatFee : 0;
+        const conciergeFeaAmt = isBookingConcierge2 ? price * conciergeBookingFlatFee : 0;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
@@ -497,12 +513,20 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       res.status(201).json({
         success: true,
         bookings,
+        subtotal: subtotal.toFixed(2),
+        platformFee: platformFee.toFixed(2),
+        conciergeFee: conciergeFee.toFixed(2),
         total: total.toFixed(2),
         paymentIntent,
         message: "Booking created successfully. Complete payment.",
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Checkout error:", err);
+      // Surface known configuration errors with a clear message so ops can act immediately
+      // (e.g. "Booking Concierge fee band not configured" from requireConciergeBookingFlatFee)
+      if (err?.message?.includes("fee band not configured") || err?.message?.includes("not configured")) {
+        return res.status(500).json({ message: err.message });
+      }
       res.status(500).json({ message: "Checkout failed" });
     }
   });

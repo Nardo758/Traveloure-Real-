@@ -84,6 +84,7 @@ import {
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
   getConciergeBookingFlatFee,
+  calcInsuranceFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -754,34 +755,55 @@ router.get("/api/cart", async (req, res) => {
         cartOfferingTypeKeyMap.set(row.id, row.key);
       }
     }
-    // Phase 3.4: Load the Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
-    // Added on top of normal 75/25 split for booking_concierge offering type services.
+    // Phase 3.4: Load the Booking Concierge facilitation fee RATE (fraction, e.g. 0.05 = 5 %).
+    // Migration 066 converted this from a flat $9.99 placeholder to a percent rate.
+    // Callers must multiply by item price: fee = itemPrice * rate.
     const cartConciergeBookingFlatFee = await getConciergeBookingFlatFee();
 
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
 
     let subtotal = 0;
-    let platformFeeTotal = 0;
+    let basePlatformFeeTotal = 0;
+    let conciergeFeeTotal = 0;
     for (const item of items) {
       const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
-      const feeCategory = item.service?.categoryId
+      // FEE-2: providers get flat 10% commission — mirror payments.routes.ts provider role check
+      let feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      const rates = await resolveCommissionRates(feeCategory);
+      if (item.service?.userId) {
+        const [providerRow] = await db
+          .select({ role: users.role })
+          .from(users)
+          .where(eq(users.id, item.service.userId))
+          .limit(1);
+        if (providerRow?.role === "provider") {
+          feeCategory = "provider_commission_percent";
+        }
+      }
+      // EXP-OVR.P2: pass expertId so per-expert overrides apply in preview (mirrors checkout)
+      const rates = await resolveCommissionRates({
+        category: feeCategory,
+        expertId: item.service?.userId ?? null,
+      });
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
       const isBookingConciergeItem = item.service?.expertOfferingTypeId
         ? cartOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
         : false;
-      platformFeeTotal += price * (1 - expertShare)
-        + (isBookingConciergeItem ? cartConciergeBookingFlatFee : 0);
+      const itemInsuranceFee = calcInsuranceFee(price, rates, feeCategory);
+      basePlatformFeeTotal += price * (1 - expertShare) + itemInsuranceFee;
+      if (isBookingConciergeItem) {
+        conciergeFeeTotal += price * cartConciergeBookingFlatFee;
+      }
     }
 
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
-      platformFee: platformFeeTotal.toFixed(2),
-      total: (subtotal + platformFeeTotal).toFixed(2),
+      platformFee: basePlatformFeeTotal.toFixed(2),
+      conciergeFee: conciergeFeeTotal.toFixed(2),
+      total: (subtotal + basePlatformFeeTotal + conciergeFeeTotal).toFixed(2),
       itemCount: items.length,
     });
   } catch (err) {
