@@ -97,6 +97,7 @@ interface CartData {
   items: CartItem[];
   subtotal: string;
   platformFee: string;
+  conciergeFee: string;
   total: string;
   itemCount: number;
 }
@@ -454,7 +455,8 @@ export default function CartPage() {
   const platformSubtotal = parseFloat(cart?.subtotal || "0");
   const combinedSubtotal = platformSubtotal + externalSubtotal;
   const platformFee = parseFloat(cart?.platformFee || "0");
-  const combinedTotal = combinedSubtotal + platformFee;
+  const conciergeFee = parseFloat(cart?.conciergeFee || "0");
+  const combinedTotal = combinedSubtotal + platformFee + conciergeFee;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const exchangeRates = exchangeRatesData?.rates ?? {};
@@ -1384,9 +1386,15 @@ export default function CartPage() {
                         <span data-testid="text-subtotal">{formatPrice(combinedSubtotal)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Platform Fee (20%)</span>
+                        <span className="text-muted-foreground">Platform fee</span>
                         <span data-testid="text-platform-fee">{formatPrice(platformFee)}</span>
                       </div>
+                      {conciergeFee > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span data-testid="text-concierge-fee">{formatPrice(conciergeFee)}</span>
+                        </div>
+                      )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
@@ -1904,9 +1912,15 @@ export default function CartPage() {
                         </div>
                       )}
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Platform Fee (20%)</span>
+                        <span className="text-muted-foreground">Platform fee</span>
                         <span>{formatPrice(platformFee)}</span>
                       </div>
+                      {conciergeFee > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span>{formatPrice(conciergeFee)}</span>
+                        </div>
+                      )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
@@ -2059,9 +2073,15 @@ export default function CartPage() {
                         </div>
                       )}
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Platform Fee (20%)</span>
+                        <span className="text-muted-foreground">Platform fee</span>
                         <span>{formatPrice(platformFee)}</span>
                       </div>
+                      {conciergeFee > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span data-testid="text-concierge-fee-payment">{formatPrice(conciergeFee)}</span>
+                        </div>
+                      )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
