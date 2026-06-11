@@ -895,26 +895,30 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         {/* Concierge — front and center (redesign Phase 2); always visible across card/map views */}
-        <div className="px-5 pt-3">
+        <div className="px-3 sm:px-5 pt-2.5">
           <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
         </div>
 
-        <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
+        <div className="px-3 sm:px-5 pt-2 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <Button
             onClick={() => setViewMode("card")}
             variant={viewMode === "card" ? "default" : "secondary"}
-            className="flex-1"
+            size="sm"
+            className="flex-1 text-xs"
             data-testid={`btn-card-view-${trip.id}`}
           >
-            <LayoutList className="w-4 h-4 mr-2" /> Card View
+            <LayoutList className="w-3.5 h-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Card View</span>
           </Button>
           <Button
             onClick={() => setViewMode("map")}
             variant={viewMode === "map" ? "default" : "secondary"}
-            className="flex-1"
+            size="sm"
+            className="flex-1 text-xs"
             data-testid={`btn-map-view-${trip.id}`}
           >
-            <MapIcon className="w-4 h-4 mr-2" /> Map Control Center
+            <MapIcon className="w-3.5 h-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Map View</span>
           </Button>
         </div>
 
@@ -937,7 +941,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
                 Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
             {!isViewer && stage === "full" && (
-              <div className="px-5">
+              <div className="px-3 sm:px-5">
                 <EscalationCTA
                   tripId={trip.id}
                   destination={trip.destination}
@@ -1050,7 +1054,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         {!isViewer && (
-          <div className="px-5 pb-5 pt-2 flex gap-2">
+          <div className="px-3 sm:px-5 pb-4 pt-2 flex gap-2">
             <Button
               variant="outline"
               size="sm"

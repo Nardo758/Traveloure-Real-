@@ -78,7 +78,7 @@ export function HeroSection({
   }
 
   return (
-    <div className="relative h-60 overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40">
+    <div className="relative h-36 sm:h-48 overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40">
       {photoUrl && (
         <img
           src={photoUrl}
@@ -126,30 +126,30 @@ export function HeroSection({
         </Link>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 px-5 pb-3 pt-6">
-        <h3 className="font-['DM_Serif_Display',serif] text-[22px] text-white leading-tight drop-shadow-sm" data-testid={`text-plan-title-${trip.id}`}>
+      <div className="absolute bottom-0 left-0 right-0 px-3 sm:px-5 pb-2 pt-4">
+        <h3 className="font-['DM_Serif_Display',serif] text-[17px] sm:text-[22px] text-white leading-tight drop-shadow-sm" data-testid={`text-plan-title-${trip.id}`}>
           {trip.title}
         </h3>
-        <div className="flex flex-wrap gap-4 mt-1.5 mb-2.5">
-          <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-destination-${trip.id}`}>
-            <MapPin className="w-3.5 h-3.5" /> {city}{country && `, ${country}`}
+        <div className="flex flex-wrap gap-2 sm:gap-4 mt-1 mb-1.5">
+          <span className="text-[11px] sm:text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-destination-${trip.id}`}>
+            <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {city}{country && `, ${country}`}
           </span>
-          <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
-            <Calendar className="w-3.5 h-3.5" />
+          <span className="text-[11px] sm:text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
+            <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             {startDate && endDate
-              ? `${format(startDate, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`
+              ? `${format(startDate, "MMM d")} – ${format(endDate, "MMM d, yyyy")}`
               : "Dates not set"}
           </span>
           {displayCost && (
-            <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
+            <span className="text-[11px] sm:text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
               {displayCost}
-              {perPerson && <span className="text-white/60 font-normal ml-1">- {perPerson}</span>}
+              {perPerson && <span className="text-white/60 font-normal ml-1">· {perPerson}</span>}
             </span>
           )}
         </div>
 
-        {/* shared metric strip — same component the summary header uses (continuity) */}
-        <MetricStrip cells={metricCells} className="border-t border-white/10 pt-2.5" />
+        {/* shared metric strip — hidden on very small screens to save space */}
+        <MetricStrip cells={metricCells} className="hidden sm:flex border-t border-white/10 pt-2" />
       </div>
     </div>
   );
