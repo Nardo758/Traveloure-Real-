@@ -3,11 +3,11 @@
  * Usage: npm run migrate:bootstrap
  *
  * Run this ONCE on a production database that was built from Drizzle snapshots
- * and has no schema_migrations history. It stamps all 001–050 migration names
+ * and has no schema_migrations history. It stamps all 001–051 migration names
  * as already-applied WITHOUT executing any of their DDL, then exits.
  *
  * After this completes, the normal server startup (npm run dev / start) will
- * skip 001–051 (all now recorded) and only apply future migrations.
+ * skip 001–051 (all now recorded) and apply 052–063 (and any future migrations).
  *
  * Safe to re-run: ON CONFLICT DO NOTHING makes every insert idempotent.
  */
