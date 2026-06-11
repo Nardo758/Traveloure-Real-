@@ -11,7 +11,7 @@
  *                                   Safe to run against prod to audit before a live run.
  *
  *  MIGRATION_BOOTSTRAP_ONLY=true — Prod ledger bootstrap: creates the schema_migrations table
- *                                   and stamps all 001–050 as already-applied (ON CONFLICT DO NOTHING)
+ *                                   and stamps all 001–063 as already-applied (ON CONFLICT DO NOTHING)
  *                                   WITHOUT executing any of their DDL. Use on a prod DB that was
  *                                   built from Drizzle snapshots and has no migration history.
  *

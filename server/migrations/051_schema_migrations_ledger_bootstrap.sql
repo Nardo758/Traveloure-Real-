@@ -11,9 +11,16 @@
 --   On any DB that already has the ledger (dev, CI, or prod after first bootstrap)
 --   every INSERT is a no-op — this file is entirely idempotent.
 --
--- ORDERING: This must be the LAST file in MIGRATION_FILES (051) so that on a fresh
+-- ORDERING: This must run after 001-050 in MIGRATION_FILES so that on a fresh
 -- dev DB the real DDL migrations 001-050 actually run first, and this file's
 -- ON CONFLICT DO NOTHING INSERTs are then harmless duplicates.
+--
+-- POST-BOOTSTRAP MIGRATIONS: Migrations 053-065 (note: 052 is intentionally
+-- excluded; 058 was cancelled) are NOT stamped by this bootstrap. They are
+-- applied normally on startup by runMigrations() — i.e. their SQL actually
+-- executes. This includes 064_concierge_booking_fee_band.sql and
+-- 065_seed_booking_concierge_offering_type.sql which seed the Booking Concierge
+-- fee band and offering type respectively.
 
 INSERT INTO schema_migrations (migration_name) VALUES
   ('001_guest_invite_system.sql'),

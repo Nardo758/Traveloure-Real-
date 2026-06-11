@@ -1,9 +1,10 @@
 import * as React from "react";
+import { MetricStrip } from "./MetricStrip";
 
 /**
- * PlanCardHeader — the shared "grown-up" header used by BOTH the summary card
- * and the full control center, so tapping in reads as the card expanding (same
- * header, same metric strip) rather than a jump to a different screen.
+ * PlanCardHeader — the shared "grown-up" header used by the summary card. The
+ * full stage keeps its photo hero but reuses the same MetricStrip, so the two
+ * stages read as the same card growing up rather than two different screens.
  *
  * Built on platform tokens (Tailwind/shadcn) — a neutral dark surface with the
  * theme `primary` accent. No mockup-specific palette/fonts.
@@ -42,7 +43,7 @@ export function PlanCardHeader({
   topRight,
   testId,
 }: PlanCardHeaderProps) {
-  const cells: Array<{ label: string; value: React.ReactNode }> = [
+  const cells = [
     { label: "Days", value: metrics.days },
     { label: "Activities", value: metrics.activities },
     { label: "Transit legs", value: metrics.legs },
@@ -69,15 +70,8 @@ export function PlanCardHeader({
         {expertName ? ` · Expert: ${expertName}` : ""}
       </div>
 
-      {/* 4-up metric strip — identical in both stages */}
-      <div className="mt-3 grid grid-cols-4 text-center">
-        {cells.map((c, i) => (
-          <div key={c.label} className={i > 0 ? "border-l border-white/10" : ""}>
-            <div className="text-[15px] font-semibold leading-none">{c.value}</div>
-            <div className="mt-1 text-[9px] uppercase tracking-wide text-white/55">{c.label}</div>
-          </div>
-        ))}
-      </div>
+      {/* 4-up metric strip — the same MetricStrip the full-stage hero overlays */}
+      <MetricStrip cells={cells} className="mt-3" />
     </div>
   );
 }
