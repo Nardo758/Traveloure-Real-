@@ -236,7 +236,8 @@ export default function TripDetails() {
     queryFn: async () => {
       const res = await fetch("/api/offering-types/experts");
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     },
     enabled: expertPickerOpen,
     staleTime: 15 * 60_000,
