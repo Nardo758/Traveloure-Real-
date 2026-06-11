@@ -20,6 +20,7 @@ export function ChangeLogPanel({ tripId, showChanges, changeLog }: ChangeLogPane
         >
           <div className="bg-amber-50/50 dark:bg-amber-950/10 border-b border-amber-200/30 dark:border-amber-800/20 px-5 py-4">
             <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 mb-3 uppercase tracking-wider">Change History</div>
+            <div className="max-h-48 overflow-y-auto scrollbar-hide">
             {changeLog.length > 0 ? changeLog.map((c, i) => (
               <div
                 key={c.id || i}
@@ -36,6 +37,7 @@ export function ChangeLogPanel({ tripId, showChanges, changeLog }: ChangeLogPane
             )) : (
               <p className="text-muted-foreground text-sm">No changes yet</p>
             )}
+            </div>
           </div>
         </motion.div>
       )}
