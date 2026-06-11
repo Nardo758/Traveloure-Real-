@@ -1,0 +1,25 @@
+Before running any of that, I want to verify the targets — because a couple of these commands are destructive in a way that doesn't match the description, and one conflicts with what CLAUDE.md says about this exact file. Let me check the actual state read-only first.
+
+I ran the read-only checks first, and they turn up three problems serious enough that I'm not going to run these commands as written. Here's what's actually true right now:
+
+**1. There's no conflict to clear.** Working tree is clean, `migration-files.ts` has zero conflict markers. The `sed` cleanup steps have nothing to act on.
+
+**2. Steps 1–2 would delete `main` and kill the open PR.** The "stale branch" framing doesn't match reality — those SHAs *are* main:
+
+| SHA | What it is | Branches containing it |
+|---|---|---|
+| `4d32a1d4` | **Merge of PR #80** (current `main` HEAD) | `origin/main` |
+| `cac7bbb0` | Merge of PR #79 (main's history) | `origin/main`, **`claude/plancard-redesign`** (the live PR-#82 branch) |
+
+So "delete whichever branch(es) show up" resolves to `git push origin --delete main` (removes production's main branch — catastrophic, very hard to undo) and `git push origin --delete claude/plancard-redesign` (auto-closes PR #82, the work we just opened). Neither is stale. I won't run these.
+
+**3. `merge=ours` on `migration-files.ts` is the one place that guard does real damage.** Per CLAUDE.md, that file is *"the canonical migration registration list for both runtime and chain-integrity checks."* `merge=ours` means every future merge **silently keeps our version and discards the incoming side** — so when another branch registers migration 062, the merge drops it with no conflict, no warning. Result: the migration never runs → prod schema drift. That's the exact failure mode the registry exists to prevent, and the file is governed by CLAUDE.md's coordination rules, so changing its merge semantics needs the decision-maker, not a blanket attribute.
+
+**What I think is going on:** there's no mechanism here that "re-merges a stale branch" automatically — migration-registry conflicts normally come from two feature branches each appending a migration line, which is a normal per-merge resolution (keep both lines), not something a stale branch causes.
+
+So rather than guess, I'd rather fix the actual thing:
+
+- **If you're hitting a real recurring conflict**, point me at the merge where it shows up (which PR/branch), and I'll diagnose the root cause. If an attribute driver is genuinely warranted for an append-only registry, the safe one is **`merge=union`** (keeps *both* sides' lines — no silent loss), not `merge=ours` — and I'd still want to look at the file's structure and run it past the migration-coordination rule before committing it.
+- **If this was about clearing a conflict you saw earlier**, it's already gone — the file is clean and CI on #82 is green on the real gates.
+
+Want to share the specific merge that conflicts, so I fix the cause instead of applying a guard that deletes main and drops migrations?
