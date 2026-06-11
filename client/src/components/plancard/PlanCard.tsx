@@ -609,11 +609,13 @@ function PlanCardSummary({
                 <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>
                   {advisor.first_name} {advisor.last_name}
                 </div>
-                {advisor.status === "accepted" && expertMsgText && (
-                  <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
-                    "{expertMsgText}"
-                  </div>
-                )}
+                <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
+                  {advisor.status === "accepted" && expertMsgText
+                    ? `"${expertMsgText}"`
+                    : advisor.status === "accepted"
+                    ? "Tap to connect with your expert"
+                    : "Matching you with a local expert…"}
+                </div>
               </div>
               {pendingSuggestions > 0 ? (
                 <div
@@ -660,14 +662,15 @@ function PlanCardSummary({
           >
             📍 Maps
           </button>
-          <Link href={`/trip/${trip.id}?tab=itinerary`} className="flex-1">
-            <button
-              className="w-full py-[7px] px-3 rounded-lg text-[11px] font-medium text-white cursor-pointer transition-colors"
-              style={{ background: "#E85D55", border: "none" }}
-              data-testid={`btn-itinerary-${trip.id}`}
-            >
-              📅 View itinerary ›
-            </button>
+          <Link
+            href={`/trip/${trip.id}?tab=itinerary`}
+            className="flex-1 flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{ background: "#E85D55" }}
+            data-testid={`btn-itinerary-${trip.id}`}
+          >
+            <Calendar className="w-3 h-3 flex-shrink-0" />
+            View itinerary
+            <ChevronRight className="w-3 h-3 flex-shrink-0" />
           </Link>
         </div>
 

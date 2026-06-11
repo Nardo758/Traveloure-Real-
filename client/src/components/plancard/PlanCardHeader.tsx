@@ -73,7 +73,7 @@ export function PlanCardHeader({
       <div className="relative z-10">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-md bg-primary/20 text-primary-foreground border border-primary/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+            <span className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
               ⚡ {statusLabel}
             </span>
             {badges}
