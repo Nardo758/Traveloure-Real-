@@ -3,7 +3,7 @@
  * Handles: Planning → [Visa Intake] → Cart Review → Payment → Confirmation
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ShoppingCart, CreditCard, CheckCircle, Globe, FileText } from 'lucide-react';
 import StripeCheckout from './StripeCheckout';
 import BookingConfirmation from './BookingConfirmation';
@@ -130,10 +130,26 @@ export default function BookingFlowModal({
   const [confirmedBookings, setConfirmedBookings] = useState<any[]>([]);
   const [paymentIntentId, setPaymentIntentId] = useState('');
 
+  // Concierge fee — fetched from /api/cart when modal opens so BookingConfirmation
+  // can display it as a separate line item.
+  const [conciergeFee, setConciergeFee] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/cart', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && typeof data.conciergeFee === 'string') {
+          setConciergeFee(parseFloat(data.conciergeFee) || 0);
+        }
+      })
+      .catch(() => { /* non-blocking — safe fallback to 0 */ });
+  }, [isOpen]);
+
   // Pricing
   const subtotal = cartItems.reduce((sum, item) => sum + item.price, 0);
   const platformFee = subtotal * 0.12;
-  const total = subtotal + platformFee;
+  const total = subtotal + platformFee + conciergeFee;
 
   const handleProceedToPayment = async () => {
     setIsLoading(true);
@@ -220,13 +236,18 @@ export default function BookingFlowModal({
         await Promise.all(confirmPromises);
       }
 
+      // Distribute the cart-level concierge fee proportionally across items
+      // (one flat fee per booking_concierge item; for simplicity divide equally
+      // among all items when we can't identify individual concierge items here).
+      const perItemConciergeFee = cartItems.length > 0 ? conciergeFee / cartItems.length : 0;
       setConfirmedBookings(
         cartItems.map((item) => ({
           ...item,
           confirmationCode: `TRV${Math.random().toString(36).substring(2, 12).toUpperCase()}`,
           serviceAmount: item.price,
           platformFee: item.price * 0.12,
-          totalAmount: item.price * 1.12,
+          conciergeFee: perItemConciergeFee,
+          totalAmount: item.price * 1.12 + perItemConciergeFee,
         }))
       );
       setCurrentStep('confirmation');
@@ -446,6 +467,12 @@ export default function BookingFlowModal({
                     <span>Platform fee (12%)</span>
                     <span>${platformFee.toFixed(2)}</span>
                   </div>
+                  {conciergeFee > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Booking Concierge fee</span>
+                      <span>${conciergeFee.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="pt-4 border-t border-gray-300 flex justify-between items-center">
                   <span className="text-lg font-semibold text-gray-900">Total</span>
@@ -497,6 +524,7 @@ export default function BookingFlowModal({
               totalAmount={total}
               travelers={tripData.travelers}
               userEmail={userEmail}
+              conciergeFee={conciergeFee > 0 ? conciergeFee : undefined}
               destination={(() => {
                 const dest = tripData.destinations?.[0];
                 return dest?.country || dest?.name || dest?.city || "";
