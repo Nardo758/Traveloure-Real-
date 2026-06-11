@@ -95,8 +95,10 @@ export default function ServicesProviderPage() {
   const _urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const _cityFromUrl = _urlParams.get('city') || '';
   const _countryFromUrl = _urlParams.get('country') || '';
-  // Offering carried from /earn ("I do this →") — pre-selects this offering in the application.
-  const offeringKeyFromUrl = _urlParams.get('offeringType') || '';
+  // Offering carried from /earn ("I do this →") — pre-selects this offering in
+  // the application. offeringTypeKey is the one canonical param across both
+  // signup paths (the legacy offeringType spelling is retired).
+  const offeringKeyFromUrl = _urlParams.get('offeringTypeKey') || '';
   const offeringNameFromUrl = _urlParams.get('offeringName') || '';
 
   const [formData, setFormData] = useState({
@@ -222,7 +224,7 @@ export default function ServicesProviderPage() {
       <header className="bg-white border-b border-[#E5E7EB] sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="flex items-center justify-between h-16">
-            <Link href="/partner-with-us" className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]" data-testid="link-back">
+            <Link href="/earn" className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]" data-testid="link-back">
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
