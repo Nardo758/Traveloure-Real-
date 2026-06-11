@@ -971,17 +971,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            {/* Upsell ontrip slot — live "near you" nudge. Self-guards to in-trip window. */}
-            {!isViewer && stage === "full" && (
-              <PlanCardUpsellSlot
-                tripId={trip.id}
-                eventType={(trip as any).eventType}
-                startDate={trip.startDate}
-                endDate={trip.endDate}
-                surface="plancard_ontrip"
-              />
-            )}
-
             {(section === "activities" || isViewer) && (
               <ActivitiesSection
                 tripId={trip.id}
@@ -1006,6 +995,17 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 tripDestination={trip.destination}
                 day={day}
                 allowActions={false}
+              />
+            )}
+
+            {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_ontrip"
               />
             )}
 
@@ -1067,7 +1067,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"
-                className="w-full text-xs font-semibold"
+                className="w-full text-xs font-semibold text-white"
                 data-testid={`button-view-itinerary-${trip.id}`}
               >
                 <Calendar className="w-3.5 h-3.5 mr-1" />
