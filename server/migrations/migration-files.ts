@@ -6,11 +6,15 @@
  *
  * Notes:
  * - `052_phase5_expert_endorsements.sql` is intentionally excluded. It is a
- *   superseded duplicate schema attempt for `upsell_expert_endorsements` and
- *   crashes when the real `050_phase5_expert_endorsements.sql` table already
- *   exists.
- * - `051_affiliate_booking_trip_link.sql` keeps its shipped filename even
- *   though it sorts after later-numbered files in the runtime order.
+ *   superseded duplicate schema attempt for `upsell_expert_endorsements` whose
+ *   columns (service_id, offering_type_key, city_key, active) diverge from the
+ *   live Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The CI
+ *   workflow runs drizzle-kit push before migrations, so the table already exists
+ *   without an `active` column when 052 runs — its partial indexes would crash.
+ *   Do NOT register or execute this file (per architecture doc).
+ * - `051_affiliate_booking_trip_link.sql` was renamed 060_affiliate_booking_trip_link.sql
+ *   to eliminate the duplicate 051_ prefix collision with
+ *   051_schema_migrations_ledger_bootstrap.sql.
  */
 export const MIGRATION_FILES = [
   "001_guest_invite_system.sql",
@@ -65,7 +69,6 @@ export const MIGRATION_FILES = [
   "047_early_adopter_commission_cutoff.sql",
   "048_phase8_offering_risk_override.sql",
   "049_phase5_upsell_engine_tables.sql",
-  "050_phase5_expert_endorsements.sql",
   "050_service_bookings_service_id_nullable.sql",
   "051_schema_migrations_ledger_bootstrap.sql",
   "053_bookings_payment_intent_unique.sql",
@@ -73,8 +76,9 @@ export const MIGRATION_FILES = [
   "055_category_field_schema.sql",
   "056_pricing_tiers.sql",
   "057_expert_offering_type_fk.sql",
-  "051_affiliate_booking_trip_link.sql",
   "059_pnc_engine_lookup_index.sql",
+  "060_affiliate_booking_trip_link.sql",
+  "061_affiliate_offering_types.sql",
   "060_concierge_booking_fee_band.sql",
   "061_seed_booking_concierge_offering_type.sql",
 ] as const;
