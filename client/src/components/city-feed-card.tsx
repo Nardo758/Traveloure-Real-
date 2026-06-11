@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
-import { matchedServiceSuggestion, gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
+import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
@@ -112,27 +113,47 @@ function MatchedServiceStrip({
   suggestion: MatchSuggestion;
   id: string;
 }) {
+  const isRequest = suggestion.isRequest === true;
   return (
     <div
       className="border-t border-dashed border-border pt-2 mt-1 flex items-center gap-2 flex-wrap"
       data-testid={`suggestion-${id}`}
     >
       <span className="text-[11px] text-muted-foreground flex-1 min-w-[100px]">
-        {suggestion.icon} matched:{" "}
-        <strong className="text-foreground font-semibold">{suggestion.matchText}</strong>
-      </span>
-      <Button
-        size="sm"
-        className={cn(
-          "h-6 text-[11px] px-2.5 flex-shrink-0 font-semibold",
-          suggestion.actionVariant === "affiliate"
-            ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
-            : "",
+        {suggestion.icon}{" "}
+        {isRequest ? (
+          <span className="text-foreground font-semibold">{suggestion.matchText}</span>
+        ) : (
+          <>
+            matched:{" "}
+            <strong className="text-foreground font-semibold">{suggestion.matchText}</strong>
+          </>
         )}
-        asChild
-      >
-        <a href={suggestion.href}>{suggestion.actionLabel}</a>
-      </Button>
+      </span>
+      {isRequest ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 text-[11px] px-2.5 flex-shrink-0 font-semibold border-dashed"
+          data-testid={`btn-request-service-${id}`}
+          data-offering-type={suggestion.offeringTypeKey}
+        >
+          {suggestion.actionLabel}
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          className={cn(
+            "h-6 text-[11px] px-2.5 flex-shrink-0 font-semibold",
+            suggestion.actionVariant === "affiliate"
+              ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+              : "",
+          )}
+          asChild
+        >
+          <a href={suggestion.href}>{suggestion.actionLabel}</a>
+        </Button>
+      )}
     </div>
   );
 }
@@ -164,7 +185,10 @@ export function CityFeedCardGem({
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
-  const suggestion = matchedServiceSuggestion(gem.placeType);
+  const { data: suggestion } = useQuery<MatchSuggestion | null>({
+    queryKey: [`/api/gems/${gem.id}/matched-service`],
+    staleTime: 5 * 60 * 1000,
+  });
   const typeMeta = gemTypeMeta(gem.placeType);
   const isTrending = gem.gemScore !== undefined && Number(gem.gemScore) >= 8.5;
 
@@ -568,22 +592,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     dbImageUrl,
   );
 
-  const supplySuggestion: MatchSuggestion = isHotel
-    ? {
-        icon: "🚗",
-        matchText: "private car from city centre · ¥9,000",
-        actionLabel: "Book both",
-        actionVariant: "platform",
-        href: "/experiences/transport",
-      }
-    : {
-        icon: "🧭",
-        matchText: "local guide · ¥6,000",
-        actionLabel: "Book guide",
-        actionVariant: "platform",
-        href: "/local-experts",
-      };
-
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
@@ -648,8 +656,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             ))}
           </div>
         )}
-
-        <MatchedServiceStrip suggestion={supplySuggestion} id={`supply-${item.id}`} />
 
         <div className="flex gap-1.5 pt-0.5 flex-wrap">
           <Button size="sm" className="h-7 text-xs px-3">Book</Button>
