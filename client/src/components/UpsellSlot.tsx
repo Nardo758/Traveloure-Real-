@@ -105,8 +105,8 @@ export function UpsellSlot({
   headless,
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
-  const impressionFiredRef = useRef(false);
-  const slotDataFiredRef = useRef(false);
+  const lastImpressionDataRef = useRef<unknown>(undefined);
+  const lastSlotDataRef = useRef<unknown>(undefined);
 
   const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
   if (tripId) body.tripId = tripId;
@@ -134,12 +134,14 @@ export function UpsellSlot({
   const candidates = (data?.candidates ?? []).slice(0, maxItems);
 
   useEffect(() => {
-    if (candidates.length > 0 && !impressionFiredRef.current) {
-      impressionFiredRef.current = true;
+    // Fire on each new data response (not just once per mount) so city/context
+    // transitions on the same component instance propagate fresh results.
+    if (candidates.length > 0 && data !== lastImpressionDataRef.current) {
+      lastImpressionDataRef.current = data;
       logImpression.mutate(candidates.map((c) => c.offeringId));
     }
-    if (data !== undefined && !slotDataFiredRef.current) {
-      slotDataFiredRef.current = true;
+    if (data !== undefined && data !== lastSlotDataRef.current) {
+      lastSlotDataRef.current = data;
       onSlotData?.({ candidates, suppressed: data.suppressed ?? [] });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

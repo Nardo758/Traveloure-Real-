@@ -62,6 +62,7 @@ export function composeDiscoverFeed(
 
   const recQueue = [...recommendations];
   let organicSinceLastRec = 0;
+  let recIdx = 0; // Opaque sequential ID for recommendation cards — never exposes raw offeringId
 
   let wantedInserted = 0;
   let organicSinceLastWanted = 0;
@@ -104,7 +105,7 @@ export function composeDiscoverFeed(
         const rec = recQueue.shift()!;
         result.push({
           kind: "recommendation" as FeedItemKind,
-          id: `rec-${rec.offeringId}`,
+          id: `rec-${recIdx++}`, // opaque index — never exposes raw offeringId in DOM
           data: {
             ...rec,
             label: cfg.recLabel,

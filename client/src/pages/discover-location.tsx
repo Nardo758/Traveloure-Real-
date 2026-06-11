@@ -491,7 +491,7 @@ function RecommendationCard({
           size="sm"
           className="h-7 text-[12px] px-3"
           onClick={() => onAdd({ ...item.data, title: displayName, city })}
-          data-testid={`btn-rec-add-${item.id}`}
+          data-testid="btn-rec-add"
         >
           Add
         </Button>
@@ -500,7 +500,7 @@ function RecommendationCard({
           variant="outline"
           className="h-7 text-[12px] px-3"
           asChild
-          data-testid={`btn-rec-ask-${item.id}`}
+          data-testid="btn-rec-ask"
         >
           <a href="/local-experts">Ask</a>
         </Button>
@@ -509,9 +509,9 @@ function RecommendationCard({
           variant="outline"
           className="h-7 text-[12px] px-3"
           asChild
-          data-testid={`btn-rec-book-${item.id}`}
+          data-testid="btn-rec-book"
         >
-          <a href={`/experiences/${categoryKey ?? "travel"}`}>Book</a>
+          <a href="/experiences">Book</a>
         </Button>
       </div>
     </div>
@@ -521,11 +521,11 @@ function RecommendationCard({
 // ─── Injected card: wanted recruitment slot ───────────────────────────────────
 
 function WantedSlotCard({ item }: { item: FeedItem }) {
-  const { offeringLabel, offeringKey, neighborhoodName, city: slotCity } = item.data as WantedSlotData;
+  const { offeringLabel, neighborhoodName, city: slotCity } = item.data as WantedSlotData;
   return (
     <div
       className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
-      data-testid={`feed-wanted-slot-${item.id}`}
+      data-testid="feed-wanted-slot"
     >
       <div className="min-w-0">
         <p className="text-xs font-semibold text-primary truncate">
@@ -536,9 +536,9 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
         </p>
       </div>
       <a
-        href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offeringTypeKey=${encodeURIComponent(offeringKey)}`}
+        href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offering=${encodeURIComponent(offeringLabel)}`}
         className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
-        data-testid={`link-wanted-apply-${item.id}`}
+        data-testid="link-wanted-apply"
       >
         Apply <ChevronRight className="w-3 h-3" />
       </a>
@@ -1170,6 +1170,11 @@ export default function DiscoverLocationPage() {
   // Using the combined set (candidates + suppressed) as the authoritative "has-coverage" signal
   // means recruitment cards only appear for offering types the engine found NO candidates for at all.
   const [discoverySlotResult, setDiscoverySlotResult] = useState<SlotResult>({ candidates: [], suppressed: [] });
+  // Reset slot result on city change so stale recommendations from a previous
+  // city never appear in the new city's composed feed while new data loads.
+  useEffect(() => {
+    setDiscoverySlotResult({ candidates: [], suppressed: [] });
+  }, [city]);
 
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
