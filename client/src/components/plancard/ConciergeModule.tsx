@@ -30,7 +30,7 @@ export function ConciergeModule({ destination, subtitle, testId }: ConciergeModu
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-bold text-foreground">Ask the Concierge</div>
-          <div className="text-[11px] text-muted-foreground leading-tight">
+          <div className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
             {subtitle ?? "Hand off any task — AI now, or an expert."}
           </div>
         </div>

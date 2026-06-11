@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, format, isValid } from "date-fns";
 import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
+// Badge is still used for the travelers pill below
 import { Link } from "wouter";
 import { getDestinationPhoto, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { MetricStrip } from "./MetricStrip";
@@ -91,10 +92,13 @@ export function HeroSection({
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
       <div className="absolute top-3 left-3 flex gap-2 items-center">
-        <Badge className="bg-primary text-primary-foreground border-0 text-[11px] font-bold gap-1 px-2.5 py-1 uppercase tracking-wide" data-testid={`badge-status-${trip.id}`}>
+        <span
+          className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          data-testid={`badge-status-${trip.id}`}
+        >
           <Zap className="w-3 h-3" />
           {statusLabel}
-        </Badge>
+        </span>
         {trip.numberOfTravelers && trip.numberOfTravelers > 1 && (
           <Badge className="bg-background/50 text-foreground border-0 text-[11px] backdrop-blur-sm gap-1 px-2.5 py-1" data-testid={`badge-travelers-${trip.id}`}>
             <Users className="w-3 h-3" />
