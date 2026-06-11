@@ -66,6 +66,8 @@ export function composeDiscoverFeed(
   let wantedInserted = 0;
   let organicSinceLastWanted = 0;
 
+  const leadExpertId = leadExpert?.id ?? leadExpert?.userId ?? leadExpert?.user_id ?? null;
+
   for (let i = 0; i < organicItems.length; i++) {
     const item = organicItems[i];
 
@@ -76,6 +78,15 @@ export function composeDiscoverFeed(
         data: { ...leadExpert, isLeadExpert: true },
       });
       expertInserted = true;
+    }
+
+    // Skip organic expert items that duplicate the injected lead expert card
+    if (
+      leadExpertId != null &&
+      item.kind === "expert" &&
+      (item.data?.id ?? item.data?.userId ?? item.data?.user_id) === leadExpertId
+    ) {
+      continue;
     }
 
     result.push(item);

@@ -453,7 +453,11 @@ function RecommendationCard({
   scheduledDate: string | null;
   onAdd: (item: any) => void;
 }) {
-  const { displayName, tagline, label, categoryKey } = item.data;
+  const { displayName, tagline, label, affiliateLabel, categoryKey } = item.data;
+  const isAffiliate = (categoryKey ?? "").startsWith("aff_");
+  const visibleLabel = isAffiliate
+    ? (affiliateLabel ?? "Sponsored")
+    : (label ?? "Recommended");
   const meta = offeringCategoryMeta(categoryKey);
   return (
     <div
@@ -465,7 +469,7 @@ function RecommendationCard({
           className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70"
           data-testid="recommendation-label"
         >
-          {label ?? "Recommended"}
+          {visibleLabel}
         </span>
       </div>
       <div className="flex items-center gap-3 px-3 py-2.5">
@@ -1068,6 +1072,25 @@ export default function DiscoverLocationPage() {
     setAddToExperienceOpen(true);
   };
 
+  // Feed composition config — read from platform_settings via lightweight public endpoint.
+  // Falls back to hardcoded defaults when the endpoint is unavailable.
+  const { data: feedCompositionConfig } = useQuery<{
+    recCadence: number;
+    wantedSlotMax: number;
+    wantedSlotSpacing: number;
+    recLabel: string;
+    recAffiliateLabel: string;
+  }>({
+    queryKey: ["/api/feed-composition-config"],
+    queryFn: async () => {
+      const res = await fetch("/api/feed-composition-config");
+      if (!res.ok) throw new Error("feed-composition-config unavailable");
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
   // Expert offering types — used to build specific recruitment slot labels
   const { data: expertOfferingTypes } = useQuery<Array<{ offering_type_key: string; display_name: string; service_tier: string }>>({
     queryKey: ["/api/offering-types/experts"],
@@ -1197,9 +1220,16 @@ export default function DiscoverLocationPage() {
     );
   })();
 
-  // Compose the "all" feed: organic items + interleaved recommendations, wanted-slots, lead expert
+  // Compose the "all" feed: organic items + interleaved recommendations, wanted-slots, lead expert.
+  // Uses admin-configured cadence/cap/spacing from platform_settings (falls back to defaults).
   const composedItems: FeedItem[] = data
-    ? composeDiscoverFeed(feedItems, discoverySlotResult.candidates, wantedSlotsData, leadExpert)
+    ? composeDiscoverFeed(
+        feedItems,
+        discoverySlotResult.candidates,
+        wantedSlotsData,
+        leadExpert,
+        feedCompositionConfig ?? {},
+      )
     : [];
 
   const filteredItems =
