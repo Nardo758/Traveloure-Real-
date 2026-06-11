@@ -467,6 +467,12 @@ export default function BookingFlowModal({
                     <span>Platform fee (12%)</span>
                     <span>${platformFee.toFixed(2)}</span>
                   </div>
+                  {conciergeFee > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Booking Concierge fee</span>
+                      <span>${conciergeFee.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="pt-4 border-t border-gray-300 flex justify-between items-center">
                   <span className="text-lg font-semibold text-gray-900">Total</span>
