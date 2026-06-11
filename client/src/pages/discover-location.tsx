@@ -6,12 +6,13 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
+import { composeDiscoverFeed, type WantedSlotData } from "@/lib/feed-composition";
 import { UpsellSlot, type SlotResult } from "@/components/UpsellSlot";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -427,6 +428,122 @@ function SpineFilterBar({
 
 // ─── Filler card (non-neighborhood) ──────────────────────────────────────────
 
+// ─── Injected card: engine recommendation ─────────────────────────────────────
+
+function offeringCategoryMeta(categoryKey: string | null | undefined): { icon: string; bg: string } {
+  const k = (categoryKey ?? "").toLowerCase();
+  if (k.includes("photo")) return { icon: "📷", bg: "#E1F5EE" };
+  if (k.includes("chef") || k.includes("cook") || k.includes("dining") || k.includes("food")) return { icon: "🍽", bg: "#FEF9EE" };
+  if (k.includes("guide") || k.includes("tour")) return { icon: "🧭", bg: "#EEF6FE" };
+  if (k.includes("transport") || k.includes("driver") || k.includes("car")) return { icon: "🚗", bg: "#F5F0FF" };
+  if (k.includes("wellness") || k.includes("spa") || k.includes("yoga")) return { icon: "🧘", bg: "#FFF0F5" };
+  if (k.includes("event") || k.includes("ticket")) return { icon: "🎟", bg: "#FAEEDA" };
+  if (k.includes("stay") || k.includes("hotel") || k.includes("ryokan")) return { icon: "🏯", bg: "#E6F1FB" };
+  return { icon: "✨", bg: "#F0F9FF" };
+}
+
+function RecommendationCard({
+  item,
+  city,
+  scheduledDate,
+  onAdd,
+}: {
+  item: FeedItem;
+  city: string;
+  scheduledDate: string | null;
+  onAdd: (item: any) => void;
+}) {
+  const { displayName, tagline, label, categoryKey } = item.data;
+  const meta = offeringCategoryMeta(categoryKey);
+  return (
+    <div
+      className="rounded-xl border border-border bg-card overflow-hidden"
+      data-testid={`feed-recommendation-${item.id}`}
+    >
+      <div className="flex items-center gap-1 px-3 pt-2.5">
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70"
+          data-testid="recommendation-label"
+        >
+          {label ?? "Recommended"}
+        </span>
+      </div>
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <div
+          className="w-14 h-14 rounded-lg flex-shrink-0 flex items-center justify-center text-2xl"
+          style={{ background: meta.bg }}
+        >
+          {meta.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[14px] font-medium leading-snug text-foreground">{displayName}</div>
+          {tagline && (
+            <div className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">{tagline}</div>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2 px-3 pb-3">
+        <Button
+          size="sm"
+          className="h-7 text-[12px] px-3"
+          onClick={() => onAdd({ ...item.data, title: displayName, city })}
+          data-testid={`btn-rec-add-${item.id}`}
+        >
+          Add
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[12px] px-3"
+          asChild
+          data-testid={`btn-rec-ask-${item.id}`}
+        >
+          <a href="/local-experts">Ask</a>
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[12px] px-3"
+          asChild
+          data-testid={`btn-rec-book-${item.id}`}
+        >
+          <a href={`/experiences/${categoryKey ?? "travel"}`}>Book</a>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Injected card: wanted recruitment slot ───────────────────────────────────
+
+function WantedSlotCard({ item }: { item: FeedItem }) {
+  const { offeringLabel, offeringKey, neighborhoodName, city: slotCity } = item.data as WantedSlotData;
+  return (
+    <div
+      className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
+      data-testid={`feed-wanted-slot-${item.id}`}
+    >
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-primary truncate">
+          {offeringLabel} wanted in {neighborhoodName}
+        </p>
+        <p className="text-[11px] text-muted-foreground truncate">
+          Be the first to offer {offeringLabel.toLowerCase()} for travellers in {neighborhoodName}
+        </p>
+      </div>
+      <a
+        href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offeringTypeKey=${encodeURIComponent(offeringKey)}`}
+        className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
+        data-testid={`link-wanted-apply-${item.id}`}
+      >
+        Apply <ChevronRight className="w-3 h-3" />
+      </a>
+    </div>
+  );
+}
+
+// ─── Filler card dispatcher ───────────────────────────────────────────────────
+
 function FillerCard({
   item,
   city,
@@ -480,6 +597,17 @@ function FillerCard({
           city={city}
         />
       );
+    case "recommendation":
+      return (
+        <RecommendationCard
+          item={item}
+          city={city}
+          scheduledDate={scheduledDate}
+          onAdd={onAdd}
+        />
+      );
+    case "wanted-slot":
+      return <WantedSlotCard item={item} />;
     default:
       return null;
   }
@@ -1033,8 +1161,51 @@ export default function DiscoverLocationPage() {
     ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
     : [];
 
+  // Build wanted-slot data for composition — compute once from slot result + offering types
+  const wantedSlotsData: WantedSlotData[] = (() => {
+    const coveredIds = new Set([
+      ...discoverySlotResult.candidates.map((c) => c.offeringId),
+      ...discoverySlotResult.suppressed.map((s) => s.offeringId),
+    ]);
+    const uncovered = (expertOfferingTypes ?? []).filter((o) => !coveredIds.has(o.offering_type_key));
+    const offeringPool = uncovered.length > 0 ? uncovered : (expertOfferingTypes ?? []);
+    return neighborhoods.slice(0, 5).map((nb: any, idx: number) => {
+      const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
+      const offering = offeringPool[idx % Math.max(offeringPool.length, 1)];
+      return {
+        offeringLabel: offering?.display_name ?? "Local expert guide",
+        offeringKey: offering?.offering_type_key ?? "guide",
+        neighborhoodName: nbName,
+        city,
+        neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
+      };
+    });
+  })();
+
+  // Lead expert: expert whose specialties best match the top recommendation category
+  const leadExpert: any | null = (() => {
+    if (experts.length === 0) return null;
+    const topKey = discoverySlotResult.candidates[0]?.categoryKey ?? "";
+    return (
+      (topKey
+        ? (experts.find((e: any) =>
+            (e.specialties as string[] | undefined)?.some(
+              (s) => s.toLowerCase().replace(/\s+/g, "_") === topKey
+            )
+          ) ?? experts[0])
+        : experts[0]) as any
+    );
+  })();
+
+  // Compose the "all" feed: organic items + interleaved recommendations, wanted-slots, lead expert
+  const composedItems: FeedItem[] = data
+    ? composeDiscoverFeed(feedItems, discoverySlotResult.candidates, wantedSlotsData, leadExpert)
+    : [];
+
   const filteredItems =
-    activeFilter === "all" ? feedItems : filterFeedStream(feedItems, activeFilter);
+    activeFilter === "all"
+      ? composedItems
+      : filterFeedStream(feedItems, activeFilter);
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
@@ -1152,119 +1323,11 @@ export default function DiscoverLocationPage() {
             {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
 
-            {/* ── Spine: featured lead expert for this neighborhood/city ── */}
-            {/* Lead expert is derived from the top slot candidate's categoryKey:
-                the server ranked the offering endorsed by local experts, so
-                the expert whose specialties overlap the top offering is the
-                authoritative neighborhood lead. Falls back to first expert
-                when no overlap is found. */}
-            {experts.length > 0 && (() => {
-              const topCategoryKey = discoverySlotResult.candidates[0]?.categoryKey ?? "";
-              const leadExpert = (topCategoryKey
-                ? (experts.find((e: any) =>
-                    (e.specialties as string[] | undefined)?.some(
-                      (s) => s.toLowerCase().replace(/\s+/g, "_") === topCategoryKey
-                    )
-                  ) ?? experts[0])
-                : experts[0]) as any;
-              return (
-                <div
-                  className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
-                  data-testid="section-lead-expert"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <UserCheck className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">
-                      {leadExpert.displayName ?? (`${leadExpert.firstName ?? leadExpert.first_name ?? ""} ${leadExpert.lastName ?? leadExpert.last_name ?? ""}`.trim() || "Local Expert")}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {leadExpert.headline ?? leadExpert.bio?.slice(0, 60) ?? "Featured local expert"}
-                    </p>
-                  </div>
-                  <a
-                    href={`/experts/${leadExpert.id}`}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-primary whitespace-nowrap"
-                    data-testid="link-lead-expert-profile"
-                  >
-                    View profile <ChevronRight className="w-3 h-3" />
-                  </a>
-                </div>
-              );
-            })()}
-
-            {/* ── Spine: per-neighborhood recruitment slots (uncovered offering categories) ── */}
-            {neighborhoods.length > 0 && (
-              <div className="space-y-2" data-testid="section-expert-recruitment">
-                {neighborhoods.slice(0, 3).map((nb: any, idx: number) => {
-                  const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
-                  // "Covered" = offerings the engine found providers for (candidates ranked + suppressed
-                  // but ranked). Suppressed means coverage exists but was filtered. Truly uncovered =
-                  // not in either set. This avoids false "wanted" slots for categories that have coverage.
-                  const coveredOfferingIds = new Set([
-                    ...discoverySlotResult.candidates.map((c) => c.offeringId),
-                    ...discoverySlotResult.suppressed.map((s) => s.offeringId),
-                  ]);
-                  const offeringList = (expertOfferingTypes ?? []).filter(
-                    (o) => !coveredOfferingIds.has(o.offering_type_key)
-                  );
-                  // Fall back to full list when slot data hasn't loaded yet (both arrays empty)
-                  const candidates = offeringList.length > 0 ? offeringList : (expertOfferingTypes ?? []);
-                  const offering = candidates[idx % Math.max(candidates.length, 1)];
-                  const offeringLabel = offering?.display_name ?? "Local expert guide";
-                  const offeringKey = offering?.offering_type_key ?? "guide";
-                  return (
-                    <div
-                      key={nb.id ?? nb.slug ?? nbName}
-                      className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
-                      data-testid={`section-recruitment-${nb.id ?? nb.slug ?? "nb"}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-primary truncate">
-                          {offeringLabel} wanted in {nbName}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          Be the first to offer {offeringLabel.toLowerCase()} for travellers in {nbName}
-                        </p>
-                      </div>
-                      <a
-                        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(nbName)}&offeringTypeKey=${encodeURIComponent(offeringKey)}`}
-                        className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
-                        data-testid={`link-recruitment-earn-${nb.id ?? nb.slug ?? "nb"}`}
-                      >
-                        Apply <ChevronRight className="w-3 h-3" />
-                      </a>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {experts.length === 0 && neighborhoods.length === 0 && (
-              <div
-                className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
-                data-testid="section-expert-recruitment-generic"
-              >
-                <p className="text-sm font-semibold text-primary mb-1">
-                  Local experts wanted in {toTitleCase(city)}
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Know this city well? Travellers are looking for guides, advisors, and service providers here.
-                </p>
-                <a
-                  href={`/become-expert?city=${encodeURIComponent(city)}`}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
-                  data-testid="link-expert-recruitment-earn"
-                >
-                  Start earning in {toTitleCase(city)} <ChevronRight className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            )}
-
-            {/* ── Spine: UpsellSlot recommendation cards ────────────── */}
-            {/* expertEndorsedKeys passes local expert IDs so the server boosts
-                offerings endorsed by those experts — this is the authoritative
-                endorsement signal driving both the slot ranking and lead expert. */}
+            {/* ── Headless UpsellSlot: data-only fetch (no visual) ──────────────────
+                Fires onSlotData so composeDiscoverFeed can interleave rec and
+                wanted-slot cards organically into the feed stream below.
+                expertEndorsedKeys boosts offerings endorsed by local experts,
+                driving both recommendation ranking and lead-expert selection. */}
             <UpsellSlot
               surface="discover_location"
               contextPayload={{
@@ -1273,7 +1336,7 @@ export default function DiscoverLocationPage() {
                   : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
                 expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
               }}
-              className="px-0"
+              headless
               data-testid="upsell-slot-discover-location"
               onSlotData={setDiscoverySlotResult}
             />
