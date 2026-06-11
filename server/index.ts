@@ -118,16 +118,12 @@ app.get("/api/version", (_req: Request, res: Response) => {
   });
 });
 
-// Run database seeding in background (non-blocking)
+// Run database seeding in background (non-blocking).
+// Migrations are intentionally NOT called here — they run before listen() so
+// the server never accepts requests with a partially-migrated schema.
 async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
   logger.info("Database seeding started");
-
-  // Apply SQL schema migrations first. The runner tracks applied files in
-  // `schema_migrations` (ledger), so re-runs are fast (already-recorded files
-  // are skipped). Any failure throws — do NOT catch here so that
-  // seedingComplete never flips to true with a broken schema.
-  await runMigrations();
 
   // DISABLED: ESO backfill (see architectural decision in CLAUDE.md).
   //
@@ -269,6 +265,15 @@ async function runDatabaseSeeding() {
 }
 
 (async () => {
+  // Run migrations synchronously BEFORE the server accepts any connections.
+  // A schema failure here exits the process — no requests land on a broken schema.
+  try {
+    await runMigrations();
+  } catch (err) {
+    logger.error({ err }, "FATAL: Database migrations failed — shutting down");
+    process.exit(1);
+  }
+
   await registerRoutes(httpServer, app);
 
   // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
