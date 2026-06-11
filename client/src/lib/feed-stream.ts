@@ -19,7 +19,12 @@ export type FeedItemKind =
   | "supply-hotel"
   | "supply-activity"
   | "vendor-service"
-  | "city-separator";
+  | "city-separator"
+  // Injected by the feed-composition layer (feed-composition.ts) — never
+  // produced by buildFeedStream itself:
+  | "recommendation"
+  | "wanted-slot"
+  | "lead-expert";
 
 export interface FeedItem {
   kind: FeedItemKind;
