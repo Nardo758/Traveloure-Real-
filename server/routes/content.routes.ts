@@ -53,7 +53,8 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, serviceOfferingTypes } from "@shared/schema";
+import { matchSupplyForGem } from "../services/content-supply-matching.service";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -7628,6 +7629,152 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
   });
 
 } // end registerDiscoveryRoutes
+
+// ─── Gem → matched service endpoint ───────────────────────────────────────────
+//
+// Returns the best-matched provider service for a gem (real provider name/price
+// and booking link), or a "request this" suggestion (offering type display name)
+// when no covered provider exists. Returns null for place types that intentionally
+// produce no match (neighborhood, vineyard).
+//
+// Part of the Demand-Side Service Catalog (Task #600). The request CTA is wired
+// to write a service_demand_requests row by Task #602.
+
+const GEM_NO_MATCH_PLACE_TYPES = new Set(["neighborhood", "vineyard"]);
+
+const SERVICE_ICONS: Record<string, string> = {
+  photographer: "📷",
+  photoshoot: "📷",
+  portrait: "📷",
+  videography: "🎬",
+  tour_guide: "🧭",
+  cultural_guide: "🧭",
+  walking_tour: "🧭",
+  local_guide: "🧭",
+  museum_guide: "🧭",
+  historian: "🧭",
+  private_chef: "🍽",
+  food_tour: "🍽",
+  fine_dining: "🍽",
+  market_tour: "🍽",
+  cooking_class: "🍽",
+  restaurant: "🍽",
+  driver: "🚗",
+  private_driver: "🚗",
+  chauffeur: "🚗",
+  transportation: "🚗",
+  airport_transfer: "🚗",
+  spa: "💆",
+  wellness: "💆",
+  massage: "💆",
+  yoga: "🧘",
+  meditation: "🧘",
+  babysitter: "👶",
+  childcare: "👶",
+  family_concierge: "👶",
+  outdoor_activity: "🏔",
+  hiking_guide: "🏔",
+  entertainment: "🎭",
+  nightlife: "🍸",
+  bar_tour: "🍸",
+};
+
+function gemServiceIcon(serviceType: string | null | undefined): string {
+  const t = (serviceType || "").toLowerCase();
+  for (const [key, icon] of Object.entries(SERVICE_ICONS)) {
+    if (t === key || t.includes(key)) return icon;
+  }
+  return "✨";
+}
+
+function gemServiceActionLabel(serviceType: string | null | undefined): string {
+  const t = (serviceType || "").toLowerCase();
+  if (t.includes("photo") || t.includes("videogr")) return "Book shoot";
+  if (t.includes("chef") || t.includes("dining") || t.includes("food") || t.includes("restaurant")) return "Reserve";
+  if (t.includes("driver") || t.includes("transport") || t.includes("chauffeur")) return "Book transfer";
+  if (t.includes("guide") || t.includes("tour")) return "Book guide";
+  if (t.includes("spa") || t.includes("wellness") || t.includes("massage")) return "Book session";
+  return "Book";
+}
+
+router.get("/api/gems/:gemId/matched-service", async (req, res) => {
+  try {
+    const { gemId } = req.params;
+
+    const [gem] = await db
+      .select()
+      .from(travelPulseHiddenGems)
+      .where(eq(travelPulseHiddenGems.id, gemId));
+    if (!gem) return res.json(null);
+
+    // No-match place types — empty beats a stretch
+    const pt = (gem.placeType || "").toLowerCase().trim();
+    if (GEM_NO_MATCH_PLACE_TYPES.has(pt)) return res.json(null);
+
+    // Run the real scorer
+    const result = await matchSupplyForGem(gemId, { limit: 1, minScore: 20 });
+    if (!result) return res.json(null);
+
+    // ── Case A: real verified provider match ──────────────────────────────
+    if (result.matches.length > 0) {
+      const top = result.matches[0];
+      const svcType = top.serviceType || "";
+      const priceStr = (() => {
+        if (!top.price) return "";
+        const n = parseFloat(top.price);
+        if (isNaN(n)) return ` · ${top.price}`;
+        return ` · $${Math.round(n)}`;
+      })();
+      return res.json({
+        type: "match",
+        icon: gemServiceIcon(svcType),
+        matchText: `${top.providerName}${priceStr}`,
+        actionLabel: gemServiceActionLabel(svcType),
+        actionVariant: "platform",
+        href: `/services/${top.serviceId}`,
+      });
+    }
+
+    // ── Case B: no provider — find offering type for "request this" ───────
+    if (result.expansionTerms.length === 0) return res.json(null);
+
+    const city = (gem.city || "").toLowerCase();
+
+    const offeringRows = await db
+      .select()
+      .from(serviceOfferingTypes)
+      .where(
+        and(
+          inArray(serviceOfferingTypes.offeringTypeKey, result.expansionTerms),
+          eq(serviceOfferingTypes.isActive, true),
+        )
+      )
+      .limit(5);
+
+    // Apply market scope: null = universal, array = must include city slug
+    const scoped = offeringRows.filter((o) => {
+      if (!o.marketScoped || o.marketScoped.length === 0) return true;
+      return city && o.marketScoped.some((m) => m.toLowerCase() === city);
+    });
+
+    if (scoped.length === 0) return res.json(null);
+
+    const offering = scoped[0];
+    return res.json({
+      type: "request",
+      icon: gemServiceIcon(offering.offeringTypeKey),
+      matchText: offering.displayName,
+      actionLabel: "Request this",
+      actionVariant: "platform",
+      href: "#request",
+      offeringTypeKey: offering.offeringTypeKey,
+      displayName: offering.displayName,
+    });
+  } catch (err: any) {
+    console.error("[gem-matched-service]", err.message);
+    return res.json(null);
+  }
+});
 
 // === Exchange Rate Endpoint (top-level, always registered) ===
 let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
