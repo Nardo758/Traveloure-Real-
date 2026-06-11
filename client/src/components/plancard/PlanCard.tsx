@@ -945,23 +945,21 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               onSelectDay={setSelectedDay}
             />
 
-            {!isViewer && (
-              <SectionTabs
-                tripId={trip.id}
-                section={section}
-                onSetSection={setSection}
-                showChanges={showChanges}
-                onToggleChanges={() => setShowChanges(!showChanges)}
-                templateConfig={templateConfig}
-                dayActivityCount={day?.activities?.length || 0}
-                dayTransportCount={day?.transports?.length || 0}
-                confirmedActivities={confirmedActivities}
-                totalActivities={totalActivities}
-                transportLocked={transportLocked}
-                changeLogCount={changeLog.length}
-                expertChanges={expertChanges}
-              />
-            )}
+            <SectionTabs
+              tripId={trip.id}
+              section={section}
+              onSetSection={setSection}
+              showChanges={showChanges}
+              onToggleChanges={() => setShowChanges(!showChanges)}
+              templateConfig={templateConfig}
+              dayActivityCount={day?.activities?.length || 0}
+              dayTransportCount={day?.transports?.length || 0}
+              confirmedActivities={confirmedActivities}
+              totalActivities={totalActivities}
+              transportLocked={transportLocked}
+              changeLogCount={isViewer ? 0 : changeLog.length}
+              expertChanges={expertChanges}
+            />
 
             {!isViewer && (
               <ChangeLogPanel
@@ -971,32 +969,25 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            {(section === "activities" || isViewer) && (
-              <ActivitiesSection
-                tripId={trip.id}
-                day={day}
-                templateConfig={templateConfig}
-                legs={dayLegs}
-              />
-            )}
+            <div className="max-h-[360px] overflow-y-auto scrollbar-hide">
+              {section === "activities" && (
+                <ActivitiesSection
+                  tripId={trip.id}
+                  day={day}
+                  templateConfig={templateConfig}
+                  legs={dayLegs}
+                />
+              )}
 
-            {section === "transport" && !transportLocked && !isViewer && (
-              <TransportSection
-                tripId={trip.id}
-                tripDestination={trip.destination}
-                day={day}
-                allowActions={role !== "viewer"}
-              />
-            )}
-
-            {isViewer && (
-              <TransportSection
-                tripId={trip.id}
-                tripDestination={trip.destination}
-                day={day}
-                allowActions={false}
-              />
-            )}
+              {section === "transport" && !transportLocked && (
+                <TransportSection
+                  tripId={trip.id}
+                  tripDestination={trip.destination}
+                  day={day}
+                  allowActions={!isViewer}
+                />
+              )}
+            </div>
 
             {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window. */}
             {!isViewer && stage === "full" && (
