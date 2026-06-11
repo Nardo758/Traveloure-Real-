@@ -210,7 +210,7 @@ export default function Dashboard() {
             </div>
 
             {activePlans.length > 0 ? (
-              <div className="mb-6" data-testid="active-plans-section">
+              <div className="mb-6 max-w-[480px]" data-testid="active-plans-section">
                 {/* Compact trip selector row — visible when there are 2+ plans */}
                 {activePlans.length > 1 && (
                   <div
