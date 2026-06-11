@@ -1,144 +1,171 @@
 /**
- * Discover feed composition layer.
+ * Discover feed-composition layer (Discover Feed Composition Brief, part 2).
  *
- * Merges organic feed items with injected content (recommendations, wanted-slots,
- * lead expert) into a single interleaved stream. This layer places — it does NOT
- * re-rank. The engine's candidate order is preserved exactly.
+ * Merges ALL injected elements — engine recommendations, "wanted" recruitment
+ * slots, the lead-expert card — into the organic feed stream as ONE
+ * interleaved feed, replacing the old stacked blocks (lead expert + 3 wanted
+ * slots + segregated "RECOMMENDED FOR YOU" list above the feed).
  *
- * Cadence + cap values default to the values seeded by migration 067
- * (feed_rec_cadence=4, feed_wanted_slot_max=2, feed_wanted_slot_spacing=6).
- * Callers may override with admin-fetched values.
+ * Contract (the trust guardrail, one layer above the engine's dominance test):
+ *  - THE LAYER PLACES, IT DOES NOT RE-RANK. Recommendations are consumed in
+ *    the engine's ranked order, strictly sequentially. Nothing here may
+ *    reorder, drop-and-reinsert, or revenue-prioritize them. The contextual
+ *    "place near related content" nudge only shifts WHERE the next-in-order
+ *    item lands (one slot early, next to a related organic item) — never
+ *    WHICH item comes next.
+ *  - Cadence: ~1 recommendation per `recCadence` organic items. Leftover
+ *    recommendations that don't fit the cadence are dropped, never crammed —
+ *    injected content must not dominate organic content.
+ *  - Wanted slots are capped (`wantedSlotMax`) and spaced
+ *    (`wantedSlotSpacing` organic items apart) — no wall of "Apply" cards.
+ *  - Lead expert: once, near the top (after the first organic item).
+ *  - At most one injected element after any organic item, so injected cards
+ *    are never stacked adjacent.
+ *
+ * Cadence, cap, spacing, and label copy are admin-configurable
+ * platform_settings rows served by GET /api/feed-composition-config —
+ * the values here are code fallbacks, not policy.
  */
 
-import type { FeedItem, FeedItemKind } from "./feed-stream";
-import type { UpsellCandidate } from "@/components/UpsellSlot";
+import { gemCategory, type FeedItem } from "./feed-stream";
 
-export interface WantedSlotData {
-  offeringLabel: string;
-  offeringKey: string;
-  neighborhoodName: string;
-  city: string;
-  neighborhoodId: string;
+export interface FeedRecommendation {
+  offeringId: string;
+  categoryKey: string;
+  displayName: string;
+  tagline: string | null;
+  reason?: string;
+  sourceType?: "platform_provider" | "affiliate";
 }
 
 export interface FeedCompositionConfig {
+  /** Organic items per engine recommendation (~3–4 per the brief). */
   recCadence: number;
+  /** Max wanted/recruitment slots in the whole feed (0 disables them). */
   wantedSlotMax: number;
+  /** Min organic items between wanted slots (≈ one per screen). */
   wantedSlotSpacing: number;
-  recLabel: string;
-  recAffiliateLabel: string;
+  /** Honest-disclosure copy for engine picks. */
+  recommendedLabel: string;
+  /** Distinct marker copy for paid affiliate placements. */
+  affiliateLabel: string;
 }
 
-export const DEFAULT_COMPOSITION_CONFIG: FeedCompositionConfig = {
+/** Code fallbacks — live values come from platform_settings rows
+ *  (feed_rec_cadence, feed_wanted_slot_max, feed_wanted_slot_spacing,
+ *  feed_rec_label, feed_rec_affiliate_label). */
+export const DEFAULT_FEED_COMPOSITION_CONFIG: FeedCompositionConfig = {
   recCadence: 4,
   wantedSlotMax: 2,
   wantedSlotSpacing: 6,
-  recLabel: "Recommended",
-  recAffiliateLabel: "Sponsored",
+  recommendedLabel: "Recommended",
+  affiliateLabel: "Paid partner",
 };
 
 /**
- * Compose a single interleaved feed stream from organic items + injected content.
- *
- * Rules:
- * - Lead expert: placed once at index ≤ 2 (after first organic item when possible).
- * - Recommendations: interleaved every `recCadence` organic items in engine rank order.
- * - Wanted-slots: capped at `wantedSlotMax`, spaced at least `wantedSlotSpacing`
- *   organic items apart. Never stacked consecutively.
- *
- * The composition layer places. It does NOT re-rank or re-order engine candidates.
+ * Default relatedness check for the placement nudge: a recommendation is
+ * "related" to an organic gem when its category/display keywords line up
+ * with the gem's spine category (a photographer near photo-spot gems).
  */
-export function composeDiscoverFeed(
-  organicItems: FeedItem[],
-  recommendations: UpsellCandidate[],
-  wantedSlots: WantedSlotData[],
-  leadExpert: any | null,
-  config: Partial<FeedCompositionConfig> = {},
-): FeedItem[] {
-  const cfg: FeedCompositionConfig = { ...DEFAULT_COMPOSITION_CONFIG, ...config };
+export function defaultIsRelated(item: FeedItem, rec: FeedRecommendation): boolean {
+  if (item.kind !== "loose-gem") return false;
+  const cat = gemCategory(item.data?.placeType);
+  const k = `${rec.categoryKey} ${rec.displayName}`.toLowerCase();
+  switch (cat) {
+    case "photo_spots":
+      return /photo/.test(k);
+    case "eat":
+      return /chef|food|culinary|dining|restaurant|tasting/.test(k);
+    case "stay":
+      return /transport|driver|transfer/.test(k);
+    case "do":
+      return /tour|guide|activit|experience/.test(k);
+    default:
+      return false;
+  }
+}
 
-  const result: FeedItem[] = [];
-  let expertInserted = false;
+export interface ComposeFeedOpts {
+  /** The organic stream from buildFeedStream — order untouched. */
+  organic: FeedItem[];
+  /** Engine candidates IN RANKED ORDER — consumed sequentially, never reordered. */
+  recommendations: FeedRecommendation[];
+  /** Recruitment slot payloads (page-shaped); capped + spaced here. */
+  wantedSlots: any[];
+  /** Lead-expert payload, or null when the market has no experts. */
+  leadExpert: any | null;
+  config?: FeedCompositionConfig;
+  /** Optional relatedness hook for the placement nudge. */
+  isRelated?: (item: FeedItem, rec: FeedRecommendation) => boolean;
+}
 
-  const recQueue = [...recommendations];
-  let organicSinceLastRec = 0;
-  let recIdx = 0; // Opaque sequential ID for recommendation cards — never exposes raw offeringId
+export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
+  const cfg = opts.config ?? DEFAULT_FEED_COMPOSITION_CONFIG;
+  const cadence = Math.max(1, Math.floor(cfg.recCadence));
+  const spacing = Math.max(1, Math.floor(cfg.wantedSlotSpacing));
+  const wantedCap = Math.max(0, Math.floor(cfg.wantedSlotMax));
 
-  let wantedInserted = 0;
-  let organicSinceLastWanted = 0;
+  const wanted = [...opts.wantedSlots];
+  const recs = opts.recommendations;
 
-  const leadExpertId = leadExpert?.id ?? leadExpert?.userId ?? leadExpert?.user_id ?? null;
+  const out: FeedItem[] = [];
+  let leadPlaced = !opts.leadExpert;
+  let recIndex = 0;
+  let wantedPlaced = 0;
+  let sinceRec = 0;
+  let sinceWanted = 0;
 
-  for (let i = 0; i < organicItems.length; i++) {
-    const item = organicItems[i];
-
-    if (!expertInserted && leadExpert && i === 1) {
-      result.push({
-        kind: "expert" as FeedItemKind,
-        id: `lead-expert-${leadExpert.id ?? "unknown"}`,
-        data: { ...leadExpert, isLeadExpert: true },
-      });
-      expertInserted = true;
+  // Degenerate case: no organic stream to interleave into (empty market).
+  // Emit the injected elements once, in priority order, still capped.
+  if (opts.organic.length === 0) {
+    if (!leadPlaced) out.push({ kind: "lead-expert", id: "lead-expert", data: opts.leadExpert });
+    recs.forEach((rec, i) =>
+      out.push({ kind: "recommendation", id: `rec-${i}`, data: { candidate: rec, recIndex: i } }),
+    );
+    if (wantedCap > 0 && wanted.length > 0) {
+      out.push({ kind: "wanted-slot", id: "wanted-0", data: wanted[0] });
     }
+    return out;
+  }
 
-    // Skip organic expert items that duplicate the injected lead expert card
-    if (
-      leadExpertId != null &&
-      item.kind === "expert" &&
-      (item.data?.id ?? item.data?.userId ?? item.data?.user_id) === leadExpertId
-    ) {
+  for (const item of opts.organic) {
+    out.push(item);
+    sinceRec++;
+    sinceWanted++;
+
+    // At most ONE injection per organic item: injected cards never stack.
+    if (!leadPlaced) {
+      // Lead expert: once, near the top.
+      out.push({ kind: "lead-expert", id: "lead-expert", data: opts.leadExpert });
+      leadPlaced = true;
       continue;
     }
 
-    result.push(item);
+    const nextRec = recs[recIndex];
+    if (
+      nextRec &&
+      (sinceRec >= cadence ||
+        // Contextual nudge: land one slot early when the item just emitted is
+        // related to the NEXT-IN-ORDER recommendation. Shifts placement only;
+        // the consumption order is strictly recIndex-sequential.
+        (sinceRec >= cadence - 1 && opts.isRelated?.(item, nextRec) === true))
+    ) {
+      out.push({
+        kind: "recommendation",
+        id: `rec-${recIndex}`,
+        data: { candidate: nextRec, recIndex },
+      });
+      recIndex++;
+      sinceRec = 0;
+      continue;
+    }
 
-    const isOrganic =
-      item.kind !== "recommendation" &&
-      item.kind !== "wanted-slot" &&
-      item.kind !== "city-separator";
-
-    if (isOrganic) {
-      organicSinceLastRec++;
-      organicSinceLastWanted++;
-
-      if (recQueue.length > 0 && organicSinceLastRec >= cfg.recCadence) {
-        const rec = recQueue.shift()!;
-        result.push({
-          kind: "recommendation" as FeedItemKind,
-          id: `rec-${recIdx++}`, // opaque index — never exposes raw offeringId in DOM
-          data: {
-            ...rec,
-            label: cfg.recLabel,
-            affiliateLabel: cfg.recAffiliateLabel,
-          },
-        });
-        organicSinceLastRec = 0;
-      }
-
-      if (
-        wantedSlots.length > wantedInserted &&
-        wantedInserted < cfg.wantedSlotMax &&
-        organicSinceLastWanted >= cfg.wantedSlotSpacing
-      ) {
-        const slot = wantedSlots[wantedInserted];
-        result.push({
-          kind: "wanted-slot" as FeedItemKind,
-          id: `wanted-${slot.neighborhoodId}-${wantedInserted}`,
-          data: slot,
-        });
-        wantedInserted++;
-        organicSinceLastWanted = 0;
-      }
+    if (wantedPlaced < wantedCap && wanted.length > 0 && sinceWanted >= spacing) {
+      out.push({ kind: "wanted-slot", id: `wanted-${wantedPlaced}`, data: wanted.shift() });
+      wantedPlaced++;
+      sinceWanted = 0;
     }
   }
 
-  if (!expertInserted && leadExpert) {
-    result.unshift({
-      kind: "expert" as FeedItemKind,
-      id: `lead-expert-${leadExpert.id ?? "unknown"}`,
-      data: { ...leadExpert, isLeadExpert: true },
-    });
-  }
-
-  return result;
+  return out;
 }

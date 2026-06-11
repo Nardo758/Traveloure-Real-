@@ -469,13 +469,25 @@ async function rankAndLog(
   return { ...result, displayLookup };
 }
 
+/** "aff_guided_tour" → "Guided Tour". Fallback when the display-name lookup
+ *  misses (e.g. lookup query failure): surfaces must NEVER render a raw
+ *  offering key (Discover Feed Composition Brief — zero-raw-keys gate). */
+export function humanizeOfferingKey(key: string): string {
+  return key
+    .replace(/^aff_/, "")
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 function decorate(
   candidates: ReturnType<typeof rankCandidates>["candidates"],
   displayLookup: Map<string, { displayName: string; tagline: string | null }>,
 ) {
   return candidates.map(c => ({
     ...c,
-    displayName: displayLookup.get(c.offeringId)?.displayName ?? c.offeringId,
+    displayName: displayLookup.get(c.offeringId)?.displayName ?? humanizeOfferingKey(c.offeringId),
     tagline: displayLookup.get(c.offeringId)?.tagline ?? null,
   }));
 }
