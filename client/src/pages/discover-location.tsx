@@ -12,7 +12,8 @@ import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVen
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
-import { UpsellSlot, type SlotResult } from "@/components/UpsellSlot";
+import { useUpsellSlot } from "@/components/UpsellSlot";
+import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1015,11 +1016,6 @@ export default function DiscoverLocationPage() {
     });
   }, [mediaData]);
 
-  // Full slot result — candidates and suppressed — filled by UpsellSlot's onSlotData once it resolves.
-  // Using the combined set (candidates + suppressed) as the authoritative "has-coverage" signal
-  // means recruitment cards only appear for offering types the engine found NO candidates for at all.
-  const [discoverySlotResult, setDiscoverySlotResult] = useState<SlotResult>({ candidates: [], suppressed: [] });
-
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
@@ -1032,6 +1028,26 @@ export default function DiscoverLocationPage() {
   const feedItems: FeedItem[] = data
     ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
     : [];
+
+  // ── Engine recommendations (discover_location upsell surface) ──────────
+  // expertEndorsedKeys passes local expert IDs so the server boosts offerings
+  // endorsed by those experts — the authoritative endorsement signal driving
+  // both the slot ranking and the lead-expert pick. Candidates arrive in the
+  // engine's ranked order; this page renders them natively, it does not rank.
+  const discoverySlotResult = useUpsellSlot("discover_location", {
+    contextPayload: {
+      ...(neighborhoods[0]?.id
+        ? { neighborhoodId: String(neighborhoods[0].id) }
+        : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
+      expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
+    },
+    enabled: !!data,
+  });
+
+  const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
+    discoverySlotResult.logClick(c.offeringId);
+    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=discover_location`);
+  };
 
   const filteredItems =
     activeFilter === "all" ? feedItems : filterFeedStream(feedItems, activeFilter);
@@ -1261,22 +1277,26 @@ export default function DiscoverLocationPage() {
               </div>
             )}
 
-            {/* ── Spine: UpsellSlot recommendation cards ────────────── */}
-            {/* expertEndorsedKeys passes local expert IDs so the server boosts
-                offerings endorsed by those experts — this is the authoritative
-                endorsement signal driving both the slot ranking and lead expert. */}
-            <UpsellSlot
-              surface="discover_location"
-              contextPayload={{
-                ...(neighborhoods[0]?.id
-                  ? { neighborhoodId: String(neighborhoods[0].id) }
-                  : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
-                expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
-              }}
-              className="px-0"
-              data-testid="upsell-slot-discover-location"
-              onSlotData={setDiscoverySlotResult}
-            />
+            {/* ── Spine: engine recommendations as native feed cards ── */}
+            {/* Gem-card chrome + WTE display fields; engine ranked order
+                preserved as-is (render only — no re-ranking here). */}
+            {discoverySlotResult.candidates.length > 0 && (
+              <div className="grid grid-cols-2 gap-3" data-testid="upsell-slot-discover-location">
+                {discoverySlotResult.candidates.map((c, i) => (
+                  <div key={`rec-${i}`} className={i === 0 ? "col-span-2" : ""}>
+                    <CityFeedCardRecommendation
+                      candidate={c}
+                      city={city}
+                      position={i}
+                      scheduledDate={scheduledDate}
+                      onAdd={handleAdd}
+                      onBook={handleBookRecommendation}
+                      layout={i === 0 ? "row" : "column"}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* ── Blended bento feed ────────────────────────────────── */}
             {activeFilter === "all" ? (
