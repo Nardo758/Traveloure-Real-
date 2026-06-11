@@ -440,7 +440,7 @@ export default function TravelExpertsPage() {
       <header className="bg-white border-b border-[#E5E7EB] sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="flex items-center justify-between h-16">
-            <Link href="/partner-with-us" className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]" data-testid="link-back">
+            <Link href="/earn" className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]" data-testid="link-back">
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>

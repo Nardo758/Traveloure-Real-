@@ -95,7 +95,6 @@ import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
 import DiscoverLocationPage from "@/pages/discover-location";
-import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
@@ -295,8 +294,9 @@ function Router() {
       <Route path="/transportation">
         <Layout><TransportationBookingPage /></Layout>
       </Route>
+      {/* Role copy folded into /earn's role band (earn role-to-offering redesign) */}
       <Route path="/partner-with-us">
-        <Layout><PartnerWithUsPage /></Layout>
+        <Redirect to="/earn" />
       </Route>
       <Route path="/contact">
         <Layout><ContactPage /></Layout>

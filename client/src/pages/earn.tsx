@@ -1,50 +1,41 @@
 /**
- * /earn — Ways to Earn hub (Phase 7, visual spec: ways-to-earn-ui.html)
+ * /earn — Ways to Earn hub, role→offering layout
+ * (earn-page role-to-offering redesign brief; supersedes the two-tab track
+ * toggle while keeping the same data plumbing).
  *
- * Two-track acquisition page (provider · expert). Each track lists the
- * offering types from the Phase 2 catalogs (service_offering_types and
- * expert_offering_types), with a surprising "I never knew" row at the top
- * per brief §7.
+ * Structure: hero → "Which of these is you?" role band (4 cards + EA text
+ * line) → catalog of the selected role's full mapped offering list →
+ * featured "you probably didn't know…" strip (is_surprising rows).
  *
- * Phase 7 gate: editing an offering-type row (is_active, display_name,
- * is_surprising, etc.) changes this page on next render — no deploy.
- * The surprising row reads from is_surprising = true.
+ * The role→offering mapping lives in lib/earn-roles.ts (single source of
+ * truth, partition-by-construction; see its completeness test). Roles are a
+ * presentation layer over the two delivery tracks: in-person = provider
+ * catalog by category, remote = expert catalog by service_tier.
  *
- * The track toggle reads AND writes ?track=provider|expert so views are
- * deep-linkable. Clicking any offering routes into the Join-as-Partner
- * signup flow with that offering carried as URL params.
+ * Earning indicators are config-driven: each category's commissionBandKey
+ * (/api/service-categories) resolved through /api/fee-bands/:bandKey, and
+ * the expert floor from the expert_standard band. No hardcoded percentages.
+ *
+ * Editing an offering-type row (is_active, display_name, is_surprising…)
+ * changes this page on next render — no deploy. Selecting any offering
+ * routes into signup carrying ?offeringTypeKey=… (the one canonical param).
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { Star, ArrowRight } from "lucide-react";
 import {
-  Star,
-  ArrowRight,
-  Car,
-  Map,
-  Camera,
-  Building2,
-  UtensilsCrossed,
-  Compass,
-  ChefHat,
-  Crown,
-  HeartHandshake,
-  PartyPopper,
-  Flower2,
-  Music,
-  Scissors,
-  MonitorSpeaker,
-  Package,
-  MessageCircle,
-  Route,
-  ClipboardList,
-  MessageSquare,
-  Sparkles,
-  Briefcase,
-  type LucideIcon,
-} from "lucide-react";
+  EARN_ROLES,
+  EA_SIGNUP,
+  isAffiliateCategory,
+  roleForProviderCategory,
+  roleForExpertTier,
+  type EarnRole,
+  type ExpertTier,
+  type RoleKey,
+} from "@/lib/earn-roles";
 
 interface ServiceOfferingType {
   offering_type_key: string;
@@ -58,7 +49,7 @@ interface ServiceOfferingType {
 
 interface ExpertOfferingType {
   offering_type_key: string;
-  service_tier: "advisory" | "planning" | "coordination" | "live_support" | "specialized";
+  service_tier: ExpertTier;
   display_name: string;
   tagline: string | null;
   delivery_formats: string[];
@@ -70,61 +61,94 @@ interface ServiceCategory {
   id: string;
   name: string;
   categoryKey: string | null;
+  commissionBandKey: string | null;
 }
 
-const EXPERT_TIER_LABELS: Record<ExpertOfferingType["service_tier"], string> = {
-  advisory: "Quick advice",
-  planning: "Planning",
-  coordination: "Done-for-you",
-  live_support: "While they're there",
-  specialized: "Your niche",
-};
+interface FeeBand {
+  band_key: string;
+  rate_type: "percent" | "flat";
+  default_rate: number;
+}
 
-const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  private_transportation: Car,
-  tour_guide: Map,
-  photography: Camera,
-  accommodation: Building2,
-  dining_venue: UtensilsCrossed,
-  activity_provider: Compass,
-  private_chef: ChefHat,
-  concierge_vip: Crown,
-  childcare_family: HeartHandshake,
-  event_coordinator: PartyPopper,
-  florist: Flower2,
-  entertainment: Music,
-  hair_makeup: Scissors,
-  av_tech: MonitorSpeaker,
-  rentals: Package,
-};
+const EXPERT_FLOOR_BAND = "expert_standard";
 
-const TIER_ICONS: Record<ExpertOfferingType["service_tier"], LucideIcon> = {
-  advisory: MessageCircle,
-  planning: Route,
-  coordination: ClipboardList,
-  live_support: MessageSquare,
-  specialized: Star,
-};
+/** "keep up to N%" / "keep N%+" — N derived from live band rates only. */
+function formatKeep(rate: number, style: "up_to" | "floor"): string {
+  const keepPct = Math.round((1 - rate) * 100);
+  return style === "up_to" ? `keep up to ${keepPct}%` : `keep ${keepPct}%+`;
+}
 
-const SURPRISING_COPY = {
-  provider: "You probably didn't know you could get paid to…",
-  expert: "You can earn from more than itineraries…",
-} as const;
+function TrackPill({ track }: { track: EarnRole["track"] }) {
+  const isInPerson = track === "in-person";
+  return (
+    <span
+      className={`text-[10px] font-medium px-2 py-0.5 rounded ${
+        isInPerson ? "bg-[#5DCAA5]/15 text-[#1f7a5c]" : "bg-[#2E8B8B]/12 text-[#2E8B8B]"
+      }`}
+    >
+      {track}
+    </span>
+  );
+}
 
-const BROWSE_COPY = {
-  provider: "Browse all the ways to earn",
-  expert: "Browse all the ways to share your expertise",
-} as const;
+function EarningBadge({ text, testId }: { text: string | null; testId: string }) {
+  if (!text) return null;
+  return (
+    <span
+      className="text-xs font-medium text-[#8a6414] bg-[#E8B339]/15 px-2.5 py-0.5 rounded-md whitespace-nowrap"
+      data-testid={testId}
+    >
+      {text}
+    </span>
+  );
+}
 
-/** Spec card: surprising-row tile with icon, name, tagline, "I do this →". */
-function SurprisingCard({
-  icon: Icon,
+function RoleCard({
+  role,
+  active,
+  chips,
+  earning,
+  onSelect,
+}: {
+  role: EarnRole;
+  active: boolean;
+  chips: string[];
+  earning: string | null;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`text-left bg-white rounded-xl p-4 transition-colors ${
+        active ? "border-2 border-[#2E8B8B]" : "border border-[#E7E4DD] hover:border-[#2E8B8B]/60"
+      }`}
+      data-testid={`earn-role-${role.key}`}
+      aria-pressed={active}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-sm font-semibold text-[#1E3A5F]">{role.label}</span>
+        <TrackPill track={role.track} />
+      </div>
+      <p className="text-xs text-[#6A7480] leading-snug mb-2">{role.blurb}</p>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {chips.map((c) => (
+          <span key={c} className="text-[11px] text-[#6A7480] bg-[#F6F5F1] px-2 py-0.5 rounded-md">
+            {c}
+          </span>
+        ))}
+      </div>
+      <EarningBadge text={earning} testId={`earn-role-earning-${role.key}`} />
+    </button>
+  );
+}
+
+function OfferingRow({
   name,
   tagline,
   testId,
   onClick,
 }: {
-  icon: LucideIcon;
   name: string;
   tagline: string | null;
   testId: string;
@@ -134,239 +158,17 @@ function SurprisingCard({
     <button
       type="button"
       onClick={onClick}
-      className="text-left bg-[#F6F5F1] border border-[#E7E4DD] rounded-xl p-3.5 w-full transition-all hover:border-[#2E8B8B] hover:-translate-y-px"
+      className="group flex items-center justify-between gap-3 w-full text-left bg-white border border-[#E7E4DD] rounded-lg px-3.5 py-2.5 transition-colors hover:border-[#2E8B8B]"
       data-testid={testId}
     >
-      <Icon className="w-5 h-5 text-[#2E8B8B]" />
-      <h3 className="text-[13.5px] font-semibold text-[#1F2733] mt-2">{name}</h3>
-      {tagline && <p className="text-xs text-[#6A7480] mt-0.5 leading-snug">{tagline}</p>}
-      <div className="text-xs font-medium text-[#0F6E56] mt-2.5">I do this →</div>
-    </button>
-  );
-}
-
-/** Spec row inside a category box: offering name + arrow, whole row clickable. */
-function OfferingRow({
-  name,
-  testId,
-  onClick,
-}: {
-  name: string;
-  testId: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex items-center justify-between w-full py-1.5 text-left"
-      data-testid={testId}
-    >
-      <span className="text-[13px] text-[#6A7480] group-hover:text-[#0F6E56] transition-colors">
-        {name}
+      <div className="min-w-0">
+        <div className="text-[13px] font-medium text-[#1F2733]">{name}</div>
+        {tagline && <div className="text-xs text-[#6A7480] mt-0.5">{tagline}</div>}
+      </div>
+      <span className="text-xs font-medium text-[#0F6E56] whitespace-nowrap group-hover:translate-x-0.5 transition-transform">
+        I do this →
       </span>
-      <ArrowRight className="w-3.5 h-3.5 text-[#9AA2AC] group-hover:text-[#2E8B8B] group-hover:translate-x-0.5 transition-all" />
     </button>
-  );
-}
-
-function CategoryBox({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white border border-[#E7E4DD] rounded-xl px-4 py-4">
-      <div className="flex items-center gap-2 text-[13.5px] font-semibold text-[#1E3A5F] mb-2.5">
-        <Icon className="w-4 h-4 text-[#2E8B8B]" />
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function LoadState({ status }: { status: "loading" | "error" | "empty" }) {
-  if (status === "loading") return <p className="text-sm text-[#6A7480]">Loading offerings…</p>;
-  if (status === "error") return <p className="text-sm text-[#E85D55]">Couldn't load offerings.</p>;
-  return <p className="text-sm text-[#6A7480]">No offerings published yet.</p>;
-}
-
-function SurprisingSection({
-  track,
-  children,
-}: {
-  track: "provider" | "expert";
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="bg-white border-b border-[#E7E4DD]">
-      <div className="max-w-5xl mx-auto px-5 py-6">
-        <div
-          className="flex items-center gap-1.5 text-[13px] font-medium text-[#6A7480] mb-3.5"
-          data-testid="earn-surprising-label"
-        >
-          <Star className="w-4 h-4 text-[#E8B339]" />
-          <span>{SURPRISING_COPY[track]}</span>
-        </div>
-        <div
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"
-          data-testid="earn-surprising-row"
-        >
-          {children}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ProviderTrack({ onSelect }: { onSelect: (key: string, name: string) => void }) {
-  const { data, isLoading, error } = useQuery<ServiceOfferingType[]>({
-    queryKey: ["/api/offering-types/services"],
-    staleTime: 5 * 60_000,
-  });
-  const { data: categories } = useQuery<ServiceCategory[]>({
-    queryKey: ["/api/service-categories"],
-    staleTime: 5 * 60_000,
-  });
-
-  if (isLoading) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="loading" /></div>;
-  if (error) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="error" /></div>;
-  if (!data || data.length === 0) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="empty" /></div>;
-
-  const categoryNames = new globalThis.Map<string, string>(
-    (categories ?? [])
-      .filter((c) => c.categoryKey)
-      .map((c) => [c.categoryKey as string, c.name])
-  );
-
-  const surprising = data.filter((o) => o.is_surprising);
-  const standard = data.filter((o) => !o.is_surprising);
-
-  // Group by category_key preserving the API's sort_order within and across groups.
-  const groups: { key: string; items: ServiceOfferingType[] }[] = [];
-  const groupIndex = new globalThis.Map<string, number>();
-  for (const o of standard) {
-    const idx = groupIndex.get(o.category_key);
-    if (idx === undefined) {
-      groupIndex.set(o.category_key, groups.length);
-      groups.push({ key: o.category_key, items: [o] });
-    } else {
-      groups[idx].items.push(o);
-    }
-  }
-
-  return (
-    <div data-testid="earn-provider-track">
-      {surprising.length > 0 && (
-        <SurprisingSection track="provider">
-          {surprising.map((o) => (
-            <SurprisingCard
-              key={o.offering_type_key}
-              icon={CATEGORY_ICONS[o.category_key] ?? Sparkles}
-              name={o.display_name}
-              tagline={o.tagline}
-              testId={`earn-provider-surprising-${o.offering_type_key}`}
-              onClick={() => onSelect(o.offering_type_key, o.display_name)}
-            />
-          ))}
-        </SurprisingSection>
-      )}
-
-      <section className="bg-white border-b border-[#E7E4DD]">
-        <div className="max-w-5xl mx-auto px-5 py-6">
-          <div className="text-sm font-medium text-[#1F2733] mb-3.5" data-testid="earn-browse-title">
-            {BROWSE_COPY.provider}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {groups.map((g) => (
-              <CategoryBox
-                key={g.key}
-                icon={CATEGORY_ICONS[g.key] ?? Briefcase}
-                title={categoryNames.get(g.key) ?? "More ways to earn"}
-              >
-                {g.items.map((o) => (
-                  <OfferingRow
-                    key={o.offering_type_key}
-                    name={o.display_name}
-                    testId={`earn-provider-${o.offering_type_key}`}
-                    onClick={() => onSelect(o.offering_type_key, o.display_name)}
-                  />
-                ))}
-              </CategoryBox>
-            ))}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ExpertTrack({ onSelect }: { onSelect: (key: string, name: string) => void }) {
-  const { data, isLoading, error } = useQuery<ExpertOfferingType[]>({
-    queryKey: ["/api/offering-types/experts"],
-    staleTime: 5 * 60_000,
-  });
-
-  if (isLoading) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="loading" /></div>;
-  if (error) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="error" /></div>;
-  if (!data || data.length === 0) return <div className="max-w-5xl mx-auto px-5 py-6"><LoadState status="empty" /></div>;
-
-  const surprising = data.filter((o) => o.is_surprising);
-  const standard = data.filter((o) => !o.is_surprising);
-  const byTier = standard.reduce<Record<string, ExpertOfferingType[]>>((acc, o) => {
-    (acc[o.service_tier] ??= []).push(o);
-    return acc;
-  }, {});
-  const tierOrder: ExpertOfferingType["service_tier"][] = [
-    "advisory", "planning", "coordination", "live_support", "specialized",
-  ];
-
-  return (
-    <div data-testid="earn-expert-track">
-      {surprising.length > 0 && (
-        <SurprisingSection track="expert">
-          {surprising.map((o) => (
-            <SurprisingCard
-              key={o.offering_type_key}
-              icon={TIER_ICONS[o.service_tier] ?? Sparkles}
-              name={o.display_name}
-              tagline={o.tagline}
-              testId={`earn-expert-surprising-${o.offering_type_key}`}
-              onClick={() => onSelect(o.offering_type_key, o.display_name)}
-            />
-          ))}
-        </SurprisingSection>
-      )}
-
-      <section className="bg-white border-b border-[#E7E4DD]">
-        <div className="max-w-5xl mx-auto px-5 py-6">
-          <div className="text-sm font-medium text-[#1F2733] mb-3.5" data-testid="earn-browse-title">
-            {BROWSE_COPY.expert}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {tierOrder.map((tier) =>
-              byTier[tier] && byTier[tier].length > 0 ? (
-                <CategoryBox key={tier} icon={TIER_ICONS[tier]} title={EXPERT_TIER_LABELS[tier]}>
-                  {byTier[tier].map((o) => (
-                    <OfferingRow
-                      key={o.offering_type_key}
-                      name={o.display_name}
-                      testId={`earn-expert-${o.offering_type_key}`}
-                      onClick={() => onSelect(o.offering_type_key, o.display_name)}
-                    />
-                  ))}
-                </CategoryBox>
-              ) : null
-            )}
-          </div>
-        </div>
-      </section>
-    </div>
   );
 }
 
@@ -375,68 +177,125 @@ export default function EarnPage() {
   const [, navigate] = useLocation();
   const { openSignInModal } = useSignInModal();
 
-  // URL is the single source of truth for the active track (deep-linkable).
-  const trackParam = new URLSearchParams(searchString).get("track");
-  const track: "provider" | "expert" = trackParam === "expert" ? "expert" : "provider";
+  // URL is the single source of truth for the selected role (deep-linkable).
+  // Legacy ?track= deep links map onto the role layer.
+  const params = new URLSearchParams(searchString);
+  const roleParam = params.get("role") ?? (params.get("track") === "expert" ? "trip_planner" : params.get("track") === "provider" ? "service_provider" : null);
+  const activeKey: RoleKey = (EARN_ROLES.some((r) => r.key === roleParam)
+    ? roleParam
+    : "service_provider") as RoleKey;
+  const activeRole = EARN_ROLES.find((r) => r.key === activeKey)!;
 
-  const setTrack = (t: "provider" | "expert") => {
-    navigate(`/earn?track=${t}`, { replace: true });
+  const setRole = (key: RoleKey) => navigate(`/earn?role=${key}`, { replace: true });
+
+  // ── Data: the two offering catalogs + categories (names + band keys) ──────
+  const { data: providerOfferings, isLoading: loadingProv, error: errProv } = useQuery<ServiceOfferingType[]>({
+    queryKey: ["/api/offering-types/services"],
+    staleTime: 5 * 60_000,
+  });
+  const { data: expertOfferings, isLoading: loadingExp, error: errExp } = useQuery<ExpertOfferingType[]>({
+    queryKey: ["/api/offering-types/experts"],
+    staleTime: 5 * 60_000,
+  });
+  const { data: categories } = useQuery<ServiceCategory[]>({
+    queryKey: ["/api/service-categories"],
+    staleTime: 5 * 60_000,
+  });
+
+  // ── Earning config: live band rates, never hardcoded ─────────────────────
+  // Distinct provider bands (from each category's commissionBandKey) + the
+  // expert floor band.
+  const providerBandKeys = Array.from(
+    new Set(
+      (categories ?? [])
+        .filter((c) => c.categoryKey && c.commissionBandKey)
+        .map((c) => c.commissionBandKey as string)
+    )
+  ).sort();
+  const bandQueries = useQueries({
+    queries: [...providerBandKeys, EXPERT_FLOOR_BAND].map((key) => ({
+      queryKey: [`/api/fee-bands/${key}`],
+      staleTime: 60_000,
+    })),
+  });
+  const bandRates = new Map<string, number>();
+  bandQueries.forEach((q) => {
+    const band = q.data as FeeBand | undefined;
+    if (band && band.rate_type === "percent") bandRates.set(band.band_key, Number(band.default_rate));
+  });
+
+  /** Best (highest) keep-% across the categories a role spans. */
+  const roleEarning = (role: EarnRole): string | null => {
+    if (role.track === "remote") {
+      const rate = bandRates.get(EXPERT_FLOOR_BAND);
+      return rate === undefined ? null : formatKeep(rate, "floor");
+    }
+    const rates = (categories ?? [])
+      .filter((c) => c.categoryKey && roleForProviderCategory(c.categoryKey) === role.key)
+      .map((c) => (c.commissionBandKey ? bandRates.get(c.commissionBandKey) : undefined))
+      .filter((r): r is number => r !== undefined);
+    if (rates.length === 0) return null;
+    return formatKeep(Math.min(...rates), "up_to");
   };
 
-  const handleProviderSelect = (offeringKey: string, displayName: string) => {
+  // ── Role → offerings (partition functions from the config module) ────────
+  const offeringsForRole = (key: RoleKey): { key: string; name: string; tagline: string | null }[] => {
+    const role = EARN_ROLES.find((r) => r.key === key)!;
+    if (role.track === "in-person") {
+      return (providerOfferings ?? [])
+        .filter((o) => !isAffiliateCategory(o.category_key) && roleForProviderCategory(o.category_key) === key)
+        .map((o) => ({ key: o.offering_type_key, name: o.display_name, tagline: o.tagline }));
+    }
+    return (expertOfferings ?? [])
+      .filter((o) => roleForExpertTier(o.service_tier) === key)
+      .map((o) => ({ key: o.offering_type_key, name: o.display_name, tagline: o.tagline }));
+  };
+
+  const handleSelect = (role: EarnRole, offeringKey: string, displayName: string) => {
+    const sep = role.signupPath.includes("?") ? "&" : "?";
     navigate(
-      `/become-provider?offeringType=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`
+      `${role.signupPath}${sep}offeringTypeKey=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`
     );
   };
 
-  const handleExpertSelect = (offeringKey: string, displayName: string) => {
-    navigate(
-      `/become-expert?offeringTypeKey=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`
-    );
-  };
+  // Featured strip: surprising rows from both catalogs, clickable into the
+  // owning role's signup.
+  const surprising: { key: string; name: string; role: EarnRole }[] = [
+    ...(providerOfferings ?? [])
+      .filter((o) => o.is_surprising && !isAffiliateCategory(o.category_key))
+      .map((o) => ({
+        key: o.offering_type_key,
+        name: o.display_name,
+        role: EARN_ROLES.find((r) => r.key === roleForProviderCategory(o.category_key))!,
+      })),
+    ...(expertOfferings ?? [])
+      .filter((o) => o.is_surprising)
+      .map((o) => ({
+        key: o.offering_type_key,
+        name: o.display_name,
+        role: EARN_ROLES.find((r) => r.key === roleForExpertTier(o.service_tier))!,
+      })),
+  ];
+
+  const catalogLoading = activeRole.track === "in-person" ? loadingProv : loadingExp;
+  const catalogError = activeRole.track === "in-person" ? errProv : errExp;
+  const catalog = offeringsForRole(activeKey);
 
   return (
     <Layout>
       <div className="min-h-screen bg-[#F6F5F1]">
-        {/* ── Hero + dual-track toggle ───────────────────────────────────── */}
+        {/* ── Hero ─────────────────────────────────────────────────────── */}
         <div className="bg-white border-b border-[#E7E4DD]" data-testid="earn-hero">
-          <div className="max-w-5xl mx-auto px-5 pt-9 pb-7">
+          <div className="max-w-5xl mx-auto px-5 pt-9 pb-6">
             <h1
               className="text-[26px] font-semibold text-[#1E3A5F] tracking-tight mb-2"
               data-testid="earn-hero-title"
             >
               Get paid for what you already know
             </h1>
-            <p className="text-[15px] text-[#6A7480] mb-5 max-w-xl">
-              Travelers in your city need locals like you. Offer a service or share your
-              expertise — on your terms.
+            <p className="text-[15px] text-[#6A7480] max-w-xl mb-3">
+              Pick the role that sounds like you — see exactly what you'd offer and what you keep.
             </p>
-            <div className="inline-flex gap-2.5 mb-3.5 flex-wrap" data-testid="earn-tabs">
-              <button
-                type="button"
-                onClick={() => setTrack("provider")}
-                className={`text-sm font-medium px-[18px] py-[9px] rounded-lg border transition-colors ${
-                  track === "provider"
-                    ? "bg-[#2E8B8B] text-white border-[#2E8B8B]"
-                    : "bg-white text-[#1F2733] border-[#D8D4CB]"
-                }`}
-                data-testid="earn-tab-provider"
-              >
-                Offer a service
-              </button>
-              <button
-                type="button"
-                onClick={() => setTrack("expert")}
-                className={`text-sm font-medium px-[18px] py-[9px] rounded-lg border transition-colors ${
-                  track === "expert"
-                    ? "bg-[#2E8B8B] text-white border-[#2E8B8B]"
-                    : "bg-white text-[#1F2733] border-[#D8D4CB]"
-                }`}
-                data-testid="earn-tab-expert"
-              >
-                Share your expertise
-              </button>
-            </div>
             <div className="text-[13px]">
               <span className="text-[#6A7480]">Already a partner?</span>{" "}
               <button
@@ -451,24 +310,101 @@ export default function EarnPage() {
           </div>
         </div>
 
-        {/* ── Surprising row + browse catalog (data-driven per track) ───── */}
-        {track === "provider" ? (
-          <ProviderTrack onSelect={handleProviderSelect} />
-        ) : (
-          <ExpertTrack onSelect={handleExpertSelect} />
-        )}
-
-        {/* ── Footer role link ───────────────────────────────────────────── */}
-        <div className="text-center px-5 py-5">
-          <span className="text-[13px] text-[#6A7480]">New here and not sure where you fit?</span>{" "}
-          <Link
-            href="/partner-with-us"
-            className="text-[13px] text-[#0F6E56] font-semibold"
-            data-testid="earn-see-all-roles"
-          >
-            See all partner roles →
-          </Link>
+        {/* ── Role band: "Which of these is you?" ──────────────────────── */}
+        <div className="bg-white border-b border-[#E7E4DD]">
+          <div className="max-w-5xl mx-auto px-5 py-5">
+            <div className="flex items-center gap-4 mb-3">
+              <span className="text-[13px] font-semibold text-[#1F2733]">Which of these is you?</span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6A7480]">
+                <span className="w-2 h-2 rounded-sm bg-[#5DCAA5]" /> in-person
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6A7480]">
+                <span className="w-2 h-2 rounded-sm bg-[#2E8B8B]" /> remote
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5" data-testid="earn-role-band">
+              {EARN_ROLES.map((role) => (
+                <RoleCard
+                  key={role.key}
+                  role={role}
+                  active={role.key === activeKey}
+                  chips={offeringsForRole(role.key).slice(0, 3).map((o) => o.name)}
+                  earning={roleEarning(role)}
+                  onSelect={() => setRole(role.key)}
+                />
+              ))}
+            </div>
+            {/* EA: real signup, no offering backing yet — text link, not a card. */}
+            <p className="text-xs text-[#6A7480] mt-3">
+              {EA_SIGNUP.label} — {EA_SIGNUP.blurb}.{" "}
+              <Link
+                href={EA_SIGNUP.signupPath}
+                className="text-[#0F6E56] font-medium"
+                data-testid="earn-ea-signup"
+              >
+                Apply as an EA →
+              </Link>
+            </p>
+          </div>
         </div>
+
+        {/* ── Catalog: the selected role's full mapped offering list ───── */}
+        <section className="bg-[#FAFAF8] border-b border-[#E7E4DD]">
+          <div className="max-w-5xl mx-auto px-5 py-6">
+            <div className="flex items-baseline justify-between mb-3">
+              <h3 className="text-base font-semibold text-[#1E3A5F]" data-testid="earn-catalog-title">
+                {activeRole.label} · all services
+              </h3>
+              <EarningBadge text={roleEarning(activeRole)} testId="earn-catalog-earning" />
+            </div>
+            {catalogLoading ? (
+              <p className="text-sm text-[#6A7480]">Loading offerings…</p>
+            ) : catalogError ? (
+              <p className="text-sm text-[#E85D55]">Couldn't load offerings.</p>
+            ) : catalog.length === 0 ? (
+              <p className="text-sm text-[#6A7480]">No offerings published yet.</p>
+            ) : (
+              <div className="grid gap-2" data-testid="earn-catalog">
+                {catalog.map((o) => (
+                  <OfferingRow
+                    key={o.key}
+                    name={o.name}
+                    tagline={o.tagline}
+                    testId={`earn-offering-${o.key}`}
+                    onClick={() => handleSelect(activeRole, o.key, o.name)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── Featured strip: is_surprising rows ───────────────────────── */}
+        {surprising.length > 0 && (
+          <div className="max-w-5xl mx-auto px-5 py-5">
+            <div
+              className="flex items-center gap-1.5 text-[13px] font-medium text-[#1F2733] mb-2.5"
+              data-testid="earn-surprising-label"
+            >
+              <Star className="w-4 h-4 text-[#E8B339]" />
+              <span>You probably didn't know you could get paid to…</span>
+            </div>
+            <div className="flex flex-wrap gap-2" data-testid="earn-surprising-row">
+              {surprising.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => handleSelect(s.role, s.key, s.name)}
+                  className="text-xs text-[#2E8B8B] bg-[#2E8B8B]/10 px-2.5 py-1 rounded-md hover:bg-[#2E8B8B]/20 transition-colors inline-flex items-center gap-1"
+                  data-testid={`earn-surprising-${s.key}`}
+                >
+                  {s.name}
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

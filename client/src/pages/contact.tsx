@@ -331,7 +331,7 @@ export default function ContactPage() {
                     </div>
                   </a>
                   <a
-                    href="/partner-with-us"
+                    href="/earn"
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
                     data-testid="link-partner"
                   >

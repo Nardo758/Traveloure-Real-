@@ -863,7 +863,7 @@ export default function ExpertsPage() {
                     {config.cta}
                   </Button>
                 </Link>
-                <Link href="/partner-with-us">
+                <Link href="/earn">
                   <Button
                     size="lg"
                     variant="outline"
