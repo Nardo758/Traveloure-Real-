@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Link } from "wouter";
 import {
   Search,
+  MapPin,
   Star,
   Clock,
   DollarSign,
@@ -201,13 +209,10 @@ export function ServiceBrowser({
   categoryFilter = "",
   categorySlug = "",
   onAddToCart,
-  showCategoryFilter = true,
   title,
 }: ServiceBrowserProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState(defaultLocation);
   const [selectedCategory, setSelectedCategory] = useState(categoryFilter || "all");
+  const [distanceFilter, setDistanceFilter] = useState("any");
   const [sortBy, setSortBy] = useState("rating");
   const [page, setPage] = useState(0);
   const limit = 12;
@@ -223,41 +228,29 @@ export function ServiceBrowser({
   const effectiveCategoryId = lockedCategoryId || (selectedCategory !== "all" ? selectedCategory : "");
 
   useEffect(() => {
-    setLocationFilter(defaultLocation);
-  }, [defaultLocation]);
-
-  useEffect(() => {
     if (categoryFilter) {
       setSelectedCategory(categoryFilter);
     }
   }, [categoryFilter]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-      setPage(0);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   const { data: result, isLoading } = useQuery<DiscoverResult>({
     queryKey: [
       "/api/discover",
-      debouncedQuery,
       effectiveCategoryId,
-      locationFilter,
+      defaultLocation,
+      distanceFilter,
       sortBy,
       page,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (debouncedQuery) params.set("q", debouncedQuery);
       if (effectiveCategoryId) params.set("categoryId", effectiveCategoryId);
-      if (locationFilter) params.set("location", locationFilter);
+      if (defaultLocation) params.set("location", defaultLocation);
+      if (distanceFilter !== "any") params.set("maxDistance", distanceFilter);
       if (sortBy) params.set("sortBy", sortBy);
       params.set("limit", String(limit));
       params.set("offset", String(page * limit));
-      
+
       const res = await fetch(`/api/discover?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
@@ -266,109 +259,55 @@ export function ServiceBrowser({
   });
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
-  const getCategoryBySlug = (slug: string) => categories?.find((c) => c.slug === slug);
-  
+
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
-
-  const hasActiveFilters = 
-    (showCategoryFilter && selectedCategory !== "all") || 
-    locationFilter !== defaultLocation ||
-    debouncedQuery !== "";
-
-  const clearFilters = () => {
-    setSelectedCategory(categoryFilter || "all");
-    setLocationFilter(defaultLocation);
-    setSearchQuery("");
-    setPage(0);
-  };
 
   return (
     <div className="space-y-4">
       {title && (
         <h3 className="text-lg font-semibold">{title}</h3>
       )}
-      
+
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search services..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-            data-testid="input-service-search"
-          />
-        </div>
-        <div className="relative sm:w-40">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Location"
-            value={locationFilter}
-            onChange={(e) => setLocationFilter(e.target.value)}
-            className="pl-10"
-            data-testid="input-service-location"
-          />
-        </div>
-        {showCategoryFilter && (
-          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="sm:w-44" data-testid="select-service-category">
-              <SelectValue placeholder="All categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories?.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="sm:w-36" data-testid="select-service-sort">
-            <SelectValue placeholder="Sort by" />
+        <Select value={selectedCategory} onValueChange={(v) => { setSelectedCategory(v); setPage(0); }}>
+          <SelectTrigger className="flex-1 sm:flex-none sm:w-44" data-testid="select-service-category">
+            <SelectValue placeholder="All categories" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="rating">Top Rated</SelectItem>
+            <SelectItem value="all">All categories</SelectItem>
+            {categories?.map((cat) => (
+              <SelectItem key={cat.id} value={cat.id}>
+                {cat.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={distanceFilter} onValueChange={(v) => { setDistanceFilter(v); setPage(0); }}>
+          <SelectTrigger className="flex-1 sm:flex-none sm:w-52" data-testid="select-service-distance">
+            <SelectValue placeholder="Distance from hotel" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Any distance</SelectItem>
+            <SelectItem value="1">Within 1 km</SelectItem>
+            <SelectItem value="2">Within 2 km</SelectItem>
+            <SelectItem value="5">Within 5 km</SelectItem>
+            <SelectItem value="10">Within 10 km</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={sortBy} onValueChange={(v) => { setSortBy(v); setPage(0); }}>
+          <SelectTrigger className="flex-1 sm:flex-none sm:w-40" data-testid="select-service-sort">
+            <SelectValue placeholder="Most Popular" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="rating">Most Popular</SelectItem>
             <SelectItem value="reviews">Most Reviews</SelectItem>
             <SelectItem value="price_low">Price: Low to High</SelectItem>
             <SelectItem value="price_high">Price: High to Low</SelectItem>
           </SelectContent>
         </Select>
       </div>
-
-      {hasActiveFilters && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground">Active filters:</span>
-          {debouncedQuery && (
-            <Badge variant="secondary" className="gap-1">
-              "{debouncedQuery}"
-              <button onClick={() => setSearchQuery("")} className="ml-1">
-                <X className="w-3 h-3" />
-              </button>
-            </Badge>
-          )}
-          {showCategoryFilter && selectedCategory !== "all" && (
-            <Badge variant="secondary" className="gap-1">
-              {getCategoryById(selectedCategory)?.name}
-              <button onClick={() => setSelectedCategory("all")} className="ml-1">
-                <X className="w-3 h-3" />
-              </button>
-            </Badge>
-          )}
-          {locationFilter && locationFilter !== defaultLocation && (
-            <Badge variant="secondary" className="gap-1">
-              {locationFilter}
-              <button onClick={() => setLocationFilter(defaultLocation)} className="ml-1">
-                <X className="w-3 h-3" />
-              </button>
-            </Badge>
-          )}
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
-            Clear all
-          </Button>
-        </div>
-      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -433,9 +372,7 @@ export function ServiceBrowser({
             <Search className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
             <h3 className="font-semibold text-lg mb-2">No services found</h3>
             <p className="text-muted-foreground">
-              {debouncedQuery || locationFilter 
-                ? "Try adjusting your search or filters to find more services."
-                : "Browse our available services or search for something specific."}
+              Try adjusting your filters to find more services.
             </p>
           </CardContent>
         </Card>
