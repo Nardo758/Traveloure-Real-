@@ -11,9 +11,10 @@
  *                                   Safe to run against prod to audit before a live run.
  *
  *  MIGRATION_BOOTSTRAP_ONLY=true — Prod ledger bootstrap: creates the schema_migrations table
- *                                   and stamps all 001–050 as already-applied (ON CONFLICT DO NOTHING)
+ *                                   and stamps all 001–051 as already-applied (ON CONFLICT DO NOTHING)
  *                                   WITHOUT executing any of their DDL. Use on a prod DB that was
  *                                   built from Drizzle snapshots and has no migration history.
+ *                                   Migrations 052–063 (and beyond) are then applied by normal startup.
  *
  *  (neither)                      — Normal startup mode: applies each pending file once, records it.
  */
@@ -185,11 +186,11 @@ export async function runMigrations(): Promise<MigrationResult> {
  * Production ledger bootstrap — call ONCE on a prod DB that was built from
  * Drizzle snapshots and has no migration history.
  *
- * Creates schema_migrations (if absent) then INSERTs all 001–050 filenames
- * using ON CONFLICT DO NOTHING. The actual DDL from 001–050 is NEVER executed —
+ * Creates schema_migrations (if absent) then INSERTs all 001–051 filenames
+ * using ON CONFLICT DO NOTHING. The actual DDL from 001–051 is NEVER executed —
  * it assumes the prod DB already has the correct schema from Drizzle. After this
- * runs, the normal startup can begin: it will skip 001–051 (already recorded)
- * and only apply any future migrations.
+ * runs, the normal startup will skip 001–051 (already recorded) and apply any
+ * remaining migrations (052–063 and beyond).
  *
  * Also invoked internally when MIGRATION_BOOTSTRAP_ONLY=true is set.
  */
@@ -225,4 +226,44 @@ export async function bootstrapProductionLedger(): Promise<MigrationResult> {
     `${alreadyRecorded.length} were already recorded.`
   );
   return { dryRun: false, bootstrapOnly: true, stamped, alreadyRecorded };
+}
+
+/**
+ * Production ledger catch-up — non-destructive stamp of ALL MIGRATION_FILES.
+ *
+ * Use on a prod DB where some (or all) migrations were applied outside the ledger
+ * system (e.g., manual Drizzle push for 052–063 after the initial bootstrap).
+ * Stamps every file in MIGRATION_FILES using ON CONFLICT DO NOTHING — never
+ * re-executes any DDL. Already-recorded entries are silently skipped.
+ *
+ * PREREQUISITE: caller must pass the same-rate money gate (verify-fee-config-parity)
+ * before invoking this. See scripts/prod-catchup.ts which enforces the gate.
+ */
+export async function catchupProductionLedger(): Promise<{ stamped: string[]; alreadyRecorded: string[] }> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      migration_name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  const before = await readLedger();
+
+  for (const file of MIGRATION_FILES) {
+    await db.execute(sql`
+      INSERT INTO schema_migrations (migration_name) VALUES (${file})
+      ON CONFLICT (migration_name) DO NOTHING
+    `);
+  }
+
+  const after = await readLedger();
+  const stamped = [...after].filter((f) => !before.has(f));
+  const alreadyRecorded = [...before];
+
+  console.log(
+    `[Migrations][Catchup] Stamped ${stamped.length} new entries, ` +
+    `${alreadyRecorded.length} were already recorded. ` +
+    `Ledger is now ${after.size}/${MIGRATION_FILES.length} complete.`,
+  );
+  return { stamped, alreadyRecorded };
 }

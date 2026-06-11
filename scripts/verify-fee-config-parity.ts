@@ -1,7 +1,6 @@
 /**
- * Billing invariant: the fee DISPLAY (GET /api/booking-fee-config, consumed by the
- * itinerary Booking Summary) must equal the fee the CHARGE path resolves for the
- * SAME booking context — not merely read the same table.
+ * Billing invariant: the fee DISPLAY (GET /api/booking-fee-config) must equal the fee
+ * the CHARGE path resolves for the SAME booking context — not merely read the same table.
  *
  * For each context it:
  *   - computes the charge's source of truth server-side: resolveCommissionRates(ctx),
@@ -13,7 +12,15 @@
  * a match is exact; a mismatch means the endpoint regressed to a different source or
  * dropped an input the charge honors. Exits non-zero on any mismatch. Runs in the e2e
  * gate after the server is up (fee_bands/platform_settings seeded by then).
+ *
+ * Also enforces the #65 consumer guard: the itinerary Booking Summary must call
+ * /api/cart/fee-preview (per-item resolution) — NOT a blended /api/booking-fee-config
+ * call without context. The moment tiered bands or per-expert overrides activate,
+ * a blended call diverges from the actual charge and the endpoint parity test above
+ * would NOT catch it (that test guards the endpoint, not the consumer's call-site).
  */
+import { readFileSync } from "fs";
+import { join } from "path";
 import { resolveCommissionRates, feeConfigFromRates } from "../server/services/commission";
 import { pool } from "../server/db";
 
@@ -29,6 +36,39 @@ const CONTEXTS: Array<{ category: string; expertId?: string | null }> = [
 ];
 
 async function main() {
+  // ── #65 consumer guard ────────────────────────────────────────────────────
+  // The itinerary Booking Summary MUST use /api/cart/fee-preview (per-item
+  // resolution) and MUST NOT call /api/booking-fee-config without per-item
+  // context (blended rate). Fails immediately if the source regresses.
+  const itineraryPath = join(process.cwd(), "client/src/pages/itinerary.tsx");
+  let itinerarySrc: string;
+  try {
+    itinerarySrc = readFileSync(itineraryPath, "utf-8");
+  } catch {
+    console.error("[fee-parity] GUARD FAIL: cannot read client/src/pages/itinerary.tsx");
+    throw new Error("itinerary.tsx not found — cannot verify consumer call-site");
+  }
+
+  const blendedPattern = /queryKey:\s*\[["']\/api\/booking-fee-config["']\]/;
+  if (blendedPattern.test(itinerarySrc)) {
+    throw new Error(
+      "GUARD FAIL (#65): itinerary.tsx calls /api/booking-fee-config with no per-item " +
+      "context. This diverges from the checkout charge once tiered bands or per-expert " +
+      "overrides are live. Fix: use queryKey: [\"/api/cart/fee-preview\"] instead.",
+    );
+  }
+
+  const perItemPattern = /queryKey:\s*\[["']\/api\/cart\/fee-preview["']\]/;
+  if (!perItemPattern.test(itinerarySrc)) {
+    throw new Error(
+      "GUARD FAIL (#65): itinerary.tsx is not using /api/cart/fee-preview for per-item " +
+      "fee resolution. The Booking Summary must mirror the checkout loop " +
+      "(map each item's category + expertId → resolveCommissionRates, then sum).",
+    );
+  }
+  console.log("[fee-parity] GUARD PASS (#65) — itinerary uses per-item /api/cart/fee-preview.");
+
+  // ── endpoint parity checks ────────────────────────────────────────────────
   let failures = 0;
 
   for (const ctx of CONTEXTS) {
