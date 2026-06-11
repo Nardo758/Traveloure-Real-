@@ -11,6 +11,7 @@
 // vendor-focus union — which a single dropdown can't express); Sort is a true
 // dropdown. Chip test ids (selection-<control>-<option>, selection-clear) are
 // preserved so the existing narrow/parity/tab-isolation DOM checks keep working.
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -66,6 +67,8 @@ interface CompactFilterBarProps {
   /** singleSelectControlId -> selected value */
   singleSelectValues?: Record<string, string>;
   onSingleSelectChange?: (controlId: string, value: string) => void;
+  /** Extra filter controls rendered inline before Sort By. */
+  additionalFilters?: React.ReactNode;
 }
 
 export function CompactFilterBar({
@@ -82,6 +85,7 @@ export function CompactFilterBar({
   singleSelectControls = [],
   singleSelectValues = {},
   onSingleSelectChange,
+  additionalFilters,
 }: CompactFilterBarProps) {
   const hasSelection = Object.values(selected).some((v) => v.length > 0);
 
@@ -170,6 +174,8 @@ export function CompactFilterBar({
               </div>
             );
           })}
+
+          {additionalFilters}
 
           {/* Sort — always present */}
           <div className="min-w-[160px]">
