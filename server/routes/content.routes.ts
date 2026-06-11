@@ -206,7 +206,7 @@ router.get("/api/status", (_req, res) => {
             OR market_scoped IS NULL
             OR ${market}::text = ANY(market_scoped)
           )
-        ORDER BY is_surprising DESC, sort_order ASC, display_name ASC
+        ORDER BY sort_order ASC, display_name ASC
       `);
       // 5-min cache — catalog data drifts slowly; admin edits show up promptly.
       res.setHeader("Cache-Control", "public, max-age=300");
@@ -233,7 +233,7 @@ router.get("/api/status", (_req, res) => {
         FROM expert_offering_types
         WHERE is_active = true
           AND (${tier}::text IS NULL OR service_tier = ${tier}::text)
-        ORDER BY is_surprising DESC, sort_order ASC, display_name ASC
+        ORDER BY sort_order ASC, display_name ASC
       `);
       res.setHeader("Cache-Control", "public, max-age=300");
       res.json(result.rows ?? []);
