@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles, Clock } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Check, Lightbulb, Sparkles, Clock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
@@ -468,7 +468,7 @@ function PlanCardSummary({
                   confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
                 }`}
               >
-                {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+                {confirming ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
               </button>
               {showCountdown && (
                 <div className="text-right leading-none">
@@ -838,7 +838,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               : "bg-white dark:bg-gray-800 border-border text-muted-foreground hover:bg-red-50 hover:border-red-300 hover:text-red-500 dark:hover:bg-red-950"
             }`}
         >
-          {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+          {confirming ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
         </button>
       )}
 
