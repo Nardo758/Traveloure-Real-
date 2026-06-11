@@ -1,0 +1,18 @@
+Let me confirm the exact values from the mockup file rather than quote from memory.Here are the exact values from the mockup:
+
+- **Phone frame (`.phone`):** `width: 380px`, `max-width: 100%`, `padding: 11px`, `border-radius: 38px`
+- **Screen (`.screen`):** `height: 768px`, `border-radius: 28px`, with internal scroll (`overflow: hidden` + a scrolling child)
+- So the **actual card content width** = 380 − (2 × 11px padding) = **~358px**, and the content scrolls inside a 768px-tall window.
+
+In plain terms: the mockup card is a **single-column, mobile-portrait card** — roughly 358px content wide, with height driven by content (the 768px was just the preview window, not a fixed card height).
+
+But here's the important caveat, because this is the same trap as the colors: **those are illustrative preview dimensions, not build specs.** The 380×768 and the phone frame were my choices to render a phone-sized preview — they're not design tokens or a requirement. If the agent (or you) tries to *match the mockup's dimensions literally*, you'd hardcode a 380px-wide card, which is wrong for a responsive React app — it'd be pinned narrow on a wide dashboard and not adapt to actual mobile widths.
+
+What's actually spec-worthy from the mockup re: sizing is the **proportion and the internal rhythm**, not the absolute pixels:
+- **Single-column, mobile-portrait** layout (which matches the single-column stack you already moved the dashboard to).
+- The **internal spacing rhythm** — section paddings around 12–16px, the header a bit taller, the metric strip as a 4-up row, the Concierge module with comfortable padding.
+- **Content-driven height** with scroll, not a fixed height.
+
+So for the real build, the card should be a **responsive single column with a sensible max-width** (a readable mobile-card width — something like a `max-w` in the ~400–480px range, full-width below that), not a hardcoded 380. That keeps the mockup's *proportions* (the thing that matters) without freezing its *preview pixels* (the thing that doesn't).
+
+If you want, I can add one line to the alignment prompt making this explicit — "match the mockup's single-column proportions and spacing rhythm on a responsive max-width; do NOT hardcode 380×768" — so the dimension instruction can't get misread the same way the color one could.

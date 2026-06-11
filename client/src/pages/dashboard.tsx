@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Calendar } from "lucide-react";
+import { Plus, Loader2, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
@@ -70,6 +71,18 @@ export default function Dashboard() {
     queryKey: ["/api/credits/balance"],
     retry: false,
   });
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+  const now = new Date();
+  const allPlans = trips ?? [];
+  const activePlans = allPlans.filter(t => new Date(t.endDate ?? 0) >= now);
+
+  // Default to soonest upcoming trip; user click overrides
+  const soonestTripId = [...activePlans].sort(
+    (a, b) => new Date(a.startDate ?? 0).getTime() - new Date(b.startDate ?? 0).getTime()
+  )[0]?.id ?? null;
+  const effectiveTripId = selectedTripId ?? soonestTripId;
+  const selectedTrip = activePlans.find(t => t.id === effectiveTripId) ?? null;
 
   if (isLoading) {
     return (
@@ -92,10 +105,6 @@ export default function Dashboard() {
     );
   }
 
-  const now = new Date();
-  const allPlans = trips ?? [];
-  const activePlans = allPlans.filter(t => new Date(t.endDate) >= now);
-
   const notifications = notificationsData ?? [];
   const actionsNeeded = notifications.filter(
     n => !n.read && (n.type === "urgent" || n.type === "action")
@@ -117,7 +126,7 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="p-6" data-testid="dashboard-content">
+      <div className="p-3 sm:p-6" data-testid="dashboard-content">
         {/* Greeting — full width above panels */}
         <div className="pt-4 mb-4">
           <div
@@ -201,19 +210,90 @@ export default function Dashboard() {
             </div>
 
             {activePlans.length > 0 ? (
-              <div
-                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
-                data-testid="active-plans-grid"
-              >
-                {activePlans.slice(0, 6).map((trip, i) => (
+              <div className="mb-6 max-w-[480px]" data-testid="active-plans-section">
+                {/* Compact trip selector row — visible when there are 2+ plans */}
+                {activePlans.length > 1 && (
+                  <div
+                    className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide"
+                    data-testid="trip-selector-row"
+                  >
+                    {activePlans.map((trip) => {
+                      const isSelected = trip.id === effectiveTripId;
+                      const dest = trip.destination?.split(",")[0] ?? "Trip";
+                      const d1 = trip.startDate
+                        ? new Date(trip.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                        : null;
+                      const d2 = trip.endDate
+                        ? new Date(trip.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                        : null;
+                      const start = new Date(trip.startDate ?? 0);
+                      const end = new Date(trip.endDate ?? 0);
+                      const isActive = now >= start && now <= end;
+                      const daysUntil = start > now
+                        ? Math.ceil((start.getTime() - now.getTime()) / 86400000)
+                        : null;
+                      const status = isActive
+                        ? "Active"
+                        : daysUntil != null && daysUntil <= 7
+                        ? "Soon"
+                        : "Upcoming";
+                      return (
+                        <button
+                          key={trip.id}
+                          onClick={() => setSelectedTripId(trip.id)}
+                          data-testid={`trip-chip-${trip.id}`}
+                          className={`flex-shrink-0 text-left rounded-xl px-3 py-2.5 border transition-all ${
+                            isSelected
+                              ? "bg-primary/10 border-primary"
+                              : "bg-card border-border hover:border-primary/40"
+                          }`}
+                        >
+                          <div
+                            className={`text-[13px] font-semibold truncate max-w-[140px] ${
+                              isSelected ? "text-primary" : "text-foreground"
+                            }`}
+                          >
+                            {dest}
+                          </div>
+                          {d1 && d2 && (
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {d1}–{d2}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className={`text-[9px] font-bold uppercase tracking-widest ${
+                                isActive
+                                  ? "text-green-600 dark:text-green-400"
+                                  : isSelected
+                                  ? "text-primary"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                            {trip.numberOfTravelers != null && trip.numberOfTravelers > 0 && (
+                              <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
+                                <Users className="w-2.5 h-2.5" />
+                                {trip.numberOfTravelers}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Single full PlanCard for the selected/soonest trip */}
+                {selectedTrip && (
                   <PlanCard
-                    key={trip.id}
-                    trip={trip}
-                    index={i}
+                    trip={selectedTrip as any}
+                    index={0}
                     role="owner"
-                    stage="summary"
+                    stage="full"
                   />
-                ))}
+                )}
               </div>
             ) : (
               <Card
