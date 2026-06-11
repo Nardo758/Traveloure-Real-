@@ -197,6 +197,7 @@ export function EscalationCTA({
           variant={isQueued ? "secondary" : "default"}
           onClick={handleEscalate}
           disabled={submitting}
+          className={isQueued ? undefined : "text-white"}
           data-testid="button-plancard-escalate"
         >
           {submitting ? (
