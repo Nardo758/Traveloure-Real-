@@ -87,6 +87,7 @@ import {
   feeConfigFromRates,
   calcInsuranceFee,
   getConciergeBookingFlatFee,
+  requireConciergeBookingFlatFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -326,7 +327,17 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // Phase 3.4: Load the Booking Concierge flat facilitation fee amount once.
       // expert_concierge_booking is rate_type='flat' (dollar amount, NOT a split fraction).
       // This fee is added ON TOP of the normal 75/25 expert_standard split.
-      const conciergeBookingFlatFee = await getConciergeBookingFlatFee();
+      // Money gate: if any cart item is booking_concierge, use the strict loader
+      // which throws "Booking Concierge fee band not configured" if the band is
+      // missing or zero — preventing a $0 charge on a misconfigured prod DB.
+      const hasAnyBookingConciergeItem = cartData.some(i =>
+        i.service?.expertOfferingTypeId
+          ? offeringTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
+          : false,
+      );
+      const conciergeBookingFlatFee = hasAnyBookingConciergeItem
+        ? await requireConciergeBookingFlatFee()
+        : await getConciergeBookingFlatFee();
 
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
