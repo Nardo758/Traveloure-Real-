@@ -213,7 +213,6 @@ export function ServiceBrowser({
   title,
 }: ServiceBrowserProps) {
   const [selectedCategory, setSelectedCategory] = useState(categoryFilter || "all");
-  const [distanceFilter, setDistanceFilter] = useState("any");
   const [sortBy, setSortBy] = useState("rating");
   const [page, setPage] = useState(0);
   const limit = 12;
@@ -239,7 +238,6 @@ export function ServiceBrowser({
       "/api/discover",
       effectiveCategoryId,
       defaultLocation,
-      distanceFilter,
       sortBy,
       page,
     ],
@@ -247,7 +245,6 @@ export function ServiceBrowser({
       const params = new URLSearchParams();
       if (effectiveCategoryId) params.set("categoryId", effectiveCategoryId);
       if (defaultLocation) params.set("location", defaultLocation);
-      if (distanceFilter !== "any") params.set("maxDistance", distanceFilter);
       if (sortBy) params.set("sortBy", sortBy);
       params.set("limit", String(limit));
       params.set("offset", String(page * limit));
@@ -281,19 +278,6 @@ export function ServiceBrowser({
                 {cat.name}
               </SelectItem>
             ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={distanceFilter} onValueChange={(v) => { setDistanceFilter(v); setPage(0); }}>
-          <SelectTrigger className="flex-1 sm:flex-none sm:w-52" data-testid="select-service-distance">
-            <SelectValue placeholder="Distance from hotel" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="any">Any distance</SelectItem>
-            <SelectItem value="1">Within 1 km</SelectItem>
-            <SelectItem value="2">Within 2 km</SelectItem>
-            <SelectItem value="5">Within 5 km</SelectItem>
-            <SelectItem value="10">Within 10 km</SelectItem>
           </SelectContent>
         </Select>
 
