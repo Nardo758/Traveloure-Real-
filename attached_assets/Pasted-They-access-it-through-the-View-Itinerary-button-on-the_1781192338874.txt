@@ -1,0 +1,17 @@
+They access it through the **"View Itinerary" button** on the summary card — that's the single explicit door. Tapping it routes to `/trip/:id`, which renders the PlanCard in `stage="full"` — Stage B, the full control center (gradient hero, Card/Map toggle, transport rows, booking, upsell slot, the Concierge module again).
+
+There's also a *secondary* set of doors: the chips on the summary — **3 services / 29 legs / Expert** — deep-link into specific *tabs* of that same Stage B page (services → bookings tab, legs → transport, Expert → expert tab). So tapping the body of the card takes you to the relevant section rather than the top.
+
+That's the whole access model today, and it's worth being honest that it's thin: **one button is the only obvious way in.** A few things follow from that:
+
+The button has to actually work and point to the right place — which is exactly the bug in your screenshot (it renders as that broken two-tone coral) and the routing risk we flagged (it must go to `/trip/:id`, not `/itinerary/:id`, or you'd tap it and land on the printable view instead of the control center). So the single door is currently the glitchy one — that's why fixing it isn't cosmetic, it's the entry point.
+
+Tapping the **card itself** doesn't currently open Stage B — only the explicit button does. On mobile, people expect to tap the whole card to open it, not hunt for a button. So a quick win for "how do users get to Stage B" is making the card body tappable (→ `/trip/:id`), with the chips still deep-linking to their tabs and the buttons handling their specific actions. That turns one thin door into "tap anywhere sensible."
+
+And this is where your last question reconnects: if a user has **one** active plan, the cleanest "access to Stage B" is *not making them click at all* — auto-open it, and the summary list only appears when there are 2+ to choose from. So the access model is really two questions stacked: for the single-plan case, the best access is no door (land them in it); for the multi-plan case, the door is the summary card, which should open on tapping the card, not just a button.
+
+So, concretely, "how does a user access Stage B" has a *current* answer and a *better* answer:
+- **Today:** the "View Itinerary" button (and the chips → tabs). One door, currently glitchy.
+- **Better:** make the whole card tap-to-open for the multi-plan case, and auto-open Stage B for the single-plan case so there's no hop at all.
+
+Want me to fold "make the card body tap-to-open `/trip/:id`" into the fix prompt (it's small and it's the highest-leverage access improvement), and write the adaptive auto-open routing as its own short prompt? Those two together are the real answer to getting people into Stage B.
