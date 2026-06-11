@@ -134,7 +134,7 @@ function ExpertOfferingTypesCard() {
                   )}
                 </div>
                 <a
-                  href={`/expert/services?offeringType=${encodeURIComponent(offering.offering_type_key)}`}
+                  href={`/expert/services?offeringTypeKey=${encodeURIComponent(offering.offering_type_key)}`}
                   className="flex items-center gap-0.5 text-[11px] text-primary font-semibold whitespace-nowrap"
                   data-testid={`link-manage-offering-${offering.offering_type_key}`}
                 >
