@@ -226,11 +226,13 @@ async function getBand(bandKey: string): Promise<{ rate: number; rateType: strin
 }
 
 /**
- * Phase 3.4: Returns the Booking Concierge flat facilitation fee in DOLLARS.
- * Reads fee_bands.expert_concierge_booking.default_rate (rate_type='flat').
- * This is a per-booking AMOUNT addition — NOT a split fraction.
+ * Phase 3.4: Returns the Booking Concierge facilitation fee RATE (fraction).
+ * Reads fee_bands.expert_concierge_booking.default_rate (rate_type='percent').
+ * Migration 066 converted this from a flat $9.99 placeholder to a 5 % rate
+ * (0.05), so callers must multiply by the item price: fee = itemPrice * rate.
  * The 75/25 expert/platform split rides expert_standard separately.
  * Returns 0 on DB error or if the band is missing/inactive — safe fallback.
+ * Use in cart-preview contexts where a graceful zero is acceptable.
  */
 export async function getConciergeBookingFlatFee(): Promise<number> {
   try {
@@ -238,7 +240,7 @@ export async function getConciergeBookingFlatFee(): Promise<number> {
       SELECT CAST(default_rate AS FLOAT) AS rate
       FROM fee_bands
       WHERE band_key = 'expert_concierge_booking'
-        AND rate_type = 'flat'
+        AND rate_type = 'percent'
         AND is_active = true
       LIMIT 1
     `);
@@ -247,6 +249,41 @@ export async function getConciergeBookingFlatFee(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/**
+ * Phase 3.4 (strict): Same as getConciergeBookingFlatFee but THROWS if the
+ * band is missing, inactive, or has a zero/null rate.
+ *
+ * Returns the facilitation fee RATE (fraction, e.g. 0.05 = 5 %). Callers
+ * must multiply by the item price: fee = itemPrice * rate.
+ *
+ * Call this at checkout when the cart contains booking_concierge items — a
+ * misconfigured prod DB (e.g. migration 066 not yet applied) must fail loudly
+ * rather than silently charging $0 for the facilitation fee.
+ *
+ * On a fresh prod DB, run `npm run migrate:bootstrap` then `npm start` to
+ * apply migrations 064–066 (expert_concierge_booking band + percent conversion).
+ */
+export async function requireConciergeBookingFlatFee(): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT CAST(default_rate AS FLOAT) AS rate
+    FROM fee_bands
+    WHERE band_key = 'expert_concierge_booking'
+      AND rate_type = 'percent'
+      AND is_active = true
+    LIMIT 1
+  `);
+  const row = result.rows?.[0] as { rate: number | null } | undefined;
+  const rate = Number(row?.rate ?? 0);
+  if (!row || rate <= 0) {
+    throw new Error(
+      "Booking Concierge fee band not configured — " +
+      "expert_concierge_booking must be active with rate_type='percent' and default_rate > 0. " +
+      "Run `npm run migrate:bootstrap` then `npm start` to apply migrations 064–066.",
+    );
+  }
+  return rate;
 }
 
 async function getSetting(key: string): Promise<string | null> {

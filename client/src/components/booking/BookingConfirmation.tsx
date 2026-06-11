@@ -16,6 +16,7 @@ interface BookingItem {
   confirmationCode?: string;
   serviceAmount: number;
   platformFee: number;
+  conciergeFee?: number;
   totalAmount: number;
 }
 
@@ -27,6 +28,7 @@ interface BookingConfirmationProps {
   userEmail?: string;
   itineraryId?: string;
   destination?: string;
+  conciergeFee?: number;
   onClose: () => void;
 }
 
@@ -38,6 +40,7 @@ export default function BookingConfirmation({
   userEmail,
   itineraryId,
   destination,
+  conciergeFee,
   onClose,
 }: BookingConfirmationProps) {
   const [, navigate] = useLocation();
@@ -147,6 +150,14 @@ export default function BookingConfirmation({
               <span className="text-gray-600">Platform fee</span>
               <span className="text-gray-900 font-medium">
                 ${bookings.reduce((sum, b) => sum + b.platformFee, 0).toFixed(2)}
+              </span>
+            </div>
+          )}
+          {(conciergeFee ?? bookings.reduce((sum, b) => sum + (b.conciergeFee ?? 0), 0)) > 0 && (
+            <div className="flex justify-between text-sm" data-testid="text-concierge-fee-confirmation">
+              <span className="text-gray-600">Booking Concierge fee</span>
+              <span className="text-gray-900 font-medium">
+                ${(conciergeFee ?? bookings.reduce((sum, b) => sum + (b.conciergeFee ?? 0), 0)).toFixed(2)}
               </span>
             </div>
           )}
