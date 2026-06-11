@@ -23,6 +23,8 @@ import type { InlineTransportLegData } from "@/components/itinerary/InlineTransp
 import { TransportSection } from "./TransportSection";
 import { EscalationCTA } from "./EscalationCTA";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
+import { PlanCardHeader } from "./PlanCardHeader";
+import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter } from "./MapControlCenter";
 import {
   Dialog,
@@ -439,72 +441,53 @@ function PlanCardSummary({
         style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF" }}
         data-testid={`dashboard-plan-card-${trip.id}`}
       >
-        {/* Header */}
-        <div className="relative text-white" style={{ background: gradient, padding: "13px 15px 11px" }}>
-          <div className="flex gap-1.5 mb-[7px]">
+        {/* Shared header (summary↔full continuity) — redesign */}
+        <PlanCardHeader
+          title={tripTitle}
+          destination={trip.destination}
+          dateRange={`${formatShortDate(trip.startDate ?? "")}–${formatShortDate(trip.endDate ?? "")}`}
+          statusLabel={statusLabel}
+          metrics={{ days: numDays, activities: totalActivities, legs: totalLegs, transitTime: formatMinutes(totalMinutes) }}
+          testId={`plancard-header-${trip.id}`}
+          badges={pendingExpertRequest ? (
             <span
-              className="text-[9px] font-semibold px-2.5 py-[3px] rounded-lg uppercase tracking-[0.4px]"
-              style={{ background: "rgba(255,255,255,0.25)" }}
-              data-testid={`status-pill-${trip.id}`}
+              className="inline-flex items-center gap-1 rounded-md bg-white/10 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              data-testid={`badge-expert-pending-${trip.id}`}
             >
-              ⚡ {statusLabel}
+              <Clock className="w-2.5 h-2.5" /> Expert review pending
             </span>
-            {pendingExpertRequest && (
-              <span
-                className="text-[9px] font-semibold px-2.5 py-[3px] rounded-lg uppercase tracking-[0.4px] flex items-center gap-1"
-                style={{ background: "rgba(255,255,255,0.25)" }}
-                data-testid={`badge-expert-pending-${trip.id}`}
+          ) : undefined}
+          topRight={
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleDelete}
+                disabled={deleteTrip.isPending}
+                data-testid={`button-delete-plan-${trip.id}`}
+                title={confirming ? "Click again to confirm delete" : "Remove this plan"}
+                className={`w-6 h-6 flex items-center justify-center rounded-full transition-all ${
+                  confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
+                }`}
               >
-                <Clock className="w-2.5 h-2.5" />
-                Expert review pending
-              </span>
-            )}
-          </div>
-          <div className="absolute top-3 right-3.5 flex flex-col items-end gap-1">
-            <button
-              onClick={handleDelete}
-              disabled={deleteTrip.isPending}
-              data-testid={`button-delete-plan-${trip.id}`}
-              title={confirming ? "Click again to confirm delete" : "Remove this plan"}
-              className={`w-6 h-6 flex items-center justify-center rounded-full transition-all ${
-                confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
-              }`}
-            >
-              {confirming ? "?" : <X className="w-3.5 h-3.5" />}
-            </button>
-            {showCountdown && (
-              <div className="text-right leading-none">
-                <div className="text-[22px] font-medium leading-none" data-testid={`text-countdown-${trip.id}`}>{daysTil}</div>
-                <div className="text-[9px] opacity-70">days</div>
-              </div>
-            )}
-          </div>
+                {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+              </button>
+              {showCountdown && (
+                <div className="text-right leading-none">
+                  <div className="text-[20px] font-semibold leading-none" data-testid={`text-countdown-${trip.id}`}>{daysTil}</div>
+                  <div className="text-[9px] opacity-70">days</div>
+                </div>
+              )}
+            </div>
+          }
+        />
 
-          <div className="text-[15px] font-medium mb-0.5 pr-[50px]" data-testid={`text-plan-title-${trip.id}`}>{tripTitle}</div>
-          <div className="text-[11px] opacity-85">
-            📍 {trip.destination} · {formatShortDate(trip.startDate ?? "")}–{formatShortDate(trip.endDate ?? "")}
-          </div>
+        {/* Concierge — front and center (redesign) */}
+        <div className="px-4 pt-3">
+          <ConciergeModule destination={trip.destination} testId={`concierge-module-summary-${trip.id}`} />
         </div>
 
         {/* Stats */}
         <div style={{ padding: "10px 14px" }}>
-          <div className="flex text-center mb-2">
-            {([
-              { label: "Days", value: numDays },
-              { label: "Activities", value: totalActivities },
-              { label: "Transit legs", value: totalLegs },
-              { label: "Transit time", value: formatMinutes(totalMinutes) },
-            ] as const).map((s, i) => (
-              <div
-                key={i}
-                className="flex-1 py-1"
-                style={{ borderLeft: i > 0 ? "0.5px solid #E8E8E2" : "none" }}
-              >
-                <div className="text-[9px]" style={{ color: "#7A7A72", marginBottom: 1 }}>{s.label}</div>
-                <div className="text-[14px] font-medium" style={{ color: "#1A1A18" }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
+          {/* metric strip moved into PlanCardHeader (redesign) */}
 
           {/* Chips */}
           <div className="flex gap-[5px] flex-wrap">
