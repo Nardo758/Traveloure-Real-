@@ -14,7 +14,7 @@ import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
-import { StatsRow, OptimizerMetrics } from "./StatsRow";
+import { OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
 import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
@@ -850,6 +850,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           totalCost={totalCostDisplay}
           perPerson={perPersonDisplay}
           budget={budgetDisplay}
+          days={days}
+          totalActivities={totalActivities}
+          totalLegs={totalLegs}
+          totalMinutes={totalMinutes}
+          statsLabels={templateConfig.statsLabels}
         />
 
         {lastOptimizedAt && (
@@ -912,14 +917,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
         {viewMode === "card" ? (
           <>
-            <StatsRow
-              trip={trip}
-              days={days}
-              totalActivities={totalActivities}
-              totalLegs={totalLegs}
-              totalMinutes={totalMinutes}
-              templateConfig={templateConfig}
-            />
+            {/* metric strip moved onto the photo hero (redesign Phase 2, option C) */}
 
             <OptimizerMetrics
               tripId={trip.id}
