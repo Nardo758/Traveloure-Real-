@@ -88,6 +88,17 @@ describe("Phase 1.3 — decideBandKey (pure)", () => {
     );
   });
 
+  // Phase 3.1: the Booking Concierge concern resolves to its dedicated FLAT
+  // fee-amount band — a NAMED mapping, NOT a fallthrough. Without it, the
+  // generic direct-lookup would return 'booking_concierge' (no such band) and
+  // the resolver would silently fall to expert_standard (the tip lesson).
+  it("category='booking_concierge' → expert_concierge_booking (named, no fallthrough)", () => {
+    const band = decideBandKey({ category: "booking_concierge" }, "beta_flat", "beta_flat");
+    assert.equal(band, "expert_concierge_booking");
+    assert.notEqual(band, "booking_concierge"); // not the direct-lookup fallthrough
+    assert.notEqual(band, "expert_standard");   // not the silent default
+  });
+
   // Phase 1.5 enumeration: any non-default named category falls through to a
   // direct band lookup. Migration 046 seeds a preserving band for every active
   // booking_fee_configs row, so admin per-category overrides flow through
