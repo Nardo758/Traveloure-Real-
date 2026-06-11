@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## Recent Changes (June 2026)
 - **Safe Prod Migration Bootstrap**: Added `scripts/prod-ledger-bootstrap.ts` and npm scripts for safe production database migrations. **Ops procedure for a fresh prod deploy:**
   1. *Audit first (read-only):* `npm run migrate:dry-run` — reports which migration files would run without touching the database. Safe against prod.
-  2. *Bootstrap the ledger (one-time):* `npm run migrate:bootstrap` — creates the `schema_migrations` table and stamps migrations 001–051 as already-applied **without** re-executing their DDL. Required on any prod DB that was built from Drizzle snapshots with no migration history.
+  2. *Bootstrap the ledger (one-time):* `npm run migrate:bootstrap` — creates the `schema_migrations` table and stamps migrations 001–063 as already-applied **without** re-executing their DDL. Required on any prod DB that was built from Drizzle snapshots with no migration history.
   3. *Normal startup:* `npm start` — skips all stamped migrations and applies only future ones.
   Entry points: `server/migrations/dry-run-entry.ts` (dry-run), `server/migrations/bootstrap-prod-ledger.ts` (bootstrap), both delegating to `server/migrations/run-migrations.ts`. The bootstrap is fully idempotent (ON CONFLICT DO NOTHING) — safe to re-run.
 - **Popular Cities Seed**: Added `server/seeds/popular-cities-content.seed.ts` — seeds 20 hidden gems (7 Tokyo, 6 Kyoto, 7 Paris) with correct neighborhood slugs and 1 active `providerServices` row per city. Also added 6 Tokyo neighborhoods to `server/seeds/city-neighborhoods.seed.ts` (Shimokitazawa, Yanaka, Nakameguro, Asakusa, Shinjuku, Daikanyama). Both seeds run automatically on startup via `runDatabaseSeeding()` in `server/index.ts`.
