@@ -755,8 +755,9 @@ router.get("/api/cart", async (req, res) => {
         cartOfferingTypeKeyMap.set(row.id, row.key);
       }
     }
-    // Phase 3.4: Load the Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
-    // Added on top of normal 75/25 split for booking_concierge offering type services.
+    // Phase 3.4: Load the Booking Concierge facilitation fee RATE (fraction, e.g. 0.05 = 5 %).
+    // Migration 066 converted this from a flat $9.99 placeholder to a percent rate.
+    // Callers must multiply by item price: fee = itemPrice * rate.
     const cartConciergeBookingFlatFee = await getConciergeBookingFlatFee();
 
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
@@ -793,7 +794,7 @@ router.get("/api/cart", async (req, res) => {
       const itemInsuranceFee = calcInsuranceFee(price, rates, feeCategory);
       basePlatformFeeTotal += price * (1 - expertShare) + itemInsuranceFee;
       if (isBookingConciergeItem) {
-        conciergeFeeTotal += cartConciergeBookingFlatFee;
+        conciergeFeeTotal += price * cartConciergeBookingFlatFee;
       }
     }
 
