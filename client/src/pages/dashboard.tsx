@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Plus, Loader2, Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,6 +71,20 @@ export default function Dashboard() {
     queryKey: ["/api/credits/balance"],
     retry: false,
   });
+  const [, navigate] = useLocation();
+
+  const now = new Date();
+  const allPlans = trips ?? [];
+  const activePlans = allPlans.filter(t => new Date(t.endDate) >= now);
+
+  // Adaptive routing: skip the summary list when there is exactly one active
+  // plan — go straight to Stage B (the trip control centre). Only fires after
+  // data has fully loaded so we never redirect on a stale/partial response.
+  useEffect(() => {
+    if (!isLoading && !isError && activePlans.length === 1) {
+      navigate(`/trip/${activePlans[0].id}`);
+    }
+  }, [isLoading, isError, activePlans.length, activePlans[0]?.id, navigate]);
 
   if (isLoading) {
     return (
@@ -92,9 +107,17 @@ export default function Dashboard() {
     );
   }
 
-  const now = new Date();
-  const allPlans = trips ?? [];
-  const activePlans = allPlans.filter(t => new Date(t.endDate) >= now);
+  // Suppress flash: if we're about to redirect (single active plan), keep
+  // showing the spinner rather than mounting the summary list for one frame.
+  if (activePlans.length === 1) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Loader2 className="w-10 h-10 animate-spin" style={{ color: "#E85D55" }} />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   const notifications = notificationsData ?? [];
   const actionsNeeded = notifications.filter(
