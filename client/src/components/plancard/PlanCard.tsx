@@ -886,6 +886,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           </div>
         )}
 
+        {/* Concierge — front and center (redesign Phase 2); always visible across card/map views */}
+        <div className="px-5 pt-3">
+          <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
+        </div>
+
         <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <Button
             onClick={() => setViewMode("card")}
@@ -1055,20 +1060,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
-            {/* CON-A.P6 / D8: Concierge entry slot on every PlanCard. Soft, always visible. */}
-            <Link
-              href={`/concierge?intent=${encodeURIComponent(`Help me with my ${trip.destination} trip`)}`}
-              className="flex-shrink-0"
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid={`button-concierge-${trip.id}`}
-              >
-                <Sparkles className="w-3.5 h-3.5 mr-1" />
-                Concierge
-              </Button>
-            </Link>
+            {/* Concierge promoted to the front-and-center ConciergeModule above (redesign Phase 2) */}
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"
