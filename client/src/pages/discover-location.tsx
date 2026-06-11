@@ -1229,7 +1229,7 @@ export default function DiscoverLocationPage() {
                         </p>
                       </div>
                       <a
-                        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(nbName)}&offeringType=${encodeURIComponent(offeringKey)}`}
+                        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(nbName)}&offeringTypeKey=${encodeURIComponent(offeringKey)}`}
                         className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
                         data-testid={`link-recruitment-earn-${nb.id ?? nb.slug ?? "nb"}`}
                       >
