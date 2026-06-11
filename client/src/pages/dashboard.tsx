@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -70,9 +71,18 @@ export default function Dashboard() {
     queryKey: ["/api/credits/balance"],
     retry: false,
   });
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
   const now = new Date();
   const allPlans = trips ?? [];
-  const activePlans = allPlans.filter(t => new Date(t.endDate) >= now);
+  const activePlans = allPlans.filter(t => new Date(t.endDate ?? 0) >= now);
+
+  // Default to soonest upcoming trip; user click overrides
+  const soonestTripId = [...activePlans].sort(
+    (a, b) => new Date(a.startDate ?? 0).getTime() - new Date(b.startDate ?? 0).getTime()
+  )[0]?.id ?? null;
+  const effectiveTripId = selectedTripId ?? soonestTripId;
+  const selectedTrip = activePlans.find(t => t.id === effectiveTripId) ?? null;
 
   if (isLoading) {
     return (
@@ -200,19 +210,82 @@ export default function Dashboard() {
             </div>
 
             {activePlans.length > 0 ? (
-              <div
-                className="flex flex-col gap-6 mb-6"
-                data-testid="active-plans-grid"
-              >
-                {activePlans.slice(0, 6).map((trip, i) => (
+              <div className="mb-6" data-testid="active-plans-section">
+                {/* Compact trip selector row — visible when there are 2+ plans */}
+                {activePlans.length > 1 && (
+                  <div
+                    className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide"
+                    data-testid="trip-selector-row"
+                  >
+                    {activePlans.map((trip) => {
+                      const isSelected = trip.id === effectiveTripId;
+                      const dest = trip.destination?.split(",")[0] ?? "Trip";
+                      const d1 = trip.startDate
+                        ? new Date(trip.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                        : null;
+                      const d2 = trip.endDate
+                        ? new Date(trip.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                        : null;
+                      const start = new Date(trip.startDate ?? 0);
+                      const end = new Date(trip.endDate ?? 0);
+                      const isActive = now >= start && now <= end;
+                      const daysUntil = start > now
+                        ? Math.ceil((start.getTime() - now.getTime()) / 86400000)
+                        : null;
+                      const status = isActive
+                        ? "Active"
+                        : daysUntil != null && daysUntil <= 7
+                        ? "Soon"
+                        : "Upcoming";
+                      return (
+                        <button
+                          key={trip.id}
+                          onClick={() => setSelectedTripId(trip.id)}
+                          data-testid={`trip-chip-${trip.id}`}
+                          className={`flex-shrink-0 text-left rounded-xl px-3 py-2.5 border transition-all ${
+                            isSelected
+                              ? "bg-primary/10 border-primary"
+                              : "bg-card border-border hover:border-primary/40"
+                          }`}
+                        >
+                          <div
+                            className={`text-[13px] font-semibold truncate max-w-[140px] ${
+                              isSelected ? "text-primary" : "text-foreground"
+                            }`}
+                          >
+                            {dest}
+                          </div>
+                          {d1 && d2 && (
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {d1}–{d2}
+                            </div>
+                          )}
+                          <div
+                            className={`text-[9px] font-bold uppercase tracking-widest mt-1 ${
+                              isActive
+                                ? "text-green-600 dark:text-green-400"
+                                : isSelected
+                                ? "text-primary"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {status}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Single full PlanCard for the selected/soonest trip */}
+                {selectedTrip && (
                   <PlanCard
-                    key={trip.id}
-                    trip={trip}
-                    index={i}
+                    trip={selectedTrip}
+                    index={0}
                     role="owner"
                     stage="full"
                   />
-                ))}
+                )}
               </div>
             ) : (
               <Card

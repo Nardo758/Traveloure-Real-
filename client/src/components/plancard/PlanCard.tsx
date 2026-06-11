@@ -938,39 +938,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               perPerson={perPersonDisplay}
             />
 
-            {/* CON-A.P7 / N3: expert-escalation CTA — woven into every AI deliverable.
-                Owner-only (hidden on viewer-mode shared cards), full-stage only. */}
-            {!isViewer && stage === "full" && (
-              <div className="px-3 sm:px-5">
-                <EscalationCTA
-                  tripId={trip.id}
-                  destination={trip.destination}
-                  eventType={(trip as any).eventType}
-                  planSnapshot={{
-                    days: days.map(d => ({
-                      day: d.day,
-                      date: d.date,
-                      activityCount: d.activities?.length ?? 0,
-                    })),
-                    totalActivities,
-                    totalCost: totalCostDisplay,
-                  }}
-                />
-              </div>
-            )}
-
-            {/* Upsell pretrip slot — "what's missing" gap-fill, owner-only, full-stage.
-                Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
-            {!isViewer && stage === "full" && (
-              <PlanCardUpsellSlot
-                tripId={trip.id}
-                eventType={(trip as any).eventType}
-                startDate={trip.startDate}
-                endDate={trip.endDate}
-                surface="plancard_pretrip"
-              />
-            )}
-
             <DaySelector
               tripId={trip.id}
               days={days}
@@ -1004,8 +971,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            {/* Upsell ontrip slot — live "near you" nudge, anchored above the
-                day's activities. Self-guards to the in-trip window. */}
+            {/* Upsell ontrip slot — live "near you" nudge. Self-guards to in-trip window. */}
             {!isViewer && stage === "full" && (
               <PlanCardUpsellSlot
                 tripId={trip.id}
@@ -1041,6 +1007,38 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 day={day}
                 allowActions={false}
               />
+            )}
+
+            {/* Upsell pretrip slot — "what's missing" gap-fill, after content per mockup v3.
+                Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
+            {!isViewer && stage === "full" && (
+              <PlanCardUpsellSlot
+                tripId={trip.id}
+                eventType={(trip as any).eventType}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                surface="plancard_pretrip"
+              />
+            )}
+
+            {/* CON-A.P7 / N3: expert-escalation CTA — after content, before bottom bar (mockup v3). */}
+            {!isViewer && stage === "full" && (
+              <div className="px-3 sm:px-5 pt-2">
+                <EscalationCTA
+                  tripId={trip.id}
+                  destination={trip.destination}
+                  eventType={(trip as any).eventType}
+                  planSnapshot={{
+                    days: days.map(d => ({
+                      day: d.day,
+                      date: d.date,
+                      activityCount: d.activities?.length ?? 0,
+                    })),
+                    totalActivities,
+                    totalCost: totalCostDisplay,
+                  }}
+                />
+              </div>
             )}
           </>
         ) : (
