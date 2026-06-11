@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Lightbulb, Sparkles, Clock } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X, Check, Lightbulb, Sparkles, Clock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
@@ -14,7 +14,7 @@ import {
   getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
-import { StatsRow, OptimizerMetrics } from "./StatsRow";
+import { OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
 import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
@@ -468,7 +468,7 @@ function PlanCardSummary({
                   confirming ? "bg-red-500 text-white scale-110" : "bg-white/20 text-white hover:bg-white/35"
                 }`}
               >
-                {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+                {confirming ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
               </button>
               {showCountdown && (
                 <div className="text-right leading-none">
@@ -838,7 +838,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               : "bg-white dark:bg-gray-800 border-border text-muted-foreground hover:bg-red-50 hover:border-red-300 hover:text-red-500 dark:hover:bg-red-950"
             }`}
         >
-          {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+          {confirming ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
         </button>
       )}
 
@@ -850,6 +850,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           totalCost={totalCostDisplay}
           perPerson={perPersonDisplay}
           budget={budgetDisplay}
+          days={days}
+          totalActivities={totalActivities}
+          totalLegs={totalLegs}
+          totalMinutes={totalMinutes}
+          statsLabels={templateConfig.statsLabels}
         />
 
         {lastOptimizedAt && (
@@ -886,6 +891,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           </div>
         )}
 
+        {/* Concierge — front and center (redesign Phase 2); always visible across card/map views */}
+        <div className="px-5 pt-3">
+          <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
+        </div>
+
         <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <Button
             onClick={() => setViewMode("card")}
@@ -907,14 +917,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
         {viewMode === "card" ? (
           <>
-            <StatsRow
-              trip={trip}
-              days={days}
-              totalActivities={totalActivities}
-              totalLegs={totalLegs}
-              totalMinutes={totalMinutes}
-              templateConfig={templateConfig}
-            />
+            {/* metric strip moved onto the photo hero (redesign Phase 2, option C) */}
 
             <OptimizerMetrics
               tripId={trip.id}
@@ -1055,20 +1058,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
-            {/* CON-A.P6 / D8: Concierge entry slot on every PlanCard. Soft, always visible. */}
-            <Link
-              href={`/concierge?intent=${encodeURIComponent(`Help me with my ${trip.destination} trip`)}`}
-              className="flex-shrink-0"
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid={`button-concierge-${trip.id}`}
-              >
-                <Sparkles className="w-3.5 h-3.5 mr-1" />
-                Concierge
-              </Button>
-            </Link>
+            {/* Concierge promoted to the front-and-center ConciergeModule above (redesign Phase 2) */}
             <Link href={`/itinerary/${trip.id}`} className="flex-1">
               <Button
                 size="sm"
