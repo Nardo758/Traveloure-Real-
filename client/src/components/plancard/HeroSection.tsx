@@ -79,7 +79,7 @@ export function HeroSection({
   }
 
   return (
-    <div className="relative h-36 sm:h-48 overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40">
+    <div className="relative h-48 sm:h-64 overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40">
       {photoUrl && (
         <img
           src={photoUrl}
