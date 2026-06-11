@@ -242,6 +242,52 @@ router.get("/api/status", (_req, res) => {
     }
   });
 
+  // GET /api/feed-composition-config — public read of the Discover feed
+  // composition knobs (Discover Feed Composition Brief): recommendation
+  // cadence, wanted-slot cap/spacing, honest-disclosure label copy. These are
+  // admin rows, not hardcode: platform_settings keys
+  //   feed_rec_cadence, feed_wanted_slot_max, feed_wanted_slot_spacing,
+  //   feed_rec_label, feed_rec_affiliate_label
+  // upserted via PATCH /api/admin/platform-settings/:settingKey. Missing rows
+  // fall back to code defaults. Short cache so admin edits show promptly.
+  router.get("/api/feed-composition-config", async (_req, res) => {
+    const defaults = {
+      recCadence: 4,
+      wantedSlotMax: 2,
+      wantedSlotSpacing: 6,
+      recommendedLabel: "Recommended",
+      affiliateLabel: "Paid partner",
+    };
+    try {
+      const result = await db.execute(sql`
+        SELECT setting_key, setting_value
+        FROM platform_settings
+        WHERE setting_key IN (
+          'feed_rec_cadence', 'feed_wanted_slot_max', 'feed_wanted_slot_spacing',
+          'feed_rec_label', 'feed_rec_affiliate_label'
+        )
+      `);
+      const rows = new Map(
+        (result.rows ?? []).map((r: any) => [String(r.setting_key), String(r.setting_value)]),
+      );
+      const intOr = (key: string, dflt: number, min: number): number => {
+        const v = Number(rows.get(key));
+        return Number.isFinite(v) && v >= min ? Math.floor(v) : dflt;
+      };
+      res.setHeader("Cache-Control", "public, max-age=60");
+      res.json({
+        recCadence: intOr("feed_rec_cadence", defaults.recCadence, 1),
+        wantedSlotMax: intOr("feed_wanted_slot_max", defaults.wantedSlotMax, 0),
+        wantedSlotSpacing: intOr("feed_wanted_slot_spacing", defaults.wantedSlotSpacing, 1),
+        recommendedLabel: rows.get("feed_rec_label") || defaults.recommendedLabel,
+        affiliateLabel: rows.get("feed_rec_affiliate_label") || defaults.affiliateLabel,
+      });
+    } catch {
+      // platform_settings may not exist on fresh installs — defaults keep the feed composing.
+      res.json(defaults);
+    }
+  });
+
   // Contact form endpoint
   const contactSchema = z.object({
     name: z.string().min(1, "Name is required").max(100),
