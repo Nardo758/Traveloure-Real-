@@ -129,11 +129,21 @@ const steps = [
   { id: 5, title: "Review", description: "Preview and publish" },
 ];
 
+const SERVICE_TIER_FILTERS = [
+  { label: "All", value: "all" },
+  { label: "Advisory", value: "advisory" },
+  { label: "Planning", value: "planning" },
+  { label: "Coordination", value: "coordination" },
+  { label: "Live Support", value: "live_support" },
+  { label: "Specialized", value: "specialized" },
+];
+
 export default function ServiceWizard() {
   const [startMode, setStartMode] = useState<'choose' | 'template' | 'scratch'>('choose');
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<ServiceFormData>(initialFormData);
   const [errors, setErrors] = useState<Partial<Record<keyof ServiceFormData, string>>>({});
+  const [tierFilter, setTierFilter] = useState<string>("all");
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
@@ -325,32 +335,61 @@ export default function ServiceWizard() {
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <Label>Service Tier</Label>
+        <div className="flex flex-wrap gap-2" data-testid="tier-filter-tabs">
+          {SERVICE_TIER_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setTierFilter(f.value)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
+                tierFilter === f.value
+                  ? "bg-[#FF385C] border-[#FF385C] text-white"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+              )}
+              data-testid={`filter-tier-${f.value}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
         {expertOfferingTypes.length === 0 ? (
           <p className="text-sm text-gray-500">Loading tiers…</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {expertOfferingTypes.map((tier) => (
-              <div
-                key={tier.id}
-                onClick={() => setFormData(prev => ({ ...prev, expertOfferingTypeId: tier.id }))}
-                className={cn(
-                  "p-4 rounded-lg border-2 cursor-pointer transition-colors",
-                  formData.expertOfferingTypeId === tier.id
-                    ? "border-[#FF385C] bg-[#FF385C]/5"
-                    : "border-gray-200 hover:border-gray-300"
-                )}
-                data-testid={`option-tier-${tier.offeringTypeKey}`}
-              >
-                <p className="font-medium text-gray-900">{tier.displayName}</p>
-                {tier.tagline && (
-                  <p className="text-sm text-gray-600">{tier.tagline}</p>
-                )}
+        ) : (() => {
+          const filtered = tierFilter === "all"
+            ? expertOfferingTypes
+            : expertOfferingTypes.filter(
+                (t) => t.serviceTier.toLowerCase().replace(/\s+/g, "_") === tierFilter
+              );
+          return (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filtered.length === 0 ? (
+                  <p className="text-sm text-gray-500 col-span-2">No service types in this category.</p>
+                ) : filtered.map((tier) => (
+                  <div
+                    key={tier.id}
+                    onClick={() => setFormData(prev => ({ ...prev, expertOfferingTypeId: tier.id }))}
+                    className={cn(
+                      "p-4 rounded-lg border-2 cursor-pointer transition-colors",
+                      formData.expertOfferingTypeId === tier.id
+                        ? "border-[#FF385C] bg-[#FF385C]/5"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                    data-testid={`option-tier-${tier.offeringTypeKey}`}
+                  >
+                    <p className="font-medium text-gray-900">{tier.displayName}</p>
+                    {tier.tagline && (
+                      <p className="text-sm text-gray-600">{tier.tagline}</p>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            </>
+          );
+        })()}
         {errors.expertOfferingTypeId && (
           <p className="text-sm text-red-500 flex items-center gap-1">
             <AlertCircle className="w-4 h-4" /> {errors.expertOfferingTypeId}
