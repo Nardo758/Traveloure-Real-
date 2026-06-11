@@ -85,4 +85,5 @@ export const MIGRATION_FILES = [
   "063_local_expert_planning_sort.sql",
   "064_concierge_booking_fee_band.sql",
   "065_seed_booking_concierge_offering_type.sql",
+  "066_concierge_booking_fee_percent.sql",
 ] as const;
