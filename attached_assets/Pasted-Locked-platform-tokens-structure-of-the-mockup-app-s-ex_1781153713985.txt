@@ -1,0 +1,30 @@
+Locked: **platform tokens** — structure of the mockup, app's existing Shadcn/Tailwind theme + fonts, no navy/teal/gold rebrand. The two defining pieces are the **shared header + 4-up metric strip** (the summary↔full "grown-up" continuity) and the **front-and-center Concierge module**.
+
+Two realities shape how I'll land this: PlanCard is **contended shared code** (dedicated branch, I'm sole owner for the duration), and **I have no browser here — I can't visually verify it**, so I'll build it tsc-clean and structurally faithful, and you eyeball it in a preview. So I'll do it in **reviewable phases**, starting with the summary stage (lower-risk) before the invasive full-stage HeroSection swap. Setting up the lane and reading the current summary header to wire precisely.
+
+Branch set up. Reading the summary header + metrics block to build the shared `PlanCardHeader` against the real data shape.
+
+The redesign collapses the header + metric strip into one shared block (currently split: coral header `:443` + metric strip `:491`), rebuilt on platform tokens. Building the two shared components, then wiring the summary stage (Phase 1).
+
+Now wiring the summary stage. Reading the import anchor, then making the three edits (imports, header→shared component+Concierge, remove the now-merged metric strip).
+
+Type-checking the three touched files.
+
+`tsc` clean (0 errors). Committing Phase 1 and pushing the redesign branch.
+
+**Phase 1 landed** — branch `claude/plancard-redesign`, tsc clean. Built on platform tokens (no navy/teal/gold):
+- **`PlanCardHeader`** — the shared "grown-up" header with the **4-up metric strip folded in** (status · title · dest · dates · expert + Days/Activities/Transit legs/Transit time). Dark surface + theme `primary` accent.
+- **`ConciergeModule`** — the **front-and-center "Ask the Concierge"** revenue spine (primary-accent card → `/concierge`), replacing the bottom-bar button placement.
+- **Summary stage rewired** onto both (old coral-gradient header + separate metric strip → one unified header; Concierge surfaced high).
+
+**Two things gate Phase 2 — and one needs your call:**
+
+1. **I can't see it** (no browser here). Phase 1 is the design language on real tokens — **eyeball it in a preview** before I do the invasive full-stage change, so we confirm the direction once rather than reworking twice.
+
+2. **Photo-hero decision (Phase 2):** the mockup's full stage has **no photo** — it uses the same dark header for continuity. So true continuity means **replacing `HeroSection` (the destination photo) with `PlanCardHeader`**. That drops the photo. Your call:
+   - **Replace** (full mockup continuity, no photo), or
+   - **Keep the photo** + add the metric strip below it (continuity-lite, keeps the hero image).
+
+**Phase 2 plan** (on your go): wire `PlanCardHeader` + `ConciergeModule` into the full stage per your photo call, drop the redundant bottom-bar Concierge button, preserve all functional wiring (escalation, map, transport, upsell). **Omitting the mockup's "Trip alerts" SMS opt-in** — it's the gated consent-lane control (a live opt-in pre-consent-backend is the compliance gap), so it lands when that parked lane resumes.
+
+So: **preview Phase 1, and tell me replace-photo vs keep-photo** — then I build Phase 2 the same way. Anything off in the Phase-1 language (header tone, Concierge module), say so and I'll adjust before it propagates to the full stage.
