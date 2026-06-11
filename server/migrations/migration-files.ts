@@ -80,4 +80,5 @@ export const MIGRATION_FILES = [
   "060_affiliate_booking_trip_link.sql",
   "061_affiliate_offering_types.sql",
   "062_fill_offering_gaps.sql",
+  "063_local_expert_planning_sort.sql",
 ] as const;
