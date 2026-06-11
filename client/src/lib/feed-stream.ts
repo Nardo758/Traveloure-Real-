@@ -19,7 +19,9 @@ export type FeedItemKind =
   | "supply-hotel"
   | "supply-activity"
   | "vendor-service"
-  | "city-separator";
+  | "city-separator"
+  | "recommendation"
+  | "wanted-slot";
 
 export interface FeedItem {
   kind: FeedItemKind;
@@ -265,6 +267,10 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
         return item.kind === "vendor-service";
       case "vibe":
         if (item.kind === "loose-gem") return !!item.data.vibeTag || !!item.data.isSecret;
+        return false;
+      // Injected items are never shown when a category filter is active
+      case "recommendation":
+      case "wanted-slot":
         return false;
       default:
         return true;

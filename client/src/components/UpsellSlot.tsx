@@ -56,6 +56,12 @@ interface UpsellSlotProps {
    * (so recruitment widgets can show only truly uncovered categories).
    */
   onSlotData?: (result: SlotResult) => void;
+  /**
+   * When true, renders nothing (returns null) but still fires onSlotData and
+   * logs impressions. Use this on surfaces where the feed composition layer
+   * owns rendering of candidates (e.g. discover_location interleaved stream).
+   */
+  headless?: boolean;
 }
 
 interface ErrorBoundaryState { hasError: boolean }
@@ -96,6 +102,7 @@ export function UpsellSlot({
   className,
   "data-testid": testId,
   onSlotData,
+  headless,
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
   const impressionFiredRef = useRef(false);
@@ -138,7 +145,7 @@ export function UpsellSlot({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates.length, data]);
 
-  if (candidates.length === 0) return null;
+  if (headless || candidates.length === 0) return null;
 
   const label = heading ?? DEFAULT_HEADING[surface];
 
