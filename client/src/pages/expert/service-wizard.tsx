@@ -649,9 +649,9 @@ export default function ServiceWizard() {
             <div className="flex items-start gap-3 px-3 py-3 rounded-lg bg-blue-50 border border-blue-200">
               <DollarSign className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm text-blue-900 font-medium">Booking Concierge fee band applied</p>
+                <p className="text-sm text-blue-900 font-medium">Booking Concierge facilitation fee applies</p>
                 <p className="text-xs text-blue-700 mt-0.5">
-                  A flat facilitation fee is charged per booking via the <strong>expert_concierge_booking</strong> band. The platform's standard 75/25 expert/platform split also applies. Fee amounts are admin-configurable.
+                  A flat facilitation fee is added to each booking (admin-configurable, default $9.99). The standard 75/25 expert/platform split on your service price applies separately.
                 </p>
               </div>
             </div>

@@ -83,6 +83,7 @@ import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
+  getConciergeBookingFlatFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -753,6 +754,9 @@ router.get("/api/cart", async (req, res) => {
         cartOfferingTypeKeyMap.set(row.id, row.key);
       }
     }
+    // Phase 3.4: Load the Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
+    // Added on top of normal 75/25 split for booking_concierge offering type services.
+    const cartConciergeBookingFlatFee = await getConciergeBookingFlatFee();
 
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
 
@@ -760,18 +764,17 @@ router.get("/api/cart", async (req, res) => {
     let platformFeeTotal = 0;
     for (const item of items) {
       const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
-      let feeCategory = item.service?.categoryId
+      const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      // Phase 3.4: booking_concierge offering type routes to expert_concierge_booking band
-      if (item.service?.expertOfferingTypeId) {
-        const offeringKey = cartOfferingTypeKeyMap.get(item.service.expertOfferingTypeId);
-        if (offeringKey === "booking_concierge") feeCategory = "booking_concierge";
-      }
       const rates = await resolveCommissionRates(feeCategory);
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
-      platformFeeTotal += price * (1 - expertShare);
+      const isBookingConciergeItem = item.service?.expertOfferingTypeId
+        ? cartOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+        : false;
+      platformFeeTotal += price * (1 - expertShare)
+        + (isBookingConciergeItem ? cartConciergeBookingFlatFee : 0);
     }
 
     res.json({

@@ -125,11 +125,6 @@ export function decideBandKey(
   // Phase 1.5 semantic mappings (override the generic direct-lookup fallback):
   if (opts.category === "tip") return "tip_handling";
 
-  // Phase 3.4: Booking Concierge offering type → expert_concierge_booking flat fee band.
-  // The band stores a DOLLAR amount (facilitation fee), not a split fraction.
-  // The 75/25 expert/platform split is applied separately via expert_standard.
-  if (opts.category === "booking_concierge") return "expert_concierge_booking";
-
   const isProviderLine =
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
@@ -204,6 +199,30 @@ async function getBandRate(bandKey: string): Promise<number | null> {
     return row?.rate ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Phase 3.4: Returns the Booking Concierge flat facilitation fee in DOLLARS.
+ * Reads fee_bands.expert_concierge_booking.default_rate (rate_type='flat').
+ * This is a per-booking AMOUNT addition — NOT a split fraction.
+ * The 75/25 expert/platform split rides expert_standard separately.
+ * Returns 0 on DB error or if the band is missing/inactive — safe fallback.
+ */
+export async function getConciergeBookingFlatFee(): Promise<number> {
+  try {
+    const result = await db.execute(sql`
+      SELECT CAST(default_rate AS FLOAT) AS rate
+      FROM fee_bands
+      WHERE band_key = 'expert_concierge_booking'
+        AND rate_type = 'flat'
+        AND is_active = true
+      LIMIT 1
+    `);
+    const row = result.rows?.[0] as { rate: number | null } | undefined;
+    return Number(row?.rate ?? 0);
+  } catch {
+    return 0;
   }
 }
 
