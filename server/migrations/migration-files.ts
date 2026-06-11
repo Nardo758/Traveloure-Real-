@@ -15,6 +15,8 @@
  * - `051_affiliate_booking_trip_link.sql` was renamed 060_affiliate_booking_trip_link.sql
  *   to eliminate the duplicate 051_ prefix collision with
  *   051_schema_migrations_ledger_bootstrap.sql.
+ * - `058_*` is intentionally absent — the planned migration was cancelled and its DDL
+ *   was folded into `057_expert_offering_type_fk.sql`. The sequence jumps from 057 → 059.
  */
 export const MIGRATION_FILES = [
   "001_guest_invite_system.sql",
@@ -79,6 +81,9 @@ export const MIGRATION_FILES = [
   "059_pnc_engine_lookup_index.sql",
   "060_affiliate_booking_trip_link.sql",
   "061_affiliate_offering_types.sql",
-  "062_concierge_booking_fee_band.sql",
-  "063_seed_booking_concierge_offering_type.sql",
+  "062_fill_offering_gaps.sql",
+  "063_local_expert_planning_sort.sql",
+  "064_concierge_booking_fee_band.sql",
+  "065_seed_booking_concierge_offering_type.sql",
+  "066_concierge_booking_fee_percent.sql",
 ] as const;

@@ -67,15 +67,20 @@ export function getTemplateConfig(eventType: string | null | undefined): Templat
   return TEMPLATES.travel;
 }
 
-export function getDestinationPhotoUrl(destination: string | undefined | null): string {
-  const safe = destination || "travel";
-  const seed = safe
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
-  const idNum = seed.split("").reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 0) % 900 + 100;
-  return `https://picsum.photos/seed/${seed}-${idNum}/800/400`;
+/**
+ * Real destination photo URL for the photo hero, or null when none is available.
+ *
+ * Returns null today: per-destination photography is not yet sourced, so the
+ * old picsum.photos stub (a deterministic-but-arbitrary stock image that did
+ * NOT depict the destination) was dropped in favour of HeroSection's brand
+ * gradient. This is the seam: when real photography lands (CDN/Unsplash/etc.),
+ * resolve a URL here keyed off `destination` and the photo hero lights up with
+ * zero changes to HeroSection — the scrim, status pill, title, and metric strip
+ * already sit on top of it.
+ */
+export function getDestinationPhoto(destination: string | undefined | null): string | null {
+  void destination;
+  return null;
 }
 
 export function getEnergyProfile(day: PlanCardDay | undefined | null): string {

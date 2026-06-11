@@ -53,7 +53,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, expertOfferingTypes } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -86,6 +86,7 @@ import {
   resolveCommissionRates,
   feeConfigFromRates,
   calcInsuranceFee,
+  getConciergeBookingFlatFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -308,6 +309,25 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
 
+      // Phase 3.4: Preload expert offering type keys to detect booking_concierge services.
+      // Maps expertOfferingTypeId (UUID) → offeringTypeKey string.
+      const distinctOfferingTypeIds = Array.from(new Set(
+        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+      ));
+      const offeringTypeKeyMap = new Map<string, string>();
+      if (distinctOfferingTypeIds.length > 0) {
+        const typeRows = await db.select({ id: expertOfferingTypes.id, key: expertOfferingTypes.offeringTypeKey })
+          .from(expertOfferingTypes)
+          .where(inArray(expertOfferingTypes.id, distinctOfferingTypeIds));
+        for (const row of typeRows) {
+          offeringTypeKeyMap.set(row.id, row.key);
+        }
+      }
+      // Phase 3.4: Load the Booking Concierge flat facilitation fee amount once.
+      // expert_concierge_booking is rate_type='flat' (dollar amount, NOT a split fraction).
+      // This fee is added ON TOP of the normal 75/25 expert_standard split.
+      const conciergeBookingFlatFee = await getConciergeBookingFlatFee();
+
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
       let checkoutPlatformFeeTotal = 0;
@@ -338,7 +358,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
-        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+        // Phase 3.4: add flat Booking Concierge facilitation fee on top of normal split
+        const isBookingConcierge = item.service.expertOfferingTypeId
+          ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+          : false;
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee
+          + (isBookingConcierge ? conciergeBookingFlatFee : 0);
       }
       const subtotal = checkoutSubtotal;
       // For Stripe total, charge subtotal + weighted-average platform fee (includes insurance)
@@ -376,7 +401,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
         const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
-        const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt;
+        // Phase 3.4: Booking Concierge flat facilitation fee (dollar amount, NOT split fraction).
+        // Added to platform take on top of the normal 75/25 expert_standard split.
+        const isBookingConcierge2 = item.service.expertOfferingTypeId
+          ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+          : false;
+        const conciergeFeaAmt = isBookingConcierge2 ? conciergeBookingFlatFee : 0;
+        const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
         // Create contract for this booking
