@@ -84,6 +84,7 @@ import {
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
   getConciergeBookingFlatFee,
+  calcInsuranceFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -765,16 +766,32 @@ router.get("/api/cart", async (req, res) => {
     let conciergeFeeTotal = 0;
     for (const item of items) {
       const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
-      const feeCategory = item.service?.categoryId
+      // FEE-2: providers get flat 10% commission — mirror payments.routes.ts provider role check
+      let feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      const rates = await resolveCommissionRates(feeCategory);
+      if (item.service?.userId) {
+        const [providerRow] = await db
+          .select({ role: users.role })
+          .from(users)
+          .where(eq(users.id, item.service.userId))
+          .limit(1);
+        if (providerRow?.role === "provider") {
+          feeCategory = "provider_commission_percent";
+        }
+      }
+      // EXP-OVR.P2: pass expertId so per-expert overrides apply in preview (mirrors checkout)
+      const rates = await resolveCommissionRates({
+        category: feeCategory,
+        expertId: item.service?.userId ?? null,
+      });
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
       const isBookingConciergeItem = item.service?.expertOfferingTypeId
         ? cartOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
         : false;
-      basePlatformFeeTotal += price * (1 - expertShare);
+      const itemInsuranceFee = calcInsuranceFee(price, rates, feeCategory);
+      basePlatformFeeTotal += price * (1 - expertShare) + itemInsuranceFee;
       if (isBookingConciergeItem) {
         conciergeFeeTotal += cartConciergeBookingFlatFee;
       }
