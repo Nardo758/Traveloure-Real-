@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Calendar } from "lucide-react";
+import { Plus, Loader2, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
@@ -260,16 +260,24 @@ export default function Dashboard() {
                               {d1}–{d2}
                             </div>
                           )}
-                          <div
-                            className={`text-[9px] font-bold uppercase tracking-widest mt-1 ${
-                              isActive
-                                ? "text-green-600 dark:text-green-400"
-                                : isSelected
-                                ? "text-primary"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {status}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className={`text-[9px] font-bold uppercase tracking-widest ${
+                                isActive
+                                  ? "text-green-600 dark:text-green-400"
+                                  : isSelected
+                                  ? "text-primary"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                            {trip.numberOfTravelers != null && trip.numberOfTravelers > 0 && (
+                              <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
+                                <Users className="w-2.5 h-2.5" />
+                                {trip.numberOfTravelers}
+                              </span>
+                            )}
                           </div>
                         </button>
                       );
@@ -280,7 +288,7 @@ export default function Dashboard() {
                 {/* Single full PlanCard for the selected/soonest trip */}
                 {selectedTrip && (
                   <PlanCard
-                    trip={selectedTrip}
+                    trip={selectedTrip as any}
                     index={0}
                     role="owner"
                     stage="full"
