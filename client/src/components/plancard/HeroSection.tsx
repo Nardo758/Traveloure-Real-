@@ -107,25 +107,27 @@ export function HeroSection({
         )}
       </div>
 
-      <div className="absolute top-3 right-3 flex gap-2">
+      <div className="absolute top-3 right-3 flex gap-1.5 items-center">
         {traveloureScore != null && (
-          <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-lg" data-testid={`badge-score-${trip.id}`}>
-            <span className="text-sm font-bold text-foreground" data-testid={`text-score-value-${trip.id}`}>{traveloureScore}</span>
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-card flex items-center justify-center shadow-lg" data-testid={`badge-score-${trip.id}`}>
+            <span className="text-xs sm:text-sm font-bold text-foreground" data-testid={`text-score-value-${trip.id}`}>{traveloureScore}</span>
           </div>
         )}
         <button
           onClick={handleShare}
-          className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-3 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1.5 hover:bg-background/70 transition-colors"
+          className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 sm:px-3 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
           data-testid={`button-share-${trip.id}`}
         >
-          <Share2 className="w-3.5 h-3.5" /> Share
+          <Share2 className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Share</span>
         </button>
-        <Link href={`/itinerary/${trip.id}`}>
+        <Link href={`/itinerary/${trip.id}`} className="hidden sm:block">
           <button
-            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-3 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1.5 hover:bg-background/70 transition-colors"
+            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 sm:px-3 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
             data-testid={`button-export-${trip.id}`}
           >
-            <Download className="w-3.5 h-3.5" /> Export
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
           </button>
         </Link>
       </div>
