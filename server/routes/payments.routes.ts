@@ -519,8 +519,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         paymentIntent,
         message: "Booking created successfully. Complete payment.",
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Checkout error:", err);
+      // Surface known configuration errors with a clear message so ops can act immediately
+      // (e.g. "Booking Concierge fee band not configured" from requireConciergeBookingFlatFee)
+      if (err?.message?.includes("fee band not configured") || err?.message?.includes("not configured")) {
+        return res.status(500).json({ message: err.message });
+      }
       res.status(500).json({ message: "Checkout failed" });
     }
   });
