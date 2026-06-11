@@ -236,8 +236,7 @@ export default function TripDetails() {
     queryFn: async () => {
       const res = await fetch("/api/offering-types/experts");
       if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      return res.json();
     },
     enabled: expertPickerOpen,
     staleTime: 15 * 60_000,
@@ -1110,14 +1109,14 @@ export default function TripDetails() {
           {/* Step 0 — pick offering type */}
           {!selectedOfferingType && (
             <div className="mt-2 space-y-2" data-testid="expert-picker-offering-step">
-              {(!Array.isArray(expertOfferingOptions) || expertOfferingOptions.length === 0) ? (
+              {(expertOfferingOptions ?? []).length === 0 ? (
                 <div className="space-y-2">
                   {[1, 2, 3].map(i => (
                     <Skeleton key={i} className="h-14 rounded-lg" />
                   ))}
                 </div>
               ) : (
-                expertOfferingOptions.map((o) => (
+                (expertOfferingOptions ?? []).map((o) => (
                   <button
                     key={o.offering_type_key}
                     className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"

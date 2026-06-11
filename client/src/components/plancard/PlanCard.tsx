@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,16 @@ import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter } from "./MapControlCenter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { apiRequest } from "@/lib/queryClient";
 
 // ── Summary-stage helpers ──────────────────────────────────────────────────
 
@@ -112,6 +122,170 @@ const AVATAR_COLORS = [
   { bg: "#F4C0D1", text: "#72243E" },
 ];
 
+// ── Expert Polish Dialog ────────────────────────────────────────────────────
+
+interface ExpertPolishDialogProps {
+  open: boolean;
+  onClose: () => void;
+  trip: {
+    id: string;
+    destination: string;
+    startDate?: string;
+    endDate?: string;
+    title?: string;
+  };
+  optimizationScore?: number | string;
+  optimizationDelta?: {
+    savings?: string | null;
+    savingsPercent?: string | null;
+    starDelta?: number | null;
+  };
+}
+
+function buildDeltaSummary(
+  score?: number | string,
+  delta?: ExpertPolishDialogProps["optimizationDelta"]
+): string {
+  const parts: string[] = [];
+  if (score != null) parts.push(`Optimization score: ${score}`);
+  if (delta?.savings) parts.push(`Estimated savings: ${delta.savings}`);
+  if (delta?.savingsPercent) parts.push(`Cost reduction: ${delta.savingsPercent}`);
+  if (delta?.starDelta != null && delta.starDelta !== 0) {
+    parts.push(`Star-rating delta: ${delta.starDelta > 0 ? "+" : ""}${delta.starDelta}`);
+  }
+  return parts.join(" · ");
+}
+
+function ExpertPolishDialog({ open, onClose, trip, optimizationScore, optimizationDelta }: ExpertPolishDialogProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const deltaSummary = buildDeltaSummary(optimizationScore, optimizationDelta);
+  const [note, setNote] = useState(deltaSummary);
+
+  // Sync prefill when dialog opens
+  useEffect(() => {
+    if (open) setNote(buildDeltaSummary(optimizationScore, optimizationDelta));
+  }, [open, optimizationScore, optimizationDelta]);
+
+  const formatDate = (d?: string) =>
+    d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–";
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/expert-requests", {
+        tripId: trip.id,
+        destination: trip.destination,
+        requestType: "polish",
+        notes: note.trim() || null,
+        optimizationContext: {
+          destination: trip.destination,
+          startDate: trip.startDate,
+          endDate: trip.endDate,
+          score: optimizationScore ?? null,
+          delta: optimizationDelta ?? null,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/expert-requests`, trip.id] });
+      toast({
+        title: "Expert requested!",
+        description: "We'll match you with a local expert shortly.",
+      });
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to submit request";
+      if (msg.includes("already exists")) {
+        toast({
+          title: "Already submitted",
+          description: "A request is already pending for this trip.",
+        });
+        onClose();
+      } else {
+        toast({ title: "Something went wrong", description: msg, variant: "destructive" });
+      }
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md" data-testid="expert-polish-dialog">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            Have an expert polish this
+          </DialogTitle>
+          <DialogDescription>
+            A local expert will review and refine your itinerary based on their on-the-ground knowledge.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-1">
+          {/* Trip summary */}
+          <div
+            className="rounded-xl p-3 space-y-1 text-[13px]"
+            style={{ background: "#F3F3EE" }}
+          >
+            <div className="font-medium" style={{ color: "#1A1A18" }}>
+              {trip.title || trip.destination}
+            </div>
+            <div style={{ color: "#7A7A72" }}>
+              📍 {trip.destination}
+            </div>
+            <div style={{ color: "#7A7A72" }}>
+              🗓 {formatDate(trip.startDate)} – {formatDate(trip.endDate)}
+            </div>
+            {optimizationScore != null && (
+              <div style={{ color: "#7A7A72" }}>
+                ⭐ Optimization score: {optimizationScore}
+              </div>
+            )}
+          </div>
+
+          {/* Special requests */}
+          <div className="space-y-1.5">
+            <Label htmlFor="expert-polish-note" className="text-[13px]">
+              Special requests (optional)
+            </Label>
+            <Textarea
+              id="expert-polish-note"
+              data-testid="input-expert-polish-note"
+              placeholder="e.g. We prefer quiet neighbourhoods, avoid tourist traps, vegetarian dining…"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="text-[13px] resize-none"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1 text-[13px]"
+              onClick={onClose}
+              disabled={mutation.isPending}
+              data-testid="btn-expert-polish-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 text-[13px] text-white"
+              style={{ background: "#E85D55" }}
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              data-testid="btn-expert-polish-confirm"
+            >
+              {mutation.isPending ? "Submitting…" : "Request an expert"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Summary stage component ────────────────────────────────────────────────
 
 interface SummaryAdvisor {
@@ -148,6 +322,7 @@ function PlanCardSummary({
   plancardData: PlanCardData | undefined;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [showPolishDialog, setShowPolishDialog] = useState(false);
   const [, navigate] = useLocation();
   const deleteTrip = useDeleteTrip();
 
@@ -166,6 +341,7 @@ function PlanCardSummary({
   ));
 
   const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
+  const hasActivities = totalActivities > 0;
 
   // Summary-specific queries
   const { data: advisorData } = useQuery<{ advisor: SummaryAdvisor | null }>({
@@ -251,6 +427,12 @@ function PlanCardSummary({
     }
     deleteTrip.mutate(trip.id);
   };
+
+  // Show "polish" CTA only when:
+  // - user owns trip and has activities
+  // - no expert already assigned
+  // - no pending request already in flight
+  const showPolishCta = hasActivities && !advisor && !pendingExpertRequest;
 
   return (
     <>
@@ -489,7 +671,29 @@ function PlanCardSummary({
           </Link>
         </div>
 
+        {/* Expert polish CTA */}
+        {showPolishCta && (
+          <div style={{ padding: "0 14px 12px", borderTop: "0.5px solid #E8E8E2", paddingTop: 10 }}>
+            <button
+              onClick={() => setShowPolishDialog(true)}
+              className="w-full flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ background: "#FAEEDA", color: "#633806", border: "0.5px solid #F5D08A" }}
+              data-testid={`btn-expert-polish-${trip.id}`}
+            >
+              <Sparkles className="w-3 h-3" />
+              Have an expert polish this
+            </button>
+          </div>
+        )}
       </div>
+
+      <ExpertPolishDialog
+        open={showPolishDialog}
+        onClose={() => setShowPolishDialog(false)}
+        trip={trip}
+        optimizationScore={optimizationScore}
+        optimizationDelta={optimizationDeltaFromData}
+      />
     </>
   );
 }
@@ -689,11 +893,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
         {/* Concierge — front and center (redesign Phase 2); always visible across card/map views */}
         <div className="px-5 pt-3">
-          <ConciergeModule
-            destination={trip.destination}
-            subtitle="Plan a task, book a thing, fix a gap — per task."
-            testId={`concierge-module-full-${trip.id}`}
-          />
+          <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
         </div>
 
         <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
