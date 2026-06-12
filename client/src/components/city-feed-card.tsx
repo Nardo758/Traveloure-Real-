@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Calendar, ExternalLink, MapPin, Plus, Star, Wifi, Waves, Globe, Tag } from "lucide-react";
+import { Calendar, ExternalLink, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
+import { useToast } from "@/hooks/use-toast";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 
@@ -109,11 +110,41 @@ function BookingBadge({ level, trending }: { level: Bookability; trending?: bool
 function MatchedServiceStrip({
   suggestion,
   id,
+  city,
 }: {
   suggestion: MatchSuggestion;
   id: string;
+  city?: string;
 }) {
+  const { toast } = useToast();
+  const [requested, setRequested] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const isRequest = suggestion.isRequest === true;
+
+  async function handleRequest() {
+    if (requested || submitting || !suggestion.offeringTypeKey) return;
+    setSubmitting(true);
+    try {
+      await fetch("/api/services/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offeringTypeKey: suggestion.offeringTypeKey,
+          city: city ?? "",
+        }),
+      });
+      setRequested(true);
+      toast({
+        title: "Request recorded",
+        description: `We'll notify you when ${suggestion.matchText} becomes available.`,
+      });
+    } catch {
+      toast({ title: "Could not send request", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div
       className="border-t border-dashed border-border pt-2 mt-1 flex items-center gap-2 flex-wrap"
@@ -131,15 +162,27 @@ function MatchedServiceStrip({
         )}
       </span>
       {isRequest ? (
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-6 text-[11px] px-2.5 flex-shrink-0 font-semibold border-dashed"
-          data-testid={`btn-request-service-${id}`}
-          data-offering-type={suggestion.offeringTypeKey}
-        >
-          {suggestion.actionLabel}
-        </Button>
+        requested ? (
+          <span
+            className="flex items-center gap-1 text-[11px] text-green-700 font-semibold flex-shrink-0"
+            data-testid={`status-requested-service-${id}`}
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            Requested
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 text-[11px] px-2.5 flex-shrink-0 font-semibold border-dashed"
+            disabled={submitting}
+            data-testid={`btn-request-service-${id}`}
+            data-offering-type={suggestion.offeringTypeKey}
+            onClick={handleRequest}
+          >
+            {suggestion.actionLabel}
+          </Button>
+        )
       ) : (
         <Button
           size="sm"
@@ -276,7 +319,7 @@ export function CityFeedCardGem({
       )}
 
       {/* Matched-service suggestion strip */}
-      {!compact && suggestion && <MatchedServiceStrip suggestion={suggestion} id={gem.id} />}
+      {!compact && suggestion && <MatchedServiceStrip suggestion={suggestion} id={gem.id} city={city} />}
 
       {/* Actions */}
       {!compact && (

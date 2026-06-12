@@ -7809,6 +7809,93 @@ router.get("/api/catalog/services", async (req, res) => {
   }
 });
 
+// ─── Service demand request endpoints ────────────────────────────────────────
+//
+// POST /api/services/request — record traveler demand for an uncovered offering.
+// Upserts for logged-in users (unique partial index), always-inserts for guests.
+// Returns { created: boolean, demandCount: number }.
+//
+// GET /api/services/demand — batch demand counts for a city + offering type list.
+// Used by discover-location.tsx to enrich wanted-slot cards.
+
+router.post("/api/services/request", async (req, res) => {
+  try {
+    const { offeringTypeKey, city, country, neighborhoodId, guestSessionId, dateRangeStart, dateRangeEnd } = req.body;
+    if (!offeringTypeKey || !city) {
+      return res.status(400).json({ error: "offeringTypeKey and city are required" });
+    }
+
+    const userId: string | null =
+      (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    const normalizedCity = city.toLowerCase().trim();
+
+    if (userId) {
+      await db.execute(sql`
+        INSERT INTO service_demand_requests
+          (offering_type_key, neighborhood_id, city, country, user_id, date_range_start, date_range_end)
+        VALUES (
+          ${offeringTypeKey}, ${neighborhoodId ?? null}, ${normalizedCity},
+          ${country ?? null}, ${userId},
+          ${dateRangeStart ?? null}, ${dateRangeEnd ?? null}
+        )
+        ON CONFLICT (offering_type_key, city, user_id) WHERE user_id IS NOT NULL
+        DO NOTHING
+      `);
+    } else {
+      await db.execute(sql`
+        INSERT INTO service_demand_requests
+          (offering_type_key, neighborhood_id, city, country, guest_session_id, date_range_start, date_range_end)
+        VALUES (
+          ${offeringTypeKey}, ${neighborhoodId ?? null}, ${normalizedCity},
+          ${country ?? null}, ${guestSessionId ?? null},
+          ${dateRangeStart ?? null}, ${dateRangeEnd ?? null}
+        )
+      `);
+    }
+
+    const countResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS demand_count
+      FROM service_demand_requests
+      WHERE offering_type_key = ${offeringTypeKey}
+        AND city = ${normalizedCity}
+    `);
+    const demandCount = Number((countResult.rows?.[0] as any)?.demand_count ?? 0);
+
+    return res.json({ created: true, demandCount });
+  } catch (err: any) {
+    console.error("[services-request]", err.message);
+    return res.status(500).json({ error: "Failed to record request" });
+  }
+});
+
+router.get("/api/services/demand", async (req, res) => {
+  try {
+    const city = ((req.query.city as string) || "").toLowerCase().trim();
+    const keysStr = ((req.query.offeringTypeKeys as string) || "").trim();
+    if (!city || !keysStr) return res.json({});
+
+    const keys = keysStr.split(",").map((k) => k.trim()).filter(Boolean);
+    if (keys.length === 0) return res.json({});
+
+    const rows = await db.execute(sql`
+      SELECT offering_type_key, COUNT(*)::int AS demand_count
+      FROM service_demand_requests
+      WHERE city = ${city}
+        AND offering_type_key = ANY(${keys}::text[])
+      GROUP BY offering_type_key
+    `);
+
+    const counts: Record<string, number> = {};
+    for (const row of (rows.rows ?? []) as any[]) {
+      counts[String(row.offering_type_key)] = Number(row.demand_count);
+    }
+    return res.json(counts);
+  } catch (err: any) {
+    console.error("[services-demand]", err.message);
+    return res.json({});
+  }
+});
+
 // === Exchange Rate Endpoint (top-level, always registered) ===
 let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
 const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;

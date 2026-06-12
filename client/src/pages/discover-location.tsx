@@ -521,7 +521,7 @@ function RecommendationCard({
 // ─── Injected card: wanted recruitment slot ───────────────────────────────────
 
 function WantedSlotCard({ item }: { item: FeedItem }) {
-  const { offeringLabel, neighborhoodName, city: slotCity } = item.data as WantedSlotData;
+  const { offeringLabel, neighborhoodName, city: slotCity, demandCount } = item.data as WantedSlotData;
   return (
     <div
       className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
@@ -532,7 +532,9 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
           {offeringLabel} wanted in {neighborhoodName}
         </p>
         <p className="text-[11px] text-muted-foreground truncate">
-          Be the first to offer {offeringLabel.toLowerCase()} for travellers in {neighborhoodName}
+          {demandCount && demandCount > 0
+            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} want this · Be the first to offer it`
+            : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
       </div>
       <a
@@ -1182,6 +1184,9 @@ export default function DiscoverLocationPage() {
     if (!scheduledDate) setDateCatalogServices([]);
   }, [scheduledDate, city]);
 
+  // Tracks which date-catalog offering type keys the user has already requested
+  const [requestedDateKeys, setRequestedDateKeys] = useState<Set<string>>(new Set());
+
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
@@ -1196,7 +1201,7 @@ export default function DiscoverLocationPage() {
     : [];
 
   // Build wanted-slot data for composition — compute once from slot result + offering types
-  const wantedSlotsData: WantedSlotData[] = (() => {
+  const rawWantedSlotsData: WantedSlotData[] = (() => {
     const coveredIds = new Set([
       ...discoverySlotResult.candidates.map((c) => c.offeringId),
       ...discoverySlotResult.suppressed.map((s) => s.offeringId),
@@ -1215,6 +1220,27 @@ export default function DiscoverLocationPage() {
       };
     });
   })();
+
+  // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
+  const wantedOfferingKeys = [...new Set(rawWantedSlotsData.map((s) => s.offeringKey))];
+  const { data: demandCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(",")],
+    queryFn: async () => {
+      if (!city || wantedOfferingKeys.length === 0) return {};
+      const params = new URLSearchParams({ city, offeringTypeKeys: wantedOfferingKeys.join(",") });
+      const res = await fetch(`/api/services/demand?${params}`);
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!city && wantedOfferingKeys.length > 0,
+    staleTime: 5 * 60_000,
+  });
+
+  // Merge demand counts into wanted-slot data
+  const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData.map((slot) => ({
+    ...slot,
+    demandCount: demandCounts?.[slot.offeringKey] ?? 0,
+  }));
 
   // Lead expert: expert whose specialties best match the top recommendation category
   const leadExpert: any | null = (() => {
@@ -1396,13 +1422,37 @@ export default function DiscoverLocationPage() {
                         >
                           Book
                         </a>
-                      ) : (
+                      ) : requestedDateKeys.has(svc.offeringTypeKey) ? (
                         <span
-                          className="inline-flex items-center text-[11px] px-2 py-1 rounded border border-dashed"
+                          className="inline-flex items-center gap-1 text-[11px] text-green-700 font-semibold"
+                          data-testid={`status-date-catalog-requested-${svc.offeringTypeKey}`}
+                        >
+                          ✓ Requested
+                        </span>
+                      ) : (
+                        <button
+                          className="inline-flex items-center text-[11px] px-2 py-1 rounded border border-dashed hover:bg-muted transition-colors"
                           data-testid={`btn-date-catalog-request-${svc.offeringTypeKey}`}
+                          onClick={async () => {
+                            try {
+                              await fetch("/api/services/request", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  offeringTypeKey: svc.offeringTypeKey,
+                                  city,
+                                  dateRangeStart: scheduledDate,
+                                  dateRangeEnd: scheduledDate,
+                                }),
+                              });
+                              setRequestedDateKeys((prev) => new Set([...prev, svc.offeringTypeKey]));
+                            } catch {
+                              // swallow silently — non-critical
+                            }
+                          }}
                         >
                           Request this
-                        </span>
+                        </button>
                       )}
                     </div>
                   ))}
