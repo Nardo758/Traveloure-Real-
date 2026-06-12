@@ -124,9 +124,17 @@ function categoryDisplayName(key: string): string {
 function CatalogCard({
   entry,
   onAddToCart,
+  onRequestThis,
+  city,
+  dateStart,
+  dateEnd,
 }: {
   entry: CatalogEntry;
   onAddToCart?: (entry: CatalogEntry) => void;
+  onRequestThis?: (ctx: { offeringTypeKey: string; categoryKey: string; city: string; dateStart: string | null; dateEnd: string | null; }) => void;
+  city?: string;
+  dateStart?: string | null;
+  dateEnd?: string | null;
 }) {
   const Icon = categoryIcon(entry.categoryKey);
   const covered = !!entry.coveredBy;
@@ -223,6 +231,16 @@ function CatalogCard({
                 data-testid={`btn-request-${entry.offeringTypeKey}`}
                 data-offering-type={entry.offeringTypeKey}
                 data-category-key={entry.categoryKey}
+                data-city={city ?? ""}
+                data-date-start={dateStart ?? ""}
+                data-date-end={dateEnd ?? ""}
+                onClick={onRequestThis ? () => onRequestThis({
+                  offeringTypeKey: entry.offeringTypeKey,
+                  categoryKey: entry.categoryKey,
+                  city: city ?? "",
+                  dateStart: dateStart ?? null,
+                  dateEnd: dateEnd ?? null,
+                }) : undefined}
               >
                 Request this
               </Button>
@@ -252,6 +270,14 @@ interface CatalogServiceBrowserProps {
     quantity: number;
     provider: string;
   }) => void;
+  /** Called when user clicks "Request this" — carries full context for Task #602 demand loop. */
+  onRequestThis?: (ctx: {
+    offeringTypeKey: string;
+    categoryKey: string;
+    city: string;
+    dateStart: string | null;
+    dateEnd: string | null;
+  }) => void;
 }
 
 export function CatalogServiceBrowser({
@@ -262,6 +288,7 @@ export function CatalogServiceBrowser({
   startDate,
   endDate,
   onAddToCart,
+  onRequestThis,
 }: CatalogServiceBrowserProps) {
   const params = new URLSearchParams();
   if (city) params.set("city", city);
@@ -363,6 +390,9 @@ export function CatalogServiceBrowser({
               <CatalogCard
                 key={entry.offeringTypeKey}
                 entry={entry}
+                city={city}
+                dateStart={startDate ? startDate.toISOString().split("T")[0] : null}
+                dateEnd={endDate ? endDate.toISOString().split("T")[0] : null}
                 onAddToCart={onAddToCart ? (e) => {
                   const price = e.coveredBy?.price ? parseFloat(e.coveredBy.price) : 0;
                   onAddToCart({
@@ -374,6 +404,7 @@ export function CatalogServiceBrowser({
                     provider: e.coveredBy?.providerName ?? "Platform Service",
                   });
                 } : undefined}
+                onRequestThis={onRequestThis}
               />
             ))}
           </div>
