@@ -3,13 +3,15 @@ import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 
 /**
  * Module-level dedup set — persists for the browser tab lifetime.
- * Prevents re-firing an impression when a component remounts.
+ * Key includes sessionId so a fresh session in the same tab is NOT suppressed.
+ * The server enforces its own unique index as a second dedup layer.
  */
 const _seen = new Set<string>();
 
 /**
  * Fires a single impression event when the attached element scrolls
- * into view (≥50% visible). Deduped per (contentType, contentId) per session.
+ * into view (≥50% visible). Deduped per (sessionId, contentType, contentId)
+ * client-side; server also enforces uniqueness via a unique index.
  *
  * Returns a `ref` to attach to the card root element and a `getImpressionId()`
  * accessor so the card can attach the impression ID to subsequent click /
@@ -26,7 +28,9 @@ export function useImpressionTracker(
 
   useEffect(() => {
     if (!contentType || !contentId) return;
-    const dedupeKey = `${contentType}:${contentId}`;
+
+    const sessionId = getOrCreateGuestSessionId();
+    const dedupeKey = `${sessionId}:${contentType}:${contentId}`;
 
     if (_seen.has(dedupeKey)) return;
 
@@ -37,7 +41,6 @@ export function useImpressionTracker(
         if (_seen.has(dedupeKey)) return;
         _seen.add(dedupeKey);
 
-        const sessionId = getOrCreateGuestSessionId();
         fetch("/api/tracking/impression", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
