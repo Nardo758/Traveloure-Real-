@@ -5,6 +5,7 @@ import { Calendar, ExternalLink, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, 
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useToast } from "@/hooks/use-toast";
+import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 
@@ -125,14 +126,16 @@ function MatchedServiceStrip({
     if (requested || submitting || !suggestion.offeringTypeKey) return;
     setSubmitting(true);
     try {
-      await fetch("/api/services/request", {
+      const resp = await fetch("/api/services/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offeringTypeKey: suggestion.offeringTypeKey,
           city: city ?? "",
+          guestSessionId: getOrCreateGuestSessionId(),
         }),
       });
+      if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
       setRequested(true);
       toast({
         title: "Request recorded",

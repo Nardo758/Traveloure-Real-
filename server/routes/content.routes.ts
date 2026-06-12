@@ -7829,8 +7829,10 @@ router.post("/api/services/request", async (req, res) => {
       (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
     const normalizedCity = city.toLowerCase().trim();
 
+    let created = false;
+
     if (userId) {
-      await db.execute(sql`
+      const insertResult = await db.execute(sql`
         INSERT INTO service_demand_requests
           (offering_type_key, neighborhood_id, city, country, user_id, date_range_start, date_range_end)
         VALUES (
@@ -7840,7 +7842,9 @@ router.post("/api/services/request", async (req, res) => {
         )
         ON CONFLICT (offering_type_key, city, user_id) WHERE user_id IS NOT NULL
         DO NOTHING
+        RETURNING id
       `);
+      created = (insertResult.rows?.length ?? 0) > 0;
     } else {
       await db.execute(sql`
         INSERT INTO service_demand_requests
@@ -7851,6 +7855,7 @@ router.post("/api/services/request", async (req, res) => {
           ${dateRangeStart ?? null}, ${dateRangeEnd ?? null}
         )
       `);
+      created = true;
     }
 
     const countResult = await db.execute(sql`
@@ -7861,7 +7866,7 @@ router.post("/api/services/request", async (req, res) => {
     `);
     const demandCount = Number((countResult.rows?.[0] as any)?.demand_count ?? 0);
 
-    return res.json({ created: true, demandCount });
+    return res.json({ created, demandCount });
   } catch (err: any) {
     console.error("[services-request]", err.message);
     return res.status(500).json({ error: "Failed to record request" });
