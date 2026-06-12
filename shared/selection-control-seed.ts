@@ -738,6 +738,15 @@ export const SELECTION_CONTROL_SEED: Record<string /* templateSlug */, TabSelect
     entertainment: [BUDGET_CONTROL, PARTY_ENTERTAINMENT_FOCUS, PARTY_SERVICE_FOCUS],
     services:      [BUDGET_CONTROL, PARTY_SERVICE_FOCUS,      PARTY_ENTERTAINMENT_FOCUS],
   },
+
+  // ─── SPORTS EVENT (inactive; controls ready for activation) ──
+  "sports-event": {
+    tickets:        [BUDGET_CONTROL, BOYS_ACTIVITY_FOCUS,   PARTY_ENTERTAINMENT_FOCUS],
+    accommodations: [BUDGET_CONTROL, BOYS_ACTIVITY_FOCUS,   GIRLS_SPA_FOCUS],
+    pregame:        [BUDGET_CONTROL, BOYS_NIGHTLIFE_FOCUS,  BOYS_ACTIVITY_FOCUS],
+    dining:         [BUDGET_CONTROL, BOYS_DINING_FOCUS,     BOYS_ACTIVITY_FOCUS],
+    vip:            [BUDGET_CONTROL, TRAVEL_SERVICE_FOCUS,  PARTY_ENTERTAINMENT_FOCUS],
+  },
 };
 
 /**
