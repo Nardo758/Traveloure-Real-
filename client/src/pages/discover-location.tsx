@@ -3,6 +3,7 @@ import { useParams, useSearch, useLocation } from "wouter";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
@@ -449,11 +450,13 @@ function RecommendationCard({
   city,
   scheduledDate,
   onAdd,
+  cardPosition,
 }: {
   item: FeedItem;
   city: string;
   scheduledDate: string | null;
   onAdd: (item: any) => void;
+  cardPosition?: number;
 }) {
   const { displayName, tagline, label, affiliateLabel, categoryKey } = item.data;
   const isAffiliate = (categoryKey ?? "").startsWith("aff_");
@@ -461,8 +464,15 @@ function RecommendationCard({
     ? (affiliateLabel ?? "Sponsored")
     : (label ?? "Recommended");
   const meta = offeringCategoryMeta(categoryKey);
+  const { ref: impressionRef } = useImpressionTracker(
+    "recommendation",
+    String(item.id),
+    city,
+    cardPosition,
+  );
   return (
     <div
+      ref={impressionRef}
       className="rounded-xl border border-border bg-card overflow-hidden"
       data-testid={`feed-recommendation-${item.id}`}
     >
@@ -580,7 +590,7 @@ function FillerCard({
         />
       );
     case "expert":
-      return <CityFeedCardExpert expert={item.data} city={city} />;
+      return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} />;
     case "event":
       return (
         <CityFeedCardEvent
@@ -618,6 +628,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "wanted-slot":
