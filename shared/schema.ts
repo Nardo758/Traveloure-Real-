@@ -6166,3 +6166,22 @@ export const crossSellEvents = pgTable("cross_sell_events", {
 export const insertCrossSellEventSchema = createInsertSchema(crossSellEvents).omit({ id: true, createdAt: true });
 export type CrossSellEvent = typeof crossSellEvents.$inferSelect;
 export type InsertCrossSellEvent = z.infer<typeof insertCrossSellEventSchema>;
+
+// === Service Demand Requests ===
+
+export const serviceDemandRequests = pgTable("service_demand_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  offeringTypeKey: text("offering_type_key").notNull(),
+  neighborhoodId: text("neighborhood_id"),
+  city: text("city").notNull(),
+  country: text("country"),
+  userId: text("user_id"),
+  guestSessionId: text("guest_session_id"),
+  dateRangeStart: timestamp("date_range_start"),
+  dateRangeEnd: timestamp("date_range_end"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertServiceDemandRequestSchema = createInsertSchema(serviceDemandRequests).omit({ id: true, createdAt: true });
+export type ServiceDemandRequest = typeof serviceDemandRequests.$inferSelect;
+export type InsertServiceDemandRequest = z.infer<typeof insertServiceDemandRequestSchema>;
