@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -538,6 +539,8 @@ export function CityFeedCardGem({
 
   const isRow = layout === "row";
 
+  const { ref: impressionRef, getImpressionId } = useImpressionTracker("gem", gem.id, city);
+
   // Body copy: prefer whyLocalsLoveIt, fall back to description
   const bodyText = gem.whyLocalsLoveIt || gem.description;
 
@@ -647,6 +650,16 @@ export function CityFeedCardGem({
               size="sm"
               className="h-7 text-xs px-3"
               asChild
+              onClick={() => {
+                const impId = getImpressionId();
+                if (impId) {
+                  fetch("/api/affiliates/track", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ partner: "discover", destination: city, impressionId: impId }),
+                  }).catch(() => {});
+                }
+              }}
             >
               <a href={suggestion?.href ?? "#"}>
                 {resolvedBookability === "deeplink" ? "Reserve" : "Book"}
@@ -664,6 +677,8 @@ export function CityFeedCardGem({
                 city,
                 type: "gem",
                 scheduledDate,
+                sourceImpressionId: getImpressionId(),
+                sourceContentId: gem.id,
               })
             }
             data-testid={`btn-add-gem-${gem.id}`}
@@ -695,6 +710,7 @@ export function CityFeedCardGem({
   return (
     <>
       <div
+        ref={impressionRef}
         className={cn(
           "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
           isRow ? "flex flex-row" : "flex flex-col",
@@ -733,6 +749,11 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   );
 
   const bookability: Bookability = resolveBookability({ ...event, externalUrl: event.url });
+  const { ref: impressionRefEvt, getImpressionId: getImpIdEvt } = useImpressionTracker(
+    "event",
+    String(event.id ?? event.eventId ?? eventName),
+    city,
+  );
   const eventSuggestion: MatchSuggestion = {
     icon: "🎫",
     matchText: "tickets available",
@@ -755,6 +776,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   return (
     <>
       <div
+        ref={impressionRefEvt}
         className={cn(
           "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
           className,
@@ -814,7 +836,21 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
             {event.url && (
-              <Button size="sm" className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700" asChild>
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700"
+                asChild
+                onClick={() => {
+                  const impId = getImpIdEvt();
+                  if (impId) {
+                    fetch("/api/affiliates/track", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ partner: "discover-event", destination: city, impressionId: impId }),
+                    }).catch(() => {});
+                  }
+                }}
+              >
                 <a href={event.url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="w-3 h-3 mr-1" />
                   Tickets
@@ -825,7 +861,14 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               size="sm"
               variant="outline"
               className="h-7 text-xs px-3"
-              onClick={() => onAdd?.({ title: eventName, city, type: "event", scheduledDate })}
+              onClick={() => onAdd?.({
+                title: eventName,
+                city,
+                type: "event",
+                scheduledDate,
+                sourceImpressionId: getImpIdEvt(),
+                sourceContentId: String(event.id ?? event.eventId ?? ""),
+              })}
               data-testid={`btn-add-event-${event.id}`}
             >
               <Plus className="w-3 h-3 mr-1" />
@@ -1034,6 +1077,12 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     dbImageUrl,
   );
 
+  const { ref: impressionRefSupply, getImpressionId: getImpIdSupply } = useImpressionTracker(
+    kind,
+    String(item.id ?? itemName),
+    city,
+  );
+
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : "Add";
@@ -1059,6 +1108,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
   return (
     <>
       <div
+        ref={impressionRefSupply}
         className={cn(
           "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
           className,
@@ -1147,7 +1197,14 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
               size="sm"
               variant="outline"
               className="h-7 text-xs px-3"
-              onClick={() => onAdd?.({ title: itemName, city, type: isHotel ? "hotel" : "activity", scheduledDate })}
+              onClick={() => onAdd?.({
+                title: itemName,
+                city,
+                type: isHotel ? "hotel" : "activity",
+                scheduledDate,
+                sourceImpressionId: getImpIdSupply(),
+                sourceContentId: String(item.id ?? ""),
+              })}
               data-testid={`btn-add-supply-${item.id}`}
             >
               <Plus className="w-3 h-3 mr-1" />

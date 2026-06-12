@@ -3746,6 +3746,7 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   initiatedBy: varchar("initiated_by", { length: 20 }).default("user"), // user | ai_agent | expert
   agentType: varchar("agent_type", { length: 20 }), // grok | claude | system | null
   sessionId: varchar("session_id", { length: 255 }), // AI planning session trace ID
+  sourceImpressionId: varchar("source_impression_id"), // FK-less ref to content_impressions.id
   clickedAt: timestamp("clicked_at").defaultNow(),
 });
 
@@ -3796,6 +3797,22 @@ export type AffiliateScrapeJob = typeof affiliateScrapeJobs.$inferSelect;
 export type InsertAffiliateScrapeJob = z.infer<typeof insertAffiliateScrapeJobSchema>;
 export type AffiliateClick = typeof affiliateClicks.$inferSelect;
 export type InsertAffiliateClick = z.infer<typeof insertAffiliateClickSchema>;
+
+// Content impression tracking — one row per card-view on the Discover feed
+export const contentImpressions = pgTable("content_impressions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  contentType: varchar("content_type", { length: 50 }).notNull(), // gem | event | supply-hotel | supply-activity | vendor-service
+  contentId: varchar("content_id", { length: 255 }).notNull(),
+  city: varchar("city", { length: 255 }),
+  cardPosition: integer("card_position"),
+  sessionId: varchar("session_id", { length: 255 }).notNull(),
+  userId: varchar("user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertContentImpressionSchema = createInsertSchema(contentImpressions).omit({ id: true, createdAt: true });
+export type ContentImpression = typeof contentImpressions.$inferSelect;
+export type InsertContentImpression = z.infer<typeof insertContentImpressionSchema>;
 
 // === Expert Income Streams ===
 

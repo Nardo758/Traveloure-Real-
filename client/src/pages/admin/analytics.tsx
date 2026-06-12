@@ -18,6 +18,9 @@ import {
   Loader2,
   AlertCircle,
   Flame,
+  MousePointerClick,
+  PlusCircle,
+  Activity,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -26,6 +29,24 @@ interface AnalyticsData {
   topDestinations: Array<{ name: string; bookings: number; revenue: string }>;
   userDemographics: Array<{ segment: string; percentage: number }>;
   weeklyActivity: Array<{ day: string; users: number }>;
+}
+
+interface ImpressionFunnelRow {
+  content_type: string;
+  city: string | null;
+  impressions: number;
+  unique_sessions: number;
+}
+
+interface ImpressionFunnelData {
+  impressionsByType: ImpressionFunnelRow[];
+  attributedClicks: Array<{ content_type: string; city: string | null; attributed_clicks: number }>;
+  attributedAdds: Array<{ content_type: string; city: string | null; itinerary_adds: number }>;
+  summary: {
+    totalImpressions: number;
+    totalAttributedClicks: number;
+    totalAttributedAdds: number;
+  };
 }
 
 interface DemandSignalRow {
@@ -71,6 +92,20 @@ export default function AdminAnalytics() {
   const [cityFilter, setCityFilter] = useState("");
   const [offeringTypeFilter, setOfferingTypeFilter] = useState("");
   const [daysFilter, setDaysFilter] = useState("30");
+
+  const [funnelDays, setFunnelDays] = useState("30");
+  const [funnelCity, setFunnelCity] = useState("");
+  const [funnelType, setFunnelType] = useState("");
+
+  const funnelParams = new URLSearchParams({ days: funnelDays });
+  if (funnelCity.trim()) funnelParams.set("city", funnelCity.trim());
+  if (funnelType.trim()) funnelParams.set("contentType", funnelType.trim());
+
+  const { data: funnelData, isLoading: funnelLoading } = useQuery<ImpressionFunnelData>({
+    queryKey: ["/api/admin/content/impression-funnel", funnelDays, funnelCity, funnelType],
+    queryFn: () =>
+      fetch(`/api/admin/content/impression-funnel?${funnelParams.toString()}`).then((r) => r.json()),
+  });
 
   const demandParams = new URLSearchParams();
   if (cityFilter.trim()) demandParams.set("city", cityFilter.trim());
@@ -389,7 +424,179 @@ export default function AdminAnalytics() {
             )}
           </CardContent>
         </Card>
-      </div>
+
+        {/* ── Discover Impression Funnel ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-violet-500" />
+              Discover Impression Funnel
+              <Badge variant="secondary" className="ml-1 text-xs font-normal">
+                Impression → Click → Add
+              </Badge>
+            </CardTitle>
+            {funnelData && (
+              <div className="flex items-center gap-4 text-sm text-gray-500">
+                <span data-testid="funnel-summary-impressions">
+                  <span className="font-semibold text-gray-900">{funnelData.summary.totalImpressions.toLocaleString()}</span> views
+                </span>
+                <span data-testid="funnel-summary-clicks">
+                  <span className="font-semibold text-gray-900">{funnelData.summary.totalAttributedClicks.toLocaleString()}</span> clicks
+                </span>
+                <span data-testid="funnel-summary-adds">
+                  <span className="font-semibold text-gray-900">{funnelData.summary.totalAttributedAdds.toLocaleString()}</span> adds
+                </span>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">City</label>
+              <Input
+                placeholder="Filter by city…"
+                value={funnelCity}
+                onChange={(e) => setFunnelCity(e.target.value)}
+                className="h-8 w-44 text-sm"
+                data-testid="input-funnel-city-filter"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Content type</label>
+              <Input
+                placeholder="gem, event, …"
+                value={funnelType}
+                onChange={(e) => setFunnelType(e.target.value)}
+                className="h-8 w-40 text-sm"
+                data-testid="input-funnel-type-filter"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Date range</label>
+              <Select value={funnelDays} onValueChange={setFunnelDays}>
+                <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-funnel-days-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                  <SelectItem value="365">Last 365 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Funnel summary bars */}
+          {funnelLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : !funnelData || funnelData.summary.totalImpressions === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-400" data-testid="funnel-empty-state">
+              <AlertCircle className="w-8 h-8" />
+              <p className="text-sm">No impression data yet.</p>
+              <p className="text-xs">Cards on the Discover feed fire impressions when scrolled into view.</p>
+            </div>
+          ) : (
+            <>
+              {/* Top-level funnel bar chart */}
+              <div className="grid grid-cols-3 gap-4" data-testid="funnel-summary-bars">
+                {[
+                  {
+                    label: "Impressions",
+                    value: funnelData.summary.totalImpressions,
+                    icon: Eye,
+                    color: "bg-violet-500",
+                    pct: 100,
+                  },
+                  {
+                    label: "Attributed Clicks",
+                    value: funnelData.summary.totalAttributedClicks,
+                    icon: MousePointerClick,
+                    color: "bg-blue-500",
+                    pct: funnelData.summary.totalImpressions
+                      ? Math.round((funnelData.summary.totalAttributedClicks / funnelData.summary.totalImpressions) * 100)
+                      : 0,
+                  },
+                  {
+                    label: "Itinerary Adds",
+                    value: funnelData.summary.totalAttributedAdds,
+                    icon: PlusCircle,
+                    color: "bg-green-500",
+                    pct: funnelData.summary.totalImpressions
+                      ? Math.round((funnelData.summary.totalAttributedAdds / funnelData.summary.totalImpressions) * 100)
+                      : 0,
+                  },
+                ].map((step) => (
+                  <div key={step.label} className="space-y-2" data-testid={`funnel-step-${step.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                      <step.icon className="w-4 h-4 text-gray-500" />
+                      {step.label}
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900 tabular-nums">{step.value.toLocaleString()}</p>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full ${step.color} rounded-full transition-all`} style={{ width: `${step.pct}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-400">{step.pct}% of impressions</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Breakdown by content type */}
+              {funnelData.impressionsByType.length > 0 && (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm" data-testid="table-funnel-breakdown">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
+                        <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">City</th>
+                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Impressions</th>
+                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Sessions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funnelData.impressionsByType.slice(0, 20).map((row, i) => (
+                        <tr
+                          key={`${row.content_type}-${row.city}-${i}`}
+                          className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                          data-testid={`row-funnel-${i}`}
+                        >
+                          <td className="py-2.5 pr-4">
+                            <Badge variant="outline" className="text-xs font-medium capitalize">
+                              {row.content_type}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 pr-4 text-gray-600 hidden md:table-cell">
+                            {row.city ? (
+                              <div className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                {row.city}
+                              </div>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right font-semibold tabular-nums text-gray-900">
+                            {Number(row.impressions).toLocaleString()}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right tabular-nums text-gray-500 hidden sm:table-cell">
+                            {Number(row.unique_sessions).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
     </AdminLayout>
   );
 }
