@@ -176,7 +176,7 @@ export async function notifyDemandRequesters(serviceId: string): Promise<void> {
       ].join("\n");
 
       try {
-        await resend.emails.send({
+        const { data, error: sendError } = await resend.emails.send({
           from: getFromAddress(),
           to: user.email,
           subject: `"${service.serviceName}" is now available in ${city}`,
@@ -184,7 +184,18 @@ export async function notifyDemandRequesters(serviceId: string): Promise<void> {
           text,
         });
 
-        // Email confirmed sent — now mark ALL this user's matching demand rows notified
+        // Resend SDK resolves with { data, error } — a non-null error means the
+        // message was NOT accepted, so we must NOT mark rows as notified.
+        if (sendError || !data?.id) {
+          console.error(
+            `[demand-notify] Resend rejected email to ${user.email} for service ${serviceId}` +
+            ` — rows left un-notified for retry:`,
+            sendError ?? "no message id returned"
+          );
+          continue;
+        }
+
+        // Email accepted — now mark ALL this user's matching demand rows notified
         await db
           .update(serviceDemandRequests)
           .set({ notifiedAt: new Date() })
@@ -192,14 +203,14 @@ export async function notifyDemandRequesters(serviceId: string): Promise<void> {
 
         notifiedCount += demandIds.length;
         console.log(
-          `[demand-notify] Sent availability email to ${user.email} for service ${serviceId}` +
-          ` (marked ${demandIds.length} demand row(s) notified)`
+          `[demand-notify] Sent availability email to ${user.email} (msgId: ${data.id}) ` +
+          `for service ${serviceId} — marked ${demandIds.length} demand row(s) notified`
         );
       } catch (emailErr) {
-        // Leave rows un-notified so they can be retried when the service is next activated
-        // or when a future notification run occurs.
+        // Leave rows un-notified so they can be retried on a future activation run.
         console.error(
-          `[demand-notify] Failed to send email to ${user.email} — rows left un-notified for retry:`,
+          `[demand-notify] Exception sending email to ${user.email} for service ${serviceId}` +
+          ` — rows left un-notified for retry:`,
           emailErr
         );
       }

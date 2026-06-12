@@ -507,7 +507,9 @@ router.post("/api/provider/services", isAuthenticated, async (req, res) => {
       res.status(201).json(service);
       // Fire-and-forget: notify travelers who requested this offering type in this city
       if (service.status === "active") {
-        notifyDemandRequesters(service.id).catch(() => {});
+        notifyDemandRequesters(service.id).catch((err) => {
+          console.error(`[demand-notify] Unhandled error for new service ${service.id}:`, err);
+        });
       }
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -562,7 +564,9 @@ router.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => 
       res.json(updated);
       // Fire-and-forget: notify demand requesters when a service transitions to active
       if (input.status === "active" && ownedService.status !== "active") {
-        notifyDemandRequesters(updated.id).catch(() => {});
+        notifyDemandRequesters(updated.id).catch((err) => {
+          console.error(`[demand-notify] Unhandled error for activated service ${updated.id}:`, err);
+        });
       }
     } catch (err) {
       if (err instanceof z.ZodError) {
