@@ -43,6 +43,16 @@ const WEDDING_VENDORS: FilterableService[] = [
   { serviceName: "Ikebana Reception Table Centrepieces", serviceType: "specialty", description: "Centrepieces using seasonal Japanese botanicals.", price: "160", averageRating: null },
 ];
 
+// Corporate rows (phase-d-kyoto-vendors.seed.ts) — proven tag coverage for
+// corporate-events/team-activities controls (zen, sake, craft, cultural).
+// Prices all > $150, so BUDGET_CONTROL is not spot-checked against this fixture.
+const CORPORATE: FilterableService[] = [
+  { serviceName: "Zen Mindfulness Retreat (Half-Day)", serviceType: "experience", description: "Half-day zen mindfulness retreat for corporate teams.", price: "280", averageRating: null },
+  { serviceName: "Fushimi Sake Brewery Corporate Tasting", serviceType: "experience", description: "Guided sake brewery tasting experience for corporate groups.", price: "200", averageRating: null },
+  { serviceName: "Nishijin Weaving & Craft Workshop", serviceType: "specialty", description: "Hands-on traditional weaving and craft workshop.", price: "220", averageRating: null },
+  { serviceName: "Executive Offsite Day — Strategy & Culture", serviceType: "planning", description: "Executive cultural strategy and offsite planning day.", price: "2200", averageRating: null },
+];
+
 // Universal fixture: 5 services covering all 26 SEEDED_TAG_VOCAB tokens with
 // price diversity across both BUDGET_CONTROL ([0,150] / [150,500]) and
 // BUDGET_TIERED ([0,80] / [80,200] / [200,500]) bands.
@@ -236,6 +246,86 @@ for (const [template, tabs] of Object.entries(SELECTION_CONTROL_SEED)) {
     }
   }
 }
+
+// ---- Real-data spot checks ---------------------------------------------------
+// These probe known-good tag/price intersections against the actual catalog rows
+// lifted from beta-data-extended.ts and phase-d-kyoto-vendors.seed.ts. They
+// complement the UNIVERSAL synthetic gate above by confirming the resolver and
+// filterServices engine work correctly against real provider text.
+//
+// TRAVEL fixture tags (by row): cultural, tour+photography, adventure
+// CORPORATE fixture tags: zen, sake, craft, cultural
+// WEDDING_VENDORS fixture tags: photography, floral(x2), music, garden
+console.log("\n--- Real-data spot checks (actual catalog rows) ---");
+
+// travel/activities: BUDGET_TIERED tiers against real TRAVEL prices ($80/$150/$350/$2499)
+{
+  const [budgetTiered] = SELECTION_CONTROL_SEED.travel.activities; // BUDGET_TIERED
+  const economy  = budgetTiered.options.find((o) => o.id === "budget-economy")!;
+  const standard = budgetTiered.options.find((o) => o.id === "budget-standard")!;
+  const premium  = budgetTiered.options.find((o) => o.id === "budget-premium")!;
+  const eco = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([economy])));
+  const std = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([standard])));
+  const prem = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([premium])));
+  check("real/travel·BUDGET_TIERED economy=[0,80] → $80 only (1 row)", eco.length === 1 && eco[0].price === "80.00");
+  check("real/travel·BUDGET_TIERED standard=[80,200] → $80+$150 (2 rows)", std.length === 2 && std.some((r) => r.price === "150.00") && std.some((r) => r.price === "80.00"));
+  check("real/travel·BUDGET_TIERED premium=[200,500] → $350+$2499 (2 rows)", prem.length === 2);
+}
+
+// travel/activities: TRAVEL_ACTIVITY_FOCUS cultural/adventure options against real TRAVEL rows
+{
+  const activityFocus = SELECTION_CONTROL_SEED.travel.activities[1]; // TRAVEL_ACTIVITY_FOCUS
+  const cultural  = activityFocus.options.find((o) => o.id === "focus-cultural")!;
+  const adventure = activityFocus.options.find((o) => o.id === "focus-adventure")!;
+  const cult = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([cultural])));
+  const adv  = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([adventure])));
+  check("real/travel·ACTIVITY_FOCUS cultural → narrows (0<n<4)", cult.length > 0 && cult.length < TRAVEL.length);
+  check("real/travel·ACTIVITY_FOCUS adventure → narrows (0<n<4)", adv.length > 0 && adv.length < TRAVEL.length);
+}
+
+// travel/activities: TRAVEL_ACTIVITY_STYLE tour option against real TRAVEL rows
+{
+  const activityStyle = SELECTION_CONTROL_SEED.travel.activities[2]; // TRAVEL_ACTIVITY_STYLE
+  const guided = activityStyle.options.find((o) => o.id === "style-guided")!;
+  const res = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([guided])));
+  check("real/travel·ACTIVITY_STYLE guided-tour → narrows (0<n<4)", res.length > 0 && res.length < TRAVEL.length);
+}
+
+// travel/services: TRAVEL_SERVICE_FOCUS photography option against real TRAVEL rows
+{
+  const serviceFocus = SELECTION_CONTROL_SEED.travel.services[1]; // TRAVEL_SERVICE_FOCUS
+  const photo = serviceFocus.options.find((o) => o.id === "service-photo")!;
+  const res = filterServices(TRAVEL, queryToCriteria(resolveSelectionsToFilterQuery([photo])));
+  check("real/travel·SERVICE_FOCUS photography → narrows (0<n<4)", res.length > 0 && res.length < TRAVEL.length);
+}
+
+// corporate-events/team-activities: activity focus options against real CORPORATE rows
+{
+  const corpFocus = SELECTION_CONTROL_SEED["corporate-events"]["team-activities"][0]; // CORPORATE_ACTIVITY_FOCUS
+  for (const opt of corpFocus.options) {
+    const res = filterServices(CORPORATE, queryToCriteria(resolveSelectionsToFilterQuery([opt])));
+    check(`real/corporate·ACTIVITY_FOCUS "${opt.label}" → narrows (0<${res.length}<${CORPORATE.length})`,
+      res.length > 0 && res.length < CORPORATE.length);
+  }
+}
+
+// wedding/vendors: vendor focus options against real WEDDING_VENDORS rows
+{
+  const vendorFocus = SELECTION_CONTROL_SEED.wedding.vendors[0]; // WEDDING_VENDOR_FOCUS
+  const photo  = vendorFocus.options.find((o) => o.id === "focus-photography")!;
+  const floral = vendorFocus.options.find((o) => o.id === "focus-floral")!;
+  const music  = vendorFocus.options.find((o) => o.id === "focus-music")!;
+  const resP = filterServices(WEDDING_VENDORS, queryToCriteria(resolveSelectionsToFilterQuery([photo])));
+  const resF = filterServices(WEDDING_VENDORS, queryToCriteria(resolveSelectionsToFilterQuery([floral])));
+  const resM = filterServices(WEDDING_VENDORS, queryToCriteria(resolveSelectionsToFilterQuery([music])));
+  check(`real/wedding·VENDOR_FOCUS photography → narrows (0<${resP.length}<${WEDDING_VENDORS.length})`,
+    resP.length > 0 && resP.length < WEDDING_VENDORS.length);
+  check(`real/wedding·VENDOR_FOCUS floral → narrows (0<${resF.length}<${WEDDING_VENDORS.length})`,
+    resF.length > 0 && resF.length < WEDDING_VENDORS.length);
+  check(`real/wedding·VENDOR_FOCUS music → narrows (0<${resM.length}<${WEDDING_VENDORS.length})`,
+    resM.length > 0 && resM.length < WEDDING_VENDORS.length);
+}
+console.log("--- End real-data spot checks ---\n");
 
 // Combination + edge cases
 const focus = SELECTION_CONTROL_SEED.wedding.vendors[0].options;
