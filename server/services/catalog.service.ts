@@ -11,17 +11,41 @@
  * Affiliate offering types (categoryKey starts with 'aff_') are excluded —
  * this catalog surfaces platform providers only.
  *
+ * Coverage strategy (two-phase, in priority order):
+ *
+ *   Phase 1 — Neighborhood-coverage model (strict):
+ *     JOIN provider_neighborhood_coverage → city_neighborhoods (city match)
+ *     + provider_services WHERE status='active' AND approval_status='approved'
+ *     This is the correct model per the brief: providers are confirmed to cover
+ *     the target city when they have a neighborhood_coverage row for it.
+ *
+ *   Phase 2 — Location ILIKE fallback (dev/empty-DB safety):
+ *     If Phase 1 yields zero results (no neighborhood data seeded), falls back
+ *     to provider_services.location ILIKE %city% with same active+approved gate.
+ *     Ensures the browse surface works in dev without requiring seed data.
+ *
  * Seasonal filter logic:
  *   • Offerings with `seasonTag = null` are always included (non-seasonal).
  *   • Offerings with a non-null `seasonTag` are included ONLY when the caller
  *     passes a `dateStart`/`dateEnd` AND the tag's known month range overlaps
- *     the requested months (simple heuristic — see SEASON_MONTH_RANGES below).
+ *     the requested months (simple heuristic — see SEASON_MONTH_RANGES).
  *   • Unknown season tags (not in the heuristic table) are always shown.
+ *
+ * Distance filter:
+ *   • When `distanceKm` is provided (and not 0), only providers with
+ *     serviceRadius IS NULL or serviceRadius <= distanceKm are considered.
+ *     serviceRadius = null means "no radius constraint set" → always eligible.
  */
 
 import { db } from "../db";
-import { eq, and, ilike } from "drizzle-orm";
-import { serviceOfferingTypes, providerServices, users } from "@shared/schema";
+import { eq, and, ilike, lte, or, isNull } from "drizzle-orm";
+import {
+  serviceOfferingTypes,
+  providerServices,
+  providerNeighborhoodCoverage,
+  cityNeighborhoods,
+  users,
+} from "@shared/schema";
 import { expandDemandType } from "./demand-service-synonyms";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,9 +68,6 @@ export interface CatalogEntry {
 }
 
 // ─── Season heuristic ─────────────────────────────────────────────────────────
-//
-// Maps season_tag → months (1-12) where the season is active.
-// Unknown tags default to "always show" so future tags don't silently break.
 
 const SEASON_MONTH_RANGES: Record<string, readonly number[]> = {
   cherry_blossom: [3, 4],
@@ -73,8 +94,130 @@ function monthsInDateRange(dateStart: string, dateEnd: string): number[] {
 
 function seasonTagMatchesMonths(tag: string, requestedMonths: number[]): boolean {
   const range = SEASON_MONTH_RANGES[tag];
-  if (!range) return true; // unknown tag → always include
+  if (!range) return true;
   return requestedMonths.some(m => range.includes(m));
+}
+
+// ─── Provider row shape used internally ───────────────────────────────────────
+
+interface ProviderRow {
+  id: string;
+  serviceType: string | null;
+  categoryId: string | null;
+  price: string | null;
+  averageRating: string | null;
+  reviewCount: number | null;
+  serviceRadius: number | null;
+  providerFirstName: string | null;
+  providerLastName: string | null;
+  /** category key the provider has neighborhood coverage for */
+  coveredCategoryKey?: string;
+}
+
+// ─── Phase 1: Neighborhood-coverage-scoped query ──────────────────────────────
+
+async function fetchCoveredProviders(city: string, distanceKm?: number): Promise<ProviderRow[]> {
+  const baseConditions = and(
+    eq(providerServices.status, "active"),
+    eq(providerServices.approvalStatus, "approved"),
+    ...(distanceKm
+      ? [or(isNull(providerServices.serviceRadius), lte(providerServices.serviceRadius, distanceKm))]
+      : [])
+  );
+
+  const rows = await db
+    .selectDistinct({
+      id:                providerServices.id,
+      serviceType:       providerServices.serviceType,
+      categoryId:        providerServices.categoryId,
+      price:             providerServices.price,
+      averageRating:     providerServices.averageRating,
+      reviewCount:       providerServices.reviewCount,
+      serviceRadius:     providerServices.serviceRadius,
+      providerFirstName: users.firstName,
+      providerLastName:  users.lastName,
+      coveredCategoryKey: providerNeighborhoodCoverage.categoryKey,
+    })
+    .from(providerServices)
+    .innerJoin(users, eq(providerServices.userId, users.id))
+    .innerJoin(
+      providerNeighborhoodCoverage,
+      eq(providerNeighborhoodCoverage.providerId, providerServices.userId)
+    )
+    .innerJoin(
+      cityNeighborhoods,
+      and(
+        eq(cityNeighborhoods.id, providerNeighborhoodCoverage.neighborhoodId),
+        ilike(cityNeighborhoods.city, city)
+      )
+    )
+    .where(baseConditions)
+    .limit(300);
+
+  return rows as ProviderRow[];
+}
+
+// ─── Phase 2: ILIKE fallback (dev / no neighborhood data) ────────────────────
+
+async function fetchLocationFallbackProviders(city: string, distanceKm?: number): Promise<ProviderRow[]> {
+  const conditions = and(
+    eq(providerServices.status, "active"),
+    eq(providerServices.approvalStatus, "approved"),
+    ilike(providerServices.location, `%${city}%`),
+    ...(distanceKm
+      ? [or(isNull(providerServices.serviceRadius), lte(providerServices.serviceRadius, distanceKm))]
+      : [])
+  );
+
+  const rows = await db
+    .select({
+      id:                providerServices.id,
+      serviceType:       providerServices.serviceType,
+      categoryId:        providerServices.categoryId,
+      price:             providerServices.price,
+      averageRating:     providerServices.averageRating,
+      reviewCount:       providerServices.reviewCount,
+      serviceRadius:     providerServices.serviceRadius,
+      providerFirstName: users.firstName,
+      providerLastName:  users.lastName,
+    })
+    .from(providerServices)
+    .leftJoin(users, eq(providerServices.userId, users.id))
+    .where(conditions)
+    .limit(300);
+
+  return rows as ProviderRow[];
+}
+
+// ─── Match a single offering type to the best provider ───────────────────────
+
+function findBestMatch(
+  offering: { offeringTypeKey: string; categoryKey: string },
+  providers: ProviderRow[]
+): ProviderRow | null {
+  const expansionTerms = expandDemandType(offering.offeringTypeKey);
+
+  // Priority 1: offering-type-level match via serviceType synonym expansion
+  const typeMatches = providers.filter(p => {
+    if (!p.serviceType) return false;
+    const svcType = p.serviceType.toLowerCase();
+    return expansionTerms.some(t => svcType === t || svcType.includes(t) || t.includes(svcType));
+  });
+
+  // Priority 2: category-level coverage match (provider serves this category in the city)
+  const catMatches = typeMatches.length > 0
+    ? typeMatches
+    : providers.filter(p => p.coveredCategoryKey === offering.categoryKey);
+
+  const candidates = catMatches.length > 0 ? catMatches : [];
+
+  // Sort by rating then review count
+  return candidates.sort((a, b) => {
+    const rA = parseFloat(a.averageRating ?? "0");
+    const rB = parseFloat(b.averageRating ?? "0");
+    if (rB !== rA) return rB - rA;
+    return (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
+  })[0] ?? null;
 }
 
 // ─── Main function ────────────────────────────────────────────────────────────
@@ -85,8 +228,10 @@ export async function queryCatalogServices(opts: {
   categoryKey?: string;
   dateStart?: string;
   dateEnd?: string;
+  distanceKm?: number;
 }): Promise<CatalogEntry[]> {
-  const citySlug = opts.city.toLowerCase().trim();
+  const city = opts.city.trim();
+  const citySlug = city.toLowerCase();
 
   // 1. Load all active platform offering types (exclude affiliate aff_*)
   const allOfferings = await db
@@ -95,9 +240,7 @@ export async function queryCatalogServices(opts: {
     .where(eq(serviceOfferingTypes.isActive, true))
     .orderBy(serviceOfferingTypes.sortOrder);
 
-  const platformOfferings = allOfferings.filter(
-    o => !o.categoryKey.startsWith("aff_")
-  );
+  const platformOfferings = allOfferings.filter(o => !o.categoryKey.startsWith("aff_"));
 
   // 2. Market scope: null = universal; array = city slug must be in the list
   const scopedOfferings = platformOfferings.filter(o => {
@@ -115,69 +258,35 @@ export async function queryCatalogServices(opts: {
   if (opts.dateStart && opts.dateEnd) {
     const requestedMonths = monthsInDateRange(opts.dateStart, opts.dateEnd);
     seasonFiltered = categoryFiltered.filter(o => {
-      const tag = (o as any).seasonTag as string | null;
-      if (!tag) return true; // non-seasonal: always show
+      const tag = o.seasonTag ?? null;
+      if (!tag) return true;
       return seasonTagMatchesMonths(tag, requestedMonths);
     });
   } else {
-    // No date: exclude seasonal offerings (they need a date context)
-    seasonFiltered = categoryFiltered.filter(o => !(o as any).seasonTag);
+    // No date: exclude seasonal offerings (they need a date context to surface)
+    seasonFiltered = categoryFiltered.filter(o => !o.seasonTag);
   }
 
   if (seasonFiltered.length === 0) return [];
 
-  // 5. Bulk load active provider services for the city (one query)
-  const cityServices = await db
-    .select({
-      id:               providerServices.id,
-      serviceType:      providerServices.serviceType,
-      price:            providerServices.price,
-      isFeatured:       providerServices.isFeatured,
-      averageRating:    providerServices.averageRating,
-      reviewCount:      providerServices.reviewCount,
-      providerFirstName: users.firstName,
-      providerLastName:  users.lastName,
-    })
-    .from(providerServices)
-    .leftJoin(users, eq(providerServices.userId, users.id))
-    .where(
-      and(
-        eq(providerServices.status, "active"),
-        ilike(providerServices.location, `%${opts.city}%`)
-      )
-    )
-    .limit(300);
+  // 5. Fetch providers — Phase 1 (neighborhood-scoped) with Phase 2 fallback
+  let providers = await fetchCoveredProviders(city, opts.distanceKm);
+  if (providers.length === 0) {
+    providers = await fetchLocationFallbackProviders(city, opts.distanceKm);
+  }
 
-  // 6. For each offering, find the best-matching provider service
+  // 6. Match each offering type to the best provider
   const entries: CatalogEntry[] = seasonFiltered.map(offering => {
-    // expandDemandType includes the original key + synonyms
-    const expansionTerms = expandDemandType(offering.offeringTypeKey);
-
-    // Pick the highest-rated match
-    const matches = cityServices.filter(svc => {
-      if (!svc.serviceType) return false;
-      const svcType = svc.serviceType.toLowerCase();
-      return expansionTerms.some(t => svcType === t || svcType.includes(t) || t.includes(svcType));
-    });
-
-    // Sort by rating then review count (featured-adjacent heuristic)
-    const best = matches.sort((a, b) => {
-      const rA = parseFloat(a.averageRating ?? "0");
-      const rB = parseFloat(b.averageRating ?? "0");
-      if (rB !== rA) return rB - rA;
-      return (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
-    })[0];
+    const best = findBestMatch(offering, providers);
 
     let coveredBy: CatalogCoverage | null = null;
     if (best) {
-      const providerName = [best.providerFirstName, best.providerLastName]
-        .filter(Boolean)
-        .join(" ") || "Provider";
+      const name = [best.providerFirstName, best.providerLastName].filter(Boolean).join(" ") || "Provider";
       coveredBy = {
         providerServiceId: best.id,
-        providerName,
-        price: best.price,
-        href: `/services/${best.id}`,
+        providerName:      name,
+        price:             best.price,
+        href:              `/services/${best.id}`,
       };
     }
 
@@ -187,7 +296,7 @@ export async function queryCatalogServices(opts: {
       tagline:         offering.tagline,
       categoryKey:     offering.categoryKey,
       isSurprising:    offering.isSurprising,
-      seasonTag:       (offering as any).seasonTag ?? null,
+      seasonTag:       offering.seasonTag ?? null,
       coveredBy,
     };
   });

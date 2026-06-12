@@ -2461,6 +2461,7 @@ export default function ExperienceTemplatePage() {
               <CatalogServiceBrowser
                 city={destination}
                 categoryFilter={serviceCategoryFilter}
+                distanceKm={serviceDistanceFilter}
                 startDate={startDate}
                 endDate={endDate}
                 onAddToCart={(item) => {
