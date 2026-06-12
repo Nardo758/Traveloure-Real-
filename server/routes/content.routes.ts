@@ -7947,72 +7947,75 @@ router.get("/api/admin/content/impression-funnel", async (req, res) => {
     const cityFilter = (req.query.city as string | undefined)?.trim() || null;
     const typeFilter = (req.query.contentType as string | undefined)?.trim() || null;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const cityLike = cityFilter ? `%${cityFilter}%` : null;
 
     // ── Impressions by type ──
-    const impRows = await db.execute(sql`
+    const impResult = await db.execute(sql`
       SELECT
         content_type,
         city,
-        COUNT(*) AS impressions,
-        COUNT(DISTINCT session_id) AS unique_sessions
+        COUNT(*)::int AS impressions,
+        COUNT(DISTINCT session_id)::int AS unique_sessions
       FROM content_impressions
       WHERE created_at >= ${since}
-        ${cityFilter ? sql`AND city ILIKE ${'%' + cityFilter + '%'}` : sql``}
-        ${typeFilter ? sql`AND content_type = ${typeFilter}` : sql``}
+        AND (${cityLike}::text IS NULL OR city ILIKE ${cityLike}::text)
+        AND (${typeFilter}::text IS NULL OR content_type = ${typeFilter}::text)
       GROUP BY content_type, city
       ORDER BY impressions DESC
       LIMIT 50
     `);
 
     // ── Attributed clicks (those with a source_impression_id) ──
-    const clickRows = await db.execute(sql`
+    const clickResult = await db.execute(sql`
       SELECT
         ci.content_type,
         ci.city,
-        COUNT(ac.id) AS attributed_clicks
+        COUNT(ac.id)::int AS attributed_clicks
       FROM affiliate_clicks ac
-      JOIN content_impressions ci ON ci.id = ac.source_impression_id
+      JOIN content_impressions ci ON ci.id = ac.source_impression_id::uuid
       WHERE ac.clicked_at >= ${since}
-        ${cityFilter ? sql`AND ci.city ILIKE ${'%' + cityFilter + '%'}` : sql``}
-        ${typeFilter ? sql`AND ci.content_type = ${typeFilter}` : sql``}
+        AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
+        AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
       GROUP BY ci.content_type, ci.city
       ORDER BY attributed_clicks DESC
       LIMIT 50
     `);
 
     // ── Attributed itinerary adds (stored in metadata.sourceImpressionId) ──
-    const addRows = await db.execute(sql`
+    const addResult = await db.execute(sql`
       SELECT
         ci.content_type,
         ci.city,
-        COUNT(ic.id) AS itinerary_adds
+        COUNT(ic.id)::int AS itinerary_adds
       FROM itinerary_changes ic
-      JOIN content_impressions ci ON ci.id = (ic.metadata->>'sourceImpressionId')
+      JOIN content_impressions ci ON ci.id = (ic.metadata->>'sourceImpressionId')::uuid
       WHERE ic.created_at >= ${since}
         AND ic.change_type = 'add'
-        ${cityFilter ? sql`AND ci.city ILIKE ${'%' + cityFilter + '%'}` : sql``}
-        ${typeFilter ? sql`AND ci.content_type = ${typeFilter}` : sql``}
+        AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
+        AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
       GROUP BY ci.content_type, ci.city
       ORDER BY itinerary_adds DESC
       LIMIT 50
     `);
 
     // ── Summary totals ──
-    const [totals] = await db.execute(sql`
+    const totalsResult = await db.execute(sql`
       SELECT
-        (SELECT COUNT(*) FROM content_impressions WHERE created_at >= ${since}) AS total_impressions,
-        (SELECT COUNT(*) FROM affiliate_clicks WHERE source_impression_id IS NOT NULL AND clicked_at >= ${since}) AS total_attributed_clicks,
-        (SELECT COUNT(*) FROM itinerary_changes WHERE (metadata->>'sourceImpressionId') IS NOT NULL AND created_at >= ${since} AND change_type = 'add') AS total_attributed_adds
+        (SELECT COUNT(*)::int FROM content_impressions WHERE created_at >= ${since}) AS total_impressions,
+        (SELECT COUNT(*)::int FROM affiliate_clicks WHERE source_impression_id IS NOT NULL AND clicked_at >= ${since}) AS total_attributed_clicks,
+        (SELECT COUNT(*)::int FROM itinerary_changes WHERE (metadata->>'sourceImpressionId') IS NOT NULL AND created_at >= ${since} AND change_type = 'add') AS total_attributed_adds
     `);
 
+    const totalsRow = (totalsResult.rows ?? totalsResult as any[])[0] ?? {};
+
     res.json({
-      impressionsByType: impRows.rows ?? impRows,
-      attributedClicks: clickRows.rows ?? clickRows,
-      attributedAdds: addRows.rows ?? addRows,
+      impressionsByType: impResult.rows ?? impResult,
+      attributedClicks: clickResult.rows ?? clickResult,
+      attributedAdds: addResult.rows ?? addResult,
       summary: {
-        totalImpressions: Number((totals.rows ?? totals)[0]?.total_impressions ?? 0),
-        totalAttributedClicks: Number((totals.rows ?? totals)[0]?.total_attributed_clicks ?? 0),
-        totalAttributedAdds: Number((totals.rows ?? totals)[0]?.total_attributed_adds ?? 0),
+        totalImpressions: Number(totalsRow.total_impressions ?? 0),
+        totalAttributedClicks: Number(totalsRow.total_attributed_clicks ?? 0),
+        totalAttributedAdds: Number(totalsRow.total_attributed_adds ?? 0),
       },
     });
   } catch (err: any) {
