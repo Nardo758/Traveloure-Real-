@@ -89,6 +89,7 @@ interface CityFeedCardRecommendationProps {
   affiliateLabel?: string;
   layout?: "column" | "row";
   className?: string;
+  cardPosition?: number;
 }
 
 export function CityFeedCardRecommendation({
@@ -102,6 +103,7 @@ export function CityFeedCardRecommendation({
   affiliateLabel = "Paid partner",
   layout = "column",
   className,
+  cardPosition,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const name = resolveRecommendationName(candidate);
