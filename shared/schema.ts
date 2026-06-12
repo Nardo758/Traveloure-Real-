@@ -6180,6 +6180,7 @@ export const serviceDemandRequests = pgTable("service_demand_requests", {
   dateRangeStart: timestamp("date_range_start"),
   dateRangeEnd: timestamp("date_range_end"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  notifiedAt: timestamp("notified_at"),
 });
 
 export const insertServiceDemandRequestSchema = createInsertSchema(serviceDemandRequests).omit({ id: true, createdAt: true });
