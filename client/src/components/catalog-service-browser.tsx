@@ -10,6 +10,7 @@
  * Affiliate offering types (aff_*) are excluded server-side.
  */
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,10 @@ import {
   HelpCircle,
   ShoppingCart,
   Star,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 // ─── Type mirrors the server CatalogEntry ───────────────────────────────────
 
@@ -136,6 +139,11 @@ function CatalogCard({
   dateStart?: string | null;
   dateEnd?: string | null;
 }) {
+  const { toast } = useToast();
+  const [requested, setRequested] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [demandCount, setDemandCount] = useState<number | null>(null);
+
   const Icon = categoryIcon(entry.categoryKey);
   const covered = !!entry.coveredBy;
   const price = entry.coveredBy?.price
@@ -144,6 +152,41 @@ function CatalogCard({
         return isNaN(n) ? entry.coveredBy.price : `$${Math.round(n)}`;
       })()
     : null;
+
+  async function handleRequest() {
+    if (requested || submitting) return;
+    setSubmitting(true);
+    try {
+      const resp = await fetch("/api/services/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offeringTypeKey: entry.offeringTypeKey,
+          city: city ?? "",
+          dateStart: dateStart ?? null,
+          dateEnd: dateEnd ?? null,
+        }),
+      });
+      const data = await resp.json();
+      setRequested(true);
+      if (typeof data.demandCount === "number") setDemandCount(data.demandCount);
+      onRequestThis?.({
+        offeringTypeKey: entry.offeringTypeKey,
+        categoryKey: entry.categoryKey,
+        city: city ?? "",
+        dateStart: dateStart ?? null,
+        dateEnd: dateEnd ?? null,
+      });
+      toast({
+        title: "Request recorded",
+        description: `We'll notify you when ${entry.displayName} becomes available in ${city}.`,
+      });
+    } catch {
+      toast({ title: "Could not send request", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <Card
@@ -219,6 +262,16 @@ function CatalogCard({
                 </Button>
               </div>
             </div>
+          ) : requested ? (
+            <div className="flex items-center gap-2" data-testid={`status-requested-${entry.offeringTypeKey}`}>
+              <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <p className="text-xs text-green-700 flex-1">
+                Requested
+                {demandCount !== null && demandCount > 1 && (
+                  <span className="text-muted-foreground"> · {demandCount} want this</span>
+                )}
+              </p>
+            </div>
           ) : (
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground italic flex-1">
@@ -228,19 +281,14 @@ function CatalogCard({
                 size="sm"
                 variant="outline"
                 className="h-7 text-xs px-3 border-dashed flex-shrink-0"
+                disabled={submitting}
                 data-testid={`btn-request-${entry.offeringTypeKey}`}
                 data-offering-type={entry.offeringTypeKey}
                 data-category-key={entry.categoryKey}
                 data-city={city ?? ""}
                 data-date-start={dateStart ?? ""}
                 data-date-end={dateEnd ?? ""}
-                onClick={onRequestThis ? () => onRequestThis({
-                  offeringTypeKey: entry.offeringTypeKey,
-                  categoryKey: entry.categoryKey,
-                  city: city ?? "",
-                  dateStart: dateStart ?? null,
-                  dateEnd: dateEnd ?? null,
-                }) : undefined}
+                onClick={handleRequest}
               >
                 Request this
               </Button>

@@ -19,6 +19,8 @@ export interface WantedSlotData {
   neighborhoodName: string;
   city: string;
   neighborhoodId: string;
+  /** Number of travellers who have requested this offering in this city. */
+  demandCount?: number;
 }
 
 export interface FeedCompositionConfig {
