@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -163,10 +164,12 @@ function CatalogCard({
         body: JSON.stringify({
           offeringTypeKey: entry.offeringTypeKey,
           city: city ?? "",
-          dateStart: dateStart ?? null,
-          dateEnd: dateEnd ?? null,
+          dateRangeStart: dateStart ?? null,
+          dateRangeEnd: dateEnd ?? null,
+          guestSessionId: getOrCreateGuestSessionId(),
         }),
       });
+      if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
       const data = await resp.json();
       setRequested(true);
       if (typeof data.demandCount === "number") setDemandCount(data.demandCount);

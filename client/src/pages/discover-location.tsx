@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
+import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
@@ -533,7 +534,7 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
         </p>
         <p className="text-[11px] text-muted-foreground truncate">
           {demandCount && demandCount > 0
-            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} want this · Be the first to offer it`
+            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this · Be the first to offer it`
             : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
       </div>
@@ -1435,7 +1436,7 @@ export default function DiscoverLocationPage() {
                           data-testid={`btn-date-catalog-request-${svc.offeringTypeKey}`}
                           onClick={async () => {
                             try {
-                              await fetch("/api/services/request", {
+                              const resp = await fetch("/api/services/request", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
@@ -1443,11 +1444,13 @@ export default function DiscoverLocationPage() {
                                   city,
                                   dateRangeStart: scheduledDate,
                                   dateRangeEnd: scheduledDate,
+                                  guestSessionId: getOrCreateGuestSessionId(),
                                 }),
                               });
+                              if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
                               setRequestedDateKeys((prev) => new Set([...prev, svc.offeringTypeKey]));
                             } catch {
-                              // swallow silently — non-critical
+                              // swallow silently — non-critical for date-strip UI
                             }
                           }}
                         >
