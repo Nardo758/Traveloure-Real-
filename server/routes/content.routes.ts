@@ -7882,11 +7882,21 @@ router.get("/api/services/demand", async (req, res) => {
     const keys = keysStr.split(",").map((k) => k.trim()).filter(Boolean);
     if (keys.length === 0) return res.json({});
 
+    const dateStart = (req.query.dateRangeStart as string) || null;
+    const dateEnd = (req.query.dateRangeEnd as string) || dateStart;
+
+    const dateFilter = dateStart && dateEnd
+      ? sql` AND date_range_start IS NOT NULL
+             AND date_range_start <= ${dateEnd}::date
+             AND date_range_end >= ${dateStart}::date`
+      : sql``;
+
     const rows = await db.execute(sql`
       SELECT offering_type_key, COUNT(*)::int AS demand_count
       FROM service_demand_requests
       WHERE city = ${city}
         AND offering_type_key = ANY(${keys}::text[])
+        ${dateFilter}
       GROUP BY offering_type_key
     `);
 

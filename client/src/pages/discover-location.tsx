@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
@@ -522,7 +523,7 @@ function RecommendationCard({
 // ─── Injected card: wanted recruitment slot ───────────────────────────────────
 
 function WantedSlotCard({ item }: { item: FeedItem }) {
-  const { offeringLabel, neighborhoodName, city: slotCity, demandCount } = item.data as WantedSlotData;
+  const { offeringLabel, neighborhoodName, city: slotCity, demandCount, dateContext } = item.data as WantedSlotData;
   return (
     <div
       className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
@@ -534,7 +535,7 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
         </p>
         <p className="text-[11px] text-muted-foreground truncate">
           {demandCount && demandCount > 0
-            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this · Be the first to offer it`
+            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
             : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
       </div>
@@ -1186,6 +1187,7 @@ export default function DiscoverLocationPage() {
   }, [scheduledDate, city]);
 
   // Tracks which date-catalog offering type keys the user has already requested
+  const { toast } = useToast();
   const [requestedDateKeys, setRequestedDateKeys] = useState<Set<string>>(new Set());
 
   // ── Derived feed data ───────────────────────────────────────────────────
@@ -1225,10 +1227,14 @@ export default function DiscoverLocationPage() {
   // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
   const wantedOfferingKeys = [...new Set(rawWantedSlotsData.map((s) => s.offeringKey))];
   const { data: demandCounts } = useQuery<Record<string, number>>({
-    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(",")],
+    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
     queryFn: async () => {
       if (!city || wantedOfferingKeys.length === 0) return {};
       const params = new URLSearchParams({ city, offeringTypeKeys: wantedOfferingKeys.join(",") });
+      if (scheduledDate) {
+        params.set("dateRangeStart", scheduledDate);
+        params.set("dateRangeEnd", scheduledDate);
+      }
       const res = await fetch(`/api/services/demand?${params}`);
       if (!res.ok) return {};
       return res.json();
@@ -1237,10 +1243,16 @@ export default function DiscoverLocationPage() {
     staleTime: 5 * 60_000,
   });
 
-  // Merge demand counts into wanted-slot data
+  // Human-readable date label for WantedSlotCard when a date filter is active
+  const dateContext = scheduledDate
+    ? new Date(scheduledDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : undefined;
+
+  // Merge demand counts (and date context) into wanted-slot data
   const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData.map((slot) => ({
     ...slot,
     demandCount: demandCounts?.[slot.offeringKey] ?? 0,
+    dateContext,
   }));
 
   // Lead expert: expert whose specialties best match the top recommendation category
@@ -1450,7 +1462,7 @@ export default function DiscoverLocationPage() {
                               if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
                               setRequestedDateKeys((prev) => new Set([...prev, svc.offeringTypeKey]));
                             } catch {
-                              // swallow silently — non-critical for date-strip UI
+                              toast({ title: "Could not send request", variant: "destructive" });
                             }
                           }}
                         >
