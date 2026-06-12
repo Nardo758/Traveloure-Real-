@@ -225,6 +225,8 @@ function findBestMatch(
 export async function queryCatalogServices(opts: {
   city: string;
   country?: string;
+  /** template context — accepted for contract alignment; reserved for future scoping */
+  templateKey?: string;
   categoryKey?: string;
   dateStart?: string;
   dateEnd?: string;
