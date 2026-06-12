@@ -558,12 +558,14 @@ function FillerCard({
   scheduledDate,
   onAdd,
   isMarquee,
+  cardPosition,
 }: {
   item: FeedItem;
   city: string;
   scheduledDate: string | null;
   onAdd: (item: any) => void;
   isMarquee?: boolean;
+  cardPosition?: number;
 }) {
   switch (item.kind) {
     case "loose-gem":
@@ -574,6 +576,7 @@ function FillerCard({
           scheduledDate={scheduledDate}
           onAdd={onAdd}
           layout={isMarquee ? "row" : "column"}
+          cardPosition={cardPosition}
         />
       );
     case "expert":
@@ -585,6 +588,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "supply-hotel":
@@ -596,6 +600,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "vendor-service":
@@ -720,6 +725,7 @@ function FeedRenderer({
                   scheduledDate={scheduledDate}
                   onAdd={onAdd}
                   isMarquee={itemIdx === 0}
+                  cardPosition={itemIdx}
                 />
               </div>
             ))}
@@ -763,6 +769,7 @@ function FlatFilteredFeed({
             scheduledDate={scheduledDate}
             onAdd={onAdd}
             isMarquee={idx === 0}
+            cardPosition={idx}
           />
         </div>
       ))}

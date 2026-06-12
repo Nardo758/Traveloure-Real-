@@ -7921,7 +7921,9 @@ router.post("/api/tracking/impression", async (req, res) => {
       return res.status(400).json({ message: "contentType, contentId, sessionId required" });
     }
     const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
-    const [row] = await db
+    // ON CONFLICT DO NOTHING implements server-side session-scoped dedup
+    // (unique index: session_id, content_type, content_id via migration 071)
+    const inserted = await db
       .insert(contentImpressions)
       .values({
         contentType,
@@ -7931,8 +7933,22 @@ router.post("/api/tracking/impression", async (req, res) => {
         sessionId,
         userId: userId || null,
       })
+      .onConflictDoNothing()
       .returning({ id: contentImpressions.id });
-    res.json({ impressionId: row.id });
+
+    let impressionId: string | null = inserted[0]?.id ?? null;
+    if (!impressionId) {
+      // Row already existed — look up the existing impression ID
+      const existing = await db.execute(sql`
+        SELECT id FROM content_impressions
+        WHERE session_id = ${sessionId}
+          AND content_type = ${contentType}
+          AND content_id = ${contentId}
+        LIMIT 1
+      `);
+      impressionId = (existing.rows?.[0] as any)?.id ?? null;
+    }
+    res.json({ impressionId });
   } catch (err: any) {
     console.error("[impression-track]", err.message);
     res.status(500).json({ message: "Failed to record impression" });
@@ -7998,12 +8014,27 @@ router.get("/api/admin/content/impression-funnel", async (req, res) => {
       LIMIT 50
     `);
 
-    // ── Summary totals ──
+    // ── Summary totals (filters respected) ──
     const totalsResult = await db.execute(sql`
       SELECT
-        (SELECT COUNT(*)::int FROM content_impressions WHERE created_at >= ${since}) AS total_impressions,
-        (SELECT COUNT(*)::int FROM affiliate_clicks WHERE source_impression_id IS NOT NULL AND clicked_at >= ${since}) AS total_attributed_clicks,
-        (SELECT COUNT(*)::int FROM itinerary_changes WHERE (metadata->>'sourceImpressionId') IS NOT NULL AND created_at >= ${since} AND change_type = 'add') AS total_attributed_adds
+        (SELECT COUNT(*)::int FROM content_impressions
+          WHERE created_at >= ${since}
+            AND (${cityLike}::text IS NULL OR city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR content_type = ${typeFilter}::text)
+        ) AS total_impressions,
+        (SELECT COUNT(ac.id)::int FROM affiliate_clicks ac
+          JOIN content_impressions ci ON ci.id = ac.source_impression_id::uuid
+          WHERE ac.clicked_at >= ${since}
+            AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
+        ) AS total_attributed_clicks,
+        (SELECT COUNT(ic.id)::int FROM itinerary_changes ic
+          JOIN content_impressions ci ON ci.id = (ic.metadata->>'sourceImpressionId')::uuid
+          WHERE ic.created_at >= ${since}
+            AND ic.change_type = 'add'
+            AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
+        ) AS total_attributed_adds
     `);
 
     const totalsRow = (totalsResult.rows ?? totalsResult as any[])[0] ?? {};

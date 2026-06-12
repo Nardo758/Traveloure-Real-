@@ -554,40 +554,62 @@ export default function AdminAnalytics() {
                       <tr className="border-b border-gray-100">
                         <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
                         <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">City</th>
-                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Impressions</th>
-                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Sessions</th>
+                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Views</th>
+                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Clicks</th>
+                        <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Adds</th>
+                        <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Sessions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {funnelData.impressionsByType.slice(0, 20).map((row, i) => (
-                        <tr
-                          key={`${row.content_type}-${row.city}-${i}`}
-                          className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                          data-testid={`row-funnel-${i}`}
-                        >
-                          <td className="py-2.5 pr-4">
-                            <Badge variant="outline" className="text-xs font-medium capitalize">
-                              {row.content_type}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 pr-4 text-gray-600 hidden md:table-cell">
-                            {row.city ? (
-                              <div className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                                {row.city}
-                              </div>
-                            ) : (
-                              <span className="text-gray-300 text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right font-semibold tabular-nums text-gray-900">
-                            {Number(row.impressions).toLocaleString()}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-gray-500 hidden sm:table-cell">
-                            {Number(row.unique_sessions).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
+                      {funnelData.impressionsByType.slice(0, 20).map((row, i) => {
+                        const clicks = funnelData.attributedClicks.find(
+                          (c) => c.content_type === row.content_type && c.city === row.city,
+                        )?.attributed_clicks ?? 0;
+                        const adds = funnelData.attributedAdds.find(
+                          (a) => a.content_type === row.content_type && a.city === row.city,
+                        )?.itinerary_adds ?? 0;
+                        const ctr = Number(row.impressions) > 0
+                          ? Math.round((clicks / Number(row.impressions)) * 100)
+                          : 0;
+                        return (
+                          <tr
+                            key={`${row.content_type}-${row.city}-${i}`}
+                            className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                            data-testid={`row-funnel-${i}`}
+                          >
+                            <td className="py-2.5 pr-4">
+                              <Badge variant="outline" className="text-xs font-medium capitalize">
+                                {row.content_type}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 pr-4 text-gray-600 hidden md:table-cell">
+                              {row.city ? (
+                                <div className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                  {row.city}
+                                </div>
+                              ) : (
+                                <span className="text-gray-300 text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 pr-4 text-right font-semibold tabular-nums text-gray-900" data-testid={`cell-impressions-${i}`}>
+                              {Number(row.impressions).toLocaleString()}
+                            </td>
+                            <td className="py-2.5 pr-4 text-right tabular-nums hidden sm:table-cell" data-testid={`cell-clicks-${i}`}>
+                              <span className="font-semibold text-blue-600">{Number(clicks).toLocaleString()}</span>
+                              {Number(row.impressions) > 0 && (
+                                <span className="ml-1 text-xs text-gray-400">{ctr}%</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 pr-4 text-right tabular-nums hidden sm:table-cell" data-testid={`cell-adds-${i}`}>
+                              <span className="font-semibold text-green-600">{Number(adds).toLocaleString()}</span>
+                            </td>
+                            <td className="py-2.5 text-right tabular-nums text-gray-500 hidden lg:table-cell">
+                              {Number(row.unique_sessions).toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

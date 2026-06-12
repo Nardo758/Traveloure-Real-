@@ -508,6 +508,7 @@ interface CityFeedCardGemProps {
   compact?: boolean;
   layout?: "column" | "row";
   className?: string;
+  cardPosition?: number;
 }
 
 export function CityFeedCardGem({
@@ -519,6 +520,7 @@ export function CityFeedCardGem({
   compact = false,
   layout = "column",
   className,
+  cardPosition,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -539,7 +541,7 @@ export function CityFeedCardGem({
 
   const isRow = layout === "row";
 
-  const { ref: impressionRef, getImpressionId } = useImpressionTracker("gem", gem.id, city);
+  const { ref: impressionRef, getImpressionId } = useImpressionTracker("gem", gem.id, city, cardPosition);
 
   // Body copy: prefer whyLocalsLoveIt, fall back to description
   const bodyText = gem.whyLocalsLoveIt || gem.description;
@@ -734,9 +736,10 @@ interface CityFeedCardEventProps {
   scheduledDate?: string | null;
   onAdd?: (item: any) => void;
   className?: string;
+  cardPosition?: number;
 }
 
-export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className }: CityFeedCardEventProps) {
+export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const dbImageUrl = event.image || event.imageUrl || null;
@@ -753,6 +756,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     "event",
     String(event.id ?? event.eventId ?? eventName),
     city,
+    cardPosition,
   );
   const eventSuggestion: MatchSuggestion = {
     icon: "🎫",
@@ -1061,9 +1065,10 @@ interface CityFeedCardSupplyProps {
   scheduledDate?: string | null;
   onAdd?: (item: any) => void;
   className?: string;
+  cardPosition?: number;
 }
 
-export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className }: CityFeedCardSupplyProps) {
+export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
@@ -1081,6 +1086,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     kind,
     String(item.id ?? itemName),
     city,
+    cardPosition,
   );
 
   const addLabel = scheduledDate

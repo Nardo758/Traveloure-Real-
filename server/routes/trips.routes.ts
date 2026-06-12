@@ -1490,7 +1490,9 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
         "add",
         tripRole!,
         item.id,
-        sourceImpressionId ? { sourceImpressionId, sourceContentId: sourceContentId ?? null } : undefined,
+        (sourceImpressionId || sourceContentId)
+          ? { sourceImpressionId: sourceImpressionId ?? null, sourceContentId: sourceContentId ?? null }
+          : undefined,
       );
       res.status(201).json(item);
     } catch (error) {
