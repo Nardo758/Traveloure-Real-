@@ -55,6 +55,7 @@ import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, serviceOfferingTypes } from "@shared/schema";
 import { matchSupplyForGem } from "../services/content-supply-matching.service";
+import { queryCatalogServices } from "../services/catalog.service";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -7773,6 +7774,35 @@ router.get("/api/gems/:gemId/matched-service", async (req, res) => {
   } catch (err: any) {
     console.error("[gem-matched-service]", err.message);
     return res.json(null);
+  }
+});
+
+// ─── Catalog service browse endpoint ─────────────────────────────────────────
+//
+// GET /api/catalog/services?city=&country=&categoryKey=&dateStart=&dateEnd=
+//
+// Returns all platform service_offering_types for the city, each annotated
+// with coveredBy (real provider) or null (request-this). Affiliate (aff_*)
+// types are excluded server-side. Seasonal offerings are filtered by date
+// range when provided.
+
+router.get("/api/catalog/services", async (req, res) => {
+  try {
+    const city = (req.query.city as string || "").trim();
+    if (!city) return res.json([]);
+
+    const entries = await queryCatalogServices({
+      city,
+      country:     req.query.country  as string | undefined,
+      categoryKey: req.query.categoryKey as string | undefined,
+      dateStart:   req.query.dateStart as string | undefined,
+      dateEnd:     req.query.dateEnd   as string | undefined,
+    });
+
+    return res.json(entries);
+  } catch (err: any) {
+    console.error("[catalog-services]", err.message);
+    return res.json([]);
   }
 });
 

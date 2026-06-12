@@ -26,6 +26,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { queryCatalogServices } from "../services/catalog.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
   rankCandidates,
@@ -613,10 +614,22 @@ router.post("/api/upsell/discover-date", async (req, res) => {
 
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_date", ctx, raw, req);
 
+    // Catalog services: platform offering types for the city, seasonal-filtered.
+    // These populate the date surface even when destination_events is empty.
+    const catalogServices = await queryCatalogServices({
+      city: body.city,
+      dateStart: body.dateRange.start,
+      dateEnd:   body.dateRange.end ?? body.dateRange.start,
+    }).catch(err => {
+      console.error("[discover-date] catalog fetch failed (non-fatal):", err.message);
+      return [];
+    });
+
     res.json({
       candidates: decorate(candidates, displayLookup),
       suppressed,
       hardFilteredByDate: unavailable.size,
+      catalogServices,
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });

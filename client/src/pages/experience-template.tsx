@@ -90,7 +90,7 @@ import { CompactFilterBar } from "@/components/compact-filter-bar";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
-import { ServiceBrowser } from "@/components/service-browser";
+import { CatalogServiceBrowser } from "@/components/catalog-service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
@@ -2297,7 +2297,7 @@ export default function ExperienceTemplatePage() {
                       <SelectContent>
                         <SelectItem value="all">All categories</SelectItem>
                         {serviceCategories?.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                          <SelectItem key={cat.id} value={cat.slug}>{cat.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -2458,18 +2458,19 @@ export default function ExperienceTemplatePage() {
           {/* P5: tabType-registry driven — any tab with tabType "services" */}
           {currentTabType === "services" && (
             <div className="mb-6">
-              <ServiceBrowser
-                defaultLocation={destination}
+              <CatalogServiceBrowser
+                city={destination}
                 categoryFilter={serviceCategoryFilter}
-                distanceFilter={serviceDistanceFilter}
-                onAddToCart={(service) => {
+                startDate={startDate}
+                endDate={endDate}
+                onAddToCart={(item) => {
                   addToCart({
-                    id: `service-${service.id}`,
-                    type: "services",
-                    name: service.serviceName,
-                    price: parseFloat(service.price) || 0,
-                    quantity: 1,
-                    provider: "Platform Service",
+                    id: item.id,
+                    type: item.type,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    provider: item.provider,
                   });
                 }}
               />
