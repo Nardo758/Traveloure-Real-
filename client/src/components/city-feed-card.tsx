@@ -654,13 +654,11 @@ export function CityFeedCardGem({
               asChild
               onClick={() => {
                 const impId = getImpressionId();
-                if (impId) {
-                  fetch("/api/affiliates/track", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ partner: "discover", destination: city, impressionId: impId }),
-                  }).catch(() => {});
-                }
+                fetch("/api/affiliates/track", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
+                }).catch(() => {});
               }}
             >
               <a href={suggestion?.href ?? "#"}>
@@ -846,13 +844,11 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                 asChild
                 onClick={() => {
                   const impId = getImpIdEvt();
-                  if (impId) {
-                    fetch("/api/affiliates/track", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ partner: "discover-event", destination: city, impressionId: impId }),
-                    }).catch(() => {});
-                  }
+                  fetch("/api/affiliates/track", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ partner: "discover-event", destination: city, contentType: "event", contentId: String(event.id), impressionId: impId }),
+                  }).catch(() => {});
                 }}
               >
                 <a href={event.url} target="_blank" rel="noopener noreferrer">
@@ -1049,7 +1045,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                   fetch("/api/affiliates/track", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ partner: "discover-vendor", destination: city, impressionId: impId }),
+                    body: JSON.stringify({ partner: "discover-vendor", destination: city, contentType: "vendor-service", contentId: String(service.id), impressionId: impId }),
                   }).catch(() => {});
                   window.open(externalUrl, "_blank", "noopener");
                 }}
@@ -1226,7 +1222,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
                 fetch("/api/affiliates/track", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ partner: "discover-supply", destination: city, impressionId: impId }),
+                  body: JSON.stringify({ partner: "discover-supply", destination: city, contentType: kind, contentId: String(item.id ?? ""), impressionId: impId }),
                 }).catch(() => {});
                 const bookUrl = item.bookingLink || item.externalUrl || item.url;
                 if (bookUrl) window.open(bookUrl, "_blank", "noopener");
