@@ -19,8 +19,10 @@ export interface WantedSlotData {
   neighborhoodName: string;
   city: string;
   neighborhoodId: string;
-  /** Number of travellers who have requested this offering in this city. */
+  /** Number of travellers who have requested this offering in this city (or date window). */
   demandCount?: number;
+  /** Human-readable date context when demand was queried with a specific date filter. */
+  dateContext?: string;
 }
 
 export interface FeedCompositionConfig {
