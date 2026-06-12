@@ -570,6 +570,24 @@ export type TabSelectionControls = Record<string /* tabSlug */, SelectionControl
 
 export const SELECTION_CONTROL_SEED: Record<string /* templateSlug */, TabSelectionControls> = {
 
+  // ─── BACHELOR / BACHELORETTE ─────────────────────────────
+  "bachelor-bachelorette": {
+    accommodations:      [BUDGET_CONTROL, BOYS_ACTIVITY_FOCUS,    GIRLS_SPA_FOCUS],
+    "daytime-activities":[BUDGET_TIERED,  TRAVEL_ACTIVITY_FOCUS,  TRAVEL_ACTIVITY_STYLE],
+    nightlife:           [BUDGET_CONTROL, BOYS_NIGHTLIFE_FOCUS,   BOYS_ACTIVITY_FOCUS],
+    dining:              [BUDGET_CONTROL, BOYS_DINING_FOCUS,      BOYS_ACTIVITY_FOCUS],
+    "party-services":    [BUDGET_CONTROL, PARTY_SERVICE_FOCUS,    PARTY_ENTERTAINMENT_FOCUS],
+  },
+
+  // ─── ANNIVERSARY TRIP ────────────────────────────────────
+  "anniversary-trip": {
+    accommodations:      [BUDGET_CONTROL, ANNIVERSARY_VENUE_FOCUS,  GIRLS_SPA_FOCUS],
+    experiences:         [BUDGET_TIERED,  TRAVEL_ACTIVITY_FOCUS,    PROPOSAL_SERVICE_FOCUS],
+    dining:              [BUDGET_CONTROL, PROPOSAL_DINING_FOCUS,    ANNIVERSARY_VENUE_FOCUS],
+    "spa-wellness":      [BUDGET_CONTROL, GIRLS_SPA_FOCUS,          RETREAT_SERVICE_FOCUS],
+    "special-touches":   [BUDGET_CONTROL, PARTY_SERVICE_FOCUS,      ANNIVERSARY_ENTERTAINMENT_FOCUS],
+  },
+
   // ─── TRAVEL ──────────────────────────────────────────────
   travel: {
     activities: [BUDGET_TIERED,  TRAVEL_ACTIVITY_FOCUS, TRAVEL_ACTIVITY_STYLE],
