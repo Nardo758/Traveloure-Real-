@@ -7202,6 +7202,8 @@ router.post("/api/affiliate/track-click", async (req, res) => {
   // It inserts directly into affiliate_clicks with those FKs as null and uses `sessionId` to
   // record the partner name (e.g. "ivisa") so revenue reports can filter by it.
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.post("/api/affiliates/track", async (req, res) => {
     try {
       const { partner, destination, tripId, itineraryId, impressionId } = req.body;
@@ -7209,6 +7211,8 @@ router.post("/api/affiliates/track", async (req, res) => {
         return res.status(400).json({ message: "partner is required" });
       }
       const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      // Validate UUID format before storing to prevent cast errors in funnel SQL
+      const safeImpressionId = impressionId && UUID_RE.test(String(impressionId)) ? String(impressionId) : null;
       await db.insert(affiliateClicks).values({
         productId: null,
         partnerId: null,
@@ -7220,7 +7224,7 @@ router.post("/api/affiliates/track", async (req, res) => {
         initiatedBy: "user",
         agentType: null,
         sessionId: [partner, destination].filter(Boolean).join(":") || partner,
-        sourceImpressionId: impressionId || null,
+        sourceImpressionId: safeImpressionId,
       });
       res.json({ success: true });
     } catch (error: any) {

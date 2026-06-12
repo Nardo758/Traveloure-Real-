@@ -608,6 +608,7 @@ function FillerCard({
         <CityFeedCardVendorService
           service={item.data}
           city={city}
+          cardPosition={cardPosition}
         />
       );
     case "recommendation":
