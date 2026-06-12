@@ -534,18 +534,30 @@ function RecommendationCard({
 
 function WantedSlotCard({ item }: { item: FeedItem }) {
   const { offeringLabel, neighborhoodName, city: slotCity, demandCount, dateContext } = item.data as WantedSlotData;
+  const isHighDemand = (demandCount ?? 0) >= 5;
   return (
     <div
       className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
       data-testid="feed-wanted-slot"
     >
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-primary truncate">
-          {offeringLabel} wanted in {neighborhoodName}
-        </p>
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <p className="text-xs font-semibold text-primary truncate">
+            {offeringLabel} wanted
+          </p>
+          {isHighDemand && (
+            <span
+              className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-bold whitespace-nowrap flex-shrink-0"
+              style={{ background: "#FEF3C7", color: "#92400E" }}
+              data-testid="badge-high-demand"
+            >
+              🔥 High demand
+            </span>
+          )}
+        </div>
         <p className="text-[11px] text-muted-foreground truncate">
           {demandCount && demandCount > 0
-            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
+            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""}`
             : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
       </div>
@@ -1245,11 +1257,15 @@ export default function DiscoverLocationPage() {
 
   // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
   const wantedOfferingKeys = [...new Set(rawWantedSlotsData.map((s) => s.offeringKey))];
+  const wantedNeighborhoodIds = [...new Set(rawWantedSlotsData.map((s) => s.neighborhoodId).filter(Boolean))];
   const { data: demandCounts } = useQuery<Record<string, number>>({
-    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
+    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), wantedNeighborhoodIds.join(","), scheduledDate ?? ""],
     queryFn: async () => {
       if (!city || wantedOfferingKeys.length === 0) return {};
       const params = new URLSearchParams({ city, offeringTypeKeys: wantedOfferingKeys.join(",") });
+      if (wantedNeighborhoodIds.length > 0) {
+        params.set("neighborhoodIds", wantedNeighborhoodIds.join(","));
+      }
       if (scheduledDate) {
         params.set("dateRangeStart", scheduledDate);
         params.set("dateRangeEnd", scheduledDate);
@@ -1267,12 +1283,19 @@ export default function DiscoverLocationPage() {
     ? new Date(scheduledDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : undefined;
 
-  // Merge demand counts (and date context) into wanted-slot data
-  const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData.map((slot) => ({
-    ...slot,
-    demandCount: demandCounts?.[slot.offeringKey] ?? 0,
-    dateContext,
-  }));
+  // Merge demand counts (and date context) into wanted-slot data.
+  // Prefer neighborhood-scoped count ("{neighborhoodId}:{offeringKey}") when available;
+  // fall back to city-level count. Sort descending by demand so highest-demand slots
+  // surface first in the composed feed.
+  const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData
+    .map((slot) => {
+      const nbScopedKey = `${slot.neighborhoodId}:${slot.offeringKey}`;
+      const nbCount = demandCounts?.[nbScopedKey];
+      const cityCount = demandCounts?.[slot.offeringKey] ?? 0;
+      const demandCount = nbCount !== undefined ? nbCount : cityCount;
+      return { ...slot, demandCount, dateContext };
+    })
+    .sort((a, b) => (b.demandCount ?? 0) - (a.demandCount ?? 0));
 
   // Lead expert: expert whose specialties best match the top recommendation category
   const leadExpert: any | null = (() => {
