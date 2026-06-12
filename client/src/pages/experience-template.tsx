@@ -759,6 +759,10 @@ export default function ExperienceTemplatePage() {
     staleTime: 30_000,
   });
 
+  const { data: serviceCategories } = useQuery<{ id: string; name: string; slug: string }[]>({
+    queryKey: ["/api/service-categories"],
+  });
+
   const linkedExperience = allUserExperiences
     ?.filter((e) => e.experienceTypeId === experienceType?.id && !!e.tripId)
     .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())[0];
@@ -873,6 +877,8 @@ export default function ExperienceTemplatePage() {
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState("all");
+  const [serviceDistanceFilter, setServiceDistanceFilter] = useState("any");
   // P4: controlled state for DB contextFields inputs
   const [contextValues, setContextValues] = useState<Record<string, string>>({});
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
@@ -2280,6 +2286,39 @@ export default function ExperienceTemplatePage() {
               onClear={handleSelectionClear}
               sortValue={sortBy}
               onSortChange={setSortBy}
+              additionalFilters={currentTabType === "services" ? (
+                <>
+                  <div className="min-w-[160px]">
+                    <Label className="text-xs font-medium text-muted-foreground">Category</Label>
+                    <Select value={serviceCategoryFilter} onValueChange={(v) => setServiceCategoryFilter(v)}>
+                      <SelectTrigger className="h-8 mt-1.5 w-[160px]" data-testid="select-service-category">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        {serviceCategories?.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-[160px]">
+                    <Label className="text-xs font-medium text-muted-foreground">Distance</Label>
+                    <Select value={serviceDistanceFilter} onValueChange={(v) => setServiceDistanceFilter(v)}>
+                      <SelectTrigger className="h-8 mt-1.5 w-[160px]" data-testid="select-service-distance">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any distance</SelectItem>
+                        <SelectItem value="1">Within 1 km</SelectItem>
+                        <SelectItem value="2">Within 2 km</SelectItem>
+                        <SelectItem value="5">Within 5 km</SelectItem>
+                        <SelectItem value="10">Within 10 km</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              ) : undefined}
             />
           )}
 
@@ -2421,7 +2460,8 @@ export default function ExperienceTemplatePage() {
             <div className="mb-6">
               <ServiceBrowser
                 defaultLocation={destination}
-                showCategoryFilter={true}
+                categoryFilter={serviceCategoryFilter}
+                distanceFilter={serviceDistanceFilter}
                 onAddToCart={(service) => {
                   addToCart({
                     id: `service-${service.id}`,

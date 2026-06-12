@@ -1466,4 +1466,47 @@ router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
   }
 });
 
+// ─── Feed composition config — public read ────────────────────────────────────
+
+const FEED_CONFIG_DEFAULTS = {
+  recCadence: 4,
+  wantedSlotMax: 2,
+  wantedSlotSpacing: 6,
+  recLabel: "Recommended",
+  recAffiliateLabel: "Sponsored",
+} as const;
+
+// GET /api/feed-composition-config
+// Reads the five feed_rec_* keys from platform_settings and returns the
+// composition config. No auth required; client uses hardcoded defaults when
+// the endpoint fails. Response is intentionally simple for easy caching.
+router.get("/api/feed-composition-config", async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT setting_key, setting_value
+      FROM platform_settings
+      WHERE setting_key IN (
+        'feed_rec_cadence',
+        'feed_wanted_slot_max',
+        'feed_wanted_slot_spacing',
+        'feed_rec_label',
+        'feed_rec_affiliate_label'
+      )
+    `);
+    const kvMap: Record<string, string> = {};
+    for (const r of (rows.rows ?? rows) as Array<{ setting_key: string; setting_value: string }>) {
+      kvMap[r.setting_key] = r.setting_value;
+    }
+    res.json({
+      recCadence: kvMap.feed_rec_cadence != null ? Number(kvMap.feed_rec_cadence) : FEED_CONFIG_DEFAULTS.recCadence,
+      wantedSlotMax: kvMap.feed_wanted_slot_max != null ? Number(kvMap.feed_wanted_slot_max) : FEED_CONFIG_DEFAULTS.wantedSlotMax,
+      wantedSlotSpacing: kvMap.feed_wanted_slot_spacing != null ? Number(kvMap.feed_wanted_slot_spacing) : FEED_CONFIG_DEFAULTS.wantedSlotSpacing,
+      recLabel: kvMap.feed_rec_label ?? FEED_CONFIG_DEFAULTS.recLabel,
+      recAffiliateLabel: kvMap.feed_rec_affiliate_label ?? FEED_CONFIG_DEFAULTS.recAffiliateLabel,
+    });
+  } catch {
+    res.json(FEED_CONFIG_DEFAULTS);
+  }
+});
+
 export default router;
