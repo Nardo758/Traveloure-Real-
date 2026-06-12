@@ -50,6 +50,8 @@ export interface MatchSuggestion {
   actionLabel: string;
   actionVariant: "platform" | "affiliate";
   href: string;
+  isRequest?: boolean;
+  offeringTypeKey?: string;
 }
 
 /**

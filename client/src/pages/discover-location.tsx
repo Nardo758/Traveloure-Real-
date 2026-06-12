@@ -1234,7 +1234,7 @@ export default function DiscoverLocationPage() {
   });
 
   // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
-  const wantedOfferingKeys = [...new Set(rawWantedSlotsData.map((s) => s.offeringKey))];
+  const wantedOfferingKeys = Array.from(new Set(rawWantedSlotsData.map((s) => s.offeringKey)));
   const { data: demandCounts } = useQuery<Record<string, number>>({
     queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
     queryFn: async () => {
