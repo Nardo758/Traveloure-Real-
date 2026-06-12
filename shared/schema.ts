@@ -3747,6 +3747,8 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   agentType: varchar("agent_type", { length: 20 }), // grok | claude | system | null
   sessionId: varchar("session_id", { length: 255 }), // AI planning session trace ID
   sourceImpressionId: varchar("source_impression_id"), // FK-less ref to content_impressions.id
+  clickContentType: varchar("click_content_type"), // content type of the clicked card (gem, event, etc.)
+  clickContentId: varchar("click_content_id"),     // content id of the clicked card
   clickedAt: timestamp("clicked_at").defaultNow(),
 });
 

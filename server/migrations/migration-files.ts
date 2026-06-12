@@ -92,4 +92,5 @@ export const MIGRATION_FILES = [
   "070_content_impressions.sql",
   "071_impressions_dedup_index.sql",
   "072_itinerary_changes_source_tracking.sql",
+  "073_affiliate_clicks_content_fields.sql",
 ] as const;

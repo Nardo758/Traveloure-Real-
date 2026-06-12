@@ -7206,7 +7206,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 router.post("/api/affiliates/track", async (req, res) => {
     try {
-      const { partner, destination, tripId, itineraryId, impressionId } = req.body;
+      const { partner, destination, tripId, itineraryId, impressionId, contentType, contentId } = req.body;
       if (!partner) {
         return res.status(400).json({ message: "partner is required" });
       }
@@ -7225,6 +7225,8 @@ router.post("/api/affiliates/track", async (req, res) => {
         agentType: null,
         sessionId: [partner, destination].filter(Boolean).join(":") || partner,
         sourceImpressionId: safeImpressionId,
+        clickContentType: contentType || null,
+        clickContentId: contentId ? String(contentId) : null,
       });
       res.json({ success: true });
     } catch (error: any) {
