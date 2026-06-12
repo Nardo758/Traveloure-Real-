@@ -13,7 +13,7 @@ import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { composeDiscoverFeed, type WantedSlotData } from "@/lib/feed-composition";
-import { UpsellSlot, type SlotResult } from "@/components/UpsellSlot";
+import { UpsellSlot, type SlotResult, type SlotCatalogEntry } from "@/components/UpsellSlot";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1176,6 +1176,12 @@ export default function DiscoverLocationPage() {
     setDiscoverySlotResult({ candidates: [], suppressed: [] });
   }, [city]);
 
+  // Catalog services from the discover_date surface — populated when scheduledDate is present.
+  const [dateCatalogServices, setDateCatalogServices] = useState<SlotCatalogEntry[]>([]);
+  useEffect(() => {
+    if (!scheduledDate) setDateCatalogServices([]);
+  }, [scheduledDate, city]);
+
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
@@ -1355,6 +1361,55 @@ export default function DiscoverLocationPage() {
               />
             )}
 
+            {/* ── Date-scoped catalog offerings (seasonal + covered) ─── */}
+            {scheduledDate && dateCatalogServices.length > 0 && (
+              <div className="mt-2" data-testid="date-catalog-services">
+                <p className="text-[11px] text-muted-foreground mb-2 px-0.5 font-medium uppercase tracking-wide">
+                  Services available on this date
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {dateCatalogServices.slice(0, 6).map(svc => (
+                    <div
+                      key={svc.offeringTypeKey}
+                      className="flex-[1_1_160px] rounded-xl border p-3"
+                      style={{ background: "var(--card)" }}
+                      data-testid={`date-catalog-card-${svc.offeringTypeKey}`}
+                    >
+                      {svc.seasonTag && (
+                        <span
+                          className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide mb-1"
+                          style={{ background: "#fef9c3", color: "#713f12" }}
+                        >
+                          {svc.seasonTag.replace(/_/g, " ").toUpperCase()}
+                        </span>
+                      )}
+                      <div className="text-[13px] font-medium leading-snug mb-1">{svc.displayName}</div>
+                      {svc.tagline && (
+                        <div className="text-[11px] text-muted-foreground mb-2 line-clamp-1">{svc.tagline}</div>
+                      )}
+                      {svc.coveredBy ? (
+                        <a
+                          href={svc.coveredBy.href}
+                          className="inline-flex items-center text-[11px] font-semibold px-2 py-1 rounded"
+                          style={{ background: "#FF385C", color: "#fff" }}
+                          data-testid={`btn-date-catalog-book-${svc.offeringTypeKey}`}
+                        >
+                          Book
+                        </a>
+                      ) : (
+                        <span
+                          className="inline-flex items-center text-[11px] px-2 py-1 rounded border border-dashed"
+                          data-testid={`btn-date-catalog-request-${svc.offeringTypeKey}`}
+                        >
+                          Request this
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Spine filter bar (sticky) ─────────────────────────── */}
             <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
 
@@ -1375,6 +1430,27 @@ export default function DiscoverLocationPage() {
               data-testid="upsell-slot-discover-location"
               onSlotData={setDiscoverySlotResult}
             />
+
+            {/* ── Headless discover_date slot (date mode only) ──────────────────
+                Fetches catalog + upsell candidates scoped to the selected date.
+                catalogServices are stored in dateCatalogServices and rendered
+                below the DateHighlightStrip so seasonal offerings always surface
+                even when destination_events is empty. */}
+            {scheduledDate && (
+              <UpsellSlot
+                surface="discover_date"
+                contextPayload={{
+                  city,
+                  dateRange: { start: scheduledDate, end: scheduledDate },
+                  userProfile: {},
+                }}
+                headless
+                data-testid="upsell-slot-discover-date"
+                onSlotData={(result) => {
+                  setDateCatalogServices(result.catalogServices ?? []);
+                }}
+              />
+            )}
 
             {/* ── Blended bento feed ────────────────────────────────── */}
             {activeFilter === "all" ? (

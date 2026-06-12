@@ -25,7 +25,8 @@ export type UpsellSurface =
   | "plancard_ontrip"
   | "cart"
   | "checkout"
-  | "discover_location";
+  | "discover_location"
+  | "discover_date";
 
 export interface UpsellCandidate {
   offeringId: string;
@@ -35,10 +36,22 @@ export interface UpsellCandidate {
   reason: string;
 }
 
+export interface SlotCatalogEntry {
+  offeringTypeKey: string;
+  displayName: string;
+  tagline: string | null;
+  categoryKey: string;
+  isSurprising: boolean;
+  seasonTag: string | null;
+  coveredBy: { providerServiceId: string; providerName: string; price: string | null; href: string; } | null;
+}
+
 export interface SlotResult {
   candidates: UpsellCandidate[];
   /** Offerings the engine filtered out — includes their offeringId so callers can build a "covered" set. */
   suppressed: Array<{ offeringId: string; reason?: string }>;
+  /** Catalog entries from discover_date surface — platform offering types with seasonal + coverage info. */
+  catalogServices?: SlotCatalogEntry[];
 }
 
 interface UpsellSlotProps {
@@ -78,19 +91,21 @@ export class UpsellErrorBoundary extends Component<
 }
 
 const ENDPOINT: Record<UpsellSurface, string> = {
-  plancard_pretrip: "/api/upsell/plancard-pretrip",
-  plancard_ontrip: "/api/upsell/plancard-ontrip",
-  cart: "/api/upsell/cart",
-  checkout: "/api/upsell/checkout",
-  discover_location: "/api/upsell/discover-location",
+  plancard_pretrip:   "/api/upsell/plancard-pretrip",
+  plancard_ontrip:    "/api/upsell/plancard-ontrip",
+  cart:               "/api/upsell/cart",
+  checkout:           "/api/upsell/checkout",
+  discover_location:  "/api/upsell/discover-location",
+  discover_date:      "/api/upsell/discover-date",
 };
 
 const DEFAULT_HEADING: Record<UpsellSurface, string> = {
-  plancard_pretrip: "Complete your plan",
-  plancard_ontrip: "Near you on this trip",
-  cart: "Frequently booked together",
-  checkout: "Add to your trip",
+  plancard_pretrip:  "Complete your plan",
+  plancard_ontrip:   "Near you on this trip",
+  cart:              "Frequently booked together",
+  checkout:          "Add to your trip",
   discover_location: "Recommended for you",
+  discover_date:     "Available on this date",
 };
 
 export function UpsellSlot({
@@ -111,7 +126,7 @@ export function UpsellSlot({
   const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
   if (tripId) body.tripId = tripId;
 
-  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }> }>({
+  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }>; catalogServices?: SlotCatalogEntry[] }>({
     queryKey: [ENDPOINT[surface], tripId, JSON.stringify(contextPayload)],
     queryFn: async () => {
       const res = await apiRequest("POST", ENDPOINT[surface], body);
@@ -142,7 +157,7 @@ export function UpsellSlot({
     }
     if (data !== undefined && data !== lastSlotDataRef.current) {
       lastSlotDataRef.current = data;
-      onSlotData?.({ candidates, suppressed: data.suppressed ?? [] });
+      onSlotData?.({ candidates, suppressed: data.suppressed ?? [], catalogServices: data.catalogServices });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates.length, data]);
