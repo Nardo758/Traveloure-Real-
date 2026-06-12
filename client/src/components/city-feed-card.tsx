@@ -656,6 +656,7 @@ export function CityFeedCardGem({
                 const impId = getImpressionId();
                 fetch("/api/affiliates/track", {
                   method: "POST",
+                  keepalive: true,
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
                 }).catch(() => {});
@@ -846,6 +847,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                   const impId = getImpIdEvt();
                   fetch("/api/affiliates/track", {
                     method: "POST",
+                    keepalive: true,
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ partner: "discover-event", destination: city, contentType: "event", contentId: String(event.id), impressionId: impId }),
                   }).catch(() => {});
@@ -1044,6 +1046,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                   const impId = getImpIdVendor();
                   fetch("/api/affiliates/track", {
                     method: "POST",
+                    keepalive: true,
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ partner: "discover-vendor", destination: city, contentType: "vendor-service", contentId: String(service.id), impressionId: impId }),
                   }).catch(() => {});
@@ -1221,6 +1224,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
                 const impId = getImpIdSupply();
                 fetch("/api/affiliates/track", {
                   method: "POST",
+                  keepalive: true,
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ partner: "discover-supply", destination: city, contentType: kind, contentId: String(item.id ?? ""), impressionId: impId }),
                 }).catch(() => {});
