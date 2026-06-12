@@ -2297,7 +2297,7 @@ export default function ExperienceTemplatePage() {
                       <SelectContent>
                         <SelectItem value="all">All categories</SelectItem>
                         {serviceCategories?.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.slug}>{cat.name}</SelectItem>
+                          <SelectItem key={cat.id} value={cat.categoryKey ?? cat.slug ?? cat.id}>{cat.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
