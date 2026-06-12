@@ -285,7 +285,7 @@ async function gatherOfferingCandidates(opts: {
   // Returns one row per offering with everything the engine needs to score.
   // Filters by isActive + market scope (universal OR matching market).
   try {
-    const [result, inventory] = await Promise.all([
+    const [result, inventory, demandRows] = await Promise.all([
       db.execute(sql`
         SELECT
           sot.offering_type_key                   AS offering_id,
@@ -322,9 +322,37 @@ async function gatherOfferingCandidates(opts: {
           )
       `),
       loadCoveringInventory(opts),
+      // Demand counts grouped by offering_type_key for the target city.
+      // When no marketCity is given, aggregate across all cities so discover
+      // surfaces without a city still benefit from global demand signals.
+      db.execute(
+        opts.marketCity
+          ? sql`
+              SELECT offering_type_key, COUNT(*)::INT AS demand_count
+              FROM service_demand_requests
+              WHERE LOWER(city) = LOWER(${opts.marketCity})
+              GROUP BY offering_type_key
+            `
+          : sql`
+              SELECT offering_type_key, COUNT(*)::INT AS demand_count
+              FROM service_demand_requests
+              GROUP BY offering_type_key
+            `
+      ).catch(() => ({ rows: [] })),
     ]);
 
     const rows = (result.rows ?? []) as any[];
+
+    // Build a raw demand-count map and max-normalize to [0,1] so the engine
+    // receives a comparable demandSignal regardless of absolute request volumes.
+    const demandCountMap = new Map<string, number>();
+    for (const d of (demandRows.rows ?? []) as any[]) {
+      demandCountMap.set(String(d.offering_type_key), Number(d.demand_count) || 0);
+    }
+    const maxDemand = demandCountMap.size > 0
+      ? Math.max(...Array.from(demandCountMap.values()))
+      : 0;
+
     const candidates: RankInputCandidate[] = [];
     for (const r of rows) {
       const isAffiliate = r.source_type === "affiliate";
@@ -340,6 +368,10 @@ async function gatherOfferingCandidates(opts: {
       const earnings = isAffiliate
         ? computeEarnings(r.aff_band_rate_type, r.aff_band_rate === null ? null : Number(r.aff_band_rate), null)
         : computeEarnings(r.band_rate_type, r.band_rate === null ? null : Number(r.band_rate), inv!.price);
+
+      // demandSignal: max-normalized request count → 0 when no requests recorded.
+      const rawCount = demandCountMap.get(String(r.offering_id)) ?? 0;
+      const demandSignal = maxDemand > 0 ? rawCount / maxDemand : 0;
 
       candidates.push({
         offeringId: String(r.offering_id),
@@ -359,6 +391,7 @@ async function gatherOfferingCandidates(opts: {
         profileMatchScore: 0.5,         // Phase 5.2 baseline; Phase 5.3+ refines
         // Affiliate inventory is broadly available → market-level proximity.
         proximityFit: isAffiliate ? PROXIMITY_FIT.market : PROXIMITY_FIT[inv!.matchType],
+        demandSignal,
       });
     }
     return candidates;
