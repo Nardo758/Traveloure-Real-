@@ -97,7 +97,7 @@ import transportHubRoutes from "./transport-hub.routes";
 import plancardRoutes from "./plancard.routes";
 import identityRoutes from "./identity.routes";
 import webhooksRoutes from "./webhooks.routes";
-import { affiliateClicks } from "@shared/schema";
+import { affiliateClicks, contentImpressions } from "@shared/schema";
 import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
@@ -7204,7 +7204,7 @@ router.post("/api/affiliate/track-click", async (req, res) => {
 
 router.post("/api/affiliates/track", async (req, res) => {
     try {
-      const { partner, destination, tripId, itineraryId } = req.body;
+      const { partner, destination, tripId, itineraryId, impressionId } = req.body;
       if (!partner) {
         return res.status(400).json({ message: "partner is required" });
       }
@@ -7220,6 +7220,7 @@ router.post("/api/affiliates/track", async (req, res) => {
         initiatedBy: "user",
         agentType: null,
         sessionId: [partner, destination].filter(Boolean).join(":") || partner,
+        sourceImpressionId: impressionId || null,
       });
       res.json({ success: true });
     } catch (error: any) {
@@ -7908,6 +7909,115 @@ router.get("/api/services/demand", async (req, res) => {
   } catch (err: any) {
     console.error("[services-demand]", err.message);
     return res.json({});
+  }
+});
+
+// === Discover Content Impression Tracking ===
+
+router.post("/api/tracking/impression", async (req, res) => {
+  try {
+    const { contentType, contentId, city, cardPosition, sessionId } = req.body;
+    if (!contentType || !contentId || !sessionId) {
+      return res.status(400).json({ message: "contentType, contentId, sessionId required" });
+    }
+    const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+    const [row] = await db
+      .insert(contentImpressions)
+      .values({
+        contentType,
+        contentId,
+        city: city || null,
+        cardPosition: typeof cardPosition === "number" ? cardPosition : null,
+        sessionId,
+        userId: userId || null,
+      })
+      .returning({ id: contentImpressions.id });
+    res.json({ impressionId: row.id });
+  } catch (err: any) {
+    console.error("[impression-track]", err.message);
+    res.status(500).json({ message: "Failed to record impression" });
+  }
+});
+
+// === Admin: Discover Impression Funnel ===
+
+router.get("/api/admin/content/impression-funnel", async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt((req.query.days as string) || "30", 10)));
+    const cityFilter = (req.query.city as string | undefined)?.trim() || null;
+    const typeFilter = (req.query.contentType as string | undefined)?.trim() || null;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // ── Impressions by type ──
+    const impRows = await db.execute(sql`
+      SELECT
+        content_type,
+        city,
+        COUNT(*) AS impressions,
+        COUNT(DISTINCT session_id) AS unique_sessions
+      FROM content_impressions
+      WHERE created_at >= ${since}
+        ${cityFilter ? sql`AND city ILIKE ${'%' + cityFilter + '%'}` : sql``}
+        ${typeFilter ? sql`AND content_type = ${typeFilter}` : sql``}
+      GROUP BY content_type, city
+      ORDER BY impressions DESC
+      LIMIT 50
+    `);
+
+    // ── Attributed clicks (those with a source_impression_id) ──
+    const clickRows = await db.execute(sql`
+      SELECT
+        ci.content_type,
+        ci.city,
+        COUNT(ac.id) AS attributed_clicks
+      FROM affiliate_clicks ac
+      JOIN content_impressions ci ON ci.id = ac.source_impression_id
+      WHERE ac.clicked_at >= ${since}
+        ${cityFilter ? sql`AND ci.city ILIKE ${'%' + cityFilter + '%'}` : sql``}
+        ${typeFilter ? sql`AND ci.content_type = ${typeFilter}` : sql``}
+      GROUP BY ci.content_type, ci.city
+      ORDER BY attributed_clicks DESC
+      LIMIT 50
+    `);
+
+    // ── Attributed itinerary adds (stored in metadata.sourceImpressionId) ──
+    const addRows = await db.execute(sql`
+      SELECT
+        ci.content_type,
+        ci.city,
+        COUNT(ic.id) AS itinerary_adds
+      FROM itinerary_changes ic
+      JOIN content_impressions ci ON ci.id = (ic.metadata->>'sourceImpressionId')
+      WHERE ic.created_at >= ${since}
+        AND ic.change_type = 'add'
+        ${cityFilter ? sql`AND ci.city ILIKE ${'%' + cityFilter + '%'}` : sql``}
+        ${typeFilter ? sql`AND ci.content_type = ${typeFilter}` : sql``}
+      GROUP BY ci.content_type, ci.city
+      ORDER BY itinerary_adds DESC
+      LIMIT 50
+    `);
+
+    // ── Summary totals ──
+    const [totals] = await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*) FROM content_impressions WHERE created_at >= ${since}) AS total_impressions,
+        (SELECT COUNT(*) FROM affiliate_clicks WHERE source_impression_id IS NOT NULL AND clicked_at >= ${since}) AS total_attributed_clicks,
+        (SELECT COUNT(*) FROM itinerary_changes WHERE (metadata->>'sourceImpressionId') IS NOT NULL AND created_at >= ${since} AND change_type = 'add') AS total_attributed_adds
+    `);
+
+    res.json({
+      impressionsByType: impRows.rows ?? impRows,
+      attributedClicks: clickRows.rows ?? clickRows,
+      attributedAdds: addRows.rows ?? addRows,
+      summary: {
+        totalImpressions: Number((totals.rows ?? totals)[0]?.total_impressions ?? 0),
+        totalAttributedClicks: Number((totals.rows ?? totals)[0]?.total_attributed_clicks ?? 0),
+        totalAttributedAdds: Number((totals.rows ?? totals)[0]?.total_attributed_adds ?? 0),
+      },
+    });
+  } catch (err: any) {
+    console.error("[impression-funnel]", err.message);
+    res.status(500).json({ message: "Failed to load impression funnel" });
   }
 });
 

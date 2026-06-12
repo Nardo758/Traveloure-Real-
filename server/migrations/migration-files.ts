@@ -89,4 +89,5 @@ export const MIGRATION_FILES = [
   "067_season_tag_on_offering_types.sql",
   "068_service_demand_requests.sql",
   "069_demand_request_notified_at.sql",
+  "070_content_impressions.sql",
 ] as const;

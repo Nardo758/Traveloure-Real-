@@ -18,6 +18,9 @@ import {
   Loader2,
   AlertCircle,
   Flame,
+  MousePointerClick,
+  PlusCircle,
+  Activity,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -26,6 +29,24 @@ interface AnalyticsData {
   topDestinations: Array<{ name: string; bookings: number; revenue: string }>;
   userDemographics: Array<{ segment: string; percentage: number }>;
   weeklyActivity: Array<{ day: string; users: number }>;
+}
+
+interface ImpressionFunnelRow {
+  content_type: string;
+  city: string | null;
+  impressions: number;
+  unique_sessions: number;
+}
+
+interface ImpressionFunnelData {
+  impressionsByType: ImpressionFunnelRow[];
+  attributedClicks: Array<{ content_type: string; city: string | null; attributed_clicks: number }>;
+  attributedAdds: Array<{ content_type: string; city: string | null; itinerary_adds: number }>;
+  summary: {
+    totalImpressions: number;
+    totalAttributedClicks: number;
+    totalAttributedAdds: number;
+  };
 }
 
 interface DemandSignalRow {
@@ -71,6 +92,20 @@ export default function AdminAnalytics() {
   const [cityFilter, setCityFilter] = useState("");
   const [offeringTypeFilter, setOfferingTypeFilter] = useState("");
   const [daysFilter, setDaysFilter] = useState("30");
+
+  const [funnelDays, setFunnelDays] = useState("30");
+  const [funnelCity, setFunnelCity] = useState("");
+  const [funnelType, setFunnelType] = useState("");
+
+  const funnelParams = new URLSearchParams({ days: funnelDays });
+  if (funnelCity.trim()) funnelParams.set("city", funnelCity.trim());
+  if (funnelType.trim()) funnelParams.set("contentType", funnelType.trim());
+
+  const { data: funnelData, isLoading: funnelLoading } = useQuery<ImpressionFunnelData>({
+    queryKey: ["/api/admin/content/impression-funnel", funnelDays, funnelCity, funnelType],
+    queryFn: () =>
+      fetch(`/api/admin/content/impression-funnel?${funnelParams.toString()}`).then((r) => r.json()),
+  });
 
   const demandParams = new URLSearchParams();
   if (cityFilter.trim()) demandParams.set("city", cityFilter.trim());

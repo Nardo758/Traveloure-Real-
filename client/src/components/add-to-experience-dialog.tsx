@@ -45,6 +45,8 @@ interface ExperienceItem {
   description?: string;
   type: "gem" | "neighborhood" | "hotel" | "activity" | "event";
   scheduledDate?: string | null;
+  sourceImpressionId?: string | null;
+  sourceContentId?: string | null;
 }
 
 interface AddToExperienceDialogProps {
@@ -117,6 +119,8 @@ export function AddToExperienceDialog({
           status: "planned",
           notes: `Added from ${item.city || "destination"}`,
           ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
+          ...(item.sourceImpressionId ? { sourceImpressionId: item.sourceImpressionId } : {}),
+          ...(item.sourceContentId ? { sourceContentId: item.sourceContentId } : {}),
         }),
       });
       if (!res.ok) throw new Error("Failed to add item");
