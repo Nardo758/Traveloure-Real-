@@ -7795,6 +7795,7 @@ router.get("/api/catalog/services", async (req, res) => {
     const entries = await queryCatalogServices({
       city,
       country:     req.query.country    as string | undefined,
+      templateKey: req.query.templateKey as string | undefined,
       categoryKey: req.query.categoryKey as string | undefined,
       dateStart:   req.query.dateStart   as string | undefined,
       dateEnd:     req.query.dateEnd     as string | undefined,
