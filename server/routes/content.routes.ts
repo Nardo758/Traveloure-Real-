@@ -7962,11 +7962,11 @@ router.post("/api/tracking/impression", async (req, res) => {
 // === Admin: Discover Impression Funnel ===
 
 router.get("/api/admin/content/impression-funnel", isAuthenticated, async (req, res) => {
-  const user = (req.user as any);
-  const userId = user?.claims?.sub || user?.id;
+  const rawUser = req.user as any;
+  const userId = rawUser?.claims?.sub || rawUser?.id || null;
   if (!userId) return res.status(401).json({ message: "Authentication required" });
-  const dbUser = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!dbUser[0] || dbUser[0].role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  const [dbUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!dbUser || dbUser.role !== "admin") return res.status(403).json({ message: "Admin access required" });
   try {
     const days = Math.min(365, Math.max(1, parseInt((req.query.days as string) || "30", 10)));
     const cityFilter = (req.query.city as string | undefined)?.trim() || null;
