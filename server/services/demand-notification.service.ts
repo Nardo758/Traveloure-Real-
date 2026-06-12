@@ -10,9 +10,14 @@
  *      offering_type_key = resolved key AND
  *      user_id IS NOT NULL AND
  *      notified_at IS NULL.
- *   3. Loads each user's email + name from the users table.
- *   4. Sends a Resend email linking to the service page.
- *   5. Marks all notified rows with notified_at = NOW().
+ *   3. Deduplicates to one email per user (a user may have submitted
+ *      multiple demand requests for the same city + offering type).
+ *   4. Loads each user's email + name from the users table.
+ *   5. Sends a Resend email (one per user) linking to the service page.
+ *   6. Marks ALL of that user's matching demand rows with notified_at = NOW()
+ *      — but ONLY after the email is confirmed sent.
+ *   7. If RESEND_API_KEY is absent, logs a warning and leaves rows
+ *      un-notified so they can be picked up once the key is configured.
  */
 
 import { db } from "../db";
@@ -92,26 +97,41 @@ export async function notifyDemandRequesters(serviceId: string): Promise<void> {
       return;
     }
 
-    const userIds = [...new Set(demands.map((d) => d.userId!))];
+    // Group demand row IDs by userId so each user gets exactly one email,
+    // but all their matching rows get marked notified after a successful send.
+    const byUser = new Map<string, { city: string; demandIds: string[] }>();
+    for (const demand of demands) {
+      const uid = demand.userId!;
+      if (!byUser.has(uid)) {
+        byUser.set(uid, { city: demand.city, demandIds: [] });
+      }
+      byUser.get(uid)!.demandIds.push(demand.id);
+    }
+
+    const userIds = [...byUser.keys()];
 
     // Load user emails and names
     const userRows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        firstName: users.firstName,
-      })
+      .select({ id: users.id, email: users.email, firstName: users.firstName })
       .from(users)
       .where(inArray(users.id, userIds));
 
     const userMap = new Map(userRows.map((u) => [u.id, u]));
 
     const resend = getResend();
-    const serviceUrl = `${getAppBaseUrl()}/services/${service.id}`;
-    const sentDemandIds: string[] = [];
+    if (!resend) {
+      console.warn(
+        `[demand-notify] RESEND_API_KEY not set — ${demands.length} demand request(s) for ` +
+        `offering "${offeringTypeKey}" in "${service.location}" will NOT be notified until key is configured`
+      );
+      return;
+    }
 
-    for (const demand of demands) {
-      const user = userMap.get(demand.userId!);
+    const serviceUrl = `${getAppBaseUrl()}/services/${service.id}`;
+    let notifiedCount = 0;
+
+    for (const [userId, { city, demandIds }] of byUser) {
+      const user = userMap.get(userId);
       if (!user?.email) continue;
 
       const greeting = user.firstName ? `Hi ${user.firstName},` : "Hi,";
@@ -122,7 +142,7 @@ export async function notifyDemandRequesters(serviceId: string): Promise<void> {
           <p style="color: #374151;">${greeting}</p>
           <p style="color: #374151;">
             You previously requested a <strong>${service.serviceName}</strong> service in
-            <strong>${demand.city}</strong>. A provider has just listed exactly that — and you can
+            <strong>${city}</strong>. A provider has just listed exactly that — and you can
             book it now.
           </p>
           <p style="margin: 24px 0;">
@@ -148,52 +168,46 @@ export async function notifyDemandRequesters(serviceId: string): Promise<void> {
         ``,
         greeting,
         ``,
-        `You previously requested a "${service.serviceName}" service in ${demand.city}. A provider has just listed exactly that — and you can book it now.`,
+        `You previously requested a "${service.serviceName}" service in ${city}. A provider has just listed exactly that — and you can book it now.`,
         ``,
         `View and book: ${serviceUrl}`,
         ``,
         `You're receiving this because you requested this service type on Traveloure.`,
       ].join("\n");
 
-      if (resend) {
-        try {
-          await resend.emails.send({
-            from: getFromAddress(),
-            to: user.email,
-            subject: `"${service.serviceName}" is now available in ${demand.city}`,
-            html,
-            text,
-          });
-          console.log(
-            `[demand-notify] Sent availability email to ${user.email} for service ${serviceId} (demand ${demand.id})`
-          );
-        } catch (emailErr) {
-          console.error(
-            `[demand-notify] Failed to send email to ${user.email}:`,
-            emailErr
-          );
-          continue;
-        }
-      } else {
+      try {
+        await resend.emails.send({
+          from: getFromAddress(),
+          to: user.email,
+          subject: `"${service.serviceName}" is now available in ${city}`,
+          html,
+          text,
+        });
+
+        // Email confirmed sent — now mark ALL this user's matching demand rows notified
+        await db
+          .update(serviceDemandRequests)
+          .set({ notifiedAt: new Date() })
+          .where(inArray(serviceDemandRequests.id, demandIds));
+
+        notifiedCount += demandIds.length;
         console.log(
-          `[demand-notify] RESEND_API_KEY not set — skipping email to ${user.email} for demand ${demand.id}`
+          `[demand-notify] Sent availability email to ${user.email} for service ${serviceId}` +
+          ` (marked ${demandIds.length} demand row(s) notified)`
+        );
+      } catch (emailErr) {
+        // Leave rows un-notified so they can be retried when the service is next activated
+        // or when a future notification run occurs.
+        console.error(
+          `[demand-notify] Failed to send email to ${user.email} — rows left un-notified for retry:`,
+          emailErr
         );
       }
-
-      sentDemandIds.push(demand.id);
     }
 
-    // Mark sent (or would-have-been-sent) rows as notified
-    if (sentDemandIds.length > 0) {
-      await db
-        .update(serviceDemandRequests)
-        .set({ notifiedAt: new Date() })
-        .where(inArray(serviceDemandRequests.id, sentDemandIds));
-
-      console.log(
-        `[demand-notify] Marked ${sentDemandIds.length} demand request(s) as notified for service ${serviceId}`
-      );
-    }
+    console.log(
+      `[demand-notify] Done for service ${serviceId}: ${notifiedCount}/${demands.length} demand row(s) notified`
+    );
   } catch (err) {
     console.error("[demand-notify] Unexpected error in notifyDemandRequesters:", err);
   }
