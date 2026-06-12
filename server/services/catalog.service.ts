@@ -44,6 +44,7 @@ import {
   providerServices,
   providerNeighborhoodCoverage,
   cityNeighborhoods,
+  serviceCategories,
   users,
 } from "@shared/schema";
 import { expandDemandType } from "./demand-service-synonyms";
@@ -125,6 +126,10 @@ async function fetchCoveredProviders(city: string, distanceKm?: number): Promise
       : [])
   );
 
+  // Join serviceCategories to get the stable categoryKey for this provider service,
+  // then constrain providerNeighborhoodCoverage to only match rows where that
+  // same categoryKey is covered. This prevents the cross-product where a provider
+  // with photography coverage is treated as covered for an unrelated cooking service.
   const rows = await db
     .selectDistinct({
       id:                providerServices.id,
@@ -140,9 +145,15 @@ async function fetchCoveredProviders(city: string, distanceKm?: number): Promise
     })
     .from(providerServices)
     .innerJoin(users, eq(providerServices.userId, users.id))
+    // Category-safe join: resolve the provider service's own category key first
+    .innerJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
+    // Coverage join constrained to the same category key — prevents cross-product
     .innerJoin(
       providerNeighborhoodCoverage,
-      eq(providerNeighborhoodCoverage.providerId, providerServices.userId)
+      and(
+        eq(providerNeighborhoodCoverage.providerId, providerServices.userId),
+        eq(providerNeighborhoodCoverage.categoryKey, serviceCategories.categoryKey)
+      )
     )
     .innerJoin(
       cityNeighborhoods,
