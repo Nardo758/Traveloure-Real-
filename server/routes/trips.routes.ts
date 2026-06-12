@@ -1482,7 +1482,16 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
-      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
+      const { sourceImpressionId, sourceContentId } = req.body as any;
+      logItineraryChange(
+        tripId,
+        userName,
+        `Added "${item.title}"`,
+        "add",
+        tripRole!,
+        item.id,
+        sourceImpressionId ? { sourceImpressionId, sourceContentId: sourceContentId ?? null } : undefined,
+      );
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
