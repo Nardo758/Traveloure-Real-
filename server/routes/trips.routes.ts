@@ -135,6 +135,7 @@ async function verifyTripOwnership(tripId: string, userId: string): Promise<bool
 }
 
 function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
+  const { sourceImpressionId, sourceContentId, ...restMeta } = metadata || {};
   return storage.createItineraryChange({
     tripId,
     activityId: activityId || null,
@@ -142,7 +143,9 @@ function logItineraryChange(tripId: string, who: string, action: string, changeT
     action,
     changeType,
     role,
-    metadata: metadata || {},
+    metadata: Object.keys(restMeta).length > 0 ? restMeta : {},
+    sourceImpressionId: sourceImpressionId ?? null,
+    sourceContentId: sourceContentId ?? null,
   }).catch(err => console.error("Failed to log itinerary change:", err));
 }
 

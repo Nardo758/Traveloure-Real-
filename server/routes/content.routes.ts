@@ -7985,13 +7985,21 @@ router.get("/api/admin/content/impression-funnel", async (req, res) => {
       LIMIT 50
     `);
 
+    const UUID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
     // ── Attributed clicks (those with a source_impression_id) ──
+    // Pre-filter in a subquery so the ::uuid cast never sees invalid values.
     const clickResult = await db.execute(sql`
       SELECT
         ci.content_type,
         ci.city,
         COUNT(ac.id)::int AS attributed_clicks
-      FROM affiliate_clicks ac
+      FROM (
+        SELECT id, source_impression_id, clicked_at
+        FROM affiliate_clicks
+        WHERE source_impression_id IS NOT NULL
+          AND source_impression_id ~ ${UUID_PATTERN}
+      ) ac
       JOIN content_impressions ci ON ci.id = ac.source_impression_id::uuid
       WHERE ac.clicked_at >= ${since}
         AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
@@ -8001,16 +8009,22 @@ router.get("/api/admin/content/impression-funnel", async (req, res) => {
       LIMIT 50
     `);
 
-    // ── Attributed itinerary adds (stored in metadata.sourceImpressionId) ──
+    // ── Attributed itinerary adds (typed source_impression_id column) ──
+    // Pre-filter in a subquery so the ::uuid cast never sees invalid values.
     const addResult = await db.execute(sql`
       SELECT
         ci.content_type,
         ci.city,
         COUNT(ic.id)::int AS itinerary_adds
-      FROM itinerary_changes ic
-      JOIN content_impressions ci ON ci.id = (ic.metadata->>'sourceImpressionId')::uuid
+      FROM (
+        SELECT id, source_impression_id, created_at
+        FROM itinerary_changes
+        WHERE change_type = 'add'
+          AND source_impression_id IS NOT NULL
+          AND source_impression_id ~ ${UUID_PATTERN}
+      ) ic
+      JOIN content_impressions ci ON ci.id = ic.source_impression_id::uuid
       WHERE ic.created_at >= ${since}
-        AND ic.change_type = 'add'
         AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
         AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
       GROUP BY ci.content_type, ci.city
@@ -8026,18 +8040,28 @@ router.get("/api/admin/content/impression-funnel", async (req, res) => {
             AND (${cityLike}::text IS NULL OR city ILIKE ${cityLike}::text)
             AND (${typeFilter}::text IS NULL OR content_type = ${typeFilter}::text)
         ) AS total_impressions,
-        (SELECT COUNT(ac.id)::int FROM affiliate_clicks ac
-          JOIN content_impressions ci ON ci.id = ac.source_impression_id::uuid
-          WHERE ac.clicked_at >= ${since}
-            AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
-            AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
+        (SELECT COUNT(ac2.id)::int
+          FROM (
+            SELECT id, source_impression_id, clicked_at FROM affiliate_clicks
+            WHERE source_impression_id IS NOT NULL
+              AND source_impression_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          ) ac2
+          JOIN content_impressions ci2 ON ci2.id = ac2.source_impression_id::uuid
+          WHERE ac2.clicked_at >= ${since}
+            AND (${cityLike}::text IS NULL OR ci2.city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR ci2.content_type = ${typeFilter}::text)
         ) AS total_attributed_clicks,
-        (SELECT COUNT(ic.id)::int FROM itinerary_changes ic
-          JOIN content_impressions ci ON ci.id = (ic.metadata->>'sourceImpressionId')::uuid
-          WHERE ic.created_at >= ${since}
-            AND ic.change_type = 'add'
-            AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
-            AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
+        (SELECT COUNT(ic2.id)::int
+          FROM (
+            SELECT id, source_impression_id, created_at FROM itinerary_changes
+            WHERE change_type = 'add'
+              AND source_impression_id IS NOT NULL
+              AND source_impression_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          ) ic2
+          JOIN content_impressions ci3 ON ci3.id = ic2.source_impression_id::uuid
+          WHERE ic2.created_at >= ${since}
+            AND (${cityLike}::text IS NULL OR ci3.city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR ci3.content_type = ${typeFilter}::text)
         ) AS total_attributed_adds
     `);
 
