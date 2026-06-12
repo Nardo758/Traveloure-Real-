@@ -5724,6 +5724,7 @@ export const serviceOfferingTypes = pgTable("service_offering_types", {
   marketScoped: text("market_scoped").array(),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  seasonTag: varchar("season_tag", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
