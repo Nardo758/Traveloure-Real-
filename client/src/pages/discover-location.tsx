@@ -464,7 +464,7 @@ function RecommendationCard({
     ? (affiliateLabel ?? "Sponsored")
     : (label ?? "Recommended");
   const meta = offeringCategoryMeta(categoryKey);
-  const { ref: impressionRef } = useImpressionTracker(
+  const { ref: impressionRef, getImpressionId: getImpIdRec } = useImpressionTracker(
     "recommendation",
     String(item.id),
     city,
@@ -502,7 +502,7 @@ function RecommendationCard({
         <Button
           size="sm"
           className="h-7 text-[12px] px-3"
-          onClick={() => onAdd({ ...item.data, title: displayName, city })}
+          onClick={() => onAdd({ ...item.data, title: displayName, city, sourceImpressionId: getImpIdRec(), sourceContentId: String(item.id) })}
           data-testid="btn-rec-add"
         >
           Add
