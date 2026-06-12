@@ -240,6 +240,8 @@ interface CatalogServiceBrowserProps {
   city?: string;
   country?: string;
   categoryFilter?: string;
+  /** Max service radius in km — maps from the "Within X km" distance selector */
+  distanceKm?: string;
   startDate?: Date;
   endDate?: Date;
   onAddToCart?: (item: {
@@ -256,6 +258,7 @@ export function CatalogServiceBrowser({
   city = "",
   country = "",
   categoryFilter = "all",
+  distanceKm = "any",
   startDate,
   endDate,
   onAddToCart,
@@ -264,6 +267,7 @@ export function CatalogServiceBrowser({
   if (city) params.set("city", city);
   if (country) params.set("country", country);
   if (categoryFilter && categoryFilter !== "all") params.set("categoryKey", categoryFilter);
+  if (distanceKm && distanceKm !== "any") params.set("distanceKm", distanceKm);
   if (startDate) params.set("dateStart", startDate.toISOString().split("T")[0]);
   if (endDate) params.set("dateEnd", endDate.toISOString().split("T")[0]);
 
