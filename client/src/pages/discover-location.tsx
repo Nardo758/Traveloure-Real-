@@ -357,7 +357,7 @@ function StatsRow({
           <b className="text-foreground font-semibold">
             {Number(cityIntel.activeTravelers).toLocaleString()}
           </b>{" "}
-          travelers here now
+          travellers here now
         </div>
       )}
       {cityIntel.crowdLevel && (
@@ -512,6 +512,7 @@ function FillerCard({
   scheduledDate,
   onAdd,
   isMarquee,
+  cardPosition,
   onBookRec,
   recLabels,
 }: {
@@ -520,6 +521,7 @@ function FillerCard({
   scheduledDate: string | null;
   onAdd: (item: any) => void;
   isMarquee?: boolean;
+  cardPosition?: number;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
@@ -532,10 +534,11 @@ function FillerCard({
           scheduledDate={scheduledDate}
           onAdd={onAdd}
           layout={isMarquee ? "row" : "column"}
+          cardPosition={cardPosition}
         />
       );
     case "expert":
-      return <CityFeedCardExpert expert={item.data} city={city} />;
+      return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} />;
     case "event":
       return (
         <CityFeedCardEvent
@@ -543,6 +546,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "supply-hotel":
@@ -554,6 +558,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "vendor-service":
@@ -561,6 +566,7 @@ function FillerCard({
         <CityFeedCardVendorService
           service={item.data}
           city={city}
+          cardPosition={cardPosition}
         />
       );
     case "recommendation":
@@ -575,6 +581,7 @@ function FillerCard({
           recommendedLabel={recLabels?.recommendedLabel}
           affiliateLabel={recLabels?.affiliateLabel}
           layout={isMarquee ? "row" : "column"}
+          cardPosition={cardPosition}
         />
       );
     case "wanted-slot":
@@ -675,19 +682,15 @@ function FeedRenderer({
           );
         }
 
-        // Bento group: first item is span-2 (marquee), rest are half-width.
-        // Banner-style injected cards (wanted-slot, lead-expert) always span
-        // the full row — they're horizontal strips, not photo cells.
+        // Bento group: first item is span-2 (marquee), rest pair into half-width cells.
+        // All items — including lead-expert and wanted-slot — participate in the
+        // 2-col grid so the rhythm stays intact. Only idx===0 gets the marquee span.
         return (
           <div key={`group-${si}`} className="grid grid-cols-2 gap-3">
             {section.items.map((item, itemIdx) => (
               <div
                 key={item.id}
-                className={
-                  itemIdx === 0 || item.kind === "wanted-slot" || item.kind === "lead-expert"
-                    ? "col-span-2"
-                    : ""
-                }
+                className={itemIdx === 0 ? "col-span-2" : ""}
               >
                 <FillerCard
                   item={item}
@@ -695,6 +698,7 @@ function FeedRenderer({
                   scheduledDate={scheduledDate}
                   onAdd={onAdd}
                   isMarquee={itemIdx === 0}
+                  cardPosition={itemIdx}
                   onBookRec={onBookRec}
                   recLabels={recLabels}
                 />
@@ -1150,10 +1154,6 @@ export default function DiscoverLocationPage() {
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
 
-  const feedItems: FeedItem[] = data
-    ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
-    : [];
-
   // ── Engine recommendations (discover_location upsell surface) ──────────
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
   // endorsed by those experts — the authoritative endorsement signal driving
@@ -1177,7 +1177,7 @@ export default function DiscoverLocationPage() {
   // ── Injected-element payloads for the composition layer ────────────────
   // Lead expert: derived from the top slot candidate's categoryKey — the
   // server ranked the offering endorsed by local experts, so the expert whose
-  // specialties overlap the top offering is the authoritative neighborhood
+  // specialties overlap the top offering is the authoritative neighbourhood
   // lead. Falls back to the first expert when no overlap is found.
   const leadExpert = experts.length > 0
     ? (() => {
@@ -1191,6 +1191,20 @@ export default function DiscoverLocationPage() {
           : experts[0]) as any;
       })()
     : null;
+
+  // Exclude the lead-expert from the filler pool to avoid the same person
+  // appearing twice (once as kind="expert", once as kind="lead-expert").
+  const feedExperts = leadExpert
+    ? experts.filter((e: any) => {
+        const eId = String(e.id ?? e.userId ?? e.user_id ?? "");
+        const lId = String((leadExpert as any).id ?? (leadExpert as any).userId ?? (leadExpert as any).user_id ?? "__none__");
+        return eId !== lId;
+      })
+    : experts;
+
+  const feedItems: FeedItem[] = data
+    ? buildFeedStream(neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices)
+    : [];
 
   // Wanted/recruitment slots: one per neighborhood for offering types the
   // engine found NO coverage for at all ("covered" = ranked candidates +
