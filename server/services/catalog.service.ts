@@ -190,29 +190,27 @@ async function fetchLocationFallbackProviders(city: string, distanceKm?: number)
 }
 
 // ─── Match a single offering type to the best provider ───────────────────────
+//
+// Only serviceType synonym expansion is used — no category-level fallback.
+// A category fallback would cause a cross-product: a provider who has
+// neighborhood coverage for "photography" but also has an unrelated cooking
+// service would incorrectly match cooking offering types. Returning null
+// (request-this) is always safer than linking to a wrong service.
 
 function findBestMatch(
-  offering: { offeringTypeKey: string; categoryKey: string },
+  offering: { offeringTypeKey: string },
   providers: ProviderRow[]
 ): ProviderRow | null {
   const expansionTerms = expandDemandType(offering.offeringTypeKey);
 
-  // Priority 1: offering-type-level match via serviceType synonym expansion
-  const typeMatches = providers.filter(p => {
+  const matches = providers.filter(p => {
     if (!p.serviceType) return false;
     const svcType = p.serviceType.toLowerCase();
     return expansionTerms.some(t => svcType === t || svcType.includes(t) || t.includes(svcType));
   });
 
-  // Priority 2: category-level coverage match (provider serves this category in the city)
-  const catMatches = typeMatches.length > 0
-    ? typeMatches
-    : providers.filter(p => p.coveredCategoryKey === offering.categoryKey);
-
-  const candidates = catMatches.length > 0 ? catMatches : [];
-
   // Sort by rating then review count
-  return candidates.sort((a, b) => {
+  return matches.sort((a, b) => {
     const rA = parseFloat(a.averageRating ?? "0");
     const rB = parseFloat(b.averageRating ?? "0");
     if (rB !== rA) return rB - rA;
