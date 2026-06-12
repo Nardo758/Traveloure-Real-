@@ -902,13 +902,20 @@ interface CityFeedCardVendorServiceProps {
   service: any;
   city: string;
   className?: string;
+  cardPosition?: number;
 }
 
-export function CityFeedCardVendorService({ service, city, className }: CityFeedCardVendorServiceProps) {
+export function CityFeedCardVendorService({ service, city, className, cardPosition }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
   const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
+  const { ref: impressionRefVendor, getImpressionId: getImpIdVendor } = useImpressionTracker(
+    "vendor-service",
+    String(service.id),
+    city,
+    cardPosition,
+  );
 
   const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
 
@@ -937,6 +944,7 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
   return (
     <>
       <div
+        ref={impressionRefVendor}
         className={cn(
           "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
           className,
@@ -1032,10 +1040,22 @@ export function CityFeedCardVendorService({ service, city, className }: CityFeed
               Inquire
             </Button>
             {externalUrl && (
-              <Button size="sm" variant="outline" className="h-7 px-2" asChild>
-                <a href={externalUrl} target="_blank" rel="noopener noreferrer" data-testid={`btn-website-svc-${service.id}`}>
-                  <Globe className="w-3 h-3" />
-                </a>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2"
+                onClick={() => {
+                  const impId = getImpIdVendor();
+                  fetch("/api/affiliates/track", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ partner: "discover-vendor", destination: city, impressionId: impId }),
+                  }).catch(() => {});
+                  window.open(externalUrl, "_blank", "noopener");
+                }}
+                data-testid={`btn-website-svc-${service.id}`}
+              >
+                <Globe className="w-3 h-3" />
               </Button>
             )}
             <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
@@ -1198,7 +1218,21 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           )}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-            <Button size="sm" className="h-7 text-xs px-3">Book</Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs px-3"
+              onClick={() => {
+                const impId = getImpIdSupply();
+                fetch("/api/affiliates/track", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ partner: "discover-supply", destination: city, impressionId: impId }),
+                }).catch(() => {});
+                const bookUrl = item.bookingLink || item.externalUrl || item.url;
+                if (bookUrl) window.open(bookUrl, "_blank", "noopener");
+              }}
+              data-testid={`btn-book-supply-${item.id}`}
+            >Book</Button>
             <Button
               size="sm"
               variant="outline"
