@@ -7791,12 +7791,14 @@ router.get("/api/catalog/services", async (req, res) => {
     const city = (req.query.city as string || "").trim();
     if (!city) return res.json([]);
 
+    const distanceKm = req.query.distanceKm ? parseInt(req.query.distanceKm as string, 10) : undefined;
     const entries = await queryCatalogServices({
       city,
-      country:     req.query.country  as string | undefined,
+      country:     req.query.country    as string | undefined,
       categoryKey: req.query.categoryKey as string | undefined,
-      dateStart:   req.query.dateStart as string | undefined,
-      dateEnd:     req.query.dateEnd   as string | undefined,
+      dateStart:   req.query.dateStart   as string | undefined,
+      dateEnd:     req.query.dateEnd     as string | undefined,
+      distanceKm:  distanceKm && !isNaN(distanceKm) ? distanceKm : undefined,
     });
 
     return res.json(entries);
