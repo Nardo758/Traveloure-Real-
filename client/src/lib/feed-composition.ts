@@ -68,8 +68,11 @@ export function composeDiscoverFeed(
   let organicSinceLastRec = 0;
   let recIdx = 0; // Opaque sequential ID for recommendation cards — never exposes raw offeringId
 
+  // Separate high-demand slots (≥5 requests) for early injection; rest follow normal spacing
+  const slotQueue = [...wantedSlots]; // already sorted demand-desc by caller
   let wantedInserted = 0;
   let organicSinceLastWanted = 0;
+  let highDemandEarlyDone = false;
 
   const leadExpertId = leadExpert?.id ?? leadExpert?.userId ?? leadExpert?.user_id ?? null;
 
@@ -119,12 +122,31 @@ export function composeDiscoverFeed(
         organicSinceLastRec = 0;
       }
 
+      // Early high-demand slot injection: first slot with demandCount ≥ 5 appears
+      // within the first 8 feed items regardless of normal spacing.
       if (
-        wantedSlots.length > wantedInserted &&
+        !highDemandEarlyDone &&
+        slotQueue.length > 0 &&
+        (slotQueue[0].demandCount ?? 0) >= 5 &&
+        result.length >= 7 &&
+        wantedInserted < cfg.wantedSlotMax
+      ) {
+        const slot = slotQueue.shift()!;
+        result.push({
+          kind: "wanted-slot" as FeedItemKind,
+          id: `wanted-${slot.neighborhoodId}-hd`,
+          data: slot,
+        });
+        wantedInserted++;
+        highDemandEarlyDone = true;
+        organicSinceLastWanted = 0;
+      } else if (
+        slotQueue.length > 0 &&
         wantedInserted < cfg.wantedSlotMax &&
         organicSinceLastWanted >= cfg.wantedSlotSpacing
       ) {
-        const slot = wantedSlots[wantedInserted];
+        // Normal spacing for remaining slots
+        const slot = slotQueue.shift()!;
         result.push({
           kind: "wanted-slot" as FeedItemKind,
           id: `wanted-${slot.neighborhoodId}-${wantedInserted}`,

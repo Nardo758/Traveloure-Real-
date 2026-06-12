@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { geocodeAddress } from "../utils/geocode";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -1861,6 +1861,66 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
   });
 
   // Admin: Get pending destination events
+
+// Static sub-routes must precede the parameterized :id route.
+// Uses pool.query (not drizzle sql tag) to safely pass text[] parameters.
+router.get("/api/services/demand", async (req, res) => {
+  try {
+    const city = ((req.query.city as string) || "").toLowerCase().trim();
+    const keysStr = ((req.query.offeringTypeKeys as string) || "").trim();
+    if (!city || !keysStr) return res.json({});
+
+    const keys = keysStr.split(",").map((k: string) => k.trim()).filter(Boolean);
+    if (keys.length === 0) return res.json({});
+
+    const dateStart = (req.query.dateRangeStart as string) || null;
+    const dateEnd = (req.query.dateRangeEnd as string) || dateStart;
+    const nbIdsStr = ((req.query.neighborhoodIds as string) || "").trim();
+    const nbIds = nbIdsStr ? nbIdsStr.split(",").map((n: string) => n.trim()).filter(Boolean) : [];
+
+    // City-level counts — parameterized query via pool to handle text[] correctly
+    const cityParams: any[] = [city, keys];
+    let cityQ = `
+      SELECT offering_type_key, COUNT(*)::int AS demand_count
+      FROM service_demand_requests
+      WHERE city = $1 AND offering_type_key = ANY($2)`;
+    if (dateStart && dateEnd) {
+      cityQ += ` AND date_range_start IS NOT NULL AND date_range_start <= $3::date AND date_range_end >= $4::date`;
+      cityParams.push(dateEnd, dateStart);
+    }
+    cityQ += ` GROUP BY offering_type_key`;
+
+    const cityRows = await pool.query(cityQ, cityParams);
+    const counts: Record<string, number> = {};
+    for (const row of cityRows.rows) {
+      counts[String(row.offering_type_key)] = Number(row.demand_count);
+    }
+
+    // Neighborhood-scoped counts — keyed as "{neighborhoodId}:{offeringTypeKey}"
+    if (nbIds.length > 0) {
+      const nbParams: any[] = [city, keys, nbIds];
+      let nbQ = `
+        SELECT neighborhood_id, offering_type_key, COUNT(*)::int AS demand_count
+        FROM service_demand_requests
+        WHERE city = $1 AND offering_type_key = ANY($2) AND neighborhood_id = ANY($3)`;
+      if (dateStart && dateEnd) {
+        nbQ += ` AND date_range_start IS NOT NULL AND date_range_start <= $4::date AND date_range_end >= $5::date`;
+        nbParams.push(dateEnd, dateStart);
+      }
+      nbQ += ` GROUP BY neighborhood_id, offering_type_key`;
+
+      const nbRows = await pool.query(nbQ, nbParams);
+      for (const row of nbRows.rows) {
+        counts[`${row.neighborhood_id}:${row.offering_type_key}`] = Number(row.demand_count);
+      }
+    }
+
+    return res.json(counts);
+  } catch (err: any) {
+    console.error("[services-demand]", err.message);
+    return res.json({});
+  }
+});
 
 router.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
@@ -7877,44 +7937,6 @@ router.post("/api/services/request", async (req, res) => {
   } catch (err: any) {
     console.error("[services-request]", err.message);
     return res.status(500).json({ error: "Failed to record request" });
-  }
-});
-
-router.get("/api/services/demand", async (req, res) => {
-  try {
-    const city = ((req.query.city as string) || "").toLowerCase().trim();
-    const keysStr = ((req.query.offeringTypeKeys as string) || "").trim();
-    if (!city || !keysStr) return res.json({});
-
-    const keys = keysStr.split(",").map((k) => k.trim()).filter(Boolean);
-    if (keys.length === 0) return res.json({});
-
-    const dateStart = (req.query.dateRangeStart as string) || null;
-    const dateEnd = (req.query.dateRangeEnd as string) || dateStart;
-
-    const dateFilter = dateStart && dateEnd
-      ? sql` AND date_range_start IS NOT NULL
-             AND date_range_start <= ${dateEnd}::date
-             AND date_range_end >= ${dateStart}::date`
-      : sql``;
-
-    const rows = await db.execute(sql`
-      SELECT offering_type_key, COUNT(*)::int AS demand_count
-      FROM service_demand_requests
-      WHERE city = ${city}
-        AND offering_type_key = ANY(${keys}::text[])
-        ${dateFilter}
-      GROUP BY offering_type_key
-    `);
-
-    const counts: Record<string, number> = {};
-    for (const row of (rows.rows ?? []) as any[]) {
-      counts[String(row.offering_type_key)] = Number(row.demand_count);
-    }
-    return res.json(counts);
-  } catch (err: any) {
-    console.error("[services-demand]", err.message);
-    return res.json({});
   }
 });
 
