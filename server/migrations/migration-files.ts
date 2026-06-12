@@ -91,4 +91,5 @@ export const MIGRATION_FILES = [
   "069_demand_request_notified_at.sql",
   "070_content_impressions.sql",
   "071_impressions_dedup_index.sql",
+  "072_itinerary_changes_source_tracking.sql",
 ] as const;
