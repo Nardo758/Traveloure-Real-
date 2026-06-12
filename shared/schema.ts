@@ -4992,6 +4992,8 @@ export const itineraryChanges = pgTable("itinerary_changes", {
   changeType: varchar("change_type", { length: 20 }).notNull(), // edit, suggest, ai, confirm, reorder, add, remove
   role: varchar("role", { length: 20 }).notNull(), // owner, expert, friend, ai
   metadata: jsonb("metadata").default({}),
+  sourceImpressionId: varchar("source_impression_id"),
+  sourceContentId: varchar("source_content_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

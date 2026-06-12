@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getOrCreateGuestSessionId } from "@/lib/guest-session";
+import { getOrCreateImpressionSessionId } from "@/lib/guest-session";
 
 /**
  * Module-level dedup set — persists for the browser tab lifetime.
@@ -29,7 +29,7 @@ export function useImpressionTracker(
   useEffect(() => {
     if (!contentType || !contentId) return;
 
-    const sessionId = getOrCreateGuestSessionId();
+    const sessionId = getOrCreateImpressionSessionId();
     const dedupeKey = `${sessionId}:${contentType}:${contentId}`;
 
     if (_seen.has(dedupeKey)) return;
