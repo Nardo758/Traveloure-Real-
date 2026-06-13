@@ -91,4 +91,5 @@ export const MIGRATION_FILES = [
   // These files should be added when merging from the source branch.
   "075_seed_feed_composition_settings.sql",
   "076_phase2_optimizer_prices.sql",
+  "077_event_coordination_profiles.sql",
 ] as const;
