@@ -202,7 +202,7 @@ export function AddToExperienceDialog({
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="trips">My Trips</TabsTrigger>
+            <TabsTrigger value="trips">My Plans</TabsTrigger>
             <TabsTrigger value="templates">Experience Type</TabsTrigger>
           </TabsList>
 
@@ -229,7 +229,7 @@ export function AddToExperienceDialog({
                     window.location.href = "/my-trips";
                   }}
                 >
-                  Go to My Trips
+                  Go to My Plans
                 </Button>
               </div>
             ) : (
