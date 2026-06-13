@@ -21,7 +21,7 @@
 
 import { db } from "../db";
 import { travelPulseHiddenGems, travelPulseCities } from "@shared/schema";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 // ── 1. Neighborhood backfill map ─────────────────────────────────────────────
 // Each entry: (city, place_name) → neighborhood slug.
