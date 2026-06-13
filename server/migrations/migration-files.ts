@@ -94,4 +94,5 @@ export const MIGRATION_FILES = [
   "072_itinerary_changes_source_tracking.sql",
   "073_affiliate_clicks_content_fields.sql",
   "074_seed_feed_composition_settings.sql",
+  "075_seed_feed_composition_settings.sql",
 ] as const;
