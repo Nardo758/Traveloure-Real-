@@ -99,6 +99,42 @@ export interface ComposeFeedOpts {
   isRelated?: (item: FeedItem, rec: FeedRecommendation) => boolean;
 }
 
+/**
+ * Shape of a wanted/recruitment slot with optional demand enrichment.
+ * The demand fields are populated by the discover page from /api/services/demand.
+ */
+export interface WantedSlotData {
+  offeringLabel: string;
+  offeringKey: string;
+  neighborhoodName: string;
+  city: string;
+  neighborhoodId: string;
+  demandCount?: number;
+  dateContext?: string;
+}
+
+/**
+ * Positional-args wrapper around composeFeedStream for use by the discover page.
+ * Adapts WantedSlotData[] (with demand enrichment) to the wantedSlots shape.
+ */
+export function composeDiscoverFeed(
+  organic: FeedItem[],
+  recommendations: FeedRecommendation[],
+  wantedSlotsData: WantedSlotData[],
+  leadExpert: any | null,
+  config?: Partial<FeedCompositionConfig>,
+  isRelated?: (item: FeedItem, rec: FeedRecommendation) => boolean,
+): FeedItem[] {
+  return composeFeedStream({
+    organic,
+    recommendations,
+    wantedSlots: wantedSlotsData,
+    leadExpert,
+    config: { ...DEFAULT_FEED_COMPOSITION_CONFIG, ...config },
+    isRelated,
+  });
+}
+
 export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
   const cfg = opts.config ?? DEFAULT_FEED_COMPOSITION_CONFIG;
   const cadence = Math.max(1, Math.floor(cfg.recCadence));

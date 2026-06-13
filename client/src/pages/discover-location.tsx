@@ -13,10 +13,11 @@ import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import {
-  composeFeedStream,
+  composeDiscoverFeed,
   defaultIsRelated,
   DEFAULT_FEED_COMPOSITION_CONFIG,
   type FeedCompositionConfig,
+  type WantedSlotData,
 } from "@/lib/feed-composition";
 import { useUpsellSlot } from "@/components/UpsellSlot";
 import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
@@ -356,7 +357,7 @@ function StatsRow({
           <b className="text-foreground font-semibold">
             {Number(cityIntel.activeTravelers).toLocaleString()}
           </b>{" "}
-          travelers here now
+          travellers here now
         </div>
       )}
       {cityIntel.crowdLevel && (
@@ -463,32 +464,34 @@ function LeadExpertCard({ expert }: { expert: any }) {
   );
 }
 
-interface WantedSlot {
-  id: string;
-  nbName: string;
-  offeringLabel: string;
-  offeringKey: string;
-}
-
 /** Recruitment slot — capped and spaced by composeFeedStream (no walls of "Apply"). */
-function WantedSlotCard({ slot, city }: { slot: WantedSlot; city: string }) {
+function WantedSlotCard({ item }: { item: FeedItem }) {
+  const { offeringLabel, neighborhoodName, city: slotCity, demandCount, dateContext, neighborhoodId } = item.data as WantedSlotData;
+  const isHighDemand = (demandCount ?? 0) >= 5;
   return (
     <div
       className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
-      data-testid={`section-recruitment-${slot.id}`}
+      data-testid={`section-recruitment-${neighborhoodId}`}
     >
       <div className="min-w-0">
+        {isHighDemand && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-50 rounded-full px-2 py-0.5 mb-1" data-testid="badge-high-demand">
+            🔥 High demand
+          </span>
+        )}
         <p className="text-xs font-semibold text-primary truncate">
-          {slot.offeringLabel} wanted in {slot.nbName}
+          {offeringLabel} wanted in {neighborhoodName}
         </p>
         <p className="text-[11px] text-muted-foreground truncate">
-          Be the first to offer {slot.offeringLabel.toLowerCase()} for travellers in {slot.nbName}
+          {demandCount && demandCount > 0
+            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
+            : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
       </div>
       <a
-        href={`/become-expert?city=${encodeURIComponent(city)}&neighborhood=${encodeURIComponent(slot.nbName)}&offeringTypeKey=${encodeURIComponent(slot.offeringKey)}`}
+        href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offering=${encodeURIComponent(offeringLabel)}`}
         className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
-        data-testid={`link-recruitment-earn-${slot.id}`}
+        data-testid="link-wanted-apply"
       >
         Apply <ChevronRight className="w-3 h-3" />
       </a>
@@ -509,6 +512,7 @@ function FillerCard({
   scheduledDate,
   onAdd,
   isMarquee,
+  cardPosition,
   onBookRec,
   recLabels,
 }: {
@@ -517,6 +521,7 @@ function FillerCard({
   scheduledDate: string | null;
   onAdd: (item: any) => void;
   isMarquee?: boolean;
+  cardPosition?: number;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
@@ -529,10 +534,11 @@ function FillerCard({
           scheduledDate={scheduledDate}
           onAdd={onAdd}
           layout={isMarquee ? "row" : "column"}
+          cardPosition={cardPosition}
         />
       );
     case "expert":
-      return <CityFeedCardExpert expert={item.data} city={city} />;
+      return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} />;
     case "event":
       return (
         <CityFeedCardEvent
@@ -540,6 +546,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "supply-hotel":
@@ -551,6 +558,7 @@ function FillerCard({
           city={city}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          cardPosition={cardPosition}
         />
       );
     case "vendor-service":
@@ -558,6 +566,7 @@ function FillerCard({
         <CityFeedCardVendorService
           service={item.data}
           city={city}
+          cardPosition={cardPosition}
         />
       );
     case "recommendation":
@@ -572,10 +581,11 @@ function FillerCard({
           recommendedLabel={recLabels?.recommendedLabel}
           affiliateLabel={recLabels?.affiliateLabel}
           layout={isMarquee ? "row" : "column"}
+          cardPosition={cardPosition}
         />
       );
     case "wanted-slot":
-      return <WantedSlotCard slot={item.data} city={city} />;
+      return <WantedSlotCard item={item} />;
     case "lead-expert":
       return <LeadExpertCard expert={item.data} />;
     default:
@@ -672,19 +682,15 @@ function FeedRenderer({
           );
         }
 
-        // Bento group: first item is span-2 (marquee), rest are half-width.
-        // Banner-style injected cards (wanted-slot, lead-expert) always span
-        // the full row — they're horizontal strips, not photo cells.
+        // Bento group: first item is span-2 (marquee), rest pair into half-width cells.
+        // All items — including lead-expert and wanted-slot — participate in the
+        // 2-col grid so the rhythm stays intact. Only idx===0 gets the marquee span.
         return (
           <div key={`group-${si}`} className="grid grid-cols-2 gap-3">
             {section.items.map((item, itemIdx) => (
               <div
                 key={item.id}
-                className={
-                  itemIdx === 0 || item.kind === "wanted-slot" || item.kind === "lead-expert"
-                    ? "col-span-2"
-                    : ""
-                }
+                className={itemIdx === 0 ? "col-span-2" : ""}
               >
                 <FillerCard
                   item={item}
@@ -692,6 +698,7 @@ function FeedRenderer({
                   scheduledDate={scheduledDate}
                   onAdd={onAdd}
                   isMarquee={itemIdx === 0}
+                  cardPosition={itemIdx}
                   onBookRec={onBookRec}
                   recLabels={recLabels}
                 />
@@ -1147,10 +1154,6 @@ export default function DiscoverLocationPage() {
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
 
-  const feedItems: FeedItem[] = data
-    ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
-    : [];
-
   // ── Engine recommendations (discover_location upsell surface) ──────────
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
   // endorsed by those experts — the authoritative endorsement signal driving
@@ -1174,7 +1177,7 @@ export default function DiscoverLocationPage() {
   // ── Injected-element payloads for the composition layer ────────────────
   // Lead expert: derived from the top slot candidate's categoryKey — the
   // server ranked the offering endorsed by local experts, so the expert whose
-  // specialties overlap the top offering is the authoritative neighborhood
+  // specialties overlap the top offering is the authoritative neighbourhood
   // lead. Falls back to the first expert when no overlap is found.
   const leadExpert = experts.length > 0
     ? (() => {
@@ -1189,6 +1192,20 @@ export default function DiscoverLocationPage() {
       })()
     : null;
 
+  // Exclude the lead-expert from the filler pool to avoid the same person
+  // appearing twice (once as kind="expert", once as kind="lead-expert").
+  const feedExperts = leadExpert
+    ? experts.filter((e: any) => {
+        const eId = String(e.id ?? e.userId ?? e.user_id ?? "");
+        const lId = String((leadExpert as any).id ?? (leadExpert as any).userId ?? (leadExpert as any).user_id ?? "__none__");
+        return eId !== lId;
+      })
+    : experts;
+
+  const feedItems: FeedItem[] = data
+    ? buildFeedStream(neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices)
+    : [];
+
   // Wanted/recruitment slots: one per neighborhood for offering types the
   // engine found NO coverage for at all ("covered" = ranked candidates +
   // suppressed-but-ranked). The composition layer caps and spaces them —
@@ -1202,16 +1219,52 @@ export default function DiscoverLocationPage() {
   );
   // Fall back to the full list when slot data hasn't loaded yet (both arrays empty)
   const recruitmentPool = uncoveredOfferings.length > 0 ? uncoveredOfferings : (expertOfferingTypes ?? []);
-  const wantedSlots = neighborhoods.map((nb: any, idx: number) => {
+
+  // Build raw wanted-slot data (no demand counts yet)
+  const rawWantedSlotsData: WantedSlotData[] = neighborhoods.slice(0, 5).map((nb: any, idx: number) => {
     const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
     const offering = recruitmentPool[idx % Math.max(recruitmentPool.length, 1)];
     return {
-      id: String(nb.id ?? nb.slug ?? nbName),
-      nbName,
       offeringLabel: offering?.display_name ?? "Local expert guide",
       offeringKey: offering?.offering_type_key ?? "guide",
+      neighborhoodName: nbName,
+      city,
+      neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
     };
   });
+
+  // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
+  const wantedOfferingKeys = [...new Set(rawWantedSlotsData.map((s) => s.offeringKey))];
+  const { data: demandCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
+    queryFn: async () => {
+      if (!city || wantedOfferingKeys.length === 0) return {};
+      const params = new URLSearchParams({ city, offeringTypeKeys: wantedOfferingKeys.join(",") });
+      if (scheduledDate) {
+        params.set("dateRangeStart", scheduledDate);
+        params.set("dateRangeEnd", scheduledDate);
+      }
+      const res = await fetch(`/api/services/demand?${params}`);
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!city && wantedOfferingKeys.length > 0,
+    staleTime: 5 * 60_000,
+  });
+
+  // Human-readable date label for WantedSlotCard when a date filter is active
+  const dateContext = scheduledDate
+    ? new Date(scheduledDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : undefined;
+
+  // Merge demand counts (and date context) into wanted-slot data — sorted descending
+  const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData
+    .map((slot) => ({
+      ...slot,
+      demandCount: demandCounts?.[slot.offeringKey] ?? 0,
+      dateContext,
+    }))
+    .sort((a, b) => (b.demandCount ?? 0) - (a.demandCount ?? 0));
 
   // ── One interleaved stream ──────────────────────────────────────────────
   // The composition layer PLACES the injected elements into the organic
@@ -1220,14 +1273,14 @@ export default function DiscoverLocationPage() {
   // searches — they show organic results only.
   const filteredItems =
     activeFilter === "all"
-      ? composeFeedStream({
-          organic: feedItems,
-          recommendations: discoverySlotResult.candidates,
-          wantedSlots,
+      ? composeDiscoverFeed(
+          feedItems,
+          discoverySlotResult.candidates,
+          wantedSlotsData,
           leadExpert,
-          config: feedConfig,
-          isRelated: defaultIsRelated,
-        })
+          feedConfig,
+          defaultIsRelated,
+        )
       : filterFeedStream(feedItems, activeFilter);
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
