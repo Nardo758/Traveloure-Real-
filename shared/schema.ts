@@ -5372,6 +5372,14 @@ export const paymentIntents = pgTable("payment_intents", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const expertCityQueues = pgTable("expert_city_queues", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  city: text("city"),
+  expertIds: jsonb("expert_ids").$type<string[]>().default([]),
+  activeRequests: integer("active_requests").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const expertRequests = pgTable("expert_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id"),
