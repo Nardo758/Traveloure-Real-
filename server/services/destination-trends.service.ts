@@ -33,12 +33,13 @@ export async function computeSeasonalityTrends(): Promise<DestinationTrendSignal
   const results: DestinationTrendSignals[] = [];
 
   // Get unique countries from trip analytics
-  const countries = await db.query.tripAnalyticsEnhanced
-    .findMany({
-      columns: { country: true },
-      distinct: true,
-      limit: 100,
-    });
+  const countryRows = await db.execute(sql`
+    SELECT DISTINCT destination_country AS country
+    FROM trip_analytics_enhanced
+    WHERE destination_country IS NOT NULL
+    LIMIT 100
+  `);
+  const countries = (countryRows.rows as { country: string }[]);
 
   for (const { country } of countries) {
     if (!country) continue;
