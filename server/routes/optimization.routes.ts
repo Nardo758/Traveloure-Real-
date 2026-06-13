@@ -55,7 +55,7 @@ router.post("/api/optimization-preview", async (req, res) => {
 
     const metrics = calculateItineraryMetrics(normalizedItems, Number(travelers) || 1, eventType);
     const tier = complexityTier(eventType);
-    const { priceCents, currency, isDisabled } = await getFee(eventType, tier);
+    const { priceCents, currency, isDisabled, creditTowardCoordination } = await getFee(eventType, tier);
 
     // Estimate improvement potential:
     // overallScore is 0–100; lower score means more room to improve.
@@ -97,6 +97,7 @@ router.post("/api/optimization-preview", async (req, res) => {
       currency,
       freeRerun,
       aiDisabled: isDisabled,
+      creditTowardCoordination, // Phase 2: Event branch optimizers credit toward coordination fee
       metrics: {
         balanceScore: Math.round(metrics.balanceScore),
         wellnessScore: Math.round(metrics.wellnessScore),
@@ -106,6 +107,48 @@ router.post("/api/optimization-preview", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[optimization-preview] error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/optimization-fee
+ * Lightweight fee lookup for a trip or experience. No items required.
+ * Auth required (to verify ownership and resolve the correct fee).
+ * Returns the same fee shape as the preview endpoint.
+ */
+router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId, userExperienceId } = req.query as { tripId?: string; userExperienceId?: string };
+
+    if (!tripId && !userExperienceId) {
+      return res.status(400).json({
+        error: "target_required",
+        message: "Provide tripId or userExperienceId to determine optimization fee.",
+      });
+    }
+
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const { eventType: dbEventType, ownerId } = await resolveTargetFromDb(tripId, userExperienceId);
+    if (ownerId === undefined) {
+      return res.status(404).json({ error: "Target trip or experience not found" });
+    }
+    if (ownerId !== userId) {
+      return res.status(403).json({ error: "Not authorized to view this resource" });
+    }
+
+    const tier = complexityTier(dbEventType);
+    const fee = await getFee(dbEventType, tier);
+
+    return res.json({
+      complexityTier: tier,
+      feeCents: fee.isDisabled ? 0 : fee.priceCents,
+      currency: fee.currency,
+      creditTowardCoordination: fee.creditTowardCoordination,
+      aiDisabled: fee.isDisabled,
+    });
+  } catch (err: any) {
+    console.error("[optimization-fee] error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -165,7 +208,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     }
 
     const tier = complexityTier(dbEventType);
-    const { priceCents, currency, isDisabled } = await getFee(dbEventType, tier);
+    const { priceCents, currency, isDisabled, creditTowardCoordination } = await getFee(dbEventType, tier);
 
     if (isDisabled) {
       return res.status(400).json({
@@ -223,6 +266,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
         type: "optimization_fee",
         userId,
         complexityTier: tier,
+        eventType: dbEventType ?? "",
         targetTripId: tripId ?? "",
         targetExperienceId: userExperienceId ?? "",
         context: JSON.stringify(comparisonContext || {}),
@@ -237,6 +281,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       feeCents: priceCents,
       currency,
       complexityTier: tier,
+      creditTowardCoordination, // Phase 2: Event branch optimizers credit toward coordination fee
     });
   } catch (err: any) {
     console.error("[optimization-payments] error:", err);
@@ -323,6 +368,13 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
         console.warn("[optimization-payments/confirm] revenue record failed (non-critical):", revErr);
       }
     }
+
+    // Phase 2: Event branch optimizers credit toward coordination fee.
+    // If this is an Event-branch optimization, record the credit so it
+    // can be applied against the eventual coordination fee (Phase 4).
+    const eventType = pi.metadata?.eventType as string | undefined;
+    // TODO: Record creditTowardCoordination in a dedicated ledger when
+    //       the coordination fee infrastructure is ready (Phase 4).
 
     return res.json({ success: true });
   } catch (err: any) {

@@ -15,8 +15,9 @@ import { and, eq, ilike } from "drizzle-orm";
 import { db } from "../db";
 import { eventPackages } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
-import { getFee } from "./optimization-fee.service";
+import { getFee, getOptimizerBranch } from "./optimization-fee.service";
 import { getExpertAvailability } from "./expert-availability.service";
+import { resolveCommissionRates } from "./commission";
 
 export type ConciergeTier = "ai" | "expert" | "full";
 
@@ -31,6 +32,9 @@ export interface ConciergeRouteExpert {
   priceCents?: number;
   available: boolean;
   etaHours?: number;
+  /** Phase 3: Expert Concierge commission split from resolveCommissionRates. */
+  commissionRate?: number; // platform take fraction (e.g. 0.25 = 25%)
+  expertShareRate?: number; // expert keep fraction (e.g. 0.75 = 75%)
 }
 
 export interface ConciergeRouteFull {
@@ -45,6 +49,10 @@ export interface ConciergeRoute {
   expert: ConciergeRouteExpert;
   full: ConciergeRouteFull;
   recommended: ConciergeTier;
+  /** Phase 3: 'suggest' for Trip/Experience (optional upsell), 'add' for Event (mandatory coordinator). */
+  suggestVsAdd: "suggest" | "add";
+  /** Phase 3: The branch derived from eventType — drives copy, fee shape, coordination default. */
+  branch: string;
 }
 
 async function getFullPackageAvailability(input: {
@@ -84,19 +92,45 @@ export async function routeConcierge(input: {
   const eventType = input.eventType?.trim() || null;
   const destination = input.destination?.trim() || null;
   const tier = complexityTier(eventType);
+  const branch = getOptimizerBranch(eventType);
 
+  // Phase 3: AI Concierge fee (optimizer + per-task) resolves through getFee.
   const aiFee = await getFee(eventType, tier);
+
+  // Phase 3: Expert Concierge commission resolves through resolveCommissionRates.
+  // Expert offerings are commission-split, not flat fees. The displayed "price"
+  // is the median expert service price; the commission split is shown for transparency.
+  const expertCommission = await resolveCommissionRates({
+    source: "expert",
+    category: "expert_concierge",
+  });
+
   const availability = await getExpertAvailability({ city: destination, eventType });
   const fullPkg = await getFullPackageAvailability({ eventType, destination });
 
+  // Phase 3: Recommendation logic.
+  // Event branch → "full" if packages exist, else "expert" (coordinator mandatory).
+  // Trip/Experience branch → "ai" if available, else "expert" as fallback.
   let recommended: ConciergeTier;
-  if (fullPkg.available) {
+  if (branch === "event") {
+    // Event: coordinator is mandatory. Full package preferred, else expert.
+    if (fullPkg.available) {
+      recommended = "full";
+    } else {
+      recommended = "expert";
+    }
+  } else if (fullPkg.available) {
     recommended = "full";
   } else if (aiFee.isDisabled) {
     recommended = availability.bookableNow ? "expert" : "ai";
   } else {
     recommended = "ai";
   }
+
+  // Phase 3: Suggest vs Add.
+  // Trip/Experience → "suggest" (expert is optional upsell).
+  // Event → "add" (coordinator is mandatory, not optional).
+  const suggestVsAdd = branch === "event" ? "add" : "suggest";
 
   return {
     ai: {
@@ -109,6 +143,9 @@ export async function routeConcierge(input: {
       priceCents: availability.estPriceCents,
       available: availability.bookableNow,
       etaHours: availability.etaHours,
+      // Phase 3: Commission split from resolveCommissionRates.
+      commissionRate: expertCommission.platformFeeRate,
+      expertShareRate: expertCommission.expertShareRate,
     },
     full: {
       available: fullPkg.available,
@@ -119,5 +156,7 @@ export async function routeConcierge(input: {
         : "No packages configured for this event type and market yet.",
     },
     recommended,
+    suggestVsAdd,
+    branch,
   };
 }
