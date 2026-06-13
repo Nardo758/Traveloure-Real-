@@ -21,9 +21,11 @@ import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock } from "lucide
 
 export interface ConciergeRoute {
   ai: { priceCents: number; currency: string; available: boolean; disabled: boolean };
-  expert: { priceCents?: number; available: boolean; etaHours?: number };
+  expert: { priceCents?: number; available: boolean; etaHours?: number; commissionRate?: number; expertShareRate?: number };
   full: { available: boolean; priceFromCents?: number; packageCount?: number; note: string };
   recommended: "ai" | "expert" | "full";
+  suggestVsAdd: "suggest" | "add";
+  branch: string;
 }
 
 function formatPrice(cents: number | undefined, currency = "USD") {
@@ -48,6 +50,9 @@ export function DeliveryOptions({
   const [, setLocation] = useLocation();
   const [busy, setBusy] = useState<"ai" | "expert" | "full" | null>(null);
   const [success, setSuccess] = useState<{ tier: "expert" | "full"; message: string } | null>(null);
+
+  const { suggestVsAdd, branch } = route;
+  const isEvent = branch === "event";
 
   async function patchTier(tier: "ai" | "expert" | "full") {
     await fetch(`/api/concierge/requests/${requestId}`, {
@@ -146,14 +151,16 @@ export function DeliveryOptions({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" />
-              AI Concierge
+              {isEvent ? "AI Planning Tool" : "AI Concierge"}
             </CardTitle>
-            {route.recommended === "ai" && (
+            {route.recommended === "ai" && !isEvent && (
               <Badge variant="default" className="text-xs">Recommended</Badge>
             )}
           </div>
           <CardDescription className="text-xs">
-            Instant AI-optimized plan. Free re-runs within 24h.
+            {isEvent
+              ? "Optimizer for your event coordinator. Fee credited toward coordination."
+              : "Instant AI-optimized plan. Free re-runs within 24h."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -167,12 +174,12 @@ export function DeliveryOptions({
             data-testid="button-concierge-pick-ai"
           >
             {busy === "ai" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            {route.ai.disabled ? "Disabled" : "Get plan"}
+            {route.ai.disabled ? "Disabled" : (isEvent ? "Use AI tool" : "Get plan")}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Expert Concierge */}
+      {/* Expert Concierge — Suggest (Trip/Experience) or Add (Event) */}
       <Card
         className={route.recommended === "expert" ? "border-primary" : "border-border"}
         data-testid="card-concierge-expert"
@@ -181,14 +188,18 @@ export function DeliveryOptions({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-primary" />
-              Expert Concierge
+              {isEvent ? "Event Coordinator" : "Expert Concierge"}
             </CardTitle>
             {route.recommended === "expert" && (
-              <Badge variant="default" className="text-xs">Recommended</Badge>
+              <Badge variant="default" className="text-xs">
+                {isEvent ? "Required" : "Recommended"}
+              </Badge>
             )}
           </div>
           <CardDescription className="text-xs">
-            A local/travel expert delivers — human judgment on top of your plan.
+            {isEvent
+              ? "Dedicated coordinator + vendors + RSVP. Mandatory for Events."
+              : "A local/travel expert delivers — human judgment on top of your plan."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -197,6 +208,12 @@ export function DeliveryOptions({
               ? <>from {formatPrice(route.expert.priceCents)}</>
               : <>Quote on request</>}
           </div>
+          {/* Phase 3: Commission split transparency. */}
+          {route.expert.commissionRate !== undefined && (
+            <div className="text-xs text-muted-foreground">
+              Platform fee {Math.round(route.expert.commissionRate * 100)}% · Expert keeps {Math.round((route.expert.expertShareRate ?? 0.75) * 100)}%
+            </div>
+          )}
           {!route.expert.available && route.expert.etaHours !== undefined && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="w-3.5 h-3.5" />
@@ -211,7 +228,9 @@ export function DeliveryOptions({
             data-testid="button-concierge-pick-expert"
           >
             {busy === "expert" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
-            {route.expert.available ? "Request expert" : "Join queue"}
+            {isEvent
+              ? (route.expert.available ? "Add coordinator" : "Join coordinator queue")
+              : (route.expert.available ? "Request expert" : "Join queue")}
           </Button>
         </CardContent>
       </Card>
@@ -228,7 +247,9 @@ export function DeliveryOptions({
               Full / Done-for-You
             </CardTitle>
             {route.recommended === "full" && (
-              <Badge variant="default" className="text-xs">Recommended</Badge>
+              <Badge variant="default" className="text-xs">
+                {isEvent ? "Premium" : "Recommended"}
+              </Badge>
             )}
           </div>
           <CardDescription className="text-xs">{route.full.note}</CardDescription>
