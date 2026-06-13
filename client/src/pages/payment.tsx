@@ -49,6 +49,17 @@ export default function PaymentPage() {
     queryKey: ["/api/cart"],
   });
 
+  // Phase 5: fetch live fee preview from backend (routes through fee_bands via resolveCommissionRates)
+  const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
+    subtotal: number;
+    platformFeeTotal: number;
+    total: number;
+    itemCount: number;
+  }>({
+    queryKey: ["/api/cart/fee-preview"],
+    enabled: cartData !== undefined && cartData.length > 0,
+  });
+
   const cartItems = (cartData || []).map((item: any) => ({
     id: item.id,
     name: item.service?.name || item.name || "Service",
@@ -59,8 +70,8 @@ export default function PaymentPage() {
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + item.price, 0);
   const discount = promoDiscount;
-  const serviceFee = subtotal > 0 ? 45 : 0;
-  const total = subtotal - discount + serviceFee;
+  const serviceFee = feePreview?.platformFeeTotal ?? 0;
+  const total = (feePreview?.subtotal ?? subtotal) - discount + serviceFee;
 
   // Use real promo code API
   const promoMutation = useMutation({
@@ -150,7 +161,7 @@ export default function PaymentPage() {
     }
   };
 
-  if (cartLoading) {
+  if (cartLoading || feePreviewLoading) {
     return (
       <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
