@@ -271,7 +271,7 @@ export default function BookingConfirmation({
         data-testid="button-close-confirmation"
         className="w-full py-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold text-lg shadow-lg hover:shadow-xl"
       >
-        View My Trips
+        View My Plans
       </button>
     </div>
   );

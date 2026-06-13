@@ -30,15 +30,72 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const eventTypes = [
-  { id: "vacation", label: "Vacation", icon: Plane, description: "Leisure travel and exploration" },
-  { id: "wedding", label: "Wedding", icon: Heart, description: "Destination wedding planning" },
-  { id: "honeymoon", label: "Honeymoon", icon: Heart, description: "Romantic getaway for newlyweds" },
-  { id: "proposal", label: "Proposal", icon: Gift, description: "Plan the perfect proposal" },
-  { id: "anniversary", label: "Anniversary", icon: Star, description: "Celebrate your special day" },
-  { id: "birthday", label: "Birthday", icon: PartyPopper, description: "Birthday celebration trip" },
-  { id: "corporate", label: "Corporate", icon: Briefcase, description: "Business travel and retreats" },
-  { id: "adventure", label: "Adventure", icon: Mountain, description: "Thrill-seeking experiences" },
+  // ── Trip branch — Multi-day stays ──
+  { id: "vacation", label: "Vacation", icon: Plane, branch: "trip", description: "Multi-day leisure travel and exploration" },
+  { id: "adventure", label: "Adventure", icon: Mountain, branch: "trip", description: "Thrill-seeking multi-day experiences" },
+  { id: "honeymoon", label: "Honeymoon", icon: Heart, branch: "trip", description: "Romantic multi-day getaway for newlyweds" },
+  { id: "anniversary", label: "Anniversary Trip", icon: Star, branch: "trip", description: "Celebrate your milestone with a getaway" },
+  // ── Experience branch — Single curated occasions ──
+  { id: "proposal", label: "Proposal", icon: Gift, branch: "experience", description: "Plan the perfect single-occasion proposal" },
+  { id: "birthday", label: "Birthday", icon: PartyPopper, branch: "experience", description: "Birthday celebration occasion" },
+  // ── Event branch — Hosted productions with vendors ──
+  { id: "wedding", label: "Wedding", icon: Heart, branch: "event", description: "Destination wedding with vendors & guests" },
+  { id: "corporate", label: "Corporate", icon: Briefcase, branch: "event", description: "Corporate retreat or event with vendors" },
 ];
+
+// Branch-conditional copy helpers
+const BRANCH_LABELS: Record<string, { guestLabel: string; dateHeading: string; dateSub: string; styleLabel: string; createLabel: string }> = {
+  trip: {
+    guestLabel: "Travelers",
+    dateHeading: "When are you traveling?",
+    dateSub: "Select your travel dates",
+    styleLabel: "Travel Style",
+    createLabel: "Create Trip",
+  },
+  experience: {
+    guestLabel: "Guests",
+    dateHeading: "When is your occasion?",
+    dateSub: "Select your occasion dates",
+    styleLabel: "Experience Style",
+    createLabel: "Create Experience",
+  },
+  event: {
+    guestLabel: "Guests",
+    dateHeading: "When is your event?",
+    dateSub: "Select your event dates",
+    styleLabel: "Planning Style",
+    createLabel: "Create Event",
+  },
+};
+
+function getBranch(eventType: string): string {
+  return eventTypes.find(e => e.id === eventType)?.branch || "trip";
+}
+
+function getBranchLabel(eventType: string): string {
+  const branch = getBranch(eventType);
+  return BRANCH_LABELS[branch]?.guestLabel || "Guests";
+}
+
+function getDateHeading(eventType: string): string {
+  const branch = getBranch(eventType);
+  return BRANCH_LABELS[branch]?.dateHeading || "When are you going?";
+}
+
+function getDateSub(eventType: string): string {
+  const branch = getBranch(eventType);
+  return BRANCH_LABELS[branch]?.dateSub || "Select your dates";
+}
+
+function getStyleLabel(eventType: string): string {
+  const branch = getBranch(eventType);
+  return BRANCH_LABELS[branch]?.styleLabel || "Planning Style";
+}
+
+function getCreateLabel(eventType: string): string {
+  const branch = getBranch(eventType);
+  return BRANCH_LABELS[branch]?.createLabel || "Create Plan";
+}
 
 const formSchema = insertTripSchema.extend({
   title: z.string().min(1, "Title is required"),
@@ -46,7 +103,7 @@ const formSchema = insertTripSchema.extend({
   eventType: z.string().default("vacation"),
   startDate: z.date({ required_error: "Start date is required" }),
   endDate: z.date({ required_error: "End date is required" }),
-  numberOfTravelers: z.coerce.number().min(1, "At least 1 traveler required"),
+  numberOfTravelers: z.coerce.number().min(1, "At least 1 guest required"),
   budget: z.string().optional(),
 });
 
@@ -68,11 +125,11 @@ const budgetOptions = [
 ];
 
 const steps = [
-  { id: 1, title: "Event Type", description: "What kind of trip is this?" },
-  { id: 2, title: "Destination", description: "Where do you want to go?" },
-  { id: 3, title: "Dates", description: "When are you traveling?" },
-  { id: 4, title: "Preferences", description: "Customize your experience" },
-  { id: 5, title: "Review", description: "Confirm your trip details" },
+  { id: 1, title: "Event Type", description: "What are you planning?" },
+  { id: 2, title: "Location", description: "Where do you want to go?" },
+  { id: 3, title: "Dates", description: "When are you going?" },
+  { id: 4, title: "Preferences", description: "Customize your plan" },
+  { id: 5, title: "Review", description: "Confirm your plan details" },
 ];
 
 export default function CreateTrip() {
@@ -168,10 +225,10 @@ export default function CreateTrip() {
             Back to Dashboard
           </Button>
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
-            Plan Your Perfect Trip
+            What are you planning?
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Let's create an amazing travel experience tailored just for you.
+            Let's create something amazing — pick your path and we'll handle the details.
           </p>
         </div>
 
@@ -225,34 +282,51 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">What kind of trip is this?</h2>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">What are you planning?</h2>
                         <p className="text-gray-600 dark:text-gray-400 mt-2">Select your event type for personalized recommendations</p>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {eventTypes.map((event) => {
-                          const IconComponent = event.icon;
+                      <div className="space-y-6">
+                        {[
+                          { key: "trip", title: "Trip", subtitle: "Multi-day stays in a destination" },
+                          { key: "experience", title: "Experience", subtitle: "A single curated occasion" },
+                          { key: "event", title: "Event", subtitle: "A hosted production with vendors & guests" },
+                        ].map((section) => {
+                          const branchTypes = eventTypes.filter((e) => e.branch === section.key);
                           return (
-                            <div
-                              key={event.id}
-                              onClick={() => {
-                                setSelectedEventType(event.id);
-                                form.setValue("eventType", event.id);
-                              }}
-                              className={cn(
-                                "p-4 rounded-lg border-2 cursor-pointer transition-all text-center",
-                                selectedEventType === event.id
-                                  ? "border-primary bg-primary/10"
-                                  : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700"
-                              )}
-                              data-testid={`card-event-${event.id}`}
-                            >
-                              <IconComponent className={cn(
-                                "w-8 h-8 mx-auto mb-2",
-                                selectedEventType === event.id ? "text-primary" : "text-gray-600 dark:text-gray-400"
-                              )} />
-                              <h3 className="font-semibold text-sm">{event.label}</h3>
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{event.description}</p>
+                            <div key={section.key}>
+                              <div className="mb-3">
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{section.title}</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{section.subtitle}</p>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {branchTypes.map((event) => {
+                                  const IconComponent = event.icon;
+                                  return (
+                                    <div
+                                      key={event.id}
+                                      onClick={() => {
+                                        setSelectedEventType(event.id);
+                                        form.setValue("eventType", event.id);
+                                      }}
+                                      className={cn(
+                                        "p-4 rounded-lg border-2 cursor-pointer transition-all text-center",
+                                        selectedEventType === event.id
+                                          ? "border-primary bg-primary/10"
+                                          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700"
+                                      )}
+                                      data-testid={`card-event-${event.id}`}
+                                    >
+                                      <IconComponent className={cn(
+                                        "w-8 h-8 mx-auto mb-2",
+                                        selectedEventType === event.id ? "text-primary" : "text-gray-600 dark:text-gray-400"
+                                      )} />
+                                      <h3 className="font-semibold text-sm">{event.label}</h3>
+                                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{event.description}</p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })}
@@ -300,7 +374,7 @@ export default function CreateTrip() {
                         name="numberOfTravelers"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Number of Travelers</FormLabel>
+                            <FormLabel>Number of {getBranchLabel(selectedEventType)}</FormLabel>
                             <FormControl>
                               <div className="flex items-center gap-4">
                                 <Button
@@ -342,8 +416,8 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Calendar className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">When are you traveling?</h2>
-                        <p className="text-gray-600 dark:text-gray-400 mt-2">Select your travel dates</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{getDateHeading(selectedEventType)}</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">{getDateSub(selectedEventType)}</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -448,12 +522,12 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Customize Your Experience</h2>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Customize Your Plan</h2>
                         <p className="text-gray-600 dark:text-gray-400 mt-2">Tell us what you enjoy</p>
                       </div>
 
                       <div>
-                        <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Travel Style (select all that apply)</h3>
+                        <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">{getStyleLabel(selectedEventType)} (select all that apply)</h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                           {travelStyles.map((style) => (
                             <button
@@ -519,8 +593,8 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Check className="w-12 h-12 mx-auto text-accent mb-4" />
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Review Your Trip</h2>
-                        <p className="text-gray-600 dark:text-gray-400 mt-2">Almost there! Give your trip a name and confirm.</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Review Your Plan</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">Almost there! Give your plan a name and confirm.</p>
                       </div>
 
                       <FormField
@@ -528,23 +602,23 @@ export default function CreateTrip() {
                         name="title"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Trip Name</FormLabel>
+                            <FormLabel>Plan Name</FormLabel>
                             <FormControl>
                               <Input 
-                                placeholder={`My ${destination || 'Amazing'} Adventure`} 
+                                placeholder={`My ${destination || 'Amazing'} Plan`} 
                                 {...field} 
                                 className="bg-white dark:bg-gray-700 text-lg py-6"
                                 data-testid="input-title"
                               />
                             </FormControl>
-                            <FormDescription>Give your trip a memorable name</FormDescription>
+                            <FormDescription>Give your plan a memorable name</FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
 
                       <div className="bg-muted/50 rounded-xl p-6 space-y-4">
-                        <h3 className="font-semibold text-gray-900 dark:text-white">Trip Summary</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">Plan Summary</h3>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <span className="text-gray-600 dark:text-gray-400">Event Type</span>
@@ -555,8 +629,8 @@ export default function CreateTrip() {
                             <p className="font-medium">{destination || "Not set"}</p>
                           </div>
                           <div>
-                            <span className="text-gray-600 dark:text-gray-400">Travelers</span>
-                            <p className="font-medium">{travelers} {travelers === 1 ? 'person' : 'people'}</p>
+                            <span className="text-gray-600 dark:text-gray-400">{getBranchLabel(selectedEventType)}</span>
+                            <p className="font-medium">{travelers} {travelers === 1 ? getBranchLabel(selectedEventType).replace(/s$/, '') : getBranchLabel(selectedEventType)}</p>
                           </div>
                           <div>
                             <span className="text-gray-600 dark:text-gray-400">Dates</span>
@@ -573,7 +647,7 @@ export default function CreateTrip() {
                         </div>
                         {selectedStyles.length > 0 && (
                           <div>
-                            <span className="text-gray-600 dark:text-gray-400 text-sm">Travel Styles</span>
+                            <span className="text-gray-600 dark:text-gray-400 text-sm">{getStyleLabel(selectedEventType)}</span>
                             <div className="flex flex-wrap gap-2 mt-1">
                               {selectedStyles.map(styleId => {
                                 const style = travelStyles.find(s => s.id === styleId);
@@ -631,7 +705,7 @@ export default function CreateTrip() {
                       ) : (
                         <>
                           <Sparkles className="mr-2 h-4 w-4" />
-                          Create Trip
+                          {getCreateLabel(selectedEventType)}
                         </>
                       )}
                     </Button>
