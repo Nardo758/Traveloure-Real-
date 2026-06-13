@@ -52,6 +52,8 @@ export interface MatchSuggestion {
   href: string;
   isRequest?: boolean;
   offeringTypeKey?: string;
+  /** Display name needed so the demand loop can write the row. */
+  displayName?: string;
 }
 
 /**
