@@ -376,7 +376,7 @@ export default function ExpertTemplates() {
                               <FormLabel>Price (USD) *</FormLabel>
                               <FormControl>
                                 <Input
-                                  placeholder="49.99"
+                                  placeholder="49.99" // fee-literal-ok: Phase 5 — form placeholder, not optimizer fee
                                   {...field}
                                   data-testid="input-template-price"
                                 />
