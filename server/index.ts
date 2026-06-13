@@ -12,6 +12,7 @@ import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.see
 import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
+import { seedMajorCitiesBackfill } from "./seeds/major-cities-backfill.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
@@ -227,6 +228,22 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed popular cities content");
+  }
+
+  try {
+    const backfillResult = await seedMajorCitiesBackfill();
+    if (backfillResult.neighborhoodsPatched > 0 || backfillResult.gemsInserted > 0 || backfillResult.travelerCountsFixed > 0) {
+      logger.info(
+        {
+          neighborhoodsPatched: backfillResult.neighborhoodsPatched,
+          gemsInserted: backfillResult.gemsInserted,
+          travelerCountsFixed: backfillResult.travelerCountsFixed,
+        },
+        "Seeded major cities backfill (neighborhood slugs + new gems + traveler counts)",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed major cities backfill");
   }
 
   try {
