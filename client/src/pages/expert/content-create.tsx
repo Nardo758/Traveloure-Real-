@@ -343,7 +343,7 @@ export default function ContentCreateEditPage() {
                         type="number"
                         value={formData.price}
                         onChange={(e) => updateField("price", e.target.value)}
-                        placeholder="9.99"
+                        placeholder="9.99" // fee-literal-ok: Phase 5 — form placeholder, not optimizer fee
                         className="mt-1"
                       />
                     </div>

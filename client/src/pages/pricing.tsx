@@ -47,7 +47,7 @@ const plans = [
   },
   {
     name: "Pro",
-    price: "$14.99",
+    price: "$14.99", // fee-literal-ok: Phase 5 — subscription tier, not optimizer fee
     period: "/month",
     description: "For frequent travelers who want more",
     icon: Users,
