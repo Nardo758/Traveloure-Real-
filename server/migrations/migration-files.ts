@@ -86,5 +86,8 @@ export const MIGRATION_FILES = [
   "064_concierge_booking_fee_band.sql",
   "065_seed_booking_concierge_offering_type.sql",
   "066_concierge_booking_fee_percent.sql",
-  "067_seed_feed_composition_settings.sql",
+  // 067–074: new migrations from our branch (season tags, demand requests,
+  // impressions, changes tracking, affiliate clicks, feed composition settings).
+  // These files should be added when merging from the source branch.
+  "075_seed_feed_composition_settings.sql",
 ] as const;
