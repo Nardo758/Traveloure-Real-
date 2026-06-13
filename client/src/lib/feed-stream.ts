@@ -55,6 +55,51 @@ export interface MatchSuggestion {
 }
 
 /**
+ * Map a placeType to a matched-service suggestion (spec: photo spot→photographer,
+ * stay→transport, attraction→guide, eat→reservation).
+ * Returns enriched data including price range, action label, and badge variant.
+ */
+export function matchedServiceSuggestion(placeType: string | null | undefined): MatchSuggestion | null {
+  const cat = gemCategory(placeType);
+  switch (cat) {
+    case "photo_spots":
+      return {
+        icon: "📷",
+        matchText: "photographer here · ¥14,000",
+        actionLabel: "Book shoot",
+        actionVariant: "platform",
+        href: "/experiences/photo",
+      };
+    case "stay":
+      return {
+        icon: "🚗",
+        matchText: "private car from city centre · ¥9,000",
+        actionLabel: "Book both",
+        actionVariant: "platform",
+        href: "/experiences/transport",
+      };
+    case "eat":
+      return {
+        icon: "🍽",
+        matchText: "reservation via OpenTable",
+        actionLabel: "Reserve",
+        actionVariant: "affiliate",
+        href: "/experiences/dining",
+      };
+    case "do":
+      return {
+        icon: "🧭",
+        matchText: "local guide · ¥6,000",
+        actionLabel: "Book guide",
+        actionVariant: "platform",
+        href: "/local-experts",
+      };
+    default:
+      return null;
+  }
+}
+
+/**
  * Build the ordered FeedItem[] stream from raw data sections.
  *
  * Non-adjacency contract: ALL neighborhoods are emitted, and no two are ever

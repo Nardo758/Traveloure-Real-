@@ -12,6 +12,9 @@
  * Secrecy contract: offeringId and raw categoryKey are NEVER rendered in the DOM —
  * only displayName and tagline reach the user. (Exception: offeringId is used as
  * a React key and in click attribution but never in visible text.)
+ *
+ * useUpsellSlot: consumers that need raw data (e.g. discover_location feed-composition
+ * layer) can use this hook directly and own their own rendering.
  */
 
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -63,10 +66,10 @@ interface UpsellSlotProps {
   className?: string;
   "data-testid"?: string;
   /**
-   * Called once with the full slot result after the server responds.
-   * Use `result.candidates` for what to render; use `result.suppressed` to
-   * determine which offering types the engine already has coverage for
-   * (so recruitment widgets can show only truly uncovered categories).
+   * Called each time fresh slot data arrives (including on city/context transitions
+   * on the same mounted instance). Use `result.candidates` for what to render;
+   * use `result.suppressed` to determine which offering types the engine already
+   * has coverage for.
    */
   onSlotData?: (result: SlotResult) => void;
   /**
@@ -108,25 +111,43 @@ const DEFAULT_HEADING: Record<UpsellSurface, string> = {
   discover_date:     "Available on this date",
 };
 
-export function UpsellSlot({
-  surface,
-  tripId,
-  contextPayload,
-  maxItems,
-  heading,
-  className,
-  "data-testid": testId,
-  onSlotData,
-  headless,
-}: UpsellSlotProps) {
-  const [, navigate] = useLocation();
+interface UseUpsellSlotResult {
+  candidates: UpsellCandidate[];
+  suppressed: Array<{ offeringId: string; reason?: string }>;
+  /** Catalog entries present on discover_date surface responses. */
+  catalogServices: SlotCatalogEntry[] | undefined;
+  /** True once the server has responded (candidates may still be empty). */
+  isResolved: boolean;
+  /** Opaque data identity — use for onSlotData deduplication in the component. */
+  _rawData: unknown;
+  logClick: (offeringId: string) => void;
+}
+
+/**
+ * Data-only hook for surfaces that own their own rendering.
+ * Handles the query, impression logging, and click attribution.
+ * Impression fires on each new data response so city-context transitions
+ * on a persistent component instance always log correctly.
+ */
+export function useUpsellSlot(
+  surface: UpsellSurface,
+  opts: {
+    tripId?: string;
+    contextPayload?: Record<string, unknown>;
+    maxItems?: number;
+  } = {},
+): UseUpsellSlotResult {
+  const { tripId, contextPayload, maxItems } = opts;
   const lastImpressionDataRef = useRef<unknown>(undefined);
-  const lastSlotDataRef = useRef<unknown>(undefined);
 
   const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
   if (tripId) body.tripId = tripId;
 
-  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }>; catalogServices?: SlotCatalogEntry[] }>({
+  const { data } = useQuery<{
+    candidates: UpsellCandidate[];
+    suppressed?: Array<{ offeringId: string; reason?: string }>;
+    catalogServices?: SlotCatalogEntry[];
+  }>({
     queryKey: [ENDPOINT[surface], tripId, JSON.stringify(contextPayload)],
     queryFn: async () => {
       const res = await apiRequest("POST", ENDPOINT[surface], body);
@@ -150,24 +171,60 @@ export function UpsellSlot({
 
   useEffect(() => {
     // Fire on each new data response (not just once per mount) so city/context
-    // transitions on the same component instance propagate fresh results.
+    // transitions on the same component instance propagate fresh impressions.
     if (candidates.length > 0 && data !== lastImpressionDataRef.current) {
       lastImpressionDataRef.current = data;
       logImpression.mutate(candidates.map((c) => c.offeringId));
     }
-    if (data !== undefined && data !== lastSlotDataRef.current) {
-      lastSlotDataRef.current = data;
-      onSlotData?.({ candidates, suppressed: data.suppressed ?? [], catalogServices: data.catalogServices });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates.length]);
+
+  return {
+    candidates,
+    suppressed: data?.suppressed ?? [],
+    catalogServices: data?.catalogServices,
+    isResolved: data !== undefined,
+    _rawData: data,
+    logClick: (offeringId: string) => logClick.mutate(offeringId),
+  };
+}
+
+export function UpsellSlot({
+  surface,
+  tripId,
+  contextPayload,
+  maxItems,
+  heading,
+  className,
+  "data-testid": testId,
+  onSlotData,
+  headless,
+}: UpsellSlotProps) {
+  const [, navigate] = useLocation();
+  const slotDataFiredRef = useRef<unknown>(undefined);
+
+  const { candidates, suppressed, catalogServices, isResolved, _rawData, logClick } = useUpsellSlot(surface, {
+    tripId,
+    contextPayload,
+    maxItems,
+  });
+
+  useEffect(() => {
+    // Fire onSlotData each time new data arrives (city/context transitions on
+    // the same mounted instance must propagate fresh results to the caller).
+    if (isResolved && _rawData !== slotDataFiredRef.current) {
+      slotDataFiredRef.current = _rawData;
+      onSlotData?.({ candidates, suppressed, catalogServices });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates.length, data]);
+  }, [isResolved, candidates.length]);
 
   if (headless || candidates.length === 0) return null;
 
   const label = heading ?? DEFAULT_HEADING[surface];
 
   const handleExplore = (c: UpsellCandidate) => {
-    logClick.mutate(c.offeringId);
+    logClick(c.offeringId);
     navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
   };
 
