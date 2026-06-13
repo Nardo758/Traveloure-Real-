@@ -21,7 +21,7 @@
 
 import { db } from "../db";
 import { travelPulseHiddenGems, travelPulseCities } from "@shared/schema";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 // ── 1. Neighborhood backfill map ─────────────────────────────────────────────
 // Each entry: (city, place_name) → neighborhood slug.
@@ -772,8 +772,9 @@ export async function seedMajorCitiesBackfill(): Promise<{
             eq(travelPulseHiddenGems.neighborhood, ""),
           ),
         ),
-      );
-    if ((result as any).rowCount > 0 || (result as any).count > 0) {
+      )
+      .returning({ id: travelPulseHiddenGems.id });
+    if (result.length > 0) {
       neighborhoodsPatched++;
     }
   }
@@ -824,10 +825,14 @@ export async function seedMajorCitiesBackfill(): Promise<{
       .where(
         and(
           eq(travelPulseCities.cityName, fix.cityName),
-          sql`${travelPulseCities.activeTravelers} = 0 OR ${travelPulseCities.activeTravelers} IS NULL`,
+          or(
+            eq(travelPulseCities.activeTravelers, 0),
+            isNull(travelPulseCities.activeTravelers),
+          ),
         ),
-      );
-    if ((updated as any).rowCount > 0 || (updated as any).count > 0) {
+      )
+      .returning({ id: travelPulseCities.id });
+    if (updated.length > 0) {
       travelerCountsFixed++;
     }
   }
