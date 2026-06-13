@@ -335,7 +335,7 @@ export default function MyItineraryPage() {
           <h1 className="text-2xl font-bold mb-4">Itinerary Not Found</h1>
           <p className="text-muted-foreground mb-4">This itinerary may have been removed or doesn't exist.</p>
           <Link href="/my-trips">
-            <Button data-testid="button-back-to-trips">Back to My Trips</Button>
+            <Button data-testid="button-back-to-plans">Back to My Plans</Button>
           </Link>
         </div>
       </Layout>

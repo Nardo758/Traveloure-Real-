@@ -135,7 +135,7 @@ const navItems = [
       {
         title: "TOOLS",
         items: [
-          { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
+          { name: "AI Plan Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
           { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },
@@ -153,7 +153,7 @@ const navItems = [
 ];
 
 const authNavItems = [
-  { href: "/dashboard", label: "My Trips", icon: Map },
+  { href: "/dashboard", label: "My Plans", icon: Map },
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/concierge", label: "Concierge", icon: Sparkles },
   { href: "/chat", label: "Expert Chat", icon: MessageSquare },
