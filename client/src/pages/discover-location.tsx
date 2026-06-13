@@ -1,26 +1,22 @@
 import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
+import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
-import {
-  composeDiscoverFeed,
-  defaultIsRelated,
-  DEFAULT_FEED_COMPOSITION_CONFIG,
-  type FeedCompositionConfig,
-  type WantedSlotData,
-} from "@/lib/feed-composition";
-import { useUpsellSlot } from "@/components/UpsellSlot";
-import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
+import { composeDiscoverFeed, type WantedSlotData } from "@/lib/feed-composition";
+import { UpsellSlot, type SlotResult, type SlotCatalogEntry } from "@/components/UpsellSlot";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -357,7 +353,7 @@ function StatsRow({
           <b className="text-foreground font-semibold">
             {Number(cityIntel.activeTravelers).toLocaleString()}
           </b>{" "}
-          travellers here now
+          travelers here now
         </div>
       )}
       {cityIntel.crowdLevel && (
@@ -433,58 +429,135 @@ function SpineFilterBar({
   );
 }
 
-// ─── Injected cards (feed-composition layer) ─────────────────────────────────
+// ─── Filler card (non-neighborhood) ──────────────────────────────────────────
 
-/** Featured lead expert — placed once, near the top, by composeFeedStream. */
-function LeadExpertCard({ expert }: { expert: any }) {
+// ─── Injected card: engine recommendation ─────────────────────────────────────
+
+function offeringCategoryMeta(categoryKey: string | null | undefined): { icon: string; bg: string } {
+  const k = (categoryKey ?? "").toLowerCase();
+  if (k.includes("photo")) return { icon: "📷", bg: "#E1F5EE" };
+  if (k.includes("chef") || k.includes("cook") || k.includes("dining") || k.includes("food")) return { icon: "🍽", bg: "#FEF9EE" };
+  if (k.includes("guide") || k.includes("tour")) return { icon: "🧭", bg: "#EEF6FE" };
+  if (k.includes("transport") || k.includes("driver") || k.includes("car")) return { icon: "🚗", bg: "#F5F0FF" };
+  if (k.includes("wellness") || k.includes("spa") || k.includes("yoga")) return { icon: "🧘", bg: "#FFF0F5" };
+  if (k.includes("event") || k.includes("ticket")) return { icon: "🎟", bg: "#FAEEDA" };
+  if (k.includes("stay") || k.includes("hotel") || k.includes("ryokan")) return { icon: "🏯", bg: "#E6F1FB" };
+  return { icon: "✨", bg: "#F0F9FF" };
+}
+
+function RecommendationCard({
+  item,
+  city,
+  scheduledDate,
+  onAdd,
+  cardPosition,
+}: {
+  item: FeedItem;
+  city: string;
+  scheduledDate: string | null;
+  onAdd: (item: any) => void;
+  cardPosition?: number;
+}) {
+  const { displayName, tagline, label, affiliateLabel, categoryKey } = item.data;
+  const isAffiliate = (categoryKey ?? "").startsWith("aff_");
+  const visibleLabel = isAffiliate
+    ? (affiliateLabel ?? "Sponsored")
+    : (label ?? "Recommended");
+  const meta = offeringCategoryMeta(categoryKey);
+  const { ref: impressionRef, getImpressionId: getImpIdRec } = useImpressionTracker(
+    "recommendation",
+    String(item.id),
+    city,
+    cardPosition,
+  );
   return (
     <div
-      className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
-      data-testid="section-lead-expert"
+      ref={impressionRef}
+      className="rounded-xl border border-border bg-card overflow-hidden"
+      data-testid={`feed-recommendation-${item.id}`}
     >
-      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-        <UserCheck className="w-5 h-5 text-primary" />
+      <div className="flex items-center gap-1 px-3 pt-2.5">
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70"
+          data-testid="recommendation-label"
+        >
+          {visibleLabel}
+        </span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-foreground truncate">
-          {expert.displayName ?? (`${expert.firstName ?? expert.first_name ?? ""} ${expert.lastName ?? expert.last_name ?? ""}`.trim() || "Local Expert")}
-        </p>
-        <p className="text-[11px] text-muted-foreground truncate">
-          {expert.headline ?? expert.bio?.slice(0, 60) ?? "Featured local expert"}
-        </p>
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <div
+          className="w-14 h-14 rounded-lg flex-shrink-0 flex items-center justify-center text-2xl"
+          style={{ background: meta.bg }}
+        >
+          {meta.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[14px] font-medium leading-snug text-foreground">{displayName}</div>
+          {tagline && (
+            <div className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">{tagline}</div>
+          )}
+        </div>
       </div>
-      <a
-        href={`/experts/${expert.id}`}
-        className="flex items-center gap-1 text-[11px] font-semibold text-primary whitespace-nowrap"
-        data-testid="link-lead-expert-profile"
-      >
-        View profile <ChevronRight className="w-3 h-3" />
-      </a>
+      <div className="flex gap-2 px-3 pb-3">
+        <Button
+          size="sm"
+          className="h-7 text-[12px] px-3"
+          onClick={() => onAdd({ ...item.data, title: displayName, city, sourceImpressionId: getImpIdRec(), sourceContentId: String(item.id) })}
+          data-testid="btn-rec-add"
+        >
+          Add
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[12px] px-3"
+          asChild
+          data-testid="btn-rec-ask"
+        >
+          <a href="/local-experts">Ask</a>
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[12px] px-3"
+          asChild
+          data-testid="btn-rec-book"
+        >
+          <a href="/experiences">Book</a>
+        </Button>
+      </div>
     </div>
   );
 }
 
-/** Recruitment slot — capped and spaced by composeFeedStream (no walls of "Apply"). */
+// ─── Injected card: wanted recruitment slot ───────────────────────────────────
+
 function WantedSlotCard({ item }: { item: FeedItem }) {
-  const { offeringLabel, neighborhoodName, city: slotCity, demandCount, dateContext, neighborhoodId } = item.data as WantedSlotData;
+  const { offeringLabel, neighborhoodName, city: slotCity, demandCount, dateContext } = item.data as WantedSlotData;
   const isHighDemand = (demandCount ?? 0) >= 5;
   return (
     <div
       className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
-      data-testid={`section-recruitment-${neighborhoodId}`}
+      data-testid="feed-wanted-slot"
     >
       <div className="min-w-0">
-        {isHighDemand && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-50 rounded-full px-2 py-0.5 mb-1" data-testid="badge-high-demand">
-            🔥 High demand
-          </span>
-        )}
-        <p className="text-xs font-semibold text-primary truncate">
-          {offeringLabel} wanted in {neighborhoodName}
-        </p>
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <p className="text-xs font-semibold text-primary truncate">
+            {offeringLabel} wanted
+          </p>
+          {isHighDemand && (
+            <span
+              className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-bold whitespace-nowrap flex-shrink-0"
+              style={{ background: "#FEF3C7", color: "#92400E" }}
+              data-testid="badge-high-demand"
+            >
+              🔥 High demand
+            </span>
+          )}
+        </div>
         <p className="text-[11px] text-muted-foreground truncate">
           {demandCount && demandCount > 0
-            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
+            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""}`
             : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
       </div>
@@ -499,12 +572,7 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
   );
 }
 
-// ─── Filler card (non-neighborhood) ──────────────────────────────────────────
-
-interface RecLabels {
-  recommendedLabel: string;
-  affiliateLabel: string;
-}
+// ─── Filler card dispatcher ───────────────────────────────────────────────────
 
 function FillerCard({
   item,
@@ -513,8 +581,6 @@ function FillerCard({
   onAdd,
   isMarquee,
   cardPosition,
-  onBookRec,
-  recLabels,
 }: {
   item: FeedItem;
   city: string;
@@ -522,8 +588,6 @@ function FillerCard({
   onAdd: (item: any) => void;
   isMarquee?: boolean;
   cardPosition?: number;
-  onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
-  recLabels?: RecLabels;
 }) {
   switch (item.kind) {
     case "loose-gem":
@@ -571,23 +635,16 @@ function FillerCard({
       );
     case "recommendation":
       return (
-        <CityFeedCardRecommendation
-          candidate={item.data.candidate}
+        <RecommendationCard
+          item={item}
           city={city}
-          position={item.data.recIndex}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
-          onBook={onBookRec}
-          recommendedLabel={recLabels?.recommendedLabel}
-          affiliateLabel={recLabels?.affiliateLabel}
-          layout={isMarquee ? "row" : "column"}
           cardPosition={cardPosition}
         />
       );
     case "wanted-slot":
       return <WantedSlotCard item={item} />;
-    case "lead-expert":
-      return <LeadExpertCard expert={item.data} />;
     default:
       return null;
   }
@@ -605,15 +662,11 @@ function FeedRenderer({
   city,
   scheduledDate,
   onAdd,
-  onBookRec,
-  recLabels,
 }: {
   items: FeedItem[];
   city: string;
   scheduledDate: string | null;
   onAdd: (item: any) => void;
-  onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
-  recLabels?: RecLabels;
 }) {
   if (items.length === 0) {
     return (
@@ -682,9 +735,7 @@ function FeedRenderer({
           );
         }
 
-        // Bento group: first item is span-2 (marquee), rest pair into half-width cells.
-        // All items — including lead-expert and wanted-slot — participate in the
-        // 2-col grid so the rhythm stays intact. Only idx===0 gets the marquee span.
+        // Bento group: first item is span-2 (marquee), rest are half-width
         return (
           <div key={`group-${si}`} className="grid grid-cols-2 gap-3">
             {section.items.map((item, itemIdx) => (
@@ -699,8 +750,6 @@ function FeedRenderer({
                   onAdd={onAdd}
                   isMarquee={itemIdx === 0}
                   cardPosition={itemIdx}
-                  onBookRec={onBookRec}
-                  recLabels={recLabels}
                 />
               </div>
             ))}
@@ -744,6 +793,7 @@ function FlatFilteredFeed({
             scheduledDate={scheduledDate}
             onAdd={onAdd}
             isMarquee={idx === 0}
+            cardPosition={idx}
           />
         </div>
       ))}
@@ -1057,18 +1107,24 @@ export default function DiscoverLocationPage() {
     setAddToExperienceOpen(true);
   };
 
-  // Feed-composition knobs — admin rows (platform_settings), code defaults.
-  const { data: feedConfigData } = useQuery<FeedCompositionConfig>({
+  // Feed composition config — read from platform_settings via lightweight public endpoint.
+  // Falls back to hardcoded defaults when the endpoint is unavailable.
+  const { data: feedCompositionConfig } = useQuery<{
+    recCadence: number;
+    wantedSlotMax: number;
+    wantedSlotSpacing: number;
+    recLabel: string;
+    recAffiliateLabel: string;
+  }>({
     queryKey: ["/api/feed-composition-config"],
     queryFn: async () => {
       const res = await fetch("/api/feed-composition-config");
-      if (!res.ok) return DEFAULT_FEED_COMPOSITION_CONFIG;
+      if (!res.ok) throw new Error("feed-composition-config unavailable");
       return res.json();
     },
     staleTime: 5 * 60_000,
     retry: false,
   });
-  const feedConfig = feedConfigData ?? DEFAULT_FEED_COMPOSITION_CONFIG;
 
   // Expert offering types — used to build specific recruitment slot labels
   const { data: expertOfferingTypes } = useQuery<Array<{ offering_type_key: string; display_name: string; service_tier: string }>>({
@@ -1145,6 +1201,26 @@ export default function DiscoverLocationPage() {
     });
   }, [mediaData]);
 
+  // Full slot result — candidates and suppressed — filled by UpsellSlot's onSlotData once it resolves.
+  // Using the combined set (candidates + suppressed) as the authoritative "has-coverage" signal
+  // means recruitment cards only appear for offering types the engine found NO candidates for at all.
+  const [discoverySlotResult, setDiscoverySlotResult] = useState<SlotResult>({ candidates: [], suppressed: [] });
+  // Reset slot result on city change so stale recommendations from a previous
+  // city never appear in the new city's composed feed while new data loads.
+  useEffect(() => {
+    setDiscoverySlotResult({ candidates: [], suppressed: [] });
+  }, [city]);
+
+  // Catalog services from the discover_date surface — populated when scheduledDate is present.
+  const [dateCatalogServices, setDateCatalogServices] = useState<SlotCatalogEntry[]>([]);
+  useEffect(() => {
+    if (!scheduledDate) setDateCatalogServices([]);
+  }, [scheduledDate, city]);
+
+  // Tracks which date-catalog offering type keys the user has already requested
+  const { toast } = useToast();
+  const [requestedDateKeys, setRequestedDateKeys] = useState<Set<string>>(new Set());
+
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];
   const allGems = data?.gems?.data ?? [];
@@ -1154,92 +1230,42 @@ export default function DiscoverLocationPage() {
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
 
-  // ── Engine recommendations (discover_location upsell surface) ──────────
-  // expertEndorsedKeys passes local expert IDs so the server boosts offerings
-  // endorsed by those experts — the authoritative endorsement signal driving
-  // both the slot ranking and the lead-expert pick. Candidates arrive in the
-  // engine's ranked order; this page renders them natively, it does not rank.
-  const discoverySlotResult = useUpsellSlot("discover_location", {
-    contextPayload: {
-      ...(neighborhoods[0]?.id
-        ? { neighborhoodId: String(neighborhoods[0].id) }
-        : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
-      expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
-    },
-    enabled: !!data,
-  });
-
-  const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
-    discoverySlotResult.logClick(c.offeringId);
-    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=discover_location`);
-  };
-
-  // ── Injected-element payloads for the composition layer ────────────────
-  // Lead expert: derived from the top slot candidate's categoryKey — the
-  // server ranked the offering endorsed by local experts, so the expert whose
-  // specialties overlap the top offering is the authoritative neighbourhood
-  // lead. Falls back to the first expert when no overlap is found.
-  const leadExpert = experts.length > 0
-    ? (() => {
-        const topCategoryKey = discoverySlotResult.candidates[0]?.categoryKey ?? "";
-        return (topCategoryKey
-          ? (experts.find((e: any) =>
-              (e.specialties as string[] | undefined)?.some(
-                (s) => s.toLowerCase().replace(/\s+/g, "_") === topCategoryKey
-              )
-            ) ?? experts[0])
-          : experts[0]) as any;
-      })()
-    : null;
-
-  // Exclude the lead-expert from the filler pool to avoid the same person
-  // appearing twice (once as kind="expert", once as kind="lead-expert").
-  const feedExperts = leadExpert
-    ? experts.filter((e: any) => {
-        const eId = String(e.id ?? e.userId ?? e.user_id ?? "");
-        const lId = String((leadExpert as any).id ?? (leadExpert as any).userId ?? (leadExpert as any).user_id ?? "__none__");
-        return eId !== lId;
-      })
-    : experts;
-
   const feedItems: FeedItem[] = data
-    ? buildFeedStream(neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices)
+    ? buildFeedStream(neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices)
     : [];
 
-  // Wanted/recruitment slots: one per neighborhood for offering types the
-  // engine found NO coverage for at all ("covered" = ranked candidates +
-  // suppressed-but-ranked). The composition layer caps and spaces them —
-  // this list is the pool, not the placement.
-  const coveredOfferingIds = new Set([
-    ...discoverySlotResult.candidates.map((c) => c.offeringId),
-    ...discoverySlotResult.suppressed.map((s) => s.offeringId),
-  ]);
-  const uncoveredOfferings = (expertOfferingTypes ?? []).filter(
-    (o) => !coveredOfferingIds.has(o.offering_type_key)
-  );
-  // Fall back to the full list when slot data hasn't loaded yet (both arrays empty)
-  const recruitmentPool = uncoveredOfferings.length > 0 ? uncoveredOfferings : (expertOfferingTypes ?? []);
-
-  // Build raw wanted-slot data (no demand counts yet)
-  const rawWantedSlotsData: WantedSlotData[] = neighborhoods.slice(0, 5).map((nb: any, idx: number) => {
-    const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
-    const offering = recruitmentPool[idx % Math.max(recruitmentPool.length, 1)];
-    return {
-      offeringLabel: offering?.display_name ?? "Local expert guide",
-      offeringKey: offering?.offering_type_key ?? "guide",
-      neighborhoodName: nbName,
-      city,
-      neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
-    };
-  });
+  // Build wanted-slot data for composition — compute once from slot result + offering types
+  const rawWantedSlotsData: WantedSlotData[] = (() => {
+    const coveredIds = new Set([
+      ...discoverySlotResult.candidates.map((c) => c.offeringId),
+      ...discoverySlotResult.suppressed.map((s) => s.offeringId),
+    ]);
+    const uncovered = (expertOfferingTypes ?? []).filter((o) => !coveredIds.has(o.offering_type_key));
+    const offeringPool = uncovered.length > 0 ? uncovered : (expertOfferingTypes ?? []);
+    return neighborhoods.slice(0, 5).map((nb: any, idx: number) => {
+      const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
+      const offering = offeringPool[idx % Math.max(offeringPool.length, 1)];
+      return {
+        offeringLabel: offering?.display_name ?? "Local expert guide",
+        offeringKey: offering?.offering_type_key ?? "guide",
+        neighborhoodName: nbName,
+        city,
+        neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
+      };
+    });
+  })();
 
   // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
   const wantedOfferingKeys = [...new Set(rawWantedSlotsData.map((s) => s.offeringKey))];
+  const wantedNeighborhoodIds = [...new Set(rawWantedSlotsData.map((s) => s.neighborhoodId).filter(Boolean))];
   const { data: demandCounts } = useQuery<Record<string, number>>({
-    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
+    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), wantedNeighborhoodIds.join(","), scheduledDate ?? ""],
     queryFn: async () => {
       if (!city || wantedOfferingKeys.length === 0) return {};
       const params = new URLSearchParams({ city, offeringTypeKeys: wantedOfferingKeys.join(",") });
+      if (wantedNeighborhoodIds.length > 0) {
+        params.set("neighborhoodIds", wantedNeighborhoodIds.join(","));
+      }
       if (scheduledDate) {
         params.set("dateRangeStart", scheduledDate);
         params.set("dateRangeEnd", scheduledDate);
@@ -1257,30 +1283,50 @@ export default function DiscoverLocationPage() {
     ? new Date(scheduledDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : undefined;
 
-  // Merge demand counts (and date context) into wanted-slot data — sorted descending
+  // Merge demand counts (and date context) into wanted-slot data.
+  // Prefer neighborhood-scoped count ("{neighborhoodId}:{offeringKey}") when available;
+  // fall back to city-level count. Sort descending by demand so highest-demand slots
+  // surface first in the composed feed.
   const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData
-    .map((slot) => ({
-      ...slot,
-      demandCount: demandCounts?.[slot.offeringKey] ?? 0,
-      dateContext,
-    }))
+    .map((slot) => {
+      const nbScopedKey = `${slot.neighborhoodId}:${slot.offeringKey}`;
+      const nbCount = demandCounts?.[nbScopedKey];
+      const cityCount = demandCounts?.[slot.offeringKey] ?? 0;
+      const demandCount = nbCount !== undefined ? nbCount : cityCount;
+      return { ...slot, demandCount, dateContext };
+    })
     .sort((a, b) => (b.demandCount ?? 0) - (a.demandCount ?? 0));
 
-  // ── One interleaved stream ──────────────────────────────────────────────
-  // The composition layer PLACES the injected elements into the organic
-  // stream (admin-configured cadence/cap/spacing); it consumes the engine's
-  // ranked order as-is and never re-ranks. Filtered views are deliberate
-  // searches — they show organic results only.
+  // Lead expert: expert whose specialties best match the top recommendation category
+  const leadExpert: any | null = (() => {
+    if (experts.length === 0) return null;
+    const topKey = discoverySlotResult.candidates[0]?.categoryKey ?? "";
+    return (
+      (topKey
+        ? (experts.find((e: any) =>
+            (e.specialties as string[] | undefined)?.some(
+              (s) => s.toLowerCase().replace(/\s+/g, "_") === topKey
+            )
+          ) ?? experts[0])
+        : experts[0]) as any
+    );
+  })();
+
+  // Compose the "all" feed: organic items + interleaved recommendations, wanted-slots, lead expert.
+  // Uses admin-configured cadence/cap/spacing from platform_settings (falls back to defaults).
+  const composedItems: FeedItem[] = data
+    ? composeDiscoverFeed(
+        feedItems,
+        discoverySlotResult.candidates,
+        wantedSlotsData,
+        leadExpert,
+        feedCompositionConfig ?? {},
+      )
+    : [];
+
   const filteredItems =
     activeFilter === "all"
-      ? composeDiscoverFeed(
-          feedItems,
-          discoverySlotResult.candidates,
-          wantedSlotsData,
-          leadExpert,
-          feedConfig,
-          defaultIsRelated,
-        )
+      ? composedItems
       : filterFeedStream(feedItems, activeFilter);
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
@@ -1396,36 +1442,124 @@ export default function DiscoverLocationPage() {
               />
             )}
 
-            {/* ── Spine filter bar (sticky) ─────────────────────────── */}
-            <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
-
-            {/* Lead expert, wanted slots, and engine recommendations are no
-                longer stacked blocks here — the feed-composition layer
-                interleaves them into the organic stream below. Only the
-                empty-market recruitment card remains a standalone section
-                (there is no feed to interleave into). */}
-            {experts.length === 0 && neighborhoods.length === 0 && (
-              <div
-                className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
-                data-testid="section-expert-recruitment-generic"
-              >
-                <p className="text-sm font-semibold text-primary mb-1">
-                  Local experts wanted in {toTitleCase(city)}
+            {/* ── Date-scoped catalog offerings (seasonal + covered) ─── */}
+            {scheduledDate && dateCatalogServices.length > 0 && (
+              <div className="mt-2" data-testid="date-catalog-services">
+                <p className="text-[11px] text-muted-foreground mb-2 px-0.5 font-medium uppercase tracking-wide">
+                  Services available on this date
                 </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Know this city well? Travellers are looking for guides, advisors, and service providers here.
-                </p>
-                <a
-                  href={`/become-expert?city=${encodeURIComponent(city)}`}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
-                  data-testid="link-expert-recruitment-earn"
-                >
-                  Start earning in {toTitleCase(city)} <ChevronRight className="w-3.5 h-3.5" />
-                </a>
+                <div className="flex gap-2 flex-wrap">
+                  {dateCatalogServices.slice(0, 6).map(svc => (
+                    <div
+                      key={svc.offeringTypeKey}
+                      className="flex-[1_1_160px] rounded-xl border p-3"
+                      style={{ background: "var(--card)" }}
+                      data-testid={`date-catalog-card-${svc.offeringTypeKey}`}
+                    >
+                      {svc.seasonTag && (
+                        <span
+                          className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide mb-1"
+                          style={{ background: "#fef9c3", color: "#713f12" }}
+                        >
+                          {svc.seasonTag.replace(/_/g, " ").toUpperCase()}
+                        </span>
+                      )}
+                      <div className="text-[13px] font-medium leading-snug mb-1">{svc.displayName}</div>
+                      {svc.tagline && (
+                        <div className="text-[11px] text-muted-foreground mb-2 line-clamp-1">{svc.tagline}</div>
+                      )}
+                      {svc.coveredBy ? (
+                        <a
+                          href={svc.coveredBy.href}
+                          className="inline-flex items-center text-[11px] font-semibold px-2 py-1 rounded"
+                          style={{ background: "#FF385C", color: "#fff" }}
+                          data-testid={`btn-date-catalog-book-${svc.offeringTypeKey}`}
+                        >
+                          Book
+                        </a>
+                      ) : requestedDateKeys.has(svc.offeringTypeKey) ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px] text-green-700 font-semibold"
+                          data-testid={`status-date-catalog-requested-${svc.offeringTypeKey}`}
+                        >
+                          ✓ Requested
+                        </span>
+                      ) : (
+                        <button
+                          className="inline-flex items-center text-[11px] px-2 py-1 rounded border border-dashed hover:bg-muted transition-colors"
+                          data-testid={`btn-date-catalog-request-${svc.offeringTypeKey}`}
+                          onClick={async () => {
+                            try {
+                              const resp = await fetch("/api/services/request", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  offeringTypeKey: svc.offeringTypeKey,
+                                  city,
+                                  dateRangeStart: scheduledDate,
+                                  dateRangeEnd: scheduledDate,
+                                  guestSessionId: getOrCreateGuestSessionId(),
+                                }),
+                              });
+                              if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
+                              setRequestedDateKeys((prev) => new Set([...prev, svc.offeringTypeKey]));
+                            } catch {
+                              toast({ title: "Could not send request", variant: "destructive" });
+                            }
+                          }}
+                        >
+                          Request this
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* ── Blended bento feed (one interleaved stream) ───────── */}
+            {/* ── Spine filter bar (sticky) ─────────────────────────── */}
+            <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
+
+            {/* ── Headless UpsellSlot: data-only fetch (no visual) ──────────────────
+                Fires onSlotData so composeDiscoverFeed can interleave rec and
+                wanted-slot cards organically into the feed stream below.
+                expertEndorsedKeys boosts offerings endorsed by local experts,
+                driving both recommendation ranking and lead-expert selection. */}
+            <UpsellSlot
+              surface="discover_location"
+              contextPayload={{
+                ...(neighborhoods[0]?.id
+                  ? { neighborhoodId: String(neighborhoods[0].id) }
+                  : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
+                expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
+              }}
+              headless
+              data-testid="upsell-slot-discover-location"
+              onSlotData={setDiscoverySlotResult}
+            />
+
+            {/* ── Headless discover_date slot (date mode only) ──────────────────
+                Fetches catalog + upsell candidates scoped to the selected date.
+                catalogServices are stored in dateCatalogServices and rendered
+                below the DateHighlightStrip so seasonal offerings always surface
+                even when destination_events is empty. */}
+            {scheduledDate && (
+              <UpsellSlot
+                surface="discover_date"
+                contextPayload={{
+                  city,
+                  dateRange: { start: scheduledDate, end: scheduledDate },
+                  userProfile: {},
+                }}
+                headless
+                data-testid="upsell-slot-discover-date"
+                onSlotData={(result) => {
+                  setDateCatalogServices(result.catalogServices ?? []);
+                }}
+              />
+            )}
+
+            {/* ── Blended bento feed ────────────────────────────────── */}
             {activeFilter === "all" ? (
               <>
                 <FeedRenderer
@@ -1433,11 +1567,6 @@ export default function DiscoverLocationPage() {
                   city={city}
                   scheduledDate={scheduledDate}
                   onAdd={handleAdd}
-                  onBookRec={handleBookRecommendation}
-                  recLabels={{
-                    recommendedLabel: feedConfig.recommendedLabel,
-                    affiliateLabel: feedConfig.affiliateLabel,
-                  }}
                 />
                 <TripComplementsStrip city={city} highlight={currentHighlight} />
               </>

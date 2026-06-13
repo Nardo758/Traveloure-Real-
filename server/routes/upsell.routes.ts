@@ -26,6 +26,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { queryCatalogServices } from "../services/catalog.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
   rankCandidates,
@@ -284,7 +285,7 @@ async function gatherOfferingCandidates(opts: {
   // Returns one row per offering with everything the engine needs to score.
   // Filters by isActive + market scope (universal OR matching market).
   try {
-    const [result, inventory] = await Promise.all([
+    const [result, inventory, demandRows] = await Promise.all([
       db.execute(sql`
         SELECT
           sot.offering_type_key                   AS offering_id,
@@ -321,9 +322,37 @@ async function gatherOfferingCandidates(opts: {
           )
       `),
       loadCoveringInventory(opts),
+      // Demand counts grouped by offering_type_key for the target city.
+      // When no marketCity is given, aggregate across all cities so discover
+      // surfaces without a city still benefit from global demand signals.
+      db.execute(
+        opts.marketCity
+          ? sql`
+              SELECT offering_type_key, COUNT(*)::INT AS demand_count
+              FROM service_demand_requests
+              WHERE LOWER(city) = LOWER(${opts.marketCity})
+              GROUP BY offering_type_key
+            `
+          : sql`
+              SELECT offering_type_key, COUNT(*)::INT AS demand_count
+              FROM service_demand_requests
+              GROUP BY offering_type_key
+            `
+      ).catch(() => ({ rows: [] })),
     ]);
 
     const rows = (result.rows ?? []) as any[];
+
+    // Build a raw demand-count map and max-normalize to [0,1] so the engine
+    // receives a comparable demandSignal regardless of absolute request volumes.
+    const demandCountMap = new Map<string, number>();
+    for (const d of (demandRows.rows ?? []) as any[]) {
+      demandCountMap.set(String(d.offering_type_key), Number(d.demand_count) || 0);
+    }
+    const maxDemand = demandCountMap.size > 0
+      ? Math.max(...Array.from(demandCountMap.values()))
+      : 0;
+
     const candidates: RankInputCandidate[] = [];
     for (const r of rows) {
       const isAffiliate = r.source_type === "affiliate";
@@ -339,6 +368,10 @@ async function gatherOfferingCandidates(opts: {
       const earnings = isAffiliate
         ? computeEarnings(r.aff_band_rate_type, r.aff_band_rate === null ? null : Number(r.aff_band_rate), null)
         : computeEarnings(r.band_rate_type, r.band_rate === null ? null : Number(r.band_rate), inv!.price);
+
+      // demandSignal: max-normalized request count → 0 when no requests recorded.
+      const rawCount = demandCountMap.get(String(r.offering_id)) ?? 0;
+      const demandSignal = maxDemand > 0 ? rawCount / maxDemand : 0;
 
       candidates.push({
         offeringId: String(r.offering_id),
@@ -358,6 +391,7 @@ async function gatherOfferingCandidates(opts: {
         profileMatchScore: 0.5,         // Phase 5.2 baseline; Phase 5.3+ refines
         // Affiliate inventory is broadly available → market-level proximity.
         proximityFit: isAffiliate ? PROXIMITY_FIT.market : PROXIMITY_FIT[inv!.matchType],
+        demandSignal,
       });
     }
     return candidates;
@@ -469,25 +503,13 @@ async function rankAndLog(
   return { ...result, displayLookup };
 }
 
-/** "aff_guided_tour" → "Guided Tour". Fallback when the display-name lookup
- *  misses (e.g. lookup query failure): surfaces must NEVER render a raw
- *  offering key (Discover Feed Composition Brief — zero-raw-keys gate). */
-export function humanizeOfferingKey(key: string): string {
-  return key
-    .replace(/^aff_/, "")
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 function decorate(
   candidates: ReturnType<typeof rankCandidates>["candidates"],
   displayLookup: Map<string, { displayName: string; tagline: string | null }>,
 ) {
   return candidates.map(c => ({
     ...c,
-    displayName: displayLookup.get(c.offeringId)?.displayName ?? humanizeOfferingKey(c.offeringId),
+    displayName: displayLookup.get(c.offeringId)?.displayName ?? c.offeringId,
     tagline: displayLookup.get(c.offeringId)?.tagline ?? null,
   }));
 }
@@ -625,10 +647,22 @@ router.post("/api/upsell/discover-date", async (req, res) => {
 
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_date", ctx, raw, req);
 
+    // Catalog services: platform offering types for the city, seasonal-filtered.
+    // These populate the date surface even when destination_events is empty.
+    const catalogServices = await queryCatalogServices({
+      city: body.city,
+      dateStart: body.dateRange.start,
+      dateEnd:   body.dateRange.end ?? body.dateRange.start,
+    }).catch(err => {
+      console.error("[discover-date] catalog fetch failed (non-fatal):", err.message);
+      return [];
+    });
+
     res.json({
       candidates: decorate(candidates, displayLookup),
       suppressed,
       hardFilteredByDate: unavailable.size,
+      catalogServices,
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });

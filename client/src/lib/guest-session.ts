@@ -1,6 +1,6 @@
 export {
-  getGuestSessionId,
   getOrCreateGuestSessionId,
-  getOrCreateImpressionSessionId,
+  getGuestSessionId,
   clearGuestSessionId,
+  getOrCreateImpressionSessionId,
 } from "./guestSession";

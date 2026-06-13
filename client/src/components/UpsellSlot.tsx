@@ -25,7 +25,8 @@ export type UpsellSurface =
   | "plancard_ontrip"
   | "cart"
   | "checkout"
-  | "discover_location";
+  | "discover_location"
+  | "discover_date";
 
 export interface UpsellCandidate {
   offeringId: string;
@@ -33,15 +34,24 @@ export interface UpsellCandidate {
   displayName: string;
   tagline: string | null;
   reason: string;
-  /** Present in the server payload; lets surfaces show the distinct
-   *  paid-affiliate disclosure marker. */
-  sourceType?: "platform_provider" | "affiliate";
+}
+
+export interface SlotCatalogEntry {
+  offeringTypeKey: string;
+  displayName: string;
+  tagline: string | null;
+  categoryKey: string;
+  isSurprising: boolean;
+  seasonTag: string | null;
+  coveredBy: { providerServiceId: string; providerName: string; price: string | null; href: string; } | null;
 }
 
 export interface SlotResult {
   candidates: UpsellCandidate[];
   /** Offerings the engine filtered out — includes their offeringId so callers can build a "covered" set. */
   suppressed: Array<{ offeringId: string; reason?: string }>;
+  /** Catalog entries from discover_date surface — platform offering types with seasonal + coverage info. */
+  catalogServices?: SlotCatalogEntry[];
 }
 
 interface UpsellSlotProps {
@@ -59,6 +69,12 @@ interface UpsellSlotProps {
    * (so recruitment widgets can show only truly uncovered categories).
    */
   onSlotData?: (result: SlotResult) => void;
+  /**
+   * When true, renders nothing (returns null) but still fires onSlotData and
+   * logs impressions. Use this on surfaces where the feed composition layer
+   * owns rendering of candidates (e.g. discover_location interleaved stream).
+   */
+  headless?: boolean;
 }
 
 interface ErrorBoundaryState { hasError: boolean }
@@ -75,47 +91,42 @@ export class UpsellErrorBoundary extends Component<
 }
 
 const ENDPOINT: Record<UpsellSurface, string> = {
-  plancard_pretrip: "/api/upsell/plancard-pretrip",
-  plancard_ontrip: "/api/upsell/plancard-ontrip",
-  cart: "/api/upsell/cart",
-  checkout: "/api/upsell/checkout",
-  discover_location: "/api/upsell/discover-location",
+  plancard_pretrip:   "/api/upsell/plancard-pretrip",
+  plancard_ontrip:    "/api/upsell/plancard-ontrip",
+  cart:               "/api/upsell/cart",
+  checkout:           "/api/upsell/checkout",
+  discover_location:  "/api/upsell/discover-location",
+  discover_date:      "/api/upsell/discover-date",
 };
 
 const DEFAULT_HEADING: Record<UpsellSurface, string> = {
-  plancard_pretrip: "Complete your plan",
-  plancard_ontrip: "Near you on this trip",
-  cart: "Frequently booked together",
-  checkout: "Add to your trip",
+  plancard_pretrip:  "Complete your plan",
+  plancard_ontrip:   "Near you on this trip",
+  cart:              "Frequently booked together",
+  checkout:          "Add to your trip",
   discover_location: "Recommended for you",
+  discover_date:     "Available on this date",
 };
 
-export interface UseUpsellSlotResult {
-  candidates: UpsellCandidate[];
-  suppressed: Array<{ offeringId: string; reason?: string }>;
-  /** True once the server has responded (even with an empty slate). */
-  isResolved: boolean;
-  /** Fire-and-forget click attribution for a candidate. */
-  logClick: (offeringId: string) => void;
-}
-
-/**
- * Data layer of the upsell slot: fetch + impression/click attribution,
- * without the default block rendering. Surfaces that render candidates
- * natively (e.g. the Discover feed-composition layer) consume this hook;
- * <UpsellSlot /> remains the default presentation built on top of it.
- */
-export function useUpsellSlot(
-  surface: UpsellSurface,
-  opts: { tripId?: string; contextPayload?: Record<string, unknown>; maxItems?: number; enabled?: boolean } = {},
-): UseUpsellSlotResult {
-  const { tripId, contextPayload, maxItems, enabled = true } = opts;
-  const impressionFiredRef = useRef(false);
+export function UpsellSlot({
+  surface,
+  tripId,
+  contextPayload,
+  maxItems,
+  heading,
+  className,
+  "data-testid": testId,
+  onSlotData,
+  headless,
+}: UpsellSlotProps) {
+  const [, navigate] = useLocation();
+  const lastImpressionDataRef = useRef<unknown>(undefined);
+  const lastSlotDataRef = useRef<unknown>(undefined);
 
   const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
   if (tripId) body.tripId = tripId;
 
-  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }> }>({
+  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }>; catalogServices?: SlotCatalogEntry[] }>({
     queryKey: [ENDPOINT[surface], tripId, JSON.stringify(contextPayload)],
     queryFn: async () => {
       const res = await apiRequest("POST", ENDPOINT[surface], body);
@@ -123,7 +134,6 @@ export function useUpsellSlot(
     },
     staleTime: 5 * 60_000,
     retry: false,
-    enabled,
   });
 
   const logClick = useMutation({
@@ -139,54 +149,25 @@ export function useUpsellSlot(
   const candidates = (data?.candidates ?? []).slice(0, maxItems);
 
   useEffect(() => {
-    if (candidates.length > 0 && !impressionFiredRef.current) {
-      impressionFiredRef.current = true;
+    // Fire on each new data response (not just once per mount) so city/context
+    // transitions on the same component instance propagate fresh results.
+    if (candidates.length > 0 && data !== lastImpressionDataRef.current) {
+      lastImpressionDataRef.current = data;
       logImpression.mutate(candidates.map((c) => c.offeringId));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates.length]);
-
-  return {
-    candidates,
-    suppressed: data?.suppressed ?? [],
-    isResolved: data !== undefined,
-    logClick: (offeringId: string) => logClick.mutate(offeringId),
-  };
-}
-
-export function UpsellSlot({
-  surface,
-  tripId,
-  contextPayload,
-  maxItems,
-  heading,
-  className,
-  "data-testid": testId,
-  onSlotData,
-}: UpsellSlotProps) {
-  const [, navigate] = useLocation();
-  const slotDataFiredRef = useRef(false);
-
-  const { candidates, suppressed, isResolved, logClick } = useUpsellSlot(surface, {
-    tripId,
-    contextPayload,
-    maxItems,
-  });
-
-  useEffect(() => {
-    if (isResolved && !slotDataFiredRef.current) {
-      slotDataFiredRef.current = true;
-      onSlotData?.({ candidates, suppressed });
+    if (data !== undefined && data !== lastSlotDataRef.current) {
+      lastSlotDataRef.current = data;
+      onSlotData?.({ candidates, suppressed: data.suppressed ?? [], catalogServices: data.catalogServices });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isResolved]);
+  }, [candidates.length, data]);
 
-  if (candidates.length === 0) return null;
+  if (headless || candidates.length === 0) return null;
 
   const label = heading ?? DEFAULT_HEADING[surface];
 
   const handleExplore = (c: UpsellCandidate) => {
-    logClick(c.offeringId);
+    logClick.mutate(c.offeringId);
     navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
   };
 

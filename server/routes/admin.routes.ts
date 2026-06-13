@@ -10,6 +10,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, contactSubmissions, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
+  serviceDemandRequests,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
@@ -5547,6 +5548,61 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
     res.json({ ok: true, neighborhoodId: id, adjacentKeys: newKeys, added, removed });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// TRAVELER DEMAND SIGNALS
+// ============================================================
+
+router.get("/api/admin/demand-signals", isAuthenticated, async (req, res) => {
+  try {
+    const user = req.user as any;
+    if (user?.claims?.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const { city, offeringType, days } = req.query as Record<string, string>;
+
+    const cutoffDate = days
+      ? new Date(Date.now() - parseInt(days, 10) * 24 * 60 * 60 * 1000)
+      : null;
+
+    const conditions: any[] = [];
+    if (city) conditions.push(ilike(serviceDemandRequests.city, `%${city}%`));
+    if (offeringType) conditions.push(ilike(serviceDemandRequests.offeringTypeKey, `%${offeringType}%`));
+    if (cutoffDate) conditions.push(sql`${serviceDemandRequests.createdAt} >= ${cutoffDate}`);
+
+    const rows = await db
+      .select({
+        offeringTypeKey: serviceDemandRequests.offeringTypeKey,
+        city: serviceDemandRequests.city,
+        country: serviceDemandRequests.country,
+        requestCount: sql<number>`count(*)::int`,
+        firstRequestAt: sql<string>`min(${serviceDemandRequests.createdAt})`,
+        lastRequestAt: sql<string>`max(${serviceDemandRequests.createdAt})`,
+      })
+      .from(serviceDemandRequests)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .groupBy(
+        serviceDemandRequests.offeringTypeKey,
+        serviceDemandRequests.city,
+        serviceDemandRequests.country,
+      )
+      .orderBy(sql`count(*) desc`)
+      .limit(100);
+
+    const totalRequests = rows.reduce((sum, r) => sum + r.requestCount, 0);
+    const uniqueCities = new Set(rows.map((r) => r.city)).size;
+    const uniqueOfferingTypes = new Set(rows.map((r) => r.offeringTypeKey)).size;
+
+    res.json({
+      rows,
+      summary: { totalRequests, uniqueCities, uniqueOfferingTypes },
+    });
+  } catch (err) {
+    console.error("[admin] demand-signals error:", err);
+    res.status(500).json({ message: "Failed to fetch demand signals" });
   }
 });
 

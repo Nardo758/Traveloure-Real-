@@ -108,15 +108,6 @@ facilitation. Experts opt in by creating an APPROVED `provider_services` row ref
 `expert_offering_type_id` (migration 057); market scoping rides `expert_neighborhoods` (no new column).
 Catalog vocabulary only — no eligibility/fee wiring yet (3.3/3.4). Ratified by the Phase 3.2 GO (CREATE).
 
-**Migration 067 (Jun 11, 2026; registered in `migration-files.ts`) — Discover Feed Composition admin rows:**
-data-seed only, no schema change. Inserts the five `feed_*` `platform_settings` rows read by the public
-`GET /api/feed-composition-config` (Discover Feed Composition Brief): `feed_rec_cadence` ('4'),
-`feed_wanted_slot_max` ('2'), `feed_wanted_slot_spacing` ('6'), `feed_rec_label` ('Recommended'),
-`feed_rec_affiliate_label` ('Paid partner'). The endpoint already falls back to these same code defaults
-when rows are absent; seeding them makes the knobs DISCOVERABLE/editable in the admin platform-settings
-list (which shows only existing rows). Idempotent `ON CONFLICT (setting_key) DO NOTHING` — never
-overwrites an admin-tuned value, mirroring the 033 seed pattern.
-
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
 - This was uncoordinated and left the transaction path orphaned

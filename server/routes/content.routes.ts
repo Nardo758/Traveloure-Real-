@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { geocodeAddress } from "../utils/geocode";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -53,7 +53,9 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, serviceOfferingTypes } from "@shared/schema";
+import { matchSupplyForGem } from "../services/content-supply-matching.service";
+import { queryCatalogServices } from "../services/catalog.service";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -95,7 +97,7 @@ import transportHubRoutes from "./transport-hub.routes";
 import plancardRoutes from "./plancard.routes";
 import identityRoutes from "./identity.routes";
 import webhooksRoutes from "./webhooks.routes";
-import { affiliateClicks } from "@shared/schema";
+import { affiliateClicks, contentImpressions } from "@shared/schema";
 import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
@@ -239,52 +241,6 @@ router.get("/api/status", (_req, res) => {
       res.json(result.rows ?? []);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
-    }
-  });
-
-  // GET /api/feed-composition-config — public read of the Discover feed
-  // composition knobs (Discover Feed Composition Brief): recommendation
-  // cadence, wanted-slot cap/spacing, honest-disclosure label copy. These are
-  // admin rows, not hardcode: platform_settings keys
-  //   feed_rec_cadence, feed_wanted_slot_max, feed_wanted_slot_spacing,
-  //   feed_rec_label, feed_rec_affiliate_label
-  // upserted via PATCH /api/admin/platform-settings/:settingKey. Missing rows
-  // fall back to code defaults. Short cache so admin edits show promptly.
-  router.get("/api/feed-composition-config", async (_req, res) => {
-    const defaults = {
-      recCadence: 4,
-      wantedSlotMax: 2,
-      wantedSlotSpacing: 6,
-      recommendedLabel: "Recommended",
-      affiliateLabel: "Paid partner",
-    };
-    try {
-      const result = await db.execute(sql`
-        SELECT setting_key, setting_value
-        FROM platform_settings
-        WHERE setting_key IN (
-          'feed_rec_cadence', 'feed_wanted_slot_max', 'feed_wanted_slot_spacing',
-          'feed_rec_label', 'feed_rec_affiliate_label'
-        )
-      `);
-      const rows = new Map(
-        (result.rows ?? []).map((r: any) => [String(r.setting_key), String(r.setting_value)]),
-      );
-      const intOr = (key: string, dflt: number, min: number): number => {
-        const v = Number(rows.get(key));
-        return Number.isFinite(v) && v >= min ? Math.floor(v) : dflt;
-      };
-      res.setHeader("Cache-Control", "public, max-age=60");
-      res.json({
-        recCadence: intOr("feed_rec_cadence", defaults.recCadence, 1),
-        wantedSlotMax: intOr("feed_wanted_slot_max", defaults.wantedSlotMax, 0),
-        wantedSlotSpacing: intOr("feed_wanted_slot_spacing", defaults.wantedSlotSpacing, 1),
-        recommendedLabel: rows.get("feed_rec_label") || defaults.recommendedLabel,
-        affiliateLabel: rows.get("feed_rec_affiliate_label") || defaults.affiliateLabel,
-      });
-    } catch {
-      // platform_settings may not exist on fresh installs — defaults keep the feed composing.
-      res.json(defaults);
     }
   });
 
@@ -1905,6 +1861,66 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
   });
 
   // Admin: Get pending destination events
+
+// Static sub-routes must precede the parameterized :id route.
+// Uses pool.query (not drizzle sql tag) to safely pass text[] parameters.
+router.get("/api/services/demand", async (req, res) => {
+  try {
+    const city = ((req.query.city as string) || "").toLowerCase().trim();
+    const keysStr = ((req.query.offeringTypeKeys as string) || "").trim();
+    if (!city || !keysStr) return res.json({});
+
+    const keys = keysStr.split(",").map((k: string) => k.trim()).filter(Boolean);
+    if (keys.length === 0) return res.json({});
+
+    const dateStart = (req.query.dateRangeStart as string) || null;
+    const dateEnd = (req.query.dateRangeEnd as string) || dateStart;
+    const nbIdsStr = ((req.query.neighborhoodIds as string) || "").trim();
+    const nbIds = nbIdsStr ? nbIdsStr.split(",").map((n: string) => n.trim()).filter(Boolean) : [];
+
+    // City-level counts — parameterized query via pool to handle text[] correctly
+    const cityParams: any[] = [city, keys];
+    let cityQ = `
+      SELECT offering_type_key, COUNT(*)::int AS demand_count
+      FROM service_demand_requests
+      WHERE city = $1 AND offering_type_key = ANY($2)`;
+    if (dateStart && dateEnd) {
+      cityQ += ` AND date_range_start IS NOT NULL AND date_range_start <= $3::date AND date_range_end >= $4::date`;
+      cityParams.push(dateEnd, dateStart);
+    }
+    cityQ += ` GROUP BY offering_type_key`;
+
+    const cityRows = await pool.query(cityQ, cityParams);
+    const counts: Record<string, number> = {};
+    for (const row of cityRows.rows) {
+      counts[String(row.offering_type_key)] = Number(row.demand_count);
+    }
+
+    // Neighborhood-scoped counts — keyed as "{neighborhoodId}:{offeringTypeKey}"
+    if (nbIds.length > 0) {
+      const nbParams: any[] = [city, keys, nbIds];
+      let nbQ = `
+        SELECT neighborhood_id, offering_type_key, COUNT(*)::int AS demand_count
+        FROM service_demand_requests
+        WHERE city = $1 AND offering_type_key = ANY($2) AND neighborhood_id = ANY($3)`;
+      if (dateStart && dateEnd) {
+        nbQ += ` AND date_range_start IS NOT NULL AND date_range_start <= $4::date AND date_range_end >= $5::date`;
+        nbParams.push(dateEnd, dateStart);
+      }
+      nbQ += ` GROUP BY neighborhood_id, offering_type_key`;
+
+      const nbRows = await pool.query(nbQ, nbParams);
+      for (const row of nbRows.rows) {
+        counts[`${row.neighborhood_id}:${row.offering_type_key}`] = Number(row.demand_count);
+      }
+    }
+
+    return res.json(counts);
+  } catch (err: any) {
+    console.error("[services-demand]", err.message);
+    return res.json({});
+  }
+});
 
 router.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
@@ -7246,13 +7262,17 @@ router.post("/api/affiliate/track-click", async (req, res) => {
   // It inserts directly into affiliate_clicks with those FKs as null and uses `sessionId` to
   // record the partner name (e.g. "ivisa") so revenue reports can filter by it.
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.post("/api/affiliates/track", async (req, res) => {
     try {
-      const { partner, destination, tripId, itineraryId } = req.body;
+      const { partner, destination, tripId, itineraryId, impressionId, contentType, contentId } = req.body;
       if (!partner) {
         return res.status(400).json({ message: "partner is required" });
       }
       const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      // Validate UUID format before storing to prevent cast errors in funnel SQL
+      const safeImpressionId = impressionId && UUID_RE.test(String(impressionId)) ? String(impressionId) : null;
       await db.insert(affiliateClicks).values({
         productId: null,
         partnerId: null,
@@ -7264,6 +7284,9 @@ router.post("/api/affiliates/track", async (req, res) => {
         initiatedBy: "user",
         agentType: null,
         sessionId: [partner, destination].filter(Boolean).join(":") || partner,
+        sourceImpressionId: safeImpressionId,
+        clickContentType: contentType || null,
+        clickContentId: contentId ? String(contentId) : null,
       });
       res.json({ success: true });
     } catch (error: any) {
@@ -7674,6 +7697,420 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
   });
 
 } // end registerDiscoveryRoutes
+
+// ─── Gem → matched service endpoint ───────────────────────────────────────────
+//
+// Returns the best-matched provider service for a gem (real provider name/price
+// and booking link), or a "request this" suggestion (offering type display name)
+// when no covered provider exists. Returns null for place types that intentionally
+// produce no match (neighborhood, vineyard).
+//
+// Part of the Demand-Side Service Catalog (Task #600). The request CTA is wired
+// to write a service_demand_requests row by Task #602.
+
+const GEM_NO_MATCH_PLACE_TYPES = new Set(["neighborhood", "vineyard"]);
+
+const SERVICE_ICONS: Record<string, string> = {
+  photographer: "📷",
+  photoshoot: "📷",
+  portrait: "📷",
+  videography: "🎬",
+  tour_guide: "🧭",
+  cultural_guide: "🧭",
+  walking_tour: "🧭",
+  local_guide: "🧭",
+  museum_guide: "🧭",
+  historian: "🧭",
+  private_chef: "🍽",
+  food_tour: "🍽",
+  fine_dining: "🍽",
+  market_tour: "🍽",
+  cooking_class: "🍽",
+  restaurant: "🍽",
+  driver: "🚗",
+  private_driver: "🚗",
+  chauffeur: "🚗",
+  transportation: "🚗",
+  airport_transfer: "🚗",
+  spa: "💆",
+  wellness: "💆",
+  massage: "💆",
+  yoga: "🧘",
+  meditation: "🧘",
+  babysitter: "👶",
+  childcare: "👶",
+  family_concierge: "👶",
+  outdoor_activity: "🏔",
+  hiking_guide: "🏔",
+  entertainment: "🎭",
+  nightlife: "🍸",
+  bar_tour: "🍸",
+};
+
+function gemServiceIcon(serviceType: string | null | undefined): string {
+  const t = (serviceType || "").toLowerCase();
+  for (const [key, icon] of Object.entries(SERVICE_ICONS)) {
+    if (t === key || t.includes(key)) return icon;
+  }
+  return "✨";
+}
+
+function gemServiceActionLabel(serviceType: string | null | undefined): string {
+  const t = (serviceType || "").toLowerCase();
+  if (t.includes("photo") || t.includes("videogr")) return "Book shoot";
+  if (t.includes("chef") || t.includes("dining") || t.includes("food") || t.includes("restaurant")) return "Reserve";
+  if (t.includes("driver") || t.includes("transport") || t.includes("chauffeur")) return "Book transfer";
+  if (t.includes("guide") || t.includes("tour")) return "Book guide";
+  if (t.includes("spa") || t.includes("wellness") || t.includes("massage")) return "Book session";
+  return "Book";
+}
+
+router.get("/api/gems/:gemId/matched-service", async (req, res) => {
+  try {
+    const { gemId } = req.params;
+
+    const [gem] = await db
+      .select()
+      .from(travelPulseHiddenGems)
+      .where(eq(travelPulseHiddenGems.id, gemId));
+    if (!gem) return res.json(null);
+
+    // No-match place types — empty beats a stretch
+    const pt = (gem.placeType || "").toLowerCase().trim();
+    if (GEM_NO_MATCH_PLACE_TYPES.has(pt)) return res.json(null);
+
+    // Run the real scorer
+    const result = await matchSupplyForGem(gemId, { limit: 1, minScore: 20 });
+    if (!result) return res.json(null);
+
+    // ── Case A: real verified provider match ──────────────────────────────
+    if (result.matches.length > 0) {
+      const top = result.matches[0];
+      const svcType = top.serviceType || "";
+      const priceStr = (() => {
+        if (!top.price) return "";
+        const n = parseFloat(top.price);
+        if (isNaN(n)) return ` · ${top.price}`;
+        return ` · $${Math.round(n)}`;
+      })();
+      return res.json({
+        type: "match",
+        icon: gemServiceIcon(svcType),
+        matchText: `${top.providerName}${priceStr}`,
+        actionLabel: gemServiceActionLabel(svcType),
+        actionVariant: "platform",
+        href: `/services/${top.serviceId}`,
+      });
+    }
+
+    // ── Case B: no provider — find offering type for "request this" ───────
+    if (result.expansionTerms.length === 0) return res.json(null);
+
+    const city = (gem.city || "").toLowerCase();
+
+    const offeringRows = await db
+      .select()
+      .from(serviceOfferingTypes)
+      .where(
+        and(
+          inArray(serviceOfferingTypes.offeringTypeKey, result.expansionTerms),
+          eq(serviceOfferingTypes.isActive, true),
+        )
+      )
+      .limit(5);
+
+    // Apply market scope: null = universal, array = must include city slug
+    const scoped = offeringRows.filter((o) => {
+      if (!o.marketScoped || o.marketScoped.length === 0) return true;
+      return city && o.marketScoped.some((m) => m.toLowerCase() === city);
+    });
+
+    if (scoped.length === 0) return res.json(null);
+
+    const offering = scoped[0];
+    return res.json({
+      type: "request",
+      icon: gemServiceIcon(offering.offeringTypeKey),
+      matchText: offering.displayName,
+      actionLabel: "Request this",
+      actionVariant: "platform",
+      href: "#request",
+      offeringTypeKey: offering.offeringTypeKey,
+      displayName: offering.displayName,
+    });
+  } catch (err: any) {
+    console.error("[gem-matched-service]", err.message);
+    return res.json(null);
+  }
+});
+
+// ─── Catalog service browse endpoint ─────────────────────────────────────────
+//
+// GET /api/catalog/services?city=&country=&categoryKey=&dateStart=&dateEnd=
+//
+// Returns all platform service_offering_types for the city, each annotated
+// with coveredBy (real provider) or null (request-this). Affiliate (aff_*)
+// types are excluded server-side. Seasonal offerings are filtered by date
+// range when provided.
+
+router.get("/api/catalog/services", async (req, res) => {
+  try {
+    const city = (req.query.city as string || "").trim();
+    if (!city) return res.json([]);
+
+    const distanceKm = req.query.distanceKm ? parseInt(req.query.distanceKm as string, 10) : undefined;
+    const entries = await queryCatalogServices({
+      city,
+      country:     req.query.country    as string | undefined,
+      templateKey: req.query.templateKey as string | undefined,
+      categoryKey: req.query.categoryKey as string | undefined,
+      dateStart:   req.query.dateStart   as string | undefined,
+      dateEnd:     req.query.dateEnd     as string | undefined,
+      distanceKm:  distanceKm && !isNaN(distanceKm) ? distanceKm : undefined,
+    });
+
+    return res.json(entries);
+  } catch (err: any) {
+    console.error("[catalog-services]", err.message);
+    return res.json([]);
+  }
+});
+
+// ─── Service demand request endpoints ────────────────────────────────────────
+//
+// POST /api/services/request — record traveler demand for an uncovered offering.
+// Upserts for logged-in users (unique partial index), always-inserts for guests.
+// Returns { created: boolean, demandCount: number }.
+//
+// GET /api/services/demand — batch demand counts for a city + offering type list.
+// Used by discover-location.tsx to enrich wanted-slot cards.
+
+router.post("/api/services/request", async (req, res) => {
+  try {
+    const { offeringTypeKey, city, country, neighborhoodId, guestSessionId, dateRangeStart, dateRangeEnd } = req.body;
+    if (!offeringTypeKey || !city) {
+      return res.status(400).json({ error: "offeringTypeKey and city are required" });
+    }
+
+    const userId: string | null =
+      (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    const normalizedCity = city.toLowerCase().trim();
+
+    let created = false;
+
+    if (userId) {
+      const insertResult = await db.execute(sql`
+        INSERT INTO service_demand_requests
+          (offering_type_key, neighborhood_id, city, country, user_id, date_range_start, date_range_end)
+        VALUES (
+          ${offeringTypeKey}, ${neighborhoodId ?? null}, ${normalizedCity},
+          ${country ?? null}, ${userId},
+          ${dateRangeStart ?? null}, ${dateRangeEnd ?? null}
+        )
+        ON CONFLICT (offering_type_key, city, user_id) WHERE user_id IS NOT NULL
+        DO NOTHING
+        RETURNING id
+      `);
+      created = (insertResult.rows?.length ?? 0) > 0;
+    } else {
+      await db.execute(sql`
+        INSERT INTO service_demand_requests
+          (offering_type_key, neighborhood_id, city, country, guest_session_id, date_range_start, date_range_end)
+        VALUES (
+          ${offeringTypeKey}, ${neighborhoodId ?? null}, ${normalizedCity},
+          ${country ?? null}, ${guestSessionId ?? null},
+          ${dateRangeStart ?? null}, ${dateRangeEnd ?? null}
+        )
+      `);
+      created = true;
+    }
+
+    const countResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS demand_count
+      FROM service_demand_requests
+      WHERE offering_type_key = ${offeringTypeKey}
+        AND city = ${normalizedCity}
+    `);
+    const demandCount = Number((countResult.rows?.[0] as any)?.demand_count ?? 0);
+
+    return res.json({ created, demandCount });
+  } catch (err: any) {
+    console.error("[services-request]", err.message);
+    return res.status(500).json({ error: "Failed to record request" });
+  }
+});
+
+// === Discover Content Impression Tracking ===
+
+router.post("/api/tracking/impression", async (req, res) => {
+  try {
+    const { contentType, contentId, city, cardPosition, sessionId } = req.body;
+    if (!contentType || !contentId || !sessionId) {
+      return res.status(400).json({ message: "contentType, contentId, sessionId required" });
+    }
+    const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+    // ON CONFLICT DO NOTHING implements server-side session-scoped dedup
+    // (unique index: session_id, content_type, content_id via migration 071)
+    const inserted = await db
+      .insert(contentImpressions)
+      .values({
+        contentType,
+        contentId,
+        city: city || null,
+        cardPosition: typeof cardPosition === "number" ? cardPosition : null,
+        sessionId,
+        userId: userId || null,
+      })
+      .onConflictDoNothing()
+      .returning({ id: contentImpressions.id });
+
+    let impressionId: string | null = inserted[0]?.id ?? null;
+    if (!impressionId) {
+      // Row already existed — look up the existing impression ID
+      const existing = await db.execute(sql`
+        SELECT id FROM content_impressions
+        WHERE session_id = ${sessionId}
+          AND content_type = ${contentType}
+          AND content_id = ${contentId}
+        LIMIT 1
+      `);
+      impressionId = (existing.rows?.[0] as any)?.id ?? null;
+    }
+    res.json({ impressionId });
+  } catch (err: any) {
+    console.error("[impression-track]", err.message);
+    res.status(500).json({ message: "Failed to record impression" });
+  }
+});
+
+// === Admin: Discover Impression Funnel ===
+
+router.get("/api/admin/content/impression-funnel", isAuthenticated, async (req, res) => {
+  const rawUser = req.user as any;
+  const userId = rawUser?.claims?.sub || rawUser?.id || null;
+  if (!userId) return res.status(401).json({ message: "Authentication required" });
+  const [dbUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!dbUser || dbUser.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  try {
+    const days = Math.min(365, Math.max(1, parseInt((req.query.days as string) || "30", 10)));
+    const cityFilter = (req.query.city as string | undefined)?.trim() || null;
+    const typeFilter = (req.query.contentType as string | undefined)?.trim() || null;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const cityLike = cityFilter ? `%${cityFilter}%` : null;
+
+    // ── Impressions by type ──
+    const impResult = await db.execute(sql`
+      SELECT
+        content_type,
+        city,
+        COUNT(*)::int AS impressions,
+        COUNT(DISTINCT session_id)::int AS unique_sessions
+      FROM content_impressions
+      WHERE created_at >= ${since}
+        AND (${cityLike}::text IS NULL OR city ILIKE ${cityLike}::text)
+        AND (${typeFilter}::text IS NULL OR content_type = ${typeFilter}::text)
+      GROUP BY content_type, city
+      ORDER BY impressions DESC
+      LIMIT 50
+    `);
+
+    const UUID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+    // ── Attributed clicks (those with a source_impression_id) ──
+    // Pre-filter in a subquery so the ::uuid cast never sees invalid values.
+    const clickResult = await db.execute(sql`
+      SELECT
+        ci.content_type,
+        ci.city,
+        COUNT(ac.id)::int AS attributed_clicks
+      FROM (
+        SELECT id, source_impression_id, clicked_at
+        FROM affiliate_clicks
+        WHERE source_impression_id IS NOT NULL
+          AND source_impression_id ~ ${UUID_PATTERN}
+      ) ac
+      JOIN content_impressions ci ON ci.id = ac.source_impression_id::uuid
+      WHERE ac.clicked_at >= ${since}
+        AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
+        AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
+      GROUP BY ci.content_type, ci.city
+      ORDER BY attributed_clicks DESC
+      LIMIT 50
+    `);
+
+    // ── Attributed itinerary adds (typed source_impression_id column) ──
+    // Pre-filter in a subquery so the ::uuid cast never sees invalid values.
+    const addResult = await db.execute(sql`
+      SELECT
+        ci.content_type,
+        ci.city,
+        COUNT(ic.id)::int AS itinerary_adds
+      FROM (
+        SELECT id, source_impression_id, created_at
+        FROM itinerary_changes
+        WHERE change_type = 'add'
+          AND source_impression_id IS NOT NULL
+          AND source_impression_id ~ ${UUID_PATTERN}
+      ) ic
+      JOIN content_impressions ci ON ci.id = ic.source_impression_id::uuid
+      WHERE ic.created_at >= ${since}
+        AND (${cityLike}::text IS NULL OR ci.city ILIKE ${cityLike}::text)
+        AND (${typeFilter}::text IS NULL OR ci.content_type = ${typeFilter}::text)
+      GROUP BY ci.content_type, ci.city
+      ORDER BY itinerary_adds DESC
+      LIMIT 50
+    `);
+
+    // ── Summary totals (filters respected) ──
+    const totalsResult = await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM content_impressions
+          WHERE created_at >= ${since}
+            AND (${cityLike}::text IS NULL OR city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR content_type = ${typeFilter}::text)
+        ) AS total_impressions,
+        (SELECT COUNT(ac2.id)::int
+          FROM (
+            SELECT id, source_impression_id, clicked_at FROM affiliate_clicks
+            WHERE source_impression_id IS NOT NULL
+              AND source_impression_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          ) ac2
+          JOIN content_impressions ci2 ON ci2.id = ac2.source_impression_id::uuid
+          WHERE ac2.clicked_at >= ${since}
+            AND (${cityLike}::text IS NULL OR ci2.city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR ci2.content_type = ${typeFilter}::text)
+        ) AS total_attributed_clicks,
+        (SELECT COUNT(ic2.id)::int
+          FROM (
+            SELECT id, source_impression_id, created_at FROM itinerary_changes
+            WHERE change_type = 'add'
+              AND source_impression_id IS NOT NULL
+              AND source_impression_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          ) ic2
+          JOIN content_impressions ci3 ON ci3.id = ic2.source_impression_id::uuid
+          WHERE ic2.created_at >= ${since}
+            AND (${cityLike}::text IS NULL OR ci3.city ILIKE ${cityLike}::text)
+            AND (${typeFilter}::text IS NULL OR ci3.content_type = ${typeFilter}::text)
+        ) AS total_attributed_adds
+    `);
+
+    const totalsRow = (totalsResult.rows ?? totalsResult as any[])[0] ?? {};
+
+    res.json({
+      impressionsByType: impResult.rows ?? impResult,
+      attributedClicks: clickResult.rows ?? clickResult,
+      attributedAdds: addResult.rows ?? addResult,
+      summary: {
+        totalImpressions: Number(totalsRow.total_impressions ?? 0),
+        totalAttributedClicks: Number(totalsRow.total_attributed_clicks ?? 0),
+        totalAttributedAdds: Number(totalsRow.total_attributed_adds ?? 0),
+      },
+    });
+  } catch (err: any) {
+    console.error("[impression-funnel]", err.message);
+    res.status(500).json({ message: "Failed to load impression funnel" });
+  }
+});
 
 // === Exchange Rate Endpoint (top-level, always registered) ===
 let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;

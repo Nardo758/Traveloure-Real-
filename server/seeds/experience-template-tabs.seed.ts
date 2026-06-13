@@ -4739,6 +4739,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(bachelorId, bachelorTabs[i], i);
   }
   await seedUniversalFilters(bachelorId, bachelorUniversalFilters);
+  await backfillSelectionControls(bachelorId, "bachelor-bachelorette");
   console.log("Bachelor/Bachelorette Party template seeded.");
 
   // Seed Anniversary Trip template
@@ -4749,6 +4750,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(anniversaryId, anniversaryTabs[i], i);
   }
   await seedUniversalFilters(anniversaryId, anniversaryUniversalFilters);
+  await backfillSelectionControls(anniversaryId, "anniversary-trip");
   console.log("Anniversary Trip template seeded.");
 
   // Seed Travel template
@@ -4781,6 +4783,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(dateNightId, dateNightTabs[i], i);
   }
   await seedUniversalFilters(dateNightId, standardUniversalFilters);
+  await backfillSelectionControls(dateNightId, "date-night");
   console.log("Date Night template seeded.");
 
   // Seed Birthday template
@@ -4791,6 +4794,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(birthdayId, birthdayTabs[i], i);
   }
   await seedUniversalFilters(birthdayId, standardUniversalFilters);
+  await backfillSelectionControls(birthdayId, "birthday");
   console.log("Birthday template seeded.");
 
   // Seed Corporate Events template
@@ -4812,6 +4816,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(retreatsId, retreatsTabs[i], i);
   }
   await seedUniversalFilters(retreatsId, standardUniversalFilters);
+  await backfillSelectionControls(retreatsId, "retreats");
   console.log("Retreats template seeded.");
 
   // Seed Wedding Anniversaries template (party-focused)
@@ -4821,6 +4826,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(weddingAnniversariesId, weddingAnniversariesTabs[i], i);
   }
   await seedUniversalFilters(weddingAnniversariesId, standardUniversalFilters);
+  await backfillSelectionControls(weddingAnniversariesId, "wedding-anniversaries");
   console.log("Wedding Anniversaries template seeded.");
 
   // Seed Proposal template
@@ -4830,6 +4836,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(proposalId, proposalTabs[i], i);
   }
   await seedUniversalFilters(proposalId, standardUniversalFilters);
+  await backfillSelectionControls(proposalId, "proposal");
   console.log("Proposal template seeded.");
 
   // Seed Boys Trip template
@@ -4839,6 +4846,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(boysTripId, boysTripTabs[i], i);
   }
   await seedUniversalFilters(boysTripId, standardUniversalFilters);
+  await backfillSelectionControls(boysTripId, "boys-trip");
   console.log("Boys Trip template seeded.");
 
   // Seed Girls Trip template
@@ -4848,6 +4856,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(girlsTripId, girlsTripTabs[i], i);
   }
   await seedUniversalFilters(girlsTripId, standardUniversalFilters);
+  await backfillSelectionControls(girlsTripId, "girls-trip");
   console.log("Girls Trip template seeded.");
 
   // Seed Reunions template
@@ -4857,6 +4866,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(reunionsId, reunionsTabs[i], i);
   }
   await seedUniversalFilters(reunionsId, standardUniversalFilters);
+  await backfillSelectionControls(reunionsId, "reunions");
   console.log("Reunions template seeded.");
 
   // Seed Baby Shower template
@@ -4866,6 +4876,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(babyShowerId, babyShowerTabs[i], i);
   }
   await seedUniversalFilters(babyShowerId, standardUniversalFilters);
+  await backfillSelectionControls(babyShowerId, "baby-shower");
   console.log("Baby Shower template seeded.");
 
   // Seed Graduation Party template
@@ -4875,6 +4886,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(graduationId, graduationTabs[i], i);
   }
   await seedUniversalFilters(graduationId, standardUniversalFilters);
+  await backfillSelectionControls(graduationId, "graduation-party");
   console.log("Graduation Party template seeded.");
 
   // Seed Engagement Party template
@@ -4884,6 +4896,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(engagementId, engagementTabs[i], i);
   }
   await seedUniversalFilters(engagementId, standardUniversalFilters);
+  await backfillSelectionControls(engagementId, "engagement-party");
   console.log("Engagement Party template seeded.");
 
   // Seed Housewarming Party template
@@ -4893,6 +4906,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(housewarmingId, housewarmingTabs[i], i);
   }
   await seedUniversalFilters(housewarmingId, standardUniversalFilters);
+  await backfillSelectionControls(housewarmingId, "housewarming-party");
   console.log("Housewarming Party template seeded.");
 
   // Seed Retirement Party template
@@ -4902,6 +4916,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(retirementId, retirementTabs[i], i);
   }
   await seedUniversalFilters(retirementId, standardUniversalFilters);
+  await backfillSelectionControls(retirementId, "retirement-party");
   console.log("Retirement Party template seeded.");
 
   // Seed Career Achievement Party template
@@ -4911,6 +4926,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(careerAchievementId, careerAchievementTabs[i], i);
   }
   await seedUniversalFilters(careerAchievementId, standardUniversalFilters);
+  await backfillSelectionControls(careerAchievementId, "career-achievement-party");
   console.log("Career Achievement Party template seeded.");
 
   // Seed Farewell Party template
@@ -4920,6 +4936,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(farewellId, farewellTabs[i], i);
   }
   await seedUniversalFilters(farewellId, standardUniversalFilters);
+  await backfillSelectionControls(farewellId, "farewell-party");
   console.log("Farewell Party template seeded.");
 
   // Seed Holiday Party template
@@ -4929,6 +4946,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(holidayPartyId, holidayPartyTabs[i], i);
   }
   await seedUniversalFilters(holidayPartyId, standardUniversalFilters);
+  await backfillSelectionControls(holidayPartyId, "holiday-party");
   console.log("Holiday Party template seeded.");
 
   // Seed Sports Event template
@@ -4938,6 +4956,7 @@ export async function seedExperienceTemplateTabs() {
     await seedTabWithFilters(sportsEventId, sportsEventTabs[i], i);
   }
   await seedUniversalFilters(sportsEventId, standardUniversalFilters);
+  await backfillSelectionControls(sportsEventId, "sports-event");
   console.log("Sports Event template seeded.");
 
   console.log("Experience template tabs and filters seeding complete.");

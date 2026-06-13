@@ -20,11 +20,8 @@ export type FeedItemKind =
   | "supply-activity"
   | "vendor-service"
   | "city-separator"
-  // Injected by the feed-composition layer (feed-composition.ts) — never
-  // produced by buildFeedStream itself:
   | "recommendation"
-  | "wanted-slot"
-  | "lead-expert";
+  | "wanted-slot";
 
 export interface FeedItem {
   kind: FeedItemKind;
@@ -50,51 +47,11 @@ export interface MatchSuggestion {
   actionLabel: string;
   actionVariant: "platform" | "affiliate";
   href: string;
-}
-
-/**
- * Map a placeType to a matched-service suggestion (spec: photo spot→photographer,
- * stay→transport, attraction→guide, eat→reservation).
- * Returns enriched data including price range, action label, and badge variant.
- */
-export function matchedServiceSuggestion(placeType: string | null | undefined): MatchSuggestion | null {
-  const cat = gemCategory(placeType);
-  switch (cat) {
-    case "photo_spots":
-      return {
-        icon: "📷",
-        matchText: "photographer here · ¥14,000",
-        actionLabel: "Book shoot",
-        actionVariant: "platform",
-        href: "/experiences/photo",
-      };
-    case "stay":
-      return {
-        icon: "🚗",
-        matchText: "private car from city centre · ¥9,000",
-        actionLabel: "Book both",
-        actionVariant: "platform",
-        href: "/experiences/transport",
-      };
-    case "eat":
-      return {
-        icon: "🍽",
-        matchText: "reservation via OpenTable",
-        actionLabel: "Reserve",
-        actionVariant: "affiliate",
-        href: "/experiences/dining",
-      };
-    case "do":
-      return {
-        icon: "🧭",
-        matchText: "local guide · ¥6,000",
-        actionLabel: "Book guide",
-        actionVariant: "platform",
-        href: "/local-experts",
-      };
-    default:
-      return null;
-  }
+  /** True when this is a "Request this" CTA rather than a real provider match */
+  isRequest?: boolean;
+  /** Present on request suggestions so the demand loop can write the row */
+  offeringTypeKey?: string;
+  displayName?: string;
 }
 
 /**
@@ -270,6 +227,10 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
         return item.kind === "vendor-service";
       case "vibe":
         if (item.kind === "loose-gem") return !!item.data.vibeTag || !!item.data.isSecret;
+        return false;
+      // Injected items are never shown when a category filter is active
+      case "recommendation":
+      case "wanted-slot":
         return false;
       default:
         return true;
