@@ -61,21 +61,21 @@ const planningOptions = [
     title: "AI-Powered Planning",
     description: "Let our advanced AI create personalized itineraries based on your preferences, budget, and travel style.",
     icon: Sparkles,
-    price: "Free - 5 Credits",
+    price: "Free – 1 optimize run",
     features: ["Instant itinerary generation", "Budget optimization", "Multi-destination support", "24/7 AI assistance"]
   },
   {
     title: "Hybrid AI + Expert",
     description: "Combine AI efficiency with human expertise. Get AI suggestions refined by local experts and trip planners.",
     icon: Users,
-    price: "10 - 25 Credits",
+    price: "$5.99 – $19.99 / run",
     features: ["AI-generated base plan", "Expert review and refinement", "Insider local tips", "Priority support"]
   },
   {
     title: "Expert-Led Planning",
     description: "Work directly with a certified local expert who crafts every detail of your trip personally.",
     icon: MessageSquare,
-    price: "25 - 50 Credits",
+    price: "8% or $499 flat",
     features: ["Dedicated trip planner", "Fully customized experience", "Real-time chat support", "Concierge-level service"]
   }
 ];
