@@ -1,8 +1,7 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Star, MapPin, MessageCircle, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 
 interface CityFeedCardExpertProps {
   expert: any;
@@ -18,13 +17,6 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
   const [imgLoaded, setImgLoaded] = useState(false);
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
 
-  const { ref: impressionRef } = useImpressionTracker(
-    "expert",
-    String(expert.id),
-    city,
-    cardPosition,
-  );
-
   if (!imageUrl) return null;
 
   const name = [expert.firstName, expert.lastName].filter(Boolean).join(" ") || expert.name || "Expert";
@@ -33,7 +25,6 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
 
   return (
     <div
-      ref={impressionRef}
       className={cn(
         "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
         className,

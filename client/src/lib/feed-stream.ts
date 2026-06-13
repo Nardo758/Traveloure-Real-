@@ -20,8 +20,11 @@ export type FeedItemKind =
   | "supply-activity"
   | "vendor-service"
   | "city-separator"
+  // Injected by the feed-composition layer (feed-composition.ts) — never
+  // produced by buildFeedStream itself:
   | "recommendation"
-  | "wanted-slot";
+  | "wanted-slot"
+  | "lead-expert";
 
 export interface FeedItem {
   kind: FeedItemKind;
@@ -47,10 +50,9 @@ export interface MatchSuggestion {
   actionLabel: string;
   actionVariant: "platform" | "affiliate";
   href: string;
-  /** True when this is a "Request this" CTA rather than a real provider match */
   isRequest?: boolean;
-  /** Present on request suggestions so the demand loop can write the row */
   offeringTypeKey?: string;
+  /** Display name needed so the demand loop can write the row. */
   displayName?: string;
 }
 
@@ -272,10 +274,6 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
         return item.kind === "vendor-service";
       case "vibe":
         if (item.kind === "loose-gem") return !!item.data.vibeTag || !!item.data.isSecret;
-        return false;
-      // Injected items are never shown when a category filter is active
-      case "recommendation":
-      case "wanted-slot":
         return false;
       default:
         return true;

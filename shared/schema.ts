@@ -3746,9 +3746,6 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   initiatedBy: varchar("initiated_by", { length: 20 }).default("user"), // user | ai_agent | expert
   agentType: varchar("agent_type", { length: 20 }), // grok | claude | system | null
   sessionId: varchar("session_id", { length: 255 }), // AI planning session trace ID
-  sourceImpressionId: varchar("source_impression_id"), // FK-less ref to content_impressions.id
-  clickContentType: varchar("click_content_type"), // content type of the clicked card (gem, event, etc.)
-  clickContentId: varchar("click_content_id"),     // content id of the clicked card
   clickedAt: timestamp("clicked_at").defaultNow(),
 });
 
@@ -3799,22 +3796,6 @@ export type AffiliateScrapeJob = typeof affiliateScrapeJobs.$inferSelect;
 export type InsertAffiliateScrapeJob = z.infer<typeof insertAffiliateScrapeJobSchema>;
 export type AffiliateClick = typeof affiliateClicks.$inferSelect;
 export type InsertAffiliateClick = z.infer<typeof insertAffiliateClickSchema>;
-
-// Content impression tracking — one row per card-view on the Discover feed
-export const contentImpressions = pgTable("content_impressions", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  contentType: varchar("content_type", { length: 50 }).notNull(), // gem | event | supply-hotel | supply-activity | vendor-service
-  contentId: varchar("content_id", { length: 255 }).notNull(),
-  city: varchar("city", { length: 255 }),
-  cardPosition: integer("card_position"),
-  sessionId: varchar("session_id", { length: 255 }).notNull(),
-  userId: varchar("user_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertContentImpressionSchema = createInsertSchema(contentImpressions).omit({ id: true, createdAt: true });
-export type ContentImpression = typeof contentImpressions.$inferSelect;
-export type InsertContentImpression = z.infer<typeof insertContentImpressionSchema>;
 
 // === Expert Income Streams ===
 
@@ -4994,8 +4975,6 @@ export const itineraryChanges = pgTable("itinerary_changes", {
   changeType: varchar("change_type", { length: 20 }).notNull(), // edit, suggest, ai, confirm, reorder, add, remove
   role: varchar("role", { length: 20 }).notNull(), // owner, expert, friend, ai
   metadata: jsonb("metadata").default({}),
-  sourceImpressionId: varchar("source_impression_id"),
-  sourceContentId: varchar("source_content_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -5745,7 +5724,6 @@ export const serviceOfferingTypes = pgTable("service_offering_types", {
   marketScoped: text("market_scoped").array(),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
-  seasonTag: varchar("season_tag", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -6187,23 +6165,3 @@ export const crossSellEvents = pgTable("cross_sell_events", {
 export const insertCrossSellEventSchema = createInsertSchema(crossSellEvents).omit({ id: true, createdAt: true });
 export type CrossSellEvent = typeof crossSellEvents.$inferSelect;
 export type InsertCrossSellEvent = z.infer<typeof insertCrossSellEventSchema>;
-
-// === Service Demand Requests ===
-
-export const serviceDemandRequests = pgTable("service_demand_requests", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  offeringTypeKey: text("offering_type_key").notNull(),
-  neighborhoodId: text("neighborhood_id"),
-  city: text("city").notNull(),
-  country: text("country"),
-  userId: text("user_id"),
-  guestSessionId: text("guest_session_id"),
-  dateRangeStart: timestamp("date_range_start"),
-  dateRangeEnd: timestamp("date_range_end"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  notifiedAt: timestamp("notified_at"),
-});
-
-export const insertServiceDemandRequestSchema = createInsertSchema(serviceDemandRequests).omit({ id: true, createdAt: true });
-export type ServiceDemandRequest = typeof serviceDemandRequests.$inferSelect;
-export type InsertServiceDemandRequest = z.infer<typeof insertServiceDemandRequestSchema>;

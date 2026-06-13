@@ -135,7 +135,6 @@ async function verifyTripOwnership(tripId: string, userId: string): Promise<bool
 }
 
 function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
-  const { sourceImpressionId, sourceContentId, ...restMeta } = metadata || {};
   return storage.createItineraryChange({
     tripId,
     activityId: activityId || null,
@@ -143,9 +142,7 @@ function logItineraryChange(tripId: string, who: string, action: string, changeT
     action,
     changeType,
     role,
-    metadata: Object.keys(restMeta).length > 0 ? restMeta : {},
-    sourceImpressionId: sourceImpressionId ?? null,
-    sourceContentId: sourceContentId ?? null,
+    metadata: metadata || {},
   }).catch(err => console.error("Failed to log itinerary change:", err));
 }
 
@@ -1485,18 +1482,7 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
-      const { sourceImpressionId, sourceContentId } = req.body as any;
-      logItineraryChange(
-        tripId,
-        userName,
-        `Added "${item.title}"`,
-        "add",
-        tripRole!,
-        item.id,
-        (sourceImpressionId || sourceContentId)
-          ? { sourceImpressionId: sourceImpressionId ?? null, sourceContentId: sourceContentId ?? null }
-          : undefined,
-      );
+      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });

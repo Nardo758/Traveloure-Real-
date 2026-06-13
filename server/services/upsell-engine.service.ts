@@ -95,8 +95,6 @@ export interface RankInputCandidate {
   expertEndorsed: boolean;
   profileMatchScore: number;                 // 0..1 — caller computes (interests/dietary/etc. alignment)
   proximityFit: number;                      // 0..1 — caller computes from neighborhood/date alignment
-  /** 0..1 max-normalized count from service_demand_requests for this offering+city. */
-  demandSignal: number;
 }
 
 export interface UpsellCandidate {
@@ -126,10 +124,6 @@ export interface ScoringPolicy {
     profileMatch: number;
     proximity: number;
     expertEndorsement: number;
-    /** Weak demand-signal boost (≤0.10). Max-normalized request count from
-     *  service_demand_requests for this offering+city. Kept inside the
-     *  band-width budget so dominance contract still holds. */
-    demandSignal: number;
   };
   revenueWeight: number;
   revenueCap: number;
@@ -138,13 +132,11 @@ export interface ScoringPolicy {
 
 export const DEFAULT_POLICY: ScoringPolicy = {
   // Relevance weights sum to 1 so relevanceScore stays in [0, 1].
-  // demandSignal is 0.08 (≤0.10 per spec); existing weights trimmed proportionally.
   relevanceWeights: {
-    templateStrength:  0.38,  // w1: REQ/REC/OPT → 1.0/0.7/0.4  (was 0.40)
-    profileMatch:      0.22,  // w2                               (was 0.25)
-    proximity:         0.20,  // w3
-    expertEndorsement: 0.12,  // w4                               (was 0.15)
-    demandSignal:      0.08,  // w5: demand-signal boost (≤0.10)
+    templateStrength: 0.40,   // w1: REQ/REC/OPT → 1.0/0.7/0.4
+    profileMatch:     0.25,   // w2
+    proximity:        0.20,   // w3
+    expertEndorsement: 0.15,  // w4
   },
   revenueWeight: 0.15,
   revenueCap:    0.15,
@@ -162,22 +154,20 @@ export function templateStrengthScore(strength: RankInputCandidate["templateStre
 }
 
 /**
- * relevance = w1*templateStrength + w2*profileMatch + w3*proximityFit + w4*expertEndorsement + w5*demandSignal.
+ * relevance = w1*templateStrength + w2*profileMatch + w3*proximityFit + w4*expertEndorsement.
  * Each weighted component must be ≤ its weight; sum is in [0,1] when weights sum to 1.
- * demandSignal is a weak boost (≤0.10) from max-normalized traveler demand counts.
  */
 export function computeRelevance(
-  c: Pick<RankInputCandidate, "templateStrength" | "profileMatchScore" | "proximityFit" | "expertEndorsed" | "demandSignal">,
+  c: Pick<RankInputCandidate, "templateStrength" | "profileMatchScore" | "proximityFit" | "expertEndorsed">,
   weights: ScoringPolicy["relevanceWeights"],
 ): number {
   const tpl = templateStrengthScore(c.templateStrength);
   const endorse = c.expertEndorsed ? 1 : 0;
   return (
-    weights.templateStrength  * tpl +
-    weights.profileMatch      * clamp01(c.profileMatchScore) +
-    weights.proximity         * clamp01(c.proximityFit) +
-    weights.expertEndorsement * endorse +
-    weights.demandSignal      * clamp01(c.demandSignal)
+    weights.templateStrength * tpl +
+    weights.profileMatch     * clamp01(c.profileMatchScore) +
+    weights.proximity        * clamp01(c.proximityFit) +
+    weights.expertEndorsement * endorse
   );
 }
 
@@ -348,7 +338,7 @@ export function rankCandidates(
   // Score: relevance per candidate, revenue normalized across the kept set.
   const relevanceArr = kept.map(c =>
     computeRelevance(
-      { templateStrength: c.templateStrength, profileMatchScore: c.profileMatchScore, proximityFit: c.proximityFit, expertEndorsed: c.expertEndorsed, demandSignal: c.demandSignal },
+      { templateStrength: c.templateStrength, profileMatchScore: c.profileMatchScore, proximityFit: c.proximityFit, expertEndorsed: c.expertEndorsed },
       policy.relevanceWeights,
     )
   );
