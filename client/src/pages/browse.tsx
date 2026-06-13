@@ -581,7 +581,7 @@ export default function BrowsePage() {
                                       onClick={() => setLocation("/optimize")}
                                       data-testid="button-ai-optimize"
                                     >
-                                      See AI Optimization - $19.99
+                                      See AI Optimization
                                     </Button>
                                   </div>
                                 </div>

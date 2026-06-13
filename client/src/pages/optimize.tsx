@@ -159,13 +159,13 @@ const PRICING_TIER_FALLBACKS: PricingTier[] = [
   {
     id: "ai-only",
     name: "AI Optimization Only",
-    price: 19.99,
+    price: 19.99, // fee-literal-ok: display fallback; actual fee resolved from /api/optimization-fee per event type
     description: "Get 2-3 optimized plans, choose one, book yourself",
   },
   {
     id: "ai-expert",
     name: "AI Optimization + Expert Review",
-    price: 49.99,
+    price: 49.99, // fee-literal-ok: display fallback; actual fee resolved from fee_bands via useTierPrice
     bandKey: "optimize_expert_review",
     description: "Get optimized plans PLUS have a Paris expert review and customize based on your preferences",
     recommended: true,
@@ -262,14 +262,32 @@ export default function OptimizePage() {
   const [selectedTier, setSelectedTier] = useState("ai-expert");
   const [showComparison, setShowComparison] = useState(false);
 
-  // Phase 1.4: AI+Expert-Review tier price reads from fee_bands.optimize_expert_review
-  // so admin can edit the live $49.99 without redeploy. Other tiers stay at their
-  // fallback values (ai-only's real fee comes from optimization_fees per-event-type;
-  // full-service is a "starting from" expert-set price flowing through 25/75 split).
-  const aiExpertPrice = useTierPrice("optimize_expert_review", 49.99);
-  const pricingTiers: PricingTier[] = PRICING_TIER_FALLBACKS.map(t =>
-    t.id === "ai-expert" ? { ...t, price: aiExpertPrice } : t
-  );
+  // Phase 2: AI-only tier price resolves from optimization_fees per-event-type.
+  // When tripId is present, fetch the actual fee for that trip's event type.
+  const { data: optimizeFee } = useQuery<{
+    feeCents: number;
+    currency: string;
+    creditTowardCoordination: boolean;
+  }>({
+    queryKey: ["/api/optimization-fee", tripId],
+    queryFn: async () => {
+      const res = await fetch(`/api/optimization-fee?tripId=${tripId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch optimization fee");
+      return res.json();
+    },
+    enabled: Boolean(tripId),
+    staleTime: 60_000,
+  });
+  const aiOnlyPrice = optimizeFee ? optimizeFee.feeCents / 100 : undefined;
+
+  const aiExpertPrice = useTierPrice("optimize_expert_review", 49.99); // fee-literal-ok: fallback for fee_bands lookup; actual fee resolved server-side
+  const pricingTiers: PricingTier[] = PRICING_TIER_FALLBACKS.map(t => {
+    if (t.id === "ai-expert") return { ...t, price: aiExpertPrice };
+    if (t.id === "ai-only" && aiOnlyPrice !== undefined) return { ...t, price: aiOnlyPrice };
+    return t;
+  });
 
   if (!showComparison) {
     return (
