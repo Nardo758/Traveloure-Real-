@@ -5442,7 +5442,39 @@ export const insertEventPackageSchema = createInsertSchema(eventPackages).omit({
 export type EventPackage = typeof eventPackages.$inferSelect;
 export type InsertEventPackage = z.infer<typeof insertEventPackageSchema>;
 
-export const expertCityQueues = pgTable("expert_city_queues", {
+// === Event Coordination Profiles (Phase 4 / CON-A.P4) ===
+// Config-driven event-type profiles. One row per event type (wedding, proposal,
+// birthday, corporate, etc.). The generic event-coordination.service.ts reads the
+// profile for the event type and builds the timeline, vendor matrix, and sequencing
+// from these data rows — no per-event-type code paths.
+export const eventCoordinationProfiles = pgTable("event_coordination_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventType: text("event_type").notNull().unique(), // wedding, proposal, birthday, corporate
+  anchorType: text("anchor_type").notNull(), // ceremony_time, proposal_moment, keynote_time, etc.
+  // vendorMatrix: JSON of { category: string, required: boolean, priority: "critical"|"high"|"medium"|"low" }
+  vendorMatrix: jsonb("vendor_matrix").$type<Array<{
+    category: string;
+    required: boolean;
+    priority: "critical" | "high" | "medium" | "low";
+    label: string;
+    blocks: string[]; // which timeline blocks this vendor covers
+  }>>().default([]),
+  // sequencingRuleset: JSON of timeline blocks with offsets from anchor (in minutes)
+  sequencingRuleset: jsonb("sequencing_ruleset").$type<Array<{
+    key: string;
+    label: string;
+    offset: number; // minutes from anchor (negative = before)
+    duration: number; // minutes
+    isLocked: boolean; // immovable anchor
+  }>>().default([]),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEventCoordinationProfileSchema = createInsertSchema(eventCoordinationProfiles).omit({ id: true, createdAt: true, updatedAt: true });
+export type EventCoordinationProfile = typeof eventCoordinationProfiles.$inferSelect;
+export type InsertEventCoordinationProfile = z.infer<typeof insertEventCoordinationProfileSchema>;
   id: uuid("id").primaryKey().defaultRandom(),
   city: text("city"),
   expertIds: jsonb("expert_ids").default([]),

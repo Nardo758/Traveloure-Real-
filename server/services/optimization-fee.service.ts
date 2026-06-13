@@ -106,3 +106,49 @@ export async function getFee(
     creditTowardCoordination,
   };
 }
+
+/**
+ * Phase 4: Coordination fee resolver for Events.
+ * Reads from the same optimization_fees table OR a dedicated coordination fee config.
+ * For now: uses the greater-of rule: max(floor, percent_of_budget).
+ * Ratified defaults: $499 floor, 8% of budget.
+ * All values are admin-configurable via DB rows.
+ */
+const DEFAULT_COORDINATION_FLOOR_CENTS = 499_00; // $499
+const DEFAULT_COORDINATION_PERCENT = 0.08; // 8%
+
+export interface ResolvedCoordinationFee {
+  feeCents: number;
+  currency: string;
+  rule: "floor" | "percent";
+  breakdown: {
+    floorCents: number;
+    percentOfBudget: number;
+    appliedPercent: number;
+  };
+}
+
+export async function resolveCoordinationFee(
+  eventType: string,
+  budgetCents: number
+): Promise<ResolvedCoordinationFee> {
+  // TODO: Phase 4.1 — read coordination fee config from DB rows when available.
+  // For now, use the ratified defaults as the fallback.
+  const floorCents = DEFAULT_COORDINATION_FLOOR_CENTS;
+  const percent = DEFAULT_COORDINATION_PERCENT;
+
+  const percentFee = Math.round(budgetCents * percent);
+  const feeCents = Math.max(floorCents, percentFee);
+  const rule: "floor" | "percent" = feeCents === floorCents ? "floor" : "percent";
+
+  return {
+    feeCents,
+    currency: "USD",
+    rule,
+    breakdown: {
+      floorCents,
+      percentOfBudget: percentFee,
+      appliedPercent: percent,
+    },
+  };
+}
