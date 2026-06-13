@@ -7,12 +7,13 @@ interface CityFeedCardExpertProps {
   expert: any;
   city: string;
   className?: string;
+  cardPosition?: number;
 }
 
 /**
  * Photo-led card for a local expert in the city feed.
  */
-export function CityFeedCardExpert({ expert, city, className }: CityFeedCardExpertProps) {
+export function CityFeedCardExpert({ expert, city, className, cardPosition }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
 
