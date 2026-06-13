@@ -5475,12 +5475,6 @@ export const eventCoordinationProfiles = pgTable("event_coordination_profiles", 
 export const insertEventCoordinationProfileSchema = createInsertSchema(eventCoordinationProfiles).omit({ id: true, createdAt: true, updatedAt: true });
 export type EventCoordinationProfile = typeof eventCoordinationProfiles.$inferSelect;
 export type InsertEventCoordinationProfile = z.infer<typeof insertEventCoordinationProfileSchema>;
-  id: uuid("id").primaryKey().defaultRandom(),
-  city: text("city"),
-  expertIds: jsonb("expert_ids").default([]),
-  activeRequests: integer("active_requests").default(0),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
 
 export const savedTrips = pgTable("saved_trips", {
   id: uuid("id").primaryKey().defaultRandom(),
