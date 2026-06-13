@@ -6,8 +6,9 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
@@ -20,7 +21,6 @@ import {
   type WantedSlotData,
 } from "@/lib/feed-composition";
 import { useUpsellSlot } from "@/components/UpsellSlot";
-import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -499,6 +499,178 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
   );
 }
 
+// ─── Inline recommendation card (with impression tracking) ─────────────────
+
+function RecommendationCard({
+  candidate,
+  city,
+  position,
+  scheduledDate,
+  onAdd,
+  onBook,
+  recommendedLabel = "Recommended",
+  affiliateLabel = "Paid partner",
+  layout = "column",
+  cardPosition,
+}: {
+  candidate: any;
+  city: string;
+  position: number;
+  scheduledDate?: string | null;
+  onAdd?: (item: any) => void;
+  onBook?: (c: { offeringId: string; categoryKey: string }) => void;
+  recommendedLabel?: string;
+  affiliateLabel?: string;
+  layout?: "column" | "row";
+  cardPosition?: number;
+}) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const name = candidate.displayName || candidate.categoryKey?.replace(/_/g, " ");
+  const isAffiliate = candidate.sourceType === "affiliate";
+  const isRow = layout === "row";
+  const impressionFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!impressionFiredRef.current) {
+      impressionFiredRef.current = true;
+      fetch("/api/feed/impression", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offeringId: candidate.offeringId,
+          categoryKey: candidate.categoryKey,
+          position,
+          city,
+          sourceType: candidate.sourceType,
+        }),
+      }).catch(() => {});
+    }
+  }, [candidate.offeringId, position, city, candidate.sourceType]);
+
+  const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
+
+  const addLabel = scheduledDate
+    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    : "Add";
+
+  const meta = (() => {
+    const k = `${candidate.categoryKey} ${candidate.displayName}`.toLowerCase();
+    if (/photo/.test(k)) return { emoji: "📷", phBg: "bg-teal-50", phText: "text-teal-600" };
+    if (/chef|food|culinary|dining|restaurant|tasting/.test(k))
+      return { emoji: "🍵", phBg: "bg-pink-50", phText: "text-pink-600" };
+    if (/transport|driver|transfer|car/.test(k))
+      return { emoji: "🚗", phBg: "bg-blue-50", phText: "text-blue-600" };
+    if (/event|ticket|show|concert|festival/.test(k))
+      return { emoji: "🎫", phBg: "bg-pink-50", phText: "text-pink-600" };
+    if (/wellness|spa|massage|yoga/.test(k))
+      return { emoji: "🧘", phBg: "bg-teal-50", phText: "text-teal-600" };
+    if (/tour|guide|walk|experience|activit/.test(k))
+      return { emoji: "🧭", phBg: "bg-amber-50", phText: "text-amber-700" };
+    return { emoji: "✨", phBg: "bg-amber-50", phText: "text-amber-700" };
+  })();
+
+  const photoArea = (
+    <div
+      className={cn(
+        "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
+        meta.phBg,
+        meta.phText,
+        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
+      )}
+    >
+      {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+      {!loading && photoUrl && (
+        <img
+          src={photoUrl}
+          alt={name}
+          loading="lazy"
+          onLoad={() => setImgLoaded(true)}
+          className={cn(
+            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+            imgLoaded ? "opacity-100" : "opacity-0",
+          )}
+        />
+      )}
+      {!loading && !photoUrl && <span className="text-2xl">{meta.emoji}</span>}
+    </div>
+  );
+
+  const cardBody = (
+    <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase whitespace-nowrap",
+            isAffiliate ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700",
+          )}
+        >
+          <Sparkles className="w-2.5 h-2.5" />
+          {isAffiliate ? affiliateLabel : recommendedLabel}
+        </span>
+      </div>
+
+      <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
+        {name}
+      </h3>
+
+      {candidate.tagline && (
+        <p className="text-[12px] text-muted-foreground line-clamp-2">{candidate.tagline}</p>
+      )}
+
+      {candidate.reason && (
+        <p className="text-[10px] text-muted-foreground/70 italic truncate">{candidate.reason}</p>
+      )}
+
+      <div className="flex gap-1.5 pt-0.5 flex-wrap">
+        {onBook && (
+          <Button
+            size="sm"
+            className="h-7 text-xs px-3"
+            onClick={() => onBook(candidate)}
+            data-testid={`btn-book-rec-${position}`}
+          >
+            Book
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs px-3"
+          onClick={() =>
+            onAdd?.({
+              title: name,
+              description: candidate.tagline,
+              city,
+              type: "recommendation",
+              scheduledDate,
+            })
+          }
+          data-testid={`btn-add-rec-${position}`}
+        >
+          <Plus className="w-3 h-3 mr-1" />
+          {addLabel}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
+          <a href="/local-experts">💬 Ask</a>
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        isRow ? "flex flex-row" : "flex flex-col",
+      )}
+      data-testid={`feed-card-rec-${position}`}
+    >
+      {photoArea}
+      {cardBody}
+    </div>
+  );
+}
+
 // ─── Filler card (non-neighborhood) ──────────────────────────────────────────
 
 interface RecLabels {
@@ -571,7 +743,7 @@ function FillerCard({
       );
     case "recommendation":
       return (
-        <CityFeedCardRecommendation
+        <RecommendationCard
           candidate={item.data.candidate}
           city={city}
           position={item.data.recIndex}

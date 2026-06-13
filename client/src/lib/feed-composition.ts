@@ -109,6 +109,7 @@ export interface WantedSlotData {
   neighborhoodName: string;
   city: string;
   neighborhoodId: string;
+  /** Number of travellers who have requested this offering in this neighbourhood. */
   demandCount?: number;
   dateContext?: string;
 }
@@ -141,7 +142,7 @@ export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
   const spacing = Math.max(1, Math.floor(cfg.wantedSlotSpacing));
   const wantedCap = Math.max(0, Math.floor(cfg.wantedSlotMax));
 
-  const wanted = [...opts.wantedSlots];
+  const slotQueue = [...opts.wantedSlots];
   const recs = opts.recommendations;
 
   const out: FeedItem[] = [];
@@ -150,6 +151,9 @@ export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
   let wantedPlaced = 0;
   let sinceRec = 0;
   let sinceWanted = 0;
+  let highDemandEarlyDone = false;
+  const HIGH_DEMAND_THRESHOLD = 5;
+  const HIGH_DEMAND_EARLY_POS = 8;
 
   // Degenerate case: no organic stream to interleave into (empty market).
   // Emit the injected elements once, in priority order, still capped.
@@ -158,8 +162,8 @@ export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
     recs.forEach((rec, i) =>
       out.push({ kind: "recommendation", id: `rec-${i}`, data: { candidate: rec, recIndex: i } }),
     );
-    if (wantedCap > 0 && wanted.length > 0) {
-      out.push({ kind: "wanted-slot", id: "wanted-0", data: wanted[0] });
+    if (wantedCap > 0 && slotQueue.length > 0) {
+      out.push({ kind: "wanted-slot", id: "wanted-0", data: slotQueue[0] });
     }
     return out;
   }
@@ -196,8 +200,21 @@ export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
       continue;
     }
 
-    if (wantedPlaced < wantedCap && wanted.length > 0 && sinceWanted >= spacing) {
-      out.push({ kind: "wanted-slot", id: `wanted-${wantedPlaced}`, data: wanted.shift() });
+    // High-demand early injection: slots with ≥5 demandCount jump to ~position 8.
+    if (!highDemandEarlyDone && out.length >= HIGH_DEMAND_EARLY_POS) {
+      const highDemandIdx = slotQueue.findIndex((s) => (s.demandCount ?? 0) >= HIGH_DEMAND_THRESHOLD);
+      if (highDemandIdx >= 0 && wantedPlaced < wantedCap) {
+        const [slot] = slotQueue.splice(highDemandIdx, 1);
+        out.push({ kind: "wanted-slot", id: `wanted-${wantedPlaced}`, data: slot });
+        wantedPlaced++;
+        sinceWanted = 0;
+        highDemandEarlyDone = true;
+        continue;
+      }
+    }
+
+    if (wantedPlaced < wantedCap && slotQueue.length > 0 && sinceWanted >= spacing) {
+      out.push({ kind: "wanted-slot", id: `wanted-${wantedPlaced}`, data: slotQueue.shift() });
       wantedPlaced++;
       sinceWanted = 0;
     }
