@@ -19,10 +19,8 @@ import {
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
 
-// LB-P5a: canonical credit packages live in @shared/credit-packages.
-// The previous 5-package ladder here disagreed with the other 3 consumers; the
-// canonical 4 (50/100/250/500 at $49/89/199/349) is now authoritative.
-import { CREDIT_PACKAGES as creditPackages } from "@shared/credit-packages";
+// LB-P5a: canonical credit packages — retained for server consumers; no longer displayed on pricing page.
+// import { CREDIT_PACKAGES as creditPackages } from "@shared/credit-packages";
 
 const plans = [
   {
@@ -32,7 +30,7 @@ const plans = [
     description: "Perfect for trying out Traveloure",
     icon: Sparkles,
     features: [
-      "5 free credits on signup",
+      "1 free AI optimize run",
       "AI-powered trip planning",
       "Basic itinerary generation",
       "Community support",
@@ -46,22 +44,22 @@ const plans = [
     variant: "outline" as const
   },
   {
-    name: "Pro",
-    price: "$14.99", // fee-literal-ok: Phase 5 — subscription tier, not optimizer fee
+    name: "Power Pass",
+    price: "$9",
     period: "/month",
-    description: "For frequent travelers who want more",
+    description: "2 optimize runs + 25% pay-per-use discount",
     icon: Users,
     popular: true,
     features: [
-      "25 credits per month",
-      "Priority AI processing",
+      "2 AI optimize runs per month",
+      "25% discount on pay-per-use fees",
       "Unlimited trip saves",
       "Expert chat access",
       "Advanced itinerary features",
       "Priority support",
       "Trip collaboration tools"
     ],
-    cta: "Upgrade to Pro",
+    cta: "Upgrade to Power Pass",
     variant: "default" as const
   },
   {
@@ -71,7 +69,7 @@ const plans = [
     description: "For travel agencies and large teams",
     icon: Crown,
     features: [
-      "Unlimited credits",
+      "Unlimited optimize runs",
       "Dedicated account manager",
       "Custom integrations",
       "Team management",
@@ -86,15 +84,16 @@ const plans = [
 ];
 
 const featureComparison = [
-  { id: "ai-planning", feature: "AI Trip Planning", free: true, pro: true, enterprise: true },
-  { id: "itinerary", feature: "Itinerary Generation", free: "Basic", pro: "Advanced", enterprise: "Advanced" },
-  { id: "expert-chat", feature: "Expert Chat", free: "Limited", pro: "Unlimited", enterprise: "Unlimited" },
-  { id: "trip-saves", feature: "Trip Saves", free: "3", pro: "Unlimited", enterprise: "Unlimited" },
-  { id: "credits", feature: "Monthly Credits", free: "5 one-time", pro: "25/month", enterprise: "Unlimited" },
-  { id: "support", feature: "Support", free: "Community", pro: "Priority", enterprise: "Dedicated" },
-  { id: "collaboration", feature: "Collaboration", free: false, pro: true, enterprise: true },
-  { id: "api", feature: "API Access", free: false, pro: false, enterprise: true },
-  { id: "integrations", feature: "Custom Integrations", free: false, pro: false, enterprise: true },
+  { id: "ai-planning", feature: "AI Trip Planning", free: true, power: true, enterprise: true },
+  { id: "optimize-runs", feature: "AI Optimize Runs", free: "1 total", power: "2/month", enterprise: "Unlimited" },
+  { id: "overage-discount", feature: "Pay-Per-Use Discount", free: false, power: "25% off", enterprise: "Included" },
+  { id: "itinerary", feature: "Itinerary Generation", free: "Basic", power: "Advanced", enterprise: "Advanced" },
+  { id: "expert-chat", feature: "Expert Chat", free: "Limited", power: "Unlimited", enterprise: "Unlimited" },
+  { id: "trip-saves", feature: "Trip Saves", free: "3", power: "Unlimited", enterprise: "Unlimited" },
+  { id: "support", feature: "Support", free: "Community", power: "Priority", enterprise: "Dedicated" },
+  { id: "collaboration", feature: "Collaboration", free: false, power: true, enterprise: true },
+  { id: "api", feature: "API Access", free: false, power: false, enterprise: true },
+  { id: "integrations", feature: "Custom Integrations", free: false, power: false, enterprise: true },
 ];
 
 export default function PricingPage() {
@@ -192,51 +191,46 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* Credit Packages Section */}
+      {/* Pay-Per-Use Section */}
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
-              Buy Credits
+              Pay-Per-Use
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Need more credits? Purchase additional credits anytime. Bigger packages come with bonus credits!
+              No subscription required. Pay only for what you use. Power Pass subscribers get 25% off.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
-            {creditPackages.map((pkg, i) => (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
+            {[
+              { name: "Trip / Experience", price: "$5.99", desc: "Per AI optimize run" },
+              { name: "Event", price: "$19.99", desc: "Per AI optimize run (credited toward coordination)" },
+              { name: "Coordination", price: "8% or $499", desc: "Greater-of: 8% of event budget or $499 flat" },
+            ].map((tier, i) => (
               <motion.div
-                key={pkg.credits}
+                key={tier.name}
                 initial={{ opacity: 0, scale: 0.95 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.05 }}
               >
-                <Card 
-                  className={`text-center relative cursor-pointer hover-elevate ${pkg.popular ? "border-primary" : ""}`}
-                  data-testid={`card-credits-${pkg.credits}`}
-                >
-                  {pkg.popular && (
-                    <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                      <Badge variant="secondary" className="text-xs">Best Value</Badge>
-                    </div>
-                  )}
-                  <CardContent className="p-4 pt-6">
-                    <div className="text-3xl font-bold text-primary mb-1">{pkg.credits}</div>
-                    <div className="text-sm text-muted-foreground mb-2">credits</div>
-                    {pkg.savings && (
-                      <Badge variant="outline" className="text-xs mb-2">
-                        {pkg.savings}
-                      </Badge>
-                    )}
-                    <div className="text-xl font-semibold text-[#111827] dark:text-white">
-                      ${pkg.price}
-                    </div>
+                <Card className="text-center relative hover-elevate">
+                  <CardContent className="p-6 pt-8">
+                    <div className="text-sm font-medium text-muted-foreground mb-2">{tier.name}</div>
+                    <div className="text-3xl font-bold text-primary mb-1">{tier.price}</div>
+                    <div className="text-sm text-muted-foreground">{tier.desc}</div>
                   </CardContent>
                 </Card>
               </motion.div>
             ))}
+          </div>
+
+          <div className="text-center mt-8">
+            <p className="text-sm text-muted-foreground">
+              Power Pass members save 25% on all pay-per-use fees. Break-even at ~1.5 runs/month.
+            </p>
           </div>
         </div>
       </section>
@@ -259,7 +253,7 @@ export default function PricingPage() {
                 <tr className="border-b">
                   <th className="text-left py-4 px-4 font-medium text-muted-foreground">Feature</th>
                   <th className="text-center py-4 px-4 font-medium">Free</th>
-                  <th className="text-center py-4 px-4 font-medium text-primary">Pro</th>
+                  <th className="text-center py-4 px-4 font-medium text-primary">Power Pass</th>
                   <th className="text-center py-4 px-4 font-medium">Enterprise</th>
                 </tr>
               </thead>
@@ -275,10 +269,10 @@ export default function PricingPage() {
                       )}
                     </td>
                     <td className="py-4 px-4 text-center bg-primary/5">
-                      {typeof row.pro === "boolean" ? (
-                        row.pro ? <Check className="w-5 h-5 text-green-500 mx-auto" /> : <span className="text-muted-foreground">-</span>
+                      {typeof row.power === "boolean" ? (
+                        row.power ? <Check className="w-5 h-5 text-green-500 mx-auto" /> : <span className="text-muted-foreground">-</span>
                       ) : (
-                        <span className="text-sm font-medium">{row.pro}</span>
+                        <span className="text-sm font-medium">{row.power}</span>
                       )}
                     </td>
                     <td className="py-4 px-4 text-center">
@@ -308,16 +302,20 @@ export default function PricingPage() {
           <div className="max-w-3xl mx-auto space-y-6">
             {[
               {
-                q: "What are credits and how do they work?",
-                a: "Credits are the currency used on Traveloure. You spend credits to access features like AI trip planning, expert consultations, and premium services. Different features cost different amounts of credits."
+                q: "What are optimize runs and how do they work?",
+                a: "An optimize run is a full AI-powered plan generation for your trip, experience, or event. The AI analyzes your preferences, budget, and dates to produce a curated itinerary with bookings and vendor recommendations. Free users get 1 run; Power Pass subscribers get 2 per month."
               },
               {
                 q: "Can I upgrade or downgrade my plan anytime?",
                 a: "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you'll get immediate access to new features. When downgrading, changes take effect at the end of your billing period."
               },
               {
-                q: "Do unused credits roll over?",
-                a: "For Pro subscribers, unused monthly credits roll over for up to 3 months. Purchased credit packages never expire."
+                q: "Do unused optimize runs roll over?",
+                a: "Power Pass optimize runs do not roll over — they reset each billing month. This keeps the plan simple and predictable. Pay-per-use fees are always available if you need more."
+              },
+              {
+                q: "What is the 25% overage discount?",
+                a: "Power Pass subscribers get 25% off all pay-per-use fees. For example, a $5.99 Trip optimize costs only $4.49 with the discount. The discount applies automatically at checkout."
               },
               {
                 q: "Is there a refund policy?",
@@ -350,7 +348,7 @@ export default function PricingPage() {
               Start Planning for Free
             </h2>
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
-              Get 5 free credits when you sign up. No credit card required.
+              Get 1 free AI optimize run when you sign up. No credit card required.
             </p>
             <Button size="lg" variant="secondary" onClick={handlePricingAction} data-testid="button-get-started-free">
               Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
