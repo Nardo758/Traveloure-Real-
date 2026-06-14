@@ -247,6 +247,12 @@ function Router() {
       <Route path="/experts/:id">
         <ExpertDetailPage />
       </Route>
+      <Route path="/local-experts">
+        <Layout><ExpertsPage /></Layout>
+      </Route>
+      <Route path="/local-experts/:id">
+        <ExpertDetailPage />
+      </Route>
       <Route path="/service-providers">
         <ServiceProvidersPage />
       </Route>

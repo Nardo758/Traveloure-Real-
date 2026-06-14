@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import { EscalationCTA } from "@/components/plancard/EscalationCTA";
 import { InlineTransportSelector, type InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 
 type Section = "activities" | "transport";
@@ -662,6 +663,7 @@ export default function TripDetails() {
                             role="owner"
                             stage="full"
                             trip={planCardTrip}
+                            days={planCardDays}
                           />
                         );
                       })()}
@@ -830,6 +832,14 @@ export default function TripDetails() {
                                 Work with a Trip Planner
                               </Button>
                             </Link>
+                          </div>
+                          {/* Expert escalation upsell — CON-A.P7 / N3 */}
+                          <div className="mt-6">
+                            <EscalationCTA
+                              tripId={trip.id}
+                              destination={trip.destination}
+                              eventType={(trip as any).eventType}
+                            />
                           </div>
                         </div>
                         <div className="relative">
