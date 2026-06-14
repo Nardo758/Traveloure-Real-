@@ -141,20 +141,18 @@ export async function runMigrations(): Promise<MigrationResult> {
 
   // ── NORMAL STARTUP MODE ──────────────────────────────────────────────────────
 
-  // Auto-detect a pre-ledger production database: schema already applied by
-  // Drizzle snapshots but bootstrap was never run. If the ledger is absent yet
-  // the Drizzle schema tables already exist, run the bootstrap automatically so
-  // migrations 001-051 are stamped (not re-executed) and only 053+ apply.
-  // On a fresh dev DB there is no ledger AND no tables, so this branch is skipped
-  // and all migrations run from scratch as normal.
-  if (!await ledgerExists() && await isPreLedgerProdDb()) {
-    console.log("[Migrations] No ledger found but schema tables exist — auto-bootstrapping prod ledger...");
-    await bootstrapProductionLedger();
-    console.log("[Migrations] Auto-bootstrap complete. Continuing with pending migrations.");
-  }
+  // ── AUTO-BOOTSTRAP: detect a prod DB that needs ledger gap-filling ──────────
+  //
+  // Two cases that both require the bootstrap to run:
+  //   A. No ledger at all + schema tables exist → Drizzle-push prod, bootstrap never ran.
+  //   B. Ledger exists but is missing any migration 001-051 + schema tables exist →
+  //      A previous deploy partially built the ledger (e.g. stamped 001-006, crashed on
+  //      007 because the table hit the 1600-column limit) and needs the gaps filled.
+  //
+  // On a fresh dev DB there are no tables, so isPreLedgerProdDb() returns false and
+  // this block is skipped — all migrations run from scratch as normal.
 
-  // Ensure the ledger table exists (idempotent DDL — bootstrap above already
-  // creates it, but this guard covers the fresh-dev-DB path too).
+  // Ensure ledger table exists before we read it (handles case A where it's absent).
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       migration_name TEXT PRIMARY KEY,
@@ -163,6 +161,24 @@ export async function runMigrations(): Promise<MigrationResult> {
   `);
 
   const already = await readLedger();
+
+  // Migrations 001–051 that are absent from the ledger.
+  const earlyMigrations = MIGRATION_FILES.filter((f) => {
+    const num = parseInt(f.split("_")[0], 10);
+    return num >= 1 && num <= 51;
+  });
+  const missingEarly = earlyMigrations.filter((f) => !already.has(f));
+
+  if (missingEarly.length > 0 && await isPreLedgerProdDb()) {
+    console.log(
+      `[Migrations] Ledger is missing ${missingEarly.length} early migration(s) ` +
+      `(${missingEarly.slice(0, 3).join(", ")}${missingEarly.length > 3 ? "…" : ""}) ` +
+      `but schema tables exist — auto-bootstrapping to fill gaps...`
+    );
+    await bootstrapProductionLedger();
+    console.log("[Migrations] Auto-bootstrap complete. Continuing with pending migrations.");
+  }
+
   const applied: string[] = [];
   const skipped: string[] = [];
 
