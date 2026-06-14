@@ -26,6 +26,9 @@
     "test:e2e:smoke": "playwright test --grep 'Phase 1' --max-workers 2",
     "test:e2e:report": "playwright show-report",
     "test:e2e:trace": "playwright show-trace",
+    "test:e2e:deploy": "playwright test -c playwright.e2e.config.ts",
+    "test:e2e:deploy:smoke": "playwright test -c playwright.e2e.config.ts --project=chromium smoke",
+    "test:e2e:deploy:report": "playwright show-report",
     "migrate:dry-run": "tsx server/migrations/dry-run-entry.ts",
     "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts"
   },
@@ -132,6 +135,7 @@
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.3.1",
     "@types/connect-pg-simple": "^7.0.3",
+    "dotenv": "^16.4.5",
     "@types/express": "4.17.21",
     "@types/express-session": "^1.18.2",
     "@types/node": "20.19.27",
