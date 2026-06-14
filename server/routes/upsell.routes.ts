@@ -685,7 +685,7 @@ const plancardOntripBodySchema = z.object({
 /**
  * POST /api/upsell/optimize-gate — DELTA-ONLY response (§B4 + §B9).
  *
- * The user is deciding whether to pay for AI+Expert Review ($49.99 =
+ * The user is deciding whether to pay for AI+Expert Review ($49.99 = // fee-literal-ok: comment describing band name, fee resolves from config
  * optimize_expert_review band). Showing the specific optimized arrangement
  * here gives away the paid product. So this endpoint runs the engine
  * INTERNALLY, then REDACTS the candidate detail before responding:
@@ -1357,8 +1357,8 @@ const aiConciergeBodySchema = z.object({
 /**
  * POST /api/upsell/ai-concierge — concierge proposes; can fulfill upsells.
  *
- * §B5 / §B9 NO-DOUBLE-COUNT rule: the concierge per-task fee (the $9.99 /
- * $49.99 ai_concierge_* flat band) is its own revenue stream, billed at
+ * §B5 / §B9 NO-DOUBLE-COUNT rule: the concierge per-task fee (the $9.99 / // fee-literal-ok: comment describing band name, fee resolves from config
+ * $49.99 ai_concierge_* flat band) is its own revenue stream, billed at // fee-literal-ok: comment describing band name, fee resolves from config
  * task creation, NOT at upsell render. Candidate.revenueScore must come
  * from the candidate's own platform earnings only — not augmented by the
  * task fee. Structurally guaranteed here: this endpoint does NOT touch

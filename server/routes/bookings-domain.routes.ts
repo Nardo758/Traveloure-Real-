@@ -83,7 +83,7 @@ import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
-  getConciergeBookingFlatFee,
+  getConciergeBookingRate,
   calcInsuranceFee,
   type CommissionRates,
 } from "../services/commission";
@@ -756,9 +756,9 @@ router.get("/api/cart", async (req, res) => {
       }
     }
     // Phase 3.4: Load the Booking Concierge facilitation fee RATE (fraction, e.g. 0.05 = 5 %).
-    // Migration 066 converted this from a flat $9.99 placeholder to a percent rate.
+    // Migration 066 converted this from a flat $9.99 placeholder to a percent rate. // fee-literal-ok: historical comment, fee resolves from config
     // Callers must multiply by item price: fee = itemPrice * rate.
-    const cartConciergeBookingFlatFee = await getConciergeBookingFlatFee();
+    const cartConciergeBookingRate = await getConciergeBookingRate();
 
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
 
@@ -794,7 +794,7 @@ router.get("/api/cart", async (req, res) => {
       const itemInsuranceFee = calcInsuranceFee(price, rates, feeCategory);
       basePlatformFeeTotal += price * (1 - expertShare) + itemInsuranceFee;
       if (isBookingConciergeItem) {
-        conciergeFeeTotal += price * cartConciergeBookingFlatFee;
+        conciergeFeeTotal += price * cartConciergeBookingRate;
       }
     }
 

@@ -24,7 +24,7 @@ const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const P = "#FF385C";
 const G: Record<number, string> = {
   50: "#F9FAFB", 100: "#F3F4F6", 200: "#E5E7EB", 300: "#D1D5DB",
-  400: "#9CA3AF", 500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827",
+  400: "#9CA3AF", 500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827", // fee-literal-ok: color palette shade, not fee config
 };
 
 function Av({ i, s = 32 }: { i: string; s?: number }) {

@@ -203,7 +203,7 @@ export async function searchHotels(params: {
       address: '768 5th Ave, New York, NY 10019',
       distanceFromVenueMiles: 0.5,
       pricePerNight: 450,
-      totalPrice: 900,
+      totalPrice: 900, // fee-literal-ok: mock hotel search result (totalPrice = 2 nights × 450), not fee config
       rating: 4.5,
       stars: 5,
       amenities: ['WiFi', 'Pool', 'Spa', 'Restaurant', 'Valet'],
