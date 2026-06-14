@@ -1,8 +1,7 @@
 # Deferred IDOR Routes — Low-Stakes Follow-Up
 
-> **Status:** Deferred. Not on the critical path.  
-> **P0 deploy blocker:** E2E-1 must run green first.  
-> **Branch:** `fix/phase-3-0-1-prestep`
+> **Status:** Deferred. Not on the critical path.
+> **P0 deploy blocker:** E2E-1 must run green first.
 
 ---
 
@@ -30,7 +29,7 @@
 
 ## Fix strategy (when picked up)
 
-For each: add `getById` + `userId` check, or verify the storage layer already has the check. No `verifyTripOwnership` needed — these are not trip-scoped. The pattern is the same as custom-venues:
+For each: add `getById` + `userId` check, or verify the storage layer already has the check. Pattern:
 
 ```typescript
 const userId = (req.user as any).claims.sub;

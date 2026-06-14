@@ -1,7 +1,7 @@
 # Deploy Readiness: E2E-1 Exit Gate
 
-> **Branch:** `fix/phase-3-0-1-prestep`  
-> **Status:** Ready for deploy. All structural changes committed.  
+> **Branch:** `fix/phase-3-0-1-prestep`
+> **Status:** Ready for deploy. All structural changes committed.
 > **Blocker:** E2E-1 must run green before Stage 2 (multi-currency) starts.
 
 ---
@@ -15,8 +15,6 @@
 | **IDOR** | `bb1b5767` | Added ownership check to `custom-venues` PATCH/DELETE |
 | **E2E** | `f2dd4d94` | Added `server/seeds/e2e-test-accounts.seed.ts` + `npm run seed:e2e-accounts` |
 
-**Total commits on branch:** 7 (since `main` at `4c1503ed`)
-
 ---
 
 ## 2. Build Verification
@@ -25,9 +23,9 @@
 npm run build
 ```
 
-- ✅ **Output:** `dist/index.cjs` (3.0 MB)
-- ✅ **4 warnings:** `import.meta` in CJS (expected, harmless)
-- ✅ **No errors**
+- `dist/index.cjs` output
+- 4 warnings: `import.meta` in CJS (expected, harmless)
+- No errors
 
 This matches the `.replit` deploy config: `run = ["node", "./dist/index.cjs"]`.
 
@@ -35,40 +33,44 @@ This matches the `.replit` deploy config: `run = ["node", "./dist/index.cjs"]`.
 
 ## 3. Deploy Steps (Replit Autoscale)
 
-### 3.1 Push branch to remote
-```bash
-git checkout fix/phase-3-0-1-prestep
-git push origin fix/phase-3-0-1-prestep
-```
-
-### 3.2 Deploy on Replit
+### 3.1 Deploy on Replit
 1. Open the Replit project
-2. Switch to the `fix/phase-3-0-1-prestep` branch
-3. Click **Deploy** (autoscale target from `.replit`)
-4. Wait for build + deploy (uses `npm run build` → `node ./dist/index.cjs`)
-5. Copy the HTTPS deploy URL (e.g., `https://traveloure-abc123.replit.app`)
+2. Click **Deploy** (autoscale target from `.replit`)
+3. Wait for build + deploy (uses `npm run build` → `node ./dist/index.cjs`)
+4. Copy the HTTPS deploy URL (e.g., `https://traveloure-platform.replit.app`)
 
-### 3.3 Seed E2E test accounts on the deploy's database
+### 3.2 Seed E2E test accounts on the deploy's database
 ```bash
-# On the deployed Replit (or via shell):
 export E2E_TEST_PASSWORD="TestPass123!"
 npm run seed:e2e-accounts
 ```
 
-**Verifies:** Creates 5 accounts the E2E harness expects:
+Creates the 5 accounts the E2E harness expects:
 - `test-traveler-kyoto@traveloure.test` (user)
 - `kyoto-food@traveloure.test` (travel_expert)
 - `kyoto-photography@traveloure.test` (service_provider)
 - `test-ea@traveloure.test` (executive_assistant)
 - `test-admin@traveloure.test` (admin)
 
-**Critical:** If the deploy uses a fresh database, these accounts do NOT exist by default. The beta seed creates different accounts. E2E-1 will fail with 401s on login if these aren't seeded.
+**Critical:** If the deploy uses a fresh database, these accounts do NOT exist by default. E2E-1 will fail with 401s on login if these aren't seeded.
 
 ---
 
-## 4. E2E-1 Run
+## 4. GitHub Actions Secrets (required before CI will pass)
 
-### 4.1 Set environment
+Go to **Repo → Settings → Secrets and variables → Actions** and add:
+
+| Secret | Value |
+|--------|-------|
+| `E2E_BASE_URL` | `https://traveloure-platform.replit.app` |
+| `E2E_TEST_PASSWORD` | `TestPass123!` (or custom — must match seed) |
+| `DATABASE_URL` | Production DB connection string |
+
+---
+
+## 5. E2E-1 Run
+
+### 5.1 Set environment
 ```bash
 export E2E_BASE_URL="https://your-deploy-url.replit.app"
 export E2E_TEST_PASSWORD="TestPass123!"
@@ -80,47 +82,34 @@ E2E_BASE_URL=https://your-deploy-url.replit.app
 E2E_TEST_PASSWORD=TestPass123!
 ```
 
-### 4.2 Global setup (creates auth sessions)
+### 5.2 Run E2E-1
 ```bash
-npx playwright test --project=chromium -c playwright.e2e.config.ts --grep "harness smoke"
-```
-This runs `e2e/global-setup.ts` which logs in each role and saves session cookies to `e2e/auth/<role>.json`.
-
-If global setup fails, the error message tells you exactly which of 3 things is wrong:
-- `E2E_BASE_URL` not reachable
-- `E2E_TEST_PASSWORD` doesn't match seed
-- Account doesn't exist in DB
-
-### 4.3 Run E2E-1
-```bash
-npx playwright test --project=chromium -c playwright.e2e.config.ts e2e/specs/journey-1.spec.ts
+npx playwright test -c playwright.e2e.config.ts e2e/specs/journey-1.spec.ts --project=chromium
 ```
 
-### 4.4 Expected results
-- **Flow A (authed):** 200 + green trace from landing → discover → cart → checkout → confirmation
-- **Flow B (guest):** 200 + green trace from landing → discover → add-to-cart (guest) → sign-in → cart/migrate → checkout → confirmation
-- **Component wiring:** 4 component assertions pass (EscalationCTA, ExpertMatchCard, SmartServiceRecommendations, /local-experts route)
+### 5.3 Expected results
+- **Flow A (authed):** landing → discover → cart → checkout → confirmation
+- **Flow B (guest):** landing → discover → add-to-cart (guest) → sign-in → cart/migrate → checkout → confirmation
+- **Component wiring:** EscalationCTA, ExpertMatchCard, SmartServiceRecommendations, /local-experts — all visible
 - **No console errors** across any flow
 
 ---
 
-## 5. After E2E-1 Green
+## 6. After E2E-1 Green
 
-1. **Stage 1 is closed.**
-2. **Stage 2 (multi-currency)** can start — the charge path is now a verified baseline.
-3. **Deferred IDOR routes** (`user-experience-items`, `notifications`, `faqs`, `admin/*`) can be picked up as a low-priority follow-up.
-4. **Event fast-follow** stays deferred until after Stage 7.
+1. Stage 1 is closed.
+2. Stage 2 (multi-currency) can start — the charge path is now a verified baseline.
+3. Deferred IDOR routes (`user-experience-items`, `notifications`, `faqs`, `admin/*`) tracked in `DEFERRED_IDOR.md`.
 
 ---
 
-## 6. If E2E-1 Fails
+## 7. If E2E-1 Fails
 
 | Failure | Likely cause | Fix |
 |---|---|---|
-| `login failed for traveler: 401` | E2E test accounts not seeded | Run `npm run seed:e2e-accounts` on deploy DB |
+| `login failed for traveler: 401` | E2E accounts not seeded | Run `npm run seed:e2e-accounts` on deploy DB |
 | `authed-confirmation failed: 401` | Cookie dropped (not HTTPS) | Verify `E2E_BASE_URL` starts with `https://` |
 | `status 400: cart is empty` | Cart item not added | Check `POST /api/cart` works; check `serviceId` exists |
-| `Could not prepare trip` | `POST /api/cart/resolve-trip` 404 | Verify commit `a70d8b86` is in the deployed branch |
-| `Failed to migrate cart` | `POST /api/cart/migrate` 404 | Verify commit `5bd450c2` is in the deployed branch |
-| Console errors | Component wiring broken | Check specific component render (e.g., `AIMatchedExpertsSection` needs `/api/grok/match-experts`) |
-
+| `Could not prepare trip` | `POST /api/cart/resolve-trip` 404 | Verify the cart routes fix is deployed |
+| `Failed to migrate cart` | `POST /api/cart/migrate` 404 | Verify the cart migrate fix is deployed |
+| Console errors | Component wiring broken | Check specific component render |
