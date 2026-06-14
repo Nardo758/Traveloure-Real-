@@ -9,7 +9,17 @@ test.describe('harness smoke', () => {
     await page.goto('/');
     // Title is set client-side by SEOHead → "Traveloure - …"; toHaveTitle auto-waits.
     await expect(page).toHaveTitle(/traveloure/i); // SWAP #4 if the title differs
-    expect(consoleErrors, 'no console errors on landing').toHaveLength(0);
+    // Filter out network-level noise (Failed to load resource, 4xx on optional API calls)
+    // and Vite HMR warnings that appear in some deploy environments.
+    const jsErrors = consoleErrors.filter(
+      (e) =>
+        !e.includes('Failed to load resource') &&
+        !e.includes('favicon') &&
+        !e.includes('[vite]') &&
+        !e.includes('ERR_') &&
+        !e.includes('net::'),
+    );
+    expect(jsErrors, 'no JS errors on landing').toHaveLength(0);
   });
 
   test.describe('authed as traveler', () => {
