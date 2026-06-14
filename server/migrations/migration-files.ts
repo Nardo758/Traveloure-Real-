@@ -92,4 +92,5 @@ export const MIGRATION_FILES = [
   "075_seed_feed_composition_settings.sql",
   "076_phase2_optimizer_prices.sql",
   "077_event_coordination_profiles.sql",
+  "078_user_preferred_currency.sql",
 ] as const;
