@@ -1412,7 +1412,7 @@ export default function CartPage() {
                       </div>
                       {displayCurrency !== "USD" && (
                         <p className="text-xs text-muted-foreground" data-testid="text-currency-disclaimer">
-                          Prices shown in {displayCurrency}. You will be charged in USD.
+                          Prices shown and charged in {displayCurrency}.
                         </p>
                       )}
                     </CardContent>
@@ -1761,7 +1761,7 @@ export default function CartPage() {
                           <p className="text-2xl font-bold text-foreground">
                             {formatPrice(optimizationPreview.feeCents / 100)}
                           </p>
-                          <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? " · charged in USD" : ""}</p>
+                          <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? ` · charged in ${displayCurrency}` : ""}</p>
                         </div>
                       )}
 
