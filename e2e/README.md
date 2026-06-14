@@ -45,11 +45,31 @@ npx playwright show-report
 
 (Also wired as `npm run test:e2e:deploy` etc. — see package.json.)
 
+> **`E2E_BASE_URL` is required and must be HTTPS.** There's no localhost
+> fallback: the app's session cookie is `Secure`, so it's silently dropped over
+> http (login 200, then `/api/auth/user` 401 reading as bad creds). The config
+> throws if it's unset; global-setup throws if it isn't `https://`.
+
+## Specs
+
+- `specs/smoke.spec.ts` — landing renders (no console errors) + traveler/expert
+  sessions are authenticated (API-login fixture).
+- `specs/login-ui.spec.ts` — drives the real **SignInModal** UI (desktop +
+  mobile-hamburger triggers) so modal regressions are caught; the API fixture
+  only covers session setup, not the human login path.
+
+## CI
+
+`.github/workflows/e2e-deploy-smoke.yml` runs `test:e2e:deploy:smoke` against
+`secrets.E2E_BASE_URL` / `secrets.E2E_TEST_PASSWORD`. **Non-blocking by design** —
+it skips cleanly (green) when those secrets are absent and is NOT a required
+check. Promote to required only after a green run with secrets.
+
 ## Swap points — as filled from the real app
 
 | # | What | Resolved value |
 |---|------|----------------|
-| 1 | `.env.e2e` | template in `.env.e2e.example`; `E2E_BASE_URL` defaults to localhost:5000 (this repo's dev port) |
+| 1 | `.env.e2e` | template in `.env.e2e.example`; `E2E_BASE_URL` **required, HTTPS only** (no fallback — Secure cookie) |
 | 2 | `accounts.ts` | real seeded emails (verified vs `playwright/fixtures/test-accounts.ts`), pw `TestPass123!`, env-overridable: traveler `test-traveler-kyoto@`, expert `kyoto-food@`, provider `kyoto-photography@`, ea `test-ea@`, admin `test-admin@` (all `…@traveloure.test`) |
 | 3 | `global-setup.ts` | **login is the SignInModal dialog, not a `/login` page.** Calls the modal's real endpoint `POST /api/auth/login {email,password}` from the browser context (passport session cookie → storageState); authed check = `GET /api/auth/user`. UI testids documented inline if true-UI login is ever needed. |
 | 4 | `smoke.spec.ts` | title `/traveloure/i` (set client-side by `SEOHead`); authed routes from `getRoleHomePath` — traveler `/dashboard`, expert `/expert/dashboard` (provider `/provider/dashboard`, ea `/ea/dashboard`, admin `/admin/dashboard` available for later flows) |

@@ -5,9 +5,18 @@ import dotenv from 'dotenv';
 // .env.e2e — so we point it explicitly.)
 dotenv.config({ path: '.env.e2e' });
 
-// Point at your deployed Replit URL via env. Local dev server (port 5000 in this
-// repo, see .env.example) is the fallback.
-const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5000';
+// E2E_BASE_URL is REQUIRED — it must be the HTTPS deploy URL. There is no
+// localhost fallback: the app's session cookie is Secure (httpOnly+secure), so
+// it is silently dropped over http, which would surface as a misleading 401 in
+// global-setup. Fail loudly here instead. (HTTPS is asserted in global-setup.)
+const baseURL = process.env.E2E_BASE_URL;
+if (!baseURL) {
+  throw new Error(
+    'E2E_BASE_URL is required — set it to your HTTPS deploy URL ' +
+      '(e.g. in .env.e2e or the CI secret). No localhost fallback: the session ' +
+      'cookie is Secure and only works over https.',
+  );
+}
 
 // NOTE: filename is playwright.e2e.config.ts (not playwright.config.ts) on purpose
 // — the repo already has a root playwright.config.ts for the local-dev harness
