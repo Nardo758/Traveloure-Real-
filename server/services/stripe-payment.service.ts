@@ -32,13 +32,22 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 
 class StripePaymentService {
   /**
+   * Return the list of supported currency codes
+   */
+  getSupportedCurrencies(): string[] {
+    return ['usd', 'eur', 'gbp', 'jpy', 'aud', 'sgd'];
+  }
+
+  /**
    * Create payment intent for bookings
+   * @param currency - Three-letter ISO currency code (defaults to 'usd'). Supported: usd, eur, gbp, jpy, aud, sgd.
    */
   async createPaymentIntent(
     userId: string,
     bookings: any[],
     amount: number,
-    isDeposit: boolean = false
+    isDeposit: boolean = false,
+    currency: string = 'usd'
   ) {
     try {
       // Get user details
@@ -53,6 +62,12 @@ class StripePaymentService {
       const userRow = user.rows[0] as { email?: string; first_name?: string; last_name?: string };
       const userEmail = userRow.email || `user${userId}@traveloure.com`;
 
+      // Validate currency and compute Stripe amount
+      const supportedCurrencies = this.getSupportedCurrencies();
+      const effectiveCurrency = supportedCurrencies.includes(currency.toLowerCase()) ? currency.toLowerCase() : 'usd';
+      const isZeroDecimal = effectiveCurrency === 'jpy';
+      const stripeAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+
       // Create payment intent
       // Stripe metadata values have 500 char limit, so truncate booking IDs if needed
       const allBookingIds = bookings.map(b => b.id).join(',');
@@ -61,8 +76,8 @@ class StripePaymentService {
         : allBookingIds;
       
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: 'usd',
+        amount: stripeAmount,
+        currency: effectiveCurrency,
         metadata: {
           userId,
           bookingIds: truncatedBookingIds,
@@ -82,7 +97,7 @@ class StripePaymentService {
         INSERT INTO payment_intents (
           stripe_payment_intent_id, user_id, amount, currency,
           status, is_deposit, metadata, created_at
-        ) VALUES (${paymentIntent.id}, ${userId}, ${amount}, 'usd', ${paymentIntent.status}, ${isDeposit}, ${metadataJson}, NOW())
+        ) VALUES (${paymentIntent.id}, ${userId}, ${amount}, ${effectiveCurrency}, ${paymentIntent.status}, ${isDeposit}, ${metadataJson}, NOW())
       `);
 
       return {
@@ -386,7 +401,8 @@ class StripePaymentService {
     destination: string,
     serviceType: 'review' | 'review_and_book' | 'full_concierge',
     amount: number,
-    notes: string
+    notes: string,
+    currency: string = 'usd'
   ) {
     try {
       const serviceTitles = {
@@ -395,9 +411,14 @@ class StripePaymentService {
         full_concierge: 'Full Concierge',
       };
 
+      const supportedCurrencies = this.getSupportedCurrencies();
+      const effectiveCurrency = supportedCurrencies.includes(currency.toLowerCase()) ? currency.toLowerCase() : 'usd';
+      const isZeroDecimal = effectiveCurrency === 'jpy';
+      const stripeAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: 'usd',
+        amount: stripeAmount,
+        currency: effectiveCurrency,
         metadata: {
           type: 'expert_service',
           userId,
@@ -438,7 +459,8 @@ class StripePaymentService {
     amount: number,
     notes: string,
     successUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    currency: string = 'usd'
   ) {
     try {
       const serviceTitles = {
@@ -447,6 +469,11 @@ class StripePaymentService {
         full_concierge: 'Full Concierge',
       };
 
+      const supportedCurrencies = this.getSupportedCurrencies();
+      const effectiveCurrency = supportedCurrencies.includes(currency.toLowerCase()) ? currency.toLowerCase() : 'usd';
+      const isZeroDecimal = effectiveCurrency === 'jpy';
+      const unitAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',
@@ -454,12 +481,12 @@ class StripePaymentService {
         line_items: [
           {
             price_data: {
-              currency: 'usd',
+              currency: effectiveCurrency,
               product_data: {
                 name: `Expert ${serviceTitles[serviceType]} - ${destination}`,
                 description: `Travel expert service for your ${destination} trip`,
               },
-              unit_amount: Math.round(amount * 100), // Convert to cents
+              unit_amount: unitAmount,
             },
             quantity: 1,
           },

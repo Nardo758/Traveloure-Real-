@@ -203,7 +203,8 @@ router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
 router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { packageId } = req.body;
+      const { packageId, currency: clientCurrency } = req.body;
+      const chargeCurrency = clientCurrency || 'usd';
 
       const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
       if (!pkg) {
@@ -222,6 +223,9 @@ router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
       });
 
       const baseUrl = getBaseUrl();
+      const isZeroDecimal = chargeCurrency.toLowerCase() === 'jpy';
+      const unitAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',
@@ -229,12 +233,12 @@ router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
         line_items: [
           {
             price_data: {
-              currency: 'usd',
+              currency: chargeCurrency.toLowerCase(),
               product_data: {
                 name: `${credits} Credits`,
                 description: `Traveloure credit package - ${credits} credits`,
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: unitAmount,
             },
             quantity: 1,
           },
@@ -244,6 +248,7 @@ router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
           userId,
           credits: credits.toString(),
           packageId: packageId?.toString() || '',
+          currency: chargeCurrency.toLowerCase(),
         },
         success_url: `${baseUrl}/credits-billing?purchase=success&credits=${credits}`,
         cancel_url: `${baseUrl}/credits-billing?purchase=cancelled`,
