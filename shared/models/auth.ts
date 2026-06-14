@@ -62,6 +62,8 @@ export const users = pgTable("users", {
   // requiresBackgroundCheck=true or insuranceBand >= 2 blocks publish and returns HTTP 422.
   providerVerificationStatus: varchar("provider_verification_status", { length: 20 }).default("pending"),
   backgroundCheckConfirmed: boolean("background_check_confirmed").default(false),
+  // Multi-currency: user's preferred display/charge currency
+  preferredCurrency: varchar("preferred_currency", { length: 3 }).default("USD"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
