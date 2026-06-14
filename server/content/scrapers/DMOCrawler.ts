@@ -1,5 +1,5 @@
-import { FirecrawlApp } from "@mendable/firecrawl-js";
-import { TavilyClient } from "tavily";
+import FirecrawlApp from "@mendable/firecrawl-js";
+import { tavily, type TavilyClient } from "tavily";
 
 // Brave Search API is a simple REST API — no official SDK, so we use fetch
 interface BraveSearchResult {
@@ -109,7 +109,7 @@ export class DMOCrawler {
 
   constructor(config: CrawlerConfig) {
     this.firecrawl = new FirecrawlApp({ apiKey: config.firecrawlApiKey });
-    this.tavily = new TavilyClient({ apiKey: config.tavilyApiKey });
+    this.tavily = tavily({ apiKey: config.tavilyApiKey });
     this.braveApiKey = config.braveApiKey;
   }
 
@@ -136,9 +136,9 @@ export class DMOCrawler {
     console.log(`[DMOCrawler] Brave returned ${braveResults.length} results for "${query}". Falling back to Tavily...`);
     const tavilyResults = await this.tavily.search({
       query: searchQuery,
-      max_results: count,
-      search_depth: "basic",
-      include_answer: false,
+      maxResults: count,
+      searchDepth: "basic",
+      includeAnswer: false,
     });
 
     return tavilyResults.results.map((r: any) => r.url);
@@ -351,11 +351,11 @@ export class DMOCrawler {
   async tavilySearchAndExtract(query: string, opts: { max_results?: number; include_answer?: boolean } = {}): Promise<any> {
     const result = await this.tavily.search({
       query,
-      max_results: opts.max_results || 5,
-      search_depth: "advanced",
-      include_answer: opts.include_answer ?? true,
-      include_raw_content: true,
-      include_images: true,
+      maxResults: opts.max_results || 5,
+      searchDepth: "advanced",
+      includeAnswer: opts.include_answer ?? true,
+      includeRawContent: "markdown",
+      includeImages: true,
     });
 
     return {
