@@ -25,8 +25,13 @@ export default async function globalSetup(config: FullConfig) {
     const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
 
-    // Login via POST /api/auth/login so the session cookie lands in the
-    // browser context jar and gets persisted by storageState.
+    // ── SWAP #3: login + the authed-confirmation ────────────────────────────────────
+    // This app has NO `/login` page — auth is the SignInModal dialog, which POSTs
+    //   POST /api/auth/login  { email, password }
+    // and gets back a passport session cookie (see client/src/components/SignInModal.tsx
+    // + server/replit_integrations/auth/emailAuth.ts). We call that endpoint from the
+    // browser context so the cookie lands in the same jar storageState persists — the
+    // robust headless equivalent of fill-email / fill-password / click-submit.
     const login = await page.request.post('/api/auth/login', {
       data: { email: ACCOUNTS[role].email, password: PASSWORD },
     });
@@ -42,6 +47,9 @@ export default async function globalSetup(config: FullConfig) {
     if (!me.ok()) {
       throw new Error(`authed-confirmation failed for ${role}: /api/auth/user returned ${me.status()}`);
     }
+    // To drive the real UI instead, open the SignInModal and use its testids:
+    //   [data-testid="input-email"], [data-testid="input-password"], [data-testid="button-auth-submit"]
+    // ──────────────────────────────────────────────────────────────────────────────
 
     await context.storageState({ path: path.join(AUTH_DIR, `${role}.json`) });
     await browser.close();
