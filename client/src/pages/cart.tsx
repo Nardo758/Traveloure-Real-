@@ -195,7 +195,7 @@ interface OptimizationPaymentState {
 }
 
 export default function CartPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, updatePreferredCurrency } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -322,8 +322,15 @@ export default function CartPage() {
   const [newTripDestination, setNewTripDestination] = useState("");
   const [selectedPlanItemIds, setSelectedPlanItemIds] = useState<Set<string>>(new Set());
   const [displayCurrency, setDisplayCurrency] = useState<string>(
-    () => localStorage.getItem("traveloure_currency") || "USD"
+    () => user?.preferredCurrency || localStorage.getItem("traveloure_currency") || "USD"
   );
+
+  // Sync displayCurrency from user profile when it loads (overrides localStorage if user has a preference)
+  useEffect(() => {
+    if (user?.preferredCurrency && user.preferredCurrency !== displayCurrency) {
+      setDisplayCurrency(user.preferredCurrency);
+    }
+  }, [user?.preferredCurrency]);
 
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
@@ -415,7 +422,7 @@ export default function CartPage() {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
       }
-      const res = await apiRequest("POST", "/api/checkout", {});
+      const res = await apiRequest("POST", "/api/checkout", { currency: displayCurrency });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -475,6 +482,9 @@ export default function CartPage() {
   const handleCurrencyChange = (code: string) => {
     setDisplayCurrency(code);
     localStorage.setItem("traveloure_currency", code);
+    if (user && updatePreferredCurrency) {
+      updatePreferredCurrency(code);
+    }
   };
 
   // Content items (Discover saves) — eligible for "Start planning"
