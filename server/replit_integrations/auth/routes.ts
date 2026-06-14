@@ -25,6 +25,7 @@ const updateProfileSchema = z.object({
   bio: z.string().max(500).optional(),
   profileImageUrl: z.string().url().optional().nullable(),
   specialties: z.array(z.string()).optional(),
+  preferredCurrency: z.string().length(3).optional(),
 });
 
 // Register auth-specific routes

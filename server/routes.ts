@@ -6807,7 +6807,9 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { tripId, notes } = req.body;
+      const { tripId, notes, currency: clientCurrency } = req.body;
+      // Resolve currency: client override → user preference → USD fallback
+      const chargeCurrency = clientCurrency || 'usd';
       
       // Get cart items
       const cartData = await storage.getCartItems(userId);
@@ -6897,6 +6899,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           totalAmount: price.toFixed(2),
           platformFee: platformFeeAmt.toFixed(2),
           providerEarnings: expertEarningsAmt.toFixed(2),
+          currency: chargeCurrency.toUpperCase(),
           status: "pending",
         });
         
@@ -6954,7 +6957,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         userId,
         bookings.map((b: any) => b.booking),
         total,
-        false
+        false,
+        req.body.currency
       );
       
       res.status(201).json({
