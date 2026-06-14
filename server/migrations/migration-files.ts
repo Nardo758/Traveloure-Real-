@@ -17,6 +17,12 @@
  *   051_schema_migrations_ledger_bootstrap.sql.
  * - `058_*` is intentionally absent — the planned migration was cancelled and its DDL
  *   was folded into `057_expert_offering_type_fk.sql`. The sequence jumps from 057 → 059.
+ * - `062_concierge_booking_fee_band.sql` and `063_seed_booking_concierge_offering_type.sql`
+ *   were orphaned source-branch files on disk whose DDL is fully covered by the registered
+ *   064 and 065 files. They have been deleted and were never registered here.
+ * - `075_seed_feed_composition_settings.sql` was a duplicate of `067_seed_feed_composition_settings.sql`
+ *   (identical content, idempotent ON CONFLICT DO NOTHING). Consolidated into 067 only;
+ *   075 has been deleted and removed from this list.
  */
 export const MIGRATION_FILES = [
   "001_guest_invite_system.sql",
@@ -94,7 +100,6 @@ export const MIGRATION_FILES = [
   "072_changes_tracking.sql",
   "073_affiliate_clicks_base.sql",
   "074_affiliate_booking_requests_base.sql",
-  "075_seed_feed_composition_settings.sql",
   "076_phase2_optimizer_prices.sql",
   "077_event_coordination_profiles.sql",
   "078_user_preferred_currency.sql",
