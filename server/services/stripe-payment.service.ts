@@ -401,7 +401,8 @@ class StripePaymentService {
     destination: string,
     serviceType: 'review' | 'review_and_book' | 'full_concierge',
     amount: number,
-    notes: string
+    notes: string,
+    currency: string = 'usd'
   ) {
     try {
       const serviceTitles = {
@@ -410,9 +411,14 @@ class StripePaymentService {
         full_concierge: 'Full Concierge',
       };
 
+      const supportedCurrencies = this.getSupportedCurrencies();
+      const effectiveCurrency = supportedCurrencies.includes(currency.toLowerCase()) ? currency.toLowerCase() : 'usd';
+      const isZeroDecimal = effectiveCurrency === 'jpy';
+      const stripeAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: 'usd',
+        amount: stripeAmount,
+        currency: effectiveCurrency,
         metadata: {
           type: 'expert_service',
           userId,
@@ -453,7 +459,8 @@ class StripePaymentService {
     amount: number,
     notes: string,
     successUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    currency: string = 'usd'
   ) {
     try {
       const serviceTitles = {
@@ -462,6 +469,11 @@ class StripePaymentService {
         full_concierge: 'Full Concierge',
       };
 
+      const supportedCurrencies = this.getSupportedCurrencies();
+      const effectiveCurrency = supportedCurrencies.includes(currency.toLowerCase()) ? currency.toLowerCase() : 'usd';
+      const isZeroDecimal = effectiveCurrency === 'jpy';
+      const unitAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',
@@ -469,12 +481,12 @@ class StripePaymentService {
         line_items: [
           {
             price_data: {
-              currency: 'usd',
+              currency: effectiveCurrency,
               product_data: {
                 name: `Expert ${serviceTitles[serviceType]} - ${destination}`,
                 description: `Travel expert service for your ${destination} trip`,
               },
-              unit_amount: Math.round(amount * 100), // Convert to cents
+              unit_amount: unitAmount,
             },
             quantity: 1,
           },
