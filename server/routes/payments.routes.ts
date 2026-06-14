@@ -86,8 +86,8 @@ import {
   resolveCommissionRates,
   feeConfigFromRates,
   calcInsuranceFee,
-  getConciergeBookingRate,
-  requireConciergeBookingRate,
+  getConciergeBookingFlatFee,
+  requireConciergeBookingFlatFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -336,8 +336,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           : false,
       );
       const conciergeBookingFlatFee = hasAnyBookingConciergeItem
-        ? await requireConciergeBookingRate()
-        : await getConciergeBookingRate();
+        ? await requireConciergeBookingFlatFee()
+        : await getConciergeBookingFlatFee();
 
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
@@ -523,7 +523,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
     } catch (err: any) {
       console.error("Checkout error:", err);
       // Surface known configuration errors with a clear message so ops can act immediately
-      // (e.g. "Booking Concierge fee band not configured" from requireConciergeBookingRate)
+      // (e.g. "Booking Concierge fee band not configured" from requireConciergeBookingFlatFee)
       if (err?.message?.includes("fee band not configured") || err?.message?.includes("not configured")) {
         return res.status(500).json({ message: err.message });
       }
@@ -749,7 +749,7 @@ router.get("/api/booking-fee-config", async (req, res) => {
   // Returns the live default_rate for a fee_bands row. Used by client-side
   // pricing surfaces (optimize.tsx, etc.) so admin edits propagate without redeploy.
   // Percent bands return rate as a fraction (0.25 = 25 %); flat bands return rate
-  // as USD dollars (49.99 = $49.99). The rateType field disambiguates. // fee-literal-ok: comment example, fee resolves from config
+  // as USD dollars (49.99 = $49.99). The rateType field disambiguates.
 router.get("/api/fee-bands/:bandKey", async (req, res) => {
     try {
       const bandKey = String(req.params.bandKey || "").trim();

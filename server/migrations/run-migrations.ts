@@ -21,7 +21,7 @@
  */
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { db, pool } from "../db";
+import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { MIGRATION_FILES } from "./migration-files";
 
@@ -57,22 +57,6 @@ async function ledgerExists(): Promise<boolean> {
       SELECT 1 FROM information_schema.tables
       WHERE table_schema = current_schema()
         AND table_name = 'schema_migrations'
-    ) AS "exists"
-  `);
-  return Boolean((result.rows?.[0] as { exists: boolean } | undefined)?.exists);
-}
-
-/**
- * Detects a pre-ledger production database: one that was built from Drizzle
- * snapshots (schema already applied) but has never had the bootstrap run.
- * Probe: if expert_service_offerings exists, the Drizzle schema is present.
- */
-async function isPreLedgerProdDb(): Promise<boolean> {
-  const result = await db.execute(sql`
-    SELECT EXISTS (
-      SELECT 1 FROM information_schema.tables
-      WHERE table_schema = current_schema()
-        AND table_name = 'expert_service_offerings'
     ) AS "exists"
   `);
   return Boolean((result.rows?.[0] as { exists: boolean } | undefined)?.exists);
@@ -140,19 +124,7 @@ export async function runMigrations(): Promise<MigrationResult> {
   }
 
   // ── NORMAL STARTUP MODE ──────────────────────────────────────────────────────
-
-  // ── AUTO-BOOTSTRAP: detect a prod DB that needs ledger gap-filling ──────────
-  //
-  // Two cases that both require the bootstrap to run:
-  //   A. No ledger at all + schema tables exist → Drizzle-push prod, bootstrap never ran.
-  //   B. Ledger exists but is missing any migration 001-051 + schema tables exist →
-  //      A previous deploy partially built the ledger (e.g. stamped 001-006, crashed on
-  //      007 because the table hit the 1600-column limit) and needs the gaps filled.
-  //
-  // On a fresh dev DB there are no tables, so isPreLedgerProdDb() returns false and
-  // this block is skipped — all migrations run from scratch as normal.
-
-  // Ensure ledger table exists before we read it (handles case A where it's absent).
+  // Ensure the ledger table exists (idempotent DDL).
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       migration_name TEXT PRIMARY KEY,
@@ -161,24 +133,6 @@ export async function runMigrations(): Promise<MigrationResult> {
   `);
 
   const already = await readLedger();
-
-  // Migrations 001–051 that are absent from the ledger.
-  const earlyMigrations = MIGRATION_FILES.filter((f) => {
-    const num = parseInt(f.split("_")[0], 10);
-    return num >= 1 && num <= 51;
-  });
-  const missingEarly = earlyMigrations.filter((f) => !already.has(f));
-
-  if (missingEarly.length > 0 && await isPreLedgerProdDb()) {
-    console.log(
-      `[Migrations] Ledger is missing ${missingEarly.length} early migration(s) ` +
-      `(${missingEarly.slice(0, 3).join(", ")}${missingEarly.length > 3 ? "…" : ""}) ` +
-      `but schema tables exist — auto-bootstrapping to fill gaps...`
-    );
-    await bootstrapProductionLedger();
-    console.log("[Migrations] Auto-bootstrap complete. Continuing with pending migrations.");
-  }
-
   const applied: string[] = [];
   const skipped: string[] = [];
 
@@ -190,10 +144,7 @@ export async function runMigrations(): Promise<MigrationResult> {
     const filePath = join(__dirname_local, file);
     const content = readFileSync(filePath, "utf-8");
     try {
-      // Use pool.query() directly so multi-statement SQL files execute correctly.
-      // Drizzle's db.execute() wraps single statements and can mishandle files
-      // that contain multiple statements (ALTER TABLE + CREATE INDEX etc.).
-      await pool.query(content);
+      await db.execute(sql.raw(content));
       // Record only after the file applied cleanly. If the process dies between
       // apply and record, the next run re-applies (idempotent) — never skips a
       // half-applied file.
@@ -204,19 +155,9 @@ export async function runMigrations(): Promise<MigrationResult> {
       applied.push(file);
       console.log(`[Migrations] Applied + recorded: ${file}`);
     } catch (err: any) {
-      // Surface the full PostgreSQL error chain so production logs show the
-      // real reason (relation does not exist, constraint violation, etc.)
-      // rather than just Drizzle's "Failed query: <sql>" wrapper.
-      console.error(`[Migrations] FATAL: ${file} failed — PostgreSQL error:`, {
-        message: err?.message,
-        code: err?.code,
-        detail: err?.detail,
-        hint: err?.hint,
-        position: err?.position,
-        where: err?.where,
-        causeMessage: err?.cause?.message,
-        causeCode: err?.cause?.code,
-      });
+      // A real error here (missing column, syntax error, DB unreachable) must be
+      // surfaced immediately — do not swallow it.
+      console.error(`[Migrations] FATAL: ${file} failed:`, err?.message ?? err);
       throw err; // Fail-fast: prevents server from starting with a bad schema
     }
   }
@@ -269,7 +210,7 @@ export async function bootstrapProductionLedger(): Promise<MigrationResult> {
   // Execute 051 bootstrap SQL: INSERT all 001–050 with ON CONFLICT DO NOTHING.
   const bootstrapPath = join(__dirname_local, "051_schema_migrations_ledger_bootstrap.sql");
   const bootstrapSql = readFileSync(bootstrapPath, "utf-8");
-  await pool.query(bootstrapSql);
+  await db.execute(sql.raw(bootstrapSql));
 
   // Also record 051 itself.
   await db.execute(sql`

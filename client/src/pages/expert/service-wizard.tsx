@@ -690,7 +690,7 @@ export default function ServiceWizard() {
               <div>
                 <p className="text-sm text-blue-900 font-medium">Booking Concierge facilitation fee applies</p>
                 <p className="text-xs text-blue-700 mt-0.5">
-                  A flat facilitation fee is added to each booking (admin-configurable, default $9.99). The standard 75/25 expert/platform split on your service price applies separately. // fee-literal-ok: UI description, fee resolves from config
+                  A flat facilitation fee is added to each booking (admin-configurable, default $9.99). The standard 75/25 expert/platform split on your service price applies separately.
                 </p>
               </div>
             </div>

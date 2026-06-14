@@ -8,12 +8,17 @@ export interface FeeConfig {
   expertSharePercent: number;
 }
 
+export const DEFAULT_FEE_CONFIG: FeeConfig = {
+  platformFeePercent: 12,
+  expertSharePercent: 70,
+};
+
 export type BookedBy = "ai" | "expert" | "user";
 
 interface BookingFeeBreakdownProps {
   subtotal: number;
   bookedBy: BookedBy;
-  feeConfig: FeeConfig;
+  feeConfig?: FeeConfig;
   compact?: boolean;
   className?: string;
 }
@@ -47,7 +52,7 @@ function calcFees(subtotal: number, bookedBy: BookedBy, cfg: FeeConfig) {
 export function BookingFeeBreakdown({
   subtotal,
   bookedBy,
-  feeConfig,
+  feeConfig = DEFAULT_FEE_CONFIG,
   compact = false,
   className,
 }: BookingFeeBreakdownProps) {

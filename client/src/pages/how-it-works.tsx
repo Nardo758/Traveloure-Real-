@@ -68,7 +68,7 @@ const planningOptions = [
     title: "Hybrid AI + Expert",
     description: "Combine AI efficiency with human expertise. Get AI suggestions refined by local experts and trip planners.",
     icon: Users,
-    price: "$5.99 – $19.99 / run", // fee-literal-ok: UI display string, fees resolve from config
+    price: "$5.99 – $19.99 / run",
     features: ["AI-generated base plan", "Expert review and refinement", "Insider local tips", "Priority support"]
   },
   {

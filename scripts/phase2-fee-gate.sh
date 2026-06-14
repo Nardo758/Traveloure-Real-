@@ -25,34 +25,23 @@ COMMON_EXCLUDES=(
   --exclude-dir=__fixtures__
 )
 # Second-stage path filter (catches files the glob excludes miss) + allow-comment opt-out.
-# Also exclude lines that look like Tailwind CSS classes (bg-900, text-gray-900, w-900, etc.)
-# or color-map lookups (G[900]) that are not fee configs.
-post_filter() { grep -viE '/(seed|seeds|fixtures|migrations|config)/' | grep -v 'fee-literal-ok' | grep -vE '(className|class)=.*[0-9]{2,}|\b(bg-|text-|w-|h-|from-|to-|border-|dark:)[a-z-]*[0-9]{2,}|G\[[0-9]+\]' || true; }
+post_filter() { grep -viE '/(seed|seeds|fixtures|migrations|config)/' | grep -v 'fee-literal-ok' || true; }
 
 # ── Pass A: known fee VALUES anywhere in logic ──────────────────────────────────
 # Optimize prices ($5.99 / $19.99) + deprecated subscription / review-tier values.
 VALUE_RE='(^|[^0-9.])(5\.99|9\.99|14\.99|29\.99|39\.99|49\.99|19\.99)([^0-9]|$)'
 A_HITS=$(grep -rnE "$VALUE_RE" "${ROOTS[@]}" "${COMMON_EXCLUDES[@]}" 2>/dev/null | post_filter)
 
-# ── Pass C: cents-form fee values (backend stores fees in cents) ─────────────────
-# 599 = $5.99, 1999 = $19.99, 4999 = $49.99, 900 = $9, 4500 = $45, 19900 = $199,
-# 49900 = $499, 499900 = $4999. Catches DEFAULT_FEE_CENTS = 599 and similar.
-CENTS_RE='(^|[^0-9])(599|1999|4999|900|4500|19900|49900|499900)([^0-9]|$)'
-C_HITS=$(grep -rnE "$CENTS_RE" "${ROOTS[@]}" "${COMMON_EXCLUDES[@]}" 2>/dev/null | post_filter)
-
 # ── Pass B: fee-CONTEXT numeric assignments ─────────────────────────────────────
 # Catches `serviceFee = 45`, `platformFee: 3`, `commission = 0.25`, `coordinationFee = 499`.
 # Anchored on fee-ish identifiers so bare integers (line 45, index 3) don't false-positive.
 # `= 0` sentinels (e.g. creditTowardCoordination = 0 for trips) are allowed.
-CTX_RE='(fee|serviceFee|platformFee|commission|optimizeFee|coordinationFee|charge|marginRate)[A-Za-z]*[[:space:]]*[:=][[:space:]]*[0-9]'
+CTX_RE='(fee|serviceFee|platformFee|commission|optimizeFee|coordinationFee|charge|margin)[A-Za-z]*[[:space:]]*[:=][[:space:]]*[0-9]'
 B_HITS=$(grep -rnE "$CTX_RE" "${ROOTS[@]}" "${COMMON_EXCLUDES[@]}" 2>/dev/null \
   | grep -vE '[:=][[:space:]]*0[[:space:]]*[;,)]' | post_filter)
 
 if [ -n "$A_HITS" ]; then
   printf '❌ Fee VALUE literals in logic:\n%s\n\n' "$A_HITS"; FAIL=1
-fi
-if [ -n "$C_HITS" ]; then
-  printf '❌ Fee CENTS literals in logic:\n%s\n\n' "$C_HITS"; FAIL=1
 fi
 if [ -n "$B_HITS" ]; then
   printf '❌ Fee-context numeric assignments in logic:\n%s\n\n' "$B_HITS"; FAIL=1

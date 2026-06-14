@@ -73,14 +73,11 @@ import {
 } from "@/components/ui/sheet";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useTrips } from "@/hooks/use-trips";
-import { SmartServiceRecommendations } from "@/components/SmartServiceRecommendations";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
 import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
-import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
@@ -586,11 +583,6 @@ export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
-  const { data: trips } = useTrips();
-  const { data: creditsData } = useQuery<{ balance: number }>({
-    queryKey: ["/api/credits/balance"],
-    enabled: !!user,
-  });
   
   // Parse URL params for expert handoff context (useSearch makes this reactive to navigation)
   const searchString = useSearch();
@@ -738,7 +730,7 @@ export default function DiscoverPage() {
       category: city.vibeTags?.[0] || "adventure",
       rating: city.pulseScore ? (city.pulseScore / 20).toFixed(1) : "4.5",
       reviews: city.activeTravelers || 0,
-      price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999, // fee-literal-ok: hotel price display fallback, not optimize fee
+      price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999,
       originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
       highlights: (city.aiMustSeeAttractions || []).slice(0, 3),
       expertPick: city.trendingScore > 70,
@@ -1010,17 +1002,6 @@ export default function DiscoverPage() {
           </div>
         </section>
 
-        {/* Smart Service Recommendations — surfaced in discover feed */}
-        {user && (
-          <section className="container mx-auto px-4 max-w-6xl py-6">
-            <SmartServiceRecommendations
-              trips={trips}
-              credits={creditsData?.balance}
-              user={user}
-            />
-          </section>
-        )}
-
         {/* Expert Handoff Banner - shown when coming from quick-start */}
         {showExpertHandoffBanner && (
           <section className="bg-gradient-to-r from-amber-500/10 to-primary/10 border-b py-4">
@@ -1075,17 +1056,6 @@ export default function DiscoverPage() {
                     Local experts who can help refine your itinerary and add bookable services
                   </p>
                 </div>
-              </div>
-
-              {/* AI-Matched Experts — surfaced via ExpertMatchCard */}
-              <div className="mb-6">
-                <AIMatchedExpertsSection
-                  destination={expertHandoffDestination}
-                  experienceType={expertHandoffExperienceType || undefined}
-                  tripId={expertHandoffTripId || undefined}
-                  userId={user?.id}
-                  isVisible={showExperts}
-                />
               </div>
               
               {expertsLoading ? (

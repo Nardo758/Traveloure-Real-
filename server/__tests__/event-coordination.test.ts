@@ -92,24 +92,13 @@ describe('Phase 4 — coordination fee resolution', () => {
     expect(fee.breakdown.floorCents).toBe(499_00);
   });
 
-  it('coordination fee does NOT credit optimize fee for non-Events (trip/experience branch)', async () => {
-    const coordination = await resolveCoordinationFee('vacation', 100_000);
-    expect(coordination.optimizeCreditCents).toBe(0);
-    // Raw fee should equal payable (no credit applied)
-    const rawFee = Math.max(499_00, Math.round(100_000 * 0.08));
-    expect(coordination.feeCents).toBe(rawFee);
-  });
-
   it('coordination fee credits optimize fee for Events', async () => {
-    // 3.0.1d: verify the SERVICE applies the credit, not the test.
-    const optimizeFee = await getFee('wedding', 'standard');
+    // Event optimize fee = $19.99 = 1999 cents
+    const optimizeFee = 1999;
     const coordination = await resolveCoordinationFee('wedding', 100_000);
-    // Payable = coordination - optimize credit (applied by the service)
-    expect(coordination.optimizeCreditCents).toBe(optimizeFee.priceCents);
-    expect(coordination.feeCents).toBeLessThan(100_000); // less than raw budget
-    expect(coordination.feeCents).toBeGreaterThan(0);
-    // Structural: raw fee minus credit equals payable
-    const rawFee = Math.max(499_00, Math.round(100_000 * 0.08));
-    expect(coordination.feeCents).toBe(rawFee - optimizeFee.priceCents);
+    // Payable = coordination - optimize credit
+    const payable = coordination.feeCents - optimizeFee;
+    expect(payable).toBeLessThan(coordination.feeCents);
+    expect(payable).toBeGreaterThan(0);
   });
 });

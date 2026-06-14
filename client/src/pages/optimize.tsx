@@ -408,11 +408,6 @@ export default function OptimizePage() {
                             )}
                           </div>
                           <p className="text-sm text-gray-500 mt-1">{tier.description}</p>
-                          {tier.id === "ai-only" && optimizeFee?.creditTowardCoordination && (
-                            <p className="text-sm text-green-600 mt-1 font-medium">
-                              ✓ Credited toward coordination fee
-                            </p>
-                          )}
                         </div>
                         <p className="font-semibold text-gray-900">
                           {tier.isStartingFrom ? "from " : ""}${tier.price}

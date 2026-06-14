@@ -603,7 +603,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           }
           // Re-derive expected fee from the actual comparison resource (not PI metadata).
           // CON-A.P2 (FEE-A): resolve through the single fee resolver so admin event-type
-          // overrides (e.g. wedding $49.99) pass validation. Anti-tampering by server-side // fee-literal-ok: comment example, fee resolves from config
+          // overrides (e.g. wedding $49.99) pass validation. Anti-tampering by server-side
           // recompute — no hardcoded allow-list of amounts.
           let actualEventType: string | undefined;
           if (tripId) {

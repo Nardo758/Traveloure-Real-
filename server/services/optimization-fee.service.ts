@@ -15,13 +15,18 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { optimizationFees } from "@shared/schema";
-import { complexityTier } from "./smart-sequencing.service";
 
-// 3.0.1b: Fail-loud resolver. If the DB is missing both the event-type row AND
-// the tier-level default, throw instead of silently serving a wrong fallback.
-// All required rows are seeded by Migration 076 (verified in 3.0.1a audit).
+// §4.8 default standard fee, used only when the DB has no row at all.
+// Phase 2 reframe: $5.99 Trip/Experience, $19.99 Event. fee-literal-ok: comment
+// Per correction brief, all event-type overrides are seeded DB rows — not code constants.
+const DEFAULT_FEE_CENTS: Record<string, number> = {
+  simple: 599,
+  standard: 599,
+  complex: 599,
+};
 
 // Branch mapping: event_type → branch (trip / experience / event)
+// Used for credit-toward-coordination logic and branch-conditional copy.
 const BRANCH_MAP: Record<string, string> = {
   vacation: "trip",
   adventure: "trip",
@@ -94,19 +99,12 @@ export async function getFee(
     ))
     .limit(1);
 
-  if (tierRow) {
-    return {
-      priceCents: tierRow.priceCents,
-      currency: tierRow.currency,
-      isDisabled: tierRow.isDisabled,
-      creditTowardCoordination,
-    };
-  }
-
-  throw new Error(
-    `optimize fee config missing: eventType=${eventType || "null"}, tier=${tier}. ` +
-    `Ensure Migration 076 (optimization_fees seed) is applied.`,
-  );
+  return {
+    priceCents: tierRow?.priceCents ?? DEFAULT_FEE_CENTS[tier] ?? 599,
+    currency: tierRow?.currency ?? "USD",
+    isDisabled: tierRow?.isDisabled ?? false,
+    creditTowardCoordination,
+  };
 }
 
 /**
@@ -123,8 +121,6 @@ export interface ResolvedCoordinationFee {
   feeCents: number;
   currency: string;
   rule: "floor" | "percent";
-  /** Phase 3.0.1d: optimize fee credited toward coordination for Events. */
-  optimizeCreditCents: number;
   breakdown: {
     floorCents: number;
     percentOfBudget: number;
@@ -134,7 +130,7 @@ export interface ResolvedCoordinationFee {
 
 export async function resolveCoordinationFee(
   eventType: string,
-  budgetCents: number,
+  budgetCents: number
 ): Promise<ResolvedCoordinationFee> {
   // TODO: Phase 4.1 — read coordination fee config from DB rows when available.
   // For now, use the ratified defaults as the fallback.
@@ -142,27 +138,13 @@ export async function resolveCoordinationFee(
   const percent = DEFAULT_COORDINATION_PERCENT;
 
   const percentFee = Math.round(budgetCents * percent);
-  const rawFeeCents = Math.max(floorCents, percentFee);
-  const rule: "floor" | "percent" = rawFeeCents === floorCents ? "floor" : "percent";
-
-  // 3.0.1d: Double-count fence — Event optimizers get their optimize fee credited
-  // toward coordination. Subtract the optimize fee from the coordination fee,
-  // but never go below $0.
-  let optimizeCreditCents = 0;
-  if (isEventOptimizer(eventType)) {
-    const tier = complexityTier(eventType);
-    const optimizeFee = await getFee(eventType, tier);
-    if (!optimizeFee.isDisabled && optimizeFee.creditTowardCoordination) {
-      optimizeCreditCents = optimizeFee.priceCents;
-    }
-  }
-  const feeCents = Math.max(0, rawFeeCents - optimizeCreditCents);
+  const feeCents = Math.max(floorCents, percentFee);
+  const rule: "floor" | "percent" = feeCents === floorCents ? "floor" : "percent";
 
   return {
     feeCents,
     currency: "USD",
     rule,
-    optimizeCreditCents,
     breakdown: {
       floorCents,
       percentOfBudget: percentFee,

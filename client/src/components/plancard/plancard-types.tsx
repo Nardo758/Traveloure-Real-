@@ -136,7 +136,7 @@ const DESTINATION_PHOTOS: Record<string, string> = {
 };
 
 function unsplashUrl(id: string): string {
-  return `https://images.unsplash.com/${id}?w=900&auto=format&fit=crop&q=80`; // fee-literal-ok: image width URL param, not fee config
+  return `https://images.unsplash.com/${id}?w=900&auto=format&fit=crop&q=80`;
 }
 
 export function getDestinationPhoto(destination: string | undefined | null): string | null {

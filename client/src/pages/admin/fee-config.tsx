@@ -461,15 +461,15 @@ export default function AdminFeeConfigPage() {
 
   const globalExpertShare = configs[0]?.expertSharePercent ?? 70;
 
-  // CON-A.P2: fallback rows match §4.8 defaults — $9.99 standard tier; $49.99 event-type overrides. // fee-literal-ok: admin UI comment describing seed defaults
+  // CON-A.P2: fallback rows match §4.8 defaults — $9.99 standard tier; $49.99 event-type overrides.
   // These are display-only fallbacks; the DB is seeded with the same values by migration 017.
   const defaultOptFees: OptimizationFeeData[] = [
     { id: "simple", complexity_tier: "simple", event_type: null, price_cents: 999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
     { id: "standard", complexity_tier: "standard", event_type: null, price_cents: 999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
     { id: "complex", complexity_tier: "complex", event_type: null, price_cents: 999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
-    { id: "wedding", complexity_tier: "complex", event_type: "wedding", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null }, // fee-literal-ok: admin UI seed default (matches DB migration 017)
-    { id: "proposal", complexity_tier: "standard", event_type: "proposal", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null }, // fee-literal-ok: admin UI seed default
-    { id: "corporate", complexity_tier: "complex", event_type: "corporate", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null }, // fee-literal-ok: admin UI seed default
+    { id: "wedding", complexity_tier: "complex", event_type: "wedding", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
+    { id: "proposal", complexity_tier: "standard", event_type: "proposal", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
+    { id: "corporate", complexity_tier: "complex", event_type: "corporate", price_cents: 4999, currency: "USD", is_active: true, is_disabled: false, updated_by: null, updated_at: null },
   ];
   const displayOptFees = optimizationFees && optimizationFees.length > 0 ? optimizationFees : defaultOptFees;
   const tierDefaults = displayOptFees.filter(f => f.event_type === null);
@@ -627,7 +627,7 @@ export default function AdminFeeConfigPage() {
             {eventOverrides.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                  Per-event-type overrides ($49.99 default per §4.8) // fee-literal-ok: UI label describing seed default
+                  Per-event-type overrides ($49.99 default per §4.8)
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {eventOverrides.map(fee => (
