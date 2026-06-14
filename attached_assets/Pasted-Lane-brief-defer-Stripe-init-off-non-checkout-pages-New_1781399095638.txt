@@ -1,0 +1,63 @@
+Lane brief: defer Stripe init off non-checkout pages. New branch off main
+(one brief per branch). Scope: client routing + Stripe init ONLY.
+
+Context: loadStripe() runs at MODULE scope (StripeCheckout.tsx:17) and is pulled
+onto every page via the eager chain App.tsx:132 (CartPage) → cart.tsx:55
+(StripeCheckout). The deploy-env redeploy already fixed the runtime KEY error;
+this brief is structural — stop Stripe.js initializing on "/" (and elsewhere it's
+not needed) and trim the initial bundle. Do NOT touch the key argument.
+
+PHASE 0 — AUDIT (read-only, HARD STOP, report before writes)
+1. grep EVERY importer of StripeCheckout and EVERY call site of loadStripe.
+   This picks the fix:
+   - CartPage is the SOLE path to StripeCheckout → Fix A is sufficient.
+   - StripeCheckout has multiple importers (checkout page, coordination/event
+     payment surface, etc.) → Fix A won't cover them; Fix B is required.
+   STOP and report the map either way.
+2. Suspense state: does App.tsx wrap the route tree (the wouter <Switch>) in a
+   <Suspense> boundary? yes/no + file:line. Are any routes ALREADY lazy() (the
+   pattern to match)?
+3. Build once; note which entry/initial chunk currently contains stripe, for a
+   before/after delta.
+Paste the report. Wait for greenlight on the fix path.
+
+PHASE 1 — FIX (recommended default: Fix B, for durability vs. coming
+coordination-checkout surfaces; use A alone only if CartPage is and will remain
+the sole importer)
+
+Fix B — defer at the source (root fix):
+- Replace the module-scope loadStripe(...) with a memoized getter:
+    let _stripe; export const getStripe = () => (_stripe ??= loadStripe(KEY));
+  Call getStripe() on first render INSIDE StripeCheckout, never at import.
+- Result: no loadStripe at module scope anywhere; Stripe.js loads only when a
+  checkout component actually mounts.
+
+Fix A — lazy-load CartPage (bundle-size win; layer on top of B only if a
+Suspense boundary exists):
+- App.tsx:132 → const CartPage = lazy(() => import("@/pages/cart")).
+- HARD STEP: a <Suspense fallback={…}> MUST wrap the route tree above CartPage's
+  <Route>. wouter does NOT provide one. If it exists, confirm CartPage sits under
+  it; if not, add one (match any existing lazy-route fallback). lazy() WITHOUT a
+  boundary throws on /cart — verify the boundary before calling this done.
+
+PHASE 2 — REGRESSION GUARD (lock the finding)
+- Add an e2e spec in the new harness: on "/", assert NO Stripe console error /
+  no Stripe init; on "/cart", assert the checkout surface renders
+  (authFile('traveler') if /cart needs auth). This is the exact gate that caught
+  the bug — make it permanent.
+
+WHAT NOT TO DO
+- Do NOT change the loadStripe key argument or any VITE_STRIPE_* handling.
+- Do NOT lazy-load CartPage without a confirmed <Suspense> boundary.
+- Do NOT widen or relax the console-error gate filter to hide the error — the
+  fix is structural; the gate stays strict.
+- Do NOT refactor unrelated routes/imports. One concern per branch.
+
+VERIFY BEFORE COMMIT
+- tsc --noEmit ≤ baseline.
+- vite + esbuild build succeeds; stripe no longer in the entry/initial chunk
+  (before/after from Phase 0).
+- /cart renders — no Suspense throw.
+- Phase 2 "/" spec green: no Stripe console error.
+Report: the importer/call-site map, the fix path taken, the Suspense status,
+and the before/after bundle delta.
