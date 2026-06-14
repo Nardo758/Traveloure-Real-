@@ -12,6 +12,12 @@ const AUTH_DIR = path.join(process.cwd(), 'e2e', 'auth');
 export default async function globalSetup(config: FullConfig) {
   const baseURL = config.projects[0]?.use?.baseURL ?? process.env.E2E_BASE_URL;
   if (!baseURL) throw new Error('E2E_BASE_URL not set and no baseURL in config');
+  // The session cookie is Secure — over http it is dropped, so login would 200
+  // but /api/auth/user would 401, misreading as bad credentials. Catch the real
+  // cause up front.
+  if (!baseURL.startsWith('https://')) {
+    throw new Error('E2E_BASE_URL must be HTTPS — the session cookie is Secure and is dropped over http');
+  }
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
   for (const role of ROLES) {
