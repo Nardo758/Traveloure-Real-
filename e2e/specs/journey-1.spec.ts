@@ -152,9 +152,10 @@ test.describe('Journey 1B — Guest path with cart migration', () => {
     await page.goto('/cart');
     await expect(page.locator(SELECTORS.guestSignInPrompt)).toBeVisible();
 
-    // 5. Sign in
+    // 5. Sign in — app uses a modal, not a redirect to /login
     await page.click('text=Sign in');
-    await page.waitForURL(/\/login|\/auth/, { timeout: 10_000 });
+    // Wait for the sign-in form to appear inside the modal
+    await page.waitForSelector('input[type="email"]', { timeout: 10_000 });
     await signInAsTraveler(page);
 
     // 6. Cart migration should have happened automatically (App.tsx:780 + SignInModal.tsx:49)
