@@ -38,28 +38,28 @@ class AffiliateService {
       affiliateId: process.env.TWELVEGO_AFFILIATE_ID || '13805109',
       baseUrl: 'https://12go.asia',
       categories: ['transportation'],
-      commission: 0.05, // 5%
+      commission: 0.05, // 5% // fee-literal-ok: external affiliate partner rate (TwelveGo), not internal fee config
     },
     viator: {
       name: 'Viator',
       affiliateId: process.env.VIATOR_AFFILIATE_ID || '',
       baseUrl: 'https://www.viator.com',
       categories: ['activities', 'tours'],
-      commission: 0.08, // 8%
+      commission: 0.08, // 8% // fee-literal-ok: external affiliate partner rate (Viator), not internal fee config
     },
     booking: {
       name: 'Booking.com',
       affiliateId: process.env.BOOKING_AFFILIATE_ID || '',
       baseUrl: 'https://www.booking.com',
       categories: ['accommodation'],
-      commission: 0.04, // 4%
+      commission: 0.04, // 4% // fee-literal-ok: external affiliate partner rate (Booking.com), not internal fee config
     },
     getyourguide: {
       name: 'GetYourGuide',
       affiliateId: process.env.GYG_AFFILIATE_ID || '',
       baseUrl: 'https://www.getyourguide.com',
       categories: ['activities', 'tours'],
-      commission: 0.08, // 8%
+      commission: 0.08, // 8% // fee-literal-ok: external affiliate partner rate (GetYourGuide), not internal fee config
     },
   };
 
