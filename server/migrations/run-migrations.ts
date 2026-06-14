@@ -63,6 +63,22 @@ async function ledgerExists(): Promise<boolean> {
 }
 
 /**
+ * Detects a pre-ledger production database: one that was built from Drizzle
+ * snapshots (schema already applied) but has never had the bootstrap run.
+ * Probe: if expert_service_offerings exists, the Drizzle schema is present.
+ */
+async function isPreLedgerProdDb(): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = current_schema()
+        AND table_name = 'expert_service_offerings'
+    ) AS "exists"
+  `);
+  return Boolean((result.rows?.[0] as { exists: boolean } | undefined)?.exists);
+}
+
+/**
  * Read the set of already-recorded migration names from the ledger.
  * Caller must ensure the ledger exists first.
  */
@@ -124,7 +140,21 @@ export async function runMigrations(): Promise<MigrationResult> {
   }
 
   // ── NORMAL STARTUP MODE ──────────────────────────────────────────────────────
-  // Ensure the ledger table exists (idempotent DDL).
+
+  // Auto-detect a pre-ledger production database: schema already applied by
+  // Drizzle snapshots but bootstrap was never run. If the ledger is absent yet
+  // the Drizzle schema tables already exist, run the bootstrap automatically so
+  // migrations 001-051 are stamped (not re-executed) and only 053+ apply.
+  // On a fresh dev DB there is no ledger AND no tables, so this branch is skipped
+  // and all migrations run from scratch as normal.
+  if (!await ledgerExists() && await isPreLedgerProdDb()) {
+    console.log("[Migrations] No ledger found but schema tables exist — auto-bootstrapping prod ledger...");
+    await bootstrapProductionLedger();
+    console.log("[Migrations] Auto-bootstrap complete. Continuing with pending migrations.");
+  }
+
+  // Ensure the ledger table exists (idempotent DDL — bootstrap above already
+  // creates it, but this guard covers the fresh-dev-DB path too).
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       migration_name TEXT PRIMARY KEY,
