@@ -96,8 +96,10 @@ import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
-import bookingsDomainRoutes from "./routes/bookings-domain.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
+import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
+import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
+import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSourceRegistry";
 import savedItemsRoutes from "./routes/saved-items.routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
@@ -424,6 +426,11 @@ export async function registerRoutes(
   // Contains GET /api/offering-types/services + /experts (powers /earn),
   // /api/health, /api/status, /api/contact, and other content surfaces.
   app.use(contentRoutes);
+
+  // DMO Expert Workspace routes — DMO content ingestion, curation, and publishing
+  // All DMO content routes to experts first. Nothing reaches Discover without expert review.
+  // See: research/traveloure_dmo_implementation_map.md
+  app.use("/api/expert-workspace", expertWorkspaceRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
@@ -6463,6 +6470,139 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     });
   });
 
+  // Resolve cart items into a trip (creates draft trip + backfills tripId on cart items)
+  app.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { experienceSlug, userExperienceId } = req.body;
+
+      // 1. Get all cart items for this user (optionally filtered by experience slug)
+      const items: any[] = experienceSlug
+        ? await storage.getCartItems(userId, experienceSlug)
+        : await storage.getCartItems(userId);
+
+      // Guard: empty cart cannot generate a meaningful trip
+      if (!items || items.length === 0) {
+        return res.status(400).json({ message: "Cannot resolve trip: cart is empty" });
+      }
+
+      // 2. Reuse an existing tripId if any cart item already has one
+      const existingTripId = items.find((i) => i.tripId)?.tripId;
+      if (existingTripId) {
+        const trip = await storage.getTrip(existingTripId);
+        if (trip && trip.userId === userId) {
+          return res.json({ tripId: existingTripId, created: false, trip });
+        }
+      }
+
+      // 3. Infer destination: most common city across cart items
+      const cityCounts: Record<string, number> = {};
+      for (const item of items) {
+        const city =
+          (item.contentMeta as any)?.city ||
+          item.service?.location ||
+          null;
+        if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
+      }
+      const destination =
+        Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+        "Your Destination";
+
+      // 4. Infer start date: earliest scheduledDate, or today + 30 days
+      const scheduledDates = items
+        .map((i) => (i.scheduledDate ? new Date(i.scheduledDate) : null))
+        .filter(Boolean) as Date[];
+      const defaultStart = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const inferredStart =
+        scheduledDates.length > 0
+          ? scheduledDates.reduce((min, d) => (d < min ? d : min), scheduledDates[0])
+          : defaultStart;
+      const inferredEnd = new Date(inferredStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      const startDate = inferredStart.toISOString().split("T")[0];
+      const endDate = inferredEnd.toISOString().split("T")[0];
+
+      // 5. Resolve user_experience via slug (server-side) to get guestCount for party size
+      let resolvedUserExperienceId: string | null = userExperienceId || null;
+      let inferredTravelers = 2; // default fallback
+
+      if (experienceSlug) {
+        // Resolve experienceType by slug, then find the user's experience row
+        const [expType] = await db
+          .select({ id: experienceTypesTable.id })
+          .from(experienceTypesTable)
+          .where(eq(experienceTypesTable.slug, experienceSlug))
+          .limit(1);
+
+        if (expType) {
+          const [userExp] = await db
+            .select({ id: userExperiences.id, guestCount: userExperiences.guestCount })
+            .from(userExperiences)
+            .where(
+              and(
+                eq(userExperiences.userId, userId),
+                eq(userExperiences.experienceTypeId, expType.id)
+              )
+            )
+            .limit(1);
+
+          if (userExp) {
+            resolvedUserExperienceId = resolvedUserExperienceId || userExp.id;
+            if (userExp.guestCount && userExp.guestCount > 0) {
+              inferredTravelers = userExp.guestCount;
+            }
+          }
+        }
+      }
+
+      // Also check cart item contentMeta for any travelers hint
+      const metaTravelers = items
+        .map((i) => (i.contentMeta as any)?.travelers || (i.contentMeta as any)?.numberOfTravelers)
+        .filter((v) => typeof v === "number" && v > 0);
+      if (metaTravelers.length > 0 && inferredTravelers === 2) {
+        inferredTravelers = Math.max(...metaTravelers);
+      }
+
+      // 6. Create the trip with inferred metadata
+      const title = `Your ${destination} trip`;
+      const trip = await storage.createTrip({
+        userId,
+        title,
+        destination,
+        startDate,
+        endDate,
+        numberOfTravelers: inferredTravelers,
+        adults: inferredTravelers,
+        kids: 0,
+        status: "draft",
+      });
+
+      // 7. Backfill tripId on all matching cart items
+      const whereClause = experienceSlug
+        ? and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug))
+        : eq(cartItems.userId, userId);
+      await db.update(cartItems).set({ tripId: trip.id }).where(whereClause);
+
+      // 8. Link to user_experience idempotently (via client-supplied id or slug-resolved id)
+      if (resolvedUserExperienceId) {
+        await db
+          .update(userExperiences)
+          .set({ tripId: trip.id })
+          .where(
+            and(
+              eq(userExperiences.id, resolvedUserExperienceId),
+              eq(userExperiences.userId, userId)
+            )
+          );
+      }
+
+      res.json({ tripId: trip.id, created: true, trip });
+    } catch (err) {
+      console.error("Error resolving cart trip:", err);
+      res.status(500).json({ message: "Failed to resolve trip" });
+    }
+  });
+
   // Add to cart
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
@@ -6518,17 +6658,20 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Update cart item
   app.patch("/api/cart/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getCartItemById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Cart item not found" });
+      }
+      if (existing.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const { quantity, scheduledDate, notes } = req.body;
       const updated = await storage.updateCartItem(req.params.id, {
         quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
       });
-      
-      if (!updated) {
-        return res.status(404).json({ message: "Cart item not found" });
-      }
-      
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update cart item" });
@@ -6538,6 +6681,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Remove from cart
   app.delete("/api/cart/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getCartItemById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Cart item not found" });
+      }
+      if (existing.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       await storage.removeFromCart(req.params.id);
       res.status(204).send();
     } catch (err) {
@@ -6554,6 +6705,94 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to clear cart" });
+    }
+  });
+
+  // Migrate guest cart after login/signup
+  app.post("/api/cart/migrate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { guestSessionId } = req.body;
+      if (!guestSessionId || typeof guestSessionId !== "string") {
+        return res.status(400).json({ message: "guestSessionId is required" });
+      }
+      const result = await storage.migrateGuestCart(guestSessionId, userId);
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error("Cart migration error:", err);
+      res.status(500).json({ message: "Failed to migrate cart" });
+    }
+  });
+
+  // Convert content cart items into itinerary items
+  app.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId, newTripName, destination, cartItemIds } = req.body;
+
+      if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
+        return res.status(400).json({ message: "cartItemIds is required and must be a non-empty array" });
+      }
+
+      let targetTripId: string = tripId;
+
+      if (!targetTripId) {
+        if (!newTripName || typeof newTripName !== "string") {
+          return res.status(400).json({ message: "Either tripId or newTripName is required" });
+        }
+        const today = new Date();
+        const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const newTrip = await storage.createTrip({
+          title: newTripName.trim(),
+          destination: (destination || "To be determined").trim(),
+          startDate: today.toISOString().split("T")[0],
+          endDate: nextWeek.toISOString().split("T")[0],
+          status: "draft",
+          userId,
+          adults: 2,
+          kids: 0,
+          numberOfTravelers: 1,
+        } as any);
+        targetTripId = newTrip.id;
+      } else {
+        const trip = await storage.getTrip(targetTripId);
+        if (!trip) return res.status(404).json({ message: "Trip not found" });
+        if (trip.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      }
+
+      let convertedCount = 0;
+      for (const cartItemId of cartItemIds) {
+        const cartItem = await storage.getCartItemById(cartItemId);
+        if (!cartItem) continue;
+        if (cartItem.userId !== userId) continue;
+        if (!cartItem.contentId || !cartItem.contentType) continue;
+
+        const meta: Record<string, any> = cartItem.contentMeta || {};
+        const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
+        const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
+
+        await storage.createItineraryItem({
+          tripId: targetTripId,
+          title: meta.name || cartItem.contentId || "Discovered item",
+          description: meta.description || null,
+          itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
+          dayNumber: 1,
+          locationName: meta.city || meta.location || null,
+          notes: cartItem.notes || null,
+          suggestedBy: "user",
+          status: "planned",
+          isFlexible: true,
+          estimatedCost,
+        } as any);
+
+        await storage.removeFromCart(cartItemId);
+        convertedCount++;
+      }
+
+      res.json({ tripId: targetTripId, convertedCount });
+    } catch (err) {
+      console.error("Convert to itinerary error:", err);
+      res.status(500).json({ message: "Failed to convert items to itinerary" });
     }
   });
 

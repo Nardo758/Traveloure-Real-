@@ -1,6 +1,7 @@
 /**
  * StripeCheckout Component
  * Handles Stripe payment form and processing
+ * PHASE 5: Stripe init deferred — loadStripe only fires on first mount.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -13,8 +14,14 @@ import {
 } from '@stripe/react-stripe-js';
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
 
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+// Phase 5: memoized getter — defers loadStripe until first render of a checkout surface.
+let _stripePromise: ReturnType<typeof loadStripe> | undefined;
+const getStripePromise = () => {
+  if (!_stripePromise) {
+    _stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+  }
+  return _stripePromise;
+};
 
 interface CheckoutFormProps {
   clientSecret: string;
@@ -151,7 +158,7 @@ export default function StripeCheckout({
   const [stripe, setStripe] = useState<Stripe | null>(null);
 
   useEffect(() => {
-    stripePromise.then(setStripe);
+    getStripePromise().then(setStripe);
   }, []);
 
   if (!paymentIntent?.clientSecret) {
