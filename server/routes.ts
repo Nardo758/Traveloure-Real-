@@ -98,6 +98,9 @@ import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/c
 import paymentsRoutes from "./routes/payments.routes";
 import bookingsDomainRoutes from "./routes/bookings-domain.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
+import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
+import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
+import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSourceRegistry";
 import savedItemsRoutes from "./routes/saved-items.routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
@@ -424,6 +427,11 @@ export async function registerRoutes(
   // Contains GET /api/offering-types/services + /experts (powers /earn),
   // /api/health, /api/status, /api/contact, and other content surfaces.
   app.use(contentRoutes);
+
+  // DMO Expert Workspace routes — DMO content ingestion, curation, and publishing
+  // All DMO content routes to experts first. Nothing reaches Discover without expert review.
+  // See: research/traveloure_dmo_implementation_map.md
+  app.use("/api/expert-workspace", expertWorkspaceRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);

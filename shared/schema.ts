@@ -6199,3 +6199,313 @@ export const crossSellEvents = pgTable("cross_sell_events", {
 export const insertCrossSellEventSchema = createInsertSchema(crossSellEvents).omit({ id: true, createdAt: true });
 export type CrossSellEvent = typeof crossSellEvents.$inferSelect;
 export type InsertCrossSellEvent = z.infer<typeof insertCrossSellEventSchema>;
+
+// === DMO Content Layer (AI Scraping + Expert Workspace) ===
+// See research/traveloure_dmo_implementation_map.md for architecture.
+// All DMO content routes to Expert Workspace first. Nothing reaches Discover without expert review.
+
+export const dmoSourceTypeEnum = ["api", "partner_portal", "scraped", "manual_curation", "unverified"] as const;
+export const dmoSourceConfidenceEnum = ["official_api", "partner_pack", "scraped", "manual", "quarantined"] as const;
+export const dmoContentTypeEnum = ["destination", "attraction", "venue", "event", "restaurant", "itinerary", "photo", "statistic", "transport", "other"] as const;
+export const dmoContentStatusEnum = ["pending_ingest", "ingested", "pending_expert_review", "expert_enriched", "published", "rejected", "quarantined"] as const;
+export const dmoLicenseTypeEnum = ["cc", "partner_rights_cleared", "restricted", "unknown", "public_domain"] as const;
+export const scrapeJobStatusEnum = ["queued", "running", "completed", "failed", "cancelled"] as const;
+export const gapSeverityEnum = ["low", "medium", "high", "critical"] as const;
+
+export const dmoSources = pgTable("dmo_sources", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 255 }).notNull(),
+  domain: varchar("domain", { length: 255 }).notNull(),
+  sourceType: varchar("source_type", { length: 30 }).notNull().default("scraped"), // Enum: dmoSourceTypeEnum
+  market: varchar("market", { length: 100 }).notNull(), // e.g., "thailand", "japan", "uk"
+  marketRegion: varchar("market_region", { length: 100 }).notNull(), // "apac", "europe", "americas", "mea"
+  apiEndpoint: text("api_endpoint"),
+  apiDocsUrl: text("api_docs_url"),
+  partnerPortalUrl: text("partner_portal_url"),
+  scrapeConfig: jsonb("scrape_config").default({}), // { rate_limit, paths, selectors, respect_robots_txt }
+  confidence: varchar("confidence", { length: 30 }).notNull().default("scraped"), // Enum: dmoSourceConfidenceEnum
+  attributionRequired: boolean("attribution_required").default(false),
+  attributionText: text("attribution_text"),
+  isActive: boolean("is_active").default(true),
+  lastIngestedAt: timestamp("last_ingested_at"),
+  totalRecords: integer("total_records").default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  uniqueDomainMarket: unique("dmo_sources_domain_market_unique").on(table.domain, table.market),
+}));
+
+export const dmoRawContent = pgTable("dmo_raw_content", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sourceId: varchar("source_id").notNull().references(() => dmoSources.id, { onDelete: "cascade" }),
+  externalId: varchar("external_id", { length: 255 }), // ID from the source API/system
+  contentType: varchar("content_type", { length: 30 }).notNull().default("attraction"), // Enum: dmoContentTypeEnum
+  status: varchar("status", { length: 30 }).notNull().default("pending_expert_review"), // Enum: dmoContentStatusEnum
+  
+  // Identity & Location
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }),
+  description: text("description"),
+  shortDescription: text("short_description"),
+  country: varchar("country", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  address: text("address"),
+  
+  // Content Payload
+  rawData: jsonb("raw_data").notNull().default({}), // Original source payload, unmodified
+  extractedData: jsonb("extracted_data").default({}), // AI-extracted structured fields (venue_name, capacity, pricing, etc.)
+  normalizedData: jsonb("normalized_data").default({}), // Post-normalization (Traveloure schema)
+  
+  // Media
+  images: jsonb("images").default([]), // Array of { url, alt, license, attribution, source_page }
+  primaryImageUrl: text("primary_image_url"),
+  
+  // Metadata
+  tags: jsonb("tags").default([]), // Array of strings: ["wedding_venue", "temple", "beach", "unesco"]
+  categories: jsonb("categories").default([]), // Taxonomy from source
+  eventTypes: jsonb("event_types").default([]), // ["wedding", "birthday", "corporate", "proposal"]
+  
+  // Source Provenance
+  sourceUrl: text("source_url").notNull(),
+  sourcePageTitle: text("source_page_title"),
+  scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
+  scrapedBy: varchar("scraped_by", { length: 255 }), // Job ID or user ID
+  license: varchar("license", { length: 30 }).default("unknown"), // Enum: dmoLicenseTypeEnum
+  
+  // Confidence & Quality
+  confidenceScore: decimal("confidence_score", { precision: 3, scale: 2 }).default("0.5"), // 0.0–1.0
+  dataQualityFlags: jsonb("data_quality_flags").default([]), // ["missing_pricing", "outdated_hours", "partial_translation"]
+  
+  // Expert Review Fields
+  expertReviewedAt: timestamp("expert_reviewed_at"),
+  expertReviewedBy: varchar("expert_reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  expertNotes: text("expert_notes"),
+  expertModifiedData: jsonb("expert_modified_data").default({}), // Expert overrides
+  
+  // Visibility Flags (CRITICAL: Expert Workspace gate)
+  expertWorkspaceVisible: boolean("expert_workspace_visible").default(true).notNull(),
+  discoverPageVisible: boolean("discover_page_visible").default(false).notNull(),
+  publishedAt: timestamp("published_at"),
+  publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),
+  
+  // AI Enrichment
+  embeddingVector: jsonb("embedding_vector"), // For semantic search / matching
+  aiSummary: text("ai_summary"), // LLM-generated summary for expert preview
+  aiSuggestedTags: jsonb("ai_suggested_tags").default([]),
+  
+  // Search & Indexing
+  searchVector: text("search_vector"), // tsvector or simple concatenated text for search
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  sourceUrlUnique: unique("dmo_raw_content_source_url_unique").on(table.sourceUrl, table.sourceId),
+  marketIdx: uniqueIndex("dmo_raw_content_market_idx").on(table.country, table.city, table.contentType),
+  statusIdx: uniqueIndex("dmo_raw_content_status_idx").on(table.status, table.expertWorkspaceVisible),
+}));
+
+export const expertDmoCollections = pgTable("expert_dmo_collections", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(), // e.g., "My Phuket Wedding Venues"
+  description: text("description"),
+  market: varchar("market", { length: 100 }).notNull(),
+  contentTypeFilter: varchar("content_type_filter", { length: 30 }), // Optional: only attractions, only venues, etc.
+  tagFilter: jsonb("tag_filter").default([]),
+  isPublic: boolean("is_public").default(false), // Can other experts see this collection?
+  isDefault: boolean("is_default").default(false), // System-created default collections per market
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const expertDmoCollectionItems = pgTable("expert_dmo_collection_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  collectionId: varchar("collection_id").notNull().references(() => expertDmoCollections.id, { onDelete: "cascade" }),
+  rawContentId: varchar("raw_content_id").notNull().references(() => dmoRawContent.id, { onDelete: "cascade" }),
+  expertNotes: text("expert_notes"),
+  expertRating: integer("expert_rating"), // 1-5, expert's private rating
+  customTags: jsonb("custom_tags").default([]),
+  addedAt: timestamp("added_at").defaultNow(),
+}, (table) => ({
+  uniqueCollectionItem: unique("expert_dmo_collection_items_unique").on(table.collectionId, table.rawContentId),
+}));
+
+export const expertDmoEdits = pgTable("expert_dmo_edits", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  rawContentId: varchar("raw_content_id").notNull().references(() => dmoRawContent.id, { onDelete: "cascade" }),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  // Editable fields
+  editedName: varchar("edited_name", { length: 255 }),
+  editedDescription: text("edited_description"),
+  editedShortDescription: text("edited_short_description"),
+  editedImages: jsonb("edited_images").default([]), // Expert-curated image set
+  addedImages: jsonb("added_images").default([]), // Expert-uploaded photos
+  editedTags: jsonb("edited_tags").default([]),
+  editedCategories: jsonb("edited_categories").default([]),
+  editedEventTypes: jsonb("edited_event_types").default([]),
+  editedPricing: jsonb("edited_pricing").default({}), // { currency, range_min, range_max, basis, notes }
+  editedCapacity: jsonb("edited_capacity").default({}), // { min, max, unit }
+  editedHours: jsonb("edited_hours").default({}), // { monday: "9-17", ... }
+  editedAddress: text("edited_address"),
+  editedLatitude: decimal("edited_latitude", { precision: 10, scale: 7 }),
+  editedLongitude: decimal("edited_longitude", { precision: 10, scale: 7 }),
+  
+  // Vendor links (expert connects DMO content to bookable vendors)
+  vendorLinks: jsonb("vendor_links").default([]), // [{ vendor_id, service_type, notes }]
+  
+  // Status
+  editStatus: varchar("edit_status", { length: 20 }).default("draft").notNull(), // draft | submitted | approved | rejected
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const contentGapAlerts = pgTable("content_gap_alerts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  market: varchar("market", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  contentType: varchar("content_type", { length: 30 }).notNull(), // Enum: dmoContentTypeEnum
+  severity: varchar("severity", { length: 20 }).notNull().default("medium"), // Enum: gapSeverityEnum
+  
+  // Gap Description
+  gapDescription: text("gap_description").notNull(), // e.g., "Only 3 wedding venues in Cartagena vs. 50 in Phuket"
+  missingCount: integer("missing_count"), // Estimated number of missing items
+  existingCount: integer("existing_count"), // What we have
+  benchmarkMarket: varchar("benchmark_market", { length: 100 }), // Compare against this market
+  
+  // AI-Generated Suggestion
+  aiSuggestedSources: jsonb("ai_suggested_sources").default([]), // [{ source_name, url, scrape_strategy }]
+  aiGeneratedDraft: jsonb("ai_generated_draft").default({}), // AI-generated content to seed expert curation
+  
+  // Resolution
+  assignedExpertId: varchar("assigned_expert_id").references(() => users.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at"),
+  resolutionNotes: text("resolution_notes"),
+  
+  // Metadata
+  isAutoGenerated: boolean("is_auto_generated").default(true),
+  generatedBy: varchar("generated_by", { length: 255 }), // Job ID or AI model name
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const dmoScrapeJobs = pgTable("dmo_scrape_jobs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sourceId: varchar("source_id").references(() => dmoSources.id, { onDelete: "set null" }),
+  jobType: varchar("job_type", { length: 30 }).notNull().default("search_extract"), // search_extract | crawl | batch_scrape | manual_import
+  market: varchar("market", { length: 100 }).notNull(),
+  
+  // Query / Target
+  query: text("query"), // For search-based jobs
+  targetUrls: jsonb("target_urls").default([]), // For batch scrape
+  startUrl: text("start_url"), // For crawl jobs
+  includePaths: jsonb("include_paths").default([]), // ["/wedding", "/weddings", "/bodas"]
+  excludePaths: jsonb("exclude_paths").default([]),
+  maxDepth: integer("max_depth").default(2),
+  
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("queued"), // Enum: scrapeJobStatusEnum
+  totalUrls: integer("total_urls").default(0),
+  processedUrls: integer("processed_urls").default(0),
+  failedUrls: integer("failed_urls").default(0),
+  recordsCreated: integer("records_created").default(0),
+  recordsUpdated: integer("records_updated").default(0),
+  
+  // Error Tracking
+  errorMessage: text("error_message"),
+  errorDetails: jsonb("error_details").default({}),
+  
+  // Tool Used
+  toolUsed: varchar("tool_used", { length: 30 }).default("firecrawl"), // firecrawl | tavily | brave | smartvel_api | atdw_api | manual
+  toolJobId: varchar("tool_job_id", { length: 255 }), // External job ID from Firecrawl/Tavily/etc.
+  
+  // Scheduling
+  scheduledAt: timestamp("scheduled_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  
+  // Cost Tracking
+  creditsConsumed: integer("credits_consumed").default(0),
+  estimatedCost: decimal("estimated_cost", { precision: 10, scale: 4 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === Zod Schemas & Types for DMO Tables ===
+
+export const insertDmoSourceSchema = createInsertSchema(dmoSources).omit({ id: true, createdAt: true, updatedAt: true, lastIngestedAt: true, totalRecords: true });
+export type DmoSource = typeof dmoSources.$inferSelect;
+export type InsertDmoSource = z.infer<typeof insertDmoSourceSchema>;
+
+export const insertDmoRawContentSchema = createInsertSchema(dmoRawContent).omit({ id: true, createdAt: true, updatedAt: true, scrapedAt: true, expertReviewedAt: true, publishedAt: true, embeddingVector: true, aiSummary: true, aiSuggestedTags: true });
+export type DmoRawContent = typeof dmoRawContent.$inferSelect;
+export type InsertDmoRawContent = z.infer<typeof insertDmoRawContentSchema>;
+
+export const insertExpertDmoCollectionSchema = createInsertSchema(expertDmoCollections).omit({ id: true, createdAt: true, updatedAt: true });
+export type ExpertDmoCollection = typeof expertDmoCollections.$inferSelect;
+export type InsertExpertDmoCollection = z.infer<typeof insertExpertDmoCollectionSchema>;
+
+export const insertExpertDmoCollectionItemSchema = createInsertSchema(expertDmoCollectionItems).omit({ id: true, addedAt: true });
+export type ExpertDmoCollectionItem = typeof expertDmoCollectionItems.$inferSelect;
+export type InsertExpertDmoCollectionItem = z.infer<typeof insertExpertDmoCollectionItemSchema>;
+
+export const insertExpertDmoEditSchema = createInsertSchema(expertDmoEdits).omit({ id: true, createdAt: true, updatedAt: true, reviewedAt: true });
+export type ExpertDmoEdit = typeof expertDmoEdits.$inferSelect;
+export type InsertExpertDmoEdit = z.infer<typeof insertExpertDmoEditSchema>;
+
+export const insertContentGapAlertSchema = createInsertSchema(contentGapAlerts).omit({ id: true, createdAt: true, updatedAt: true, resolvedAt: true });
+export type ContentGapAlert = typeof contentGapAlerts.$inferSelect;
+export type InsertContentGapAlert = z.infer<typeof insertContentGapAlertSchema>;
+
+export const insertDmoScrapeJobSchema = createInsertSchema(dmoScrapeJobs).omit({ id: true, createdAt: true, updatedAt: true, startedAt: true, completedAt: true, scheduledAt: true });
+export type DmoScrapeJob = typeof dmoScrapeJobs.$inferSelect;
+export type InsertDmoScrapeJob = z.infer<typeof insertDmoScrapeJobSchema>;
+
+// === DMO Relations ===
+
+export const dmoSourcesRelations = relations(dmoSources, ({ many }) => ({
+  rawContent: many(dmoRawContent),
+  scrapeJobs: many(dmoScrapeJobs),
+}));
+
+export const dmoRawContentRelations = relations(dmoRawContent, ({ one, many }) => ({
+  source: one(dmoSources, { fields: [dmoRawContent.sourceId], references: [dmoSources.id] }),
+  expertReviewer: one(users, { fields: [dmoRawContent.expertReviewedBy], references: [users.id] }),
+  publisher: one(users, { fields: [dmoRawContent.publishedBy], references: [users.id] }),
+  collectionItems: many(expertDmoCollectionItems),
+  expertEdits: many(expertDmoEdits),
+}));
+
+export const expertDmoCollectionsRelations = relations(expertDmoCollections, ({ one, many }) => ({
+  expert: one(users, { fields: [expertDmoCollections.expertId], references: [users.id] }),
+  items: many(expertDmoCollectionItems),
+}));
+
+export const expertDmoCollectionItemsRelations = relations(expertDmoCollectionItems, ({ one }) => ({
+  collection: one(expertDmoCollections, { fields: [expertDmoCollectionItems.collectionId], references: [expertDmoCollections.id] }),
+  rawContent: one(dmoRawContent, { fields: [expertDmoCollectionItems.rawContentId], references: [dmoRawContent.id] }),
+}));
+
+export const expertDmoEditsRelations = relations(expertDmoEdits, ({ one }) => ({
+  rawContent: one(dmoRawContent, { fields: [expertDmoEdits.rawContentId], references: [dmoRawContent.id] }),
+  expert: one(users, { fields: [expertDmoEdits.expertId], references: [users.id] }),
+  reviewer: one(users, { fields: [expertDmoEdits.reviewedBy], references: [users.id] }),
+}));
+
+export const contentGapAlertsRelations = relations(contentGapAlerts, ({ one }) => ({
+  assignedExpert: one(users, { fields: [contentGapAlerts.assignedExpertId], references: [users.id] }),
+}));
+
+export const dmoScrapeJobsRelations = relations(dmoScrapeJobs, ({ one }) => ({
+  source: one(dmoSources, { fields: [dmoScrapeJobs.sourceId], references: [dmoSources.id] }),
+}));
