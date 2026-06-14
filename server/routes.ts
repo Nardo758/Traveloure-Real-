@@ -2191,11 +2191,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update custom venue
   app.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const input = insertCustomVenueSchema.partial().parse(req.body);
-      const updated = await storage.updateCustomVenue(req.params.id, input);
-      if (!updated) {
+      const userId = (req.user as any).claims.sub;
+      const venue = await storage.getCustomVenue(req.params.id);
+      if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
       }
+      if (venue.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const input = insertCustomVenueSchema.partial().parse(req.body);
+      const updated = await storage.updateCustomVenue(req.params.id, input);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2207,8 +2212,20 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete custom venue
   app.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
-    await storage.deleteCustomVenue(req.params.id);
-    res.status(204).send();
+    try {
+      const userId = (req.user as any).claims.sub;
+      const venue = await storage.getCustomVenue(req.params.id);
+      if (!venue) {
+        return res.status(404).json({ message: "Custom venue not found" });
+      }
+      if (venue.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteCustomVenue(req.params.id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete custom venue" });
+    }
   });
 
   // === Experience Types Routes ===
