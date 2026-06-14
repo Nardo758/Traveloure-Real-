@@ -1,0 +1,39 @@
+Good news: All my files ARE correct on disk. The Replit report is partially wrong about its own claims, but it correctly caught two things I missed. Let me verify against the commit and fix the remaining gaps.
+
+Ran 7 commands
+All the changes ARE correctly in the commit. The Replit report is wrong on 5 out of 6 claims — but it correctly caught one real gap:
+✅ Migration — exists in commit (ea279113)
+✅ stripe-payment.service.ts createPaymentIntent — currency parameterized correctly
+❌ stripe-payment.service.ts expert methods — createExpertServicePaymentIntent and createExpertServiceCheckout still hardcode currency: 'usd' — this is a real gap
+✅ payments.routes.ts — chargeCurrency.toLowerCase() is in the commit
+✅ auth/routes.ts — preferredCurrency IS in the schema
+✅ use-auth.ts — updatePreferredCurrency exists
+✅ cart.tsx — all three wiring points are correct
+The Replit's glob returning nothing suggests the Replit is checking a different branch/directory. The real issue I need to fix is the two expert service methods. Let me do that now.
+
+Used 7 tools · ran 17 commands
+Verification complete. The Replit report is wrong on 5 out of 6 claims, but it correctly caught one real gap that I just fixed.
+Replit Claims — Verified
+Table
+Claim	Verdict	Evidence
+Migration file missing	❌ FALSE	git show ea279113:server/migrations/078_user_preferred_currency.sql → file exists, content correct
+stripe-payment.service.ts createPaymentIntent still hardcoded USD	❌ FALSE	Method signature has currency: string = 'usd' (line 50), Stripe call uses currency: effectiveCurrency (line 80)
+stripe-payment.service.ts createExpertServicePaymentIntent & createExpertServiceCheckout still hardcoded USD	✅ TRUE — FIXED	Both methods had currency: 'usd' hardcoded. Just committed d65e44c7 to fix both with parameterized currency + JPY zero-decimal handling
+payments.routes.ts /api/credits/purchase still hardcoded USD	❌ FALSE	Line uses currency: chargeCurrency.toLowerCase() with chargeCurrency from request body
+PATCH /api/profile doesn't accept preferredCurrency	❌ FALSE	updateProfileSchema has preferredCurrency: z.string().length(3).optional()
+use-auth.ts has no updatePreferredCurrency	❌ FALSE	updateUserCurrency function + updateCurrencyMutation + updatePreferredCurrency in return object all present
+cart.tsx displayCurrency doesn't use user profile	❌ FALSE	Line 325: `user?.preferredCurrency		localStorage.getItem("traveloure_currency")		"USD"`
+cart.tsx handleCurrencyChange doesn't call mutation	❌ FALSE	Calls updatePreferredCurrency(code) when user is authed
+cart.tsx checkout doesn't send currency	❌ FALSE	apiRequest("POST", "/api/checkout", { currency: displayCurrency })
+Root Cause of Replit's Error
+The Replit is checking main or a different branch, not fix/phase-3-0-1-prestep. The Phase 2 commit ea279113 is only on fix/phase-3-0-1-prestep — it hasn't been merged into main yet. PR #109 merged the earlier commits, but ea279113 (and now d65e44c7) came after that merge.
+What Was Actually Missing
+Only the expert service methods (createExpertServicePaymentIntent and createExpertServiceCheckout) were left with hardcoded USD. I fixed both in commit d65e44c7 and pushed to fix/phase-3-0-1-prestep. They now follow the same pattern as createPaymentIntent:
+Accept currency parameter (default 'usd')
+Validate against supported list
+Handle JPY zero-decimal correctly
+Pass effectiveCurrency to Stripe
+Current Branch State
+Commit: d65e44c7 — pushed to fix/phase-3-0-1-prestep
+Status: All multi-currency changes are in the remote branch
+Next step: Merge into main when you're ready to deploy
