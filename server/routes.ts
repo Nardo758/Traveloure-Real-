@@ -6402,6 +6402,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Get cart items
   app.get("/api/cart", isAuthenticated, async (req, res) => {
+    try {
     const userId = (req.user as any).claims.sub;
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
@@ -6444,6 +6445,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       total: (subtotal + platformFeeTotal).toFixed(2),
       itemCount: items.length,
     });
+    } catch (err) {
+      console.error("[Cart] GET /api/cart failed:", err);
+      res.status(500).json({ message: "Failed to load cart" });
+    }
   });
 
   // Add to cart
