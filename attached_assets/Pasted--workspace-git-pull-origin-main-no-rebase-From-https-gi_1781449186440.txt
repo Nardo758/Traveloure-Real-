@@ -1,0 +1,122 @@
+~/workspace$ git pull origin main --no-rebase
+From https://github.com/Nardo758/Traveloure-Real-
+ * branch              main       -> FETCH_HEAD
+   4518b6f1..62288f75  main       -> origin/main
+Auto-merging server/routes.ts
+Merge made by the 'ort' strategy.
+ .env.e2e.example                                            |   16 +
+ .github/workflows/e2e-deploy-smoke.yml                      |   66 +
+ .github/workflows/e2e-tests.yml                             |  118 +-
+ .gitignore                                                  |    3 +
+ DEFERRED_IDOR.md                                            |   41 +
+ DEPLOY_READINESS.md                                         |  115 ++
+ FEATURE_COMPLETENESS_MATRIX.md                              |  237 ++++
+ ROUTE_CRITICALITY_MAP.md                                    |  316 +++++
+ STAGE_0_FINAL_REPORT.md                                     |  151 +++
+ STAGE_0_PHASE_0_AUDIT.md                                    |  256 ++++
+ ...Stripe-init-off-non-checkout-pages-New_1781399095638.txt |   63 +
+ ...l-three-tasks-done-all-fixes-pushed-Ta_1781412438890.txt |   29 +
+ ...s-3-0-1a-Config-Completeness-Audit-New_1781403054111.txt |   25 +
+ attached_assets/image_1781445481624.png                     |  Bin 0 -> 66471 bytes
+ attached_assets/screenshots/traveloure_com.png              |  Bin 0 -> 1949199 bytes
+ client/src/App.tsx                                          |    6 +
+ client/src/components/booking/StripeCheckout.tsx            |   13 +-
+ client/src/components/concierge/IntentForm.tsx              |    2 +-
+ client/src/components/itinerary/BookingFeeBreakdown.tsx     |    9 +-
+ client/src/components/plancard/EscalationCTA.tsx            |    2 +-
+ client/src/components/plancard/plancard-types.tsx           |    2 +-
+ client/src/pages/admin/fee-config.tsx                       |   10 +-
+ client/src/pages/discover.tsx                               |   32 +-
+ client/src/pages/expert-detail.tsx                          |    5 +-
+ client/src/pages/expert/contract-categories.tsx             |   10 +-
+ client/src/pages/expert/service-wizard.tsx                  |    2 +-
+ client/src/pages/expert/workspace.tsx                       |    2 +-
+ client/src/pages/help-me-decide.tsx                         |    2 +-
+ client/src/pages/how-it-works.tsx                           |    2 +-
+ client/src/pages/optimize.tsx                               |    5 +
+ client/src/pages/pricing.tsx                                |    6 +-
+ client/src/pages/trip-details.tsx                           |   10 +
+ e2e/README.md                                               |   89 ++
+ e2e/fixtures/accounts.ts                                    |   22 +
+ e2e/fixtures/roles.ts                                       |   25 +
+ e2e/global-setup.ts                                         |   58 +
+ e2e/specs/journey-1.spec.ts                                 |  224 ++++
+ e2e/specs/login-ui.spec.ts                                  |   42 +
+ e2e/specs/smoke.spec.ts                                     |   30 +
+ migrations/0010_add_dmo_content_layer.sql                   |  216 ++++
+ migrations/meta/_journal.json                               |    8 +-
+ package-lock.json                                           |  340 ++++--
+ package.json                                                |    6 +
+ plan.md                                                     |  217 ++++
+ playwright.e2e.config.ts                                    |   43 +
+ playwright/tests/stripe-init-deferral.spec.ts               |   74 ++
+ research/travel_content_apis_dmo_addendum.md                |  418 +++++++
+ research/traveloure_dmo_implementation_map.md               |  684 +++++++++++
+ scripts/phase2-fee-gate.sh                                  |   15 +-
+ server/__tests__/config-completeness.test.ts                |   66 +
+ server/__tests__/event-coordination.test.ts                 |   23 +-
+ server/content/providers/DMOSourceRegistry.ts               |  993 ++++++++++++++++
+ server/content/scrapers/DMOCrawler.ts                       |  540 +++++++++
+ server/routes.ts                                            |  278 ++++-
+ server/routes/bookings-domain.routes.ts                     | 1520 ------------------------
+ server/routes/content.routes.ts                             |    2 +-
+ server/routes/expert-workspace.routes.ts                    |  701 +++++++++++
+ server/routes/payments.routes.ts                            |   12 +-
+ server/routes/trips.routes.ts                               |    2 +-
+ server/routes/upsell.routes.ts                              |    6 +-
+ server/seeds/e2e-test-accounts.seed.ts                      |   69 ++
+ server/services/affiliate.service.ts                        |    8 +-
+ server/services/commission.ts                               |   51 +-
+ server/services/optimization-fee.service.ts                 |   54 +-
+ server/services/serp-api-integration.ts                     |    2 +-
+ server/services/travelpulse.service.ts                      |    2 +-
+ server/storage.ts                                           |    2 +-
+ shared/schema.ts                                            |  314 ++++-
+ 68 files changed, 6919 insertions(+), 1793 deletions(-)
+ create mode 100644 .env.e2e.example
+ create mode 100644 .github/workflows/e2e-deploy-smoke.yml
+ create mode 100644 DEFERRED_IDOR.md
+ create mode 100644 DEPLOY_READINESS.md
+ create mode 100644 FEATURE_COMPLETENESS_MATRIX.md
+ create mode 100644 ROUTE_CRITICALITY_MAP.md
+ create mode 100644 STAGE_0_FINAL_REPORT.md
+ create mode 100644 STAGE_0_PHASE_0_AUDIT.md
+ create mode 100644 attached_assets/Pasted-Lane-brief-defer-Stripe-init-off-non-checkout-pages-New_1781399095638.txt
+ create mode 100644 attached_assets/Pasted-Stage-0-closed-all-three-tasks-done-all-fixes-pushed-Ta_1781412438890.txt
+ create mode 100644 attached_assets/Pasted-Summary-of-Changes-3-0-1a-Config-Completeness-Audit-New_1781403054111.txt
+ create mode 100644 attached_assets/image_1781445481624.png
+ create mode 100644 attached_assets/screenshots/traveloure_com.png
+ create mode 100644 e2e/README.md
+ create mode 100644 e2e/fixtures/accounts.ts
+ create mode 100644 e2e/fixtures/roles.ts
+ create mode 100644 e2e/global-setup.ts
+ create mode 100644 e2e/specs/journey-1.spec.ts
+ create mode 100644 e2e/specs/login-ui.spec.ts
+ create mode 100644 e2e/specs/smoke.spec.ts
+ create mode 100644 migrations/0010_add_dmo_content_layer.sql
+ create mode 100644 plan.md
+ create mode 100644 playwright.e2e.config.ts
+ create mode 100644 playwright/tests/stripe-init-deferral.spec.ts
+ create mode 100644 research/travel_content_apis_dmo_addendum.md
+ create mode 100644 research/traveloure_dmo_implementation_map.md
+ create mode 100644 server/__tests__/config-completeness.test.ts
+ create mode 100644 server/content/providers/DMOSourceRegistry.ts
+ create mode 100644 server/content/scrapers/DMOCrawler.ts
+ delete mode 100644 server/routes/bookings-domain.routes.ts
+ create mode 100644 server/routes/expert-workspace.routes.ts
+ create mode 100644 server/seeds/e2e-test-accounts.seed.ts
+~/workspace$ git push origin main
+Enumerating objects: 14, done.
+Counting objects: 100% (14/14), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (8/8), done.
+Writing objects: 100% (8/8), 1.21 KiB | 1.21 MiB/s, done.
+Total 8 (delta 6), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (6/6), completed with 6 local objects.
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: 
+remote: - 3 of 3 required status checks are expected.
+To https://github.com/Nardo758/Traveloure-Real-.git
+ ! [remote rejected]   main -> main (protected branch hook declined)
+error: failed to push some refs to 'https://github.com/Nardo758/Traveloure-Real-.git'
+~/workspace$ 
