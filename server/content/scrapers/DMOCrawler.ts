@@ -1,4 +1,4 @@
-import { FirecrawlApp } from "@mendable/firecrawl-js";
+import FirecrawlApp from "@mendable/firecrawl-js";
 import { TavilyClient } from "tavily";
 
 // Brave Search API is a simple REST API — no official SDK, so we use fetch
