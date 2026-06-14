@@ -21,7 +21,7 @@
  */
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { sql } from "drizzle-orm";
 import { MIGRATION_FILES } from "./migration-files";
 
@@ -174,7 +174,10 @@ export async function runMigrations(): Promise<MigrationResult> {
     const filePath = join(__dirname_local, file);
     const content = readFileSync(filePath, "utf-8");
     try {
-      await db.execute(sql.raw(content));
+      // Use pool.query() directly so multi-statement SQL files execute correctly.
+      // Drizzle's db.execute() wraps single statements and can mishandle files
+      // that contain multiple statements (ALTER TABLE + CREATE INDEX etc.).
+      await pool.query(content);
       // Record only after the file applied cleanly. If the process dies between
       // apply and record, the next run re-applies (idempotent) — never skips a
       // half-applied file.
@@ -185,9 +188,19 @@ export async function runMigrations(): Promise<MigrationResult> {
       applied.push(file);
       console.log(`[Migrations] Applied + recorded: ${file}`);
     } catch (err: any) {
-      // A real error here (missing column, syntax error, DB unreachable) must be
-      // surfaced immediately — do not swallow it.
-      console.error(`[Migrations] FATAL: ${file} failed:`, err?.message ?? err);
+      // Surface the full PostgreSQL error chain so production logs show the
+      // real reason (relation does not exist, constraint violation, etc.)
+      // rather than just Drizzle's "Failed query: <sql>" wrapper.
+      console.error(`[Migrations] FATAL: ${file} failed — PostgreSQL error:`, {
+        message: err?.message,
+        code: err?.code,
+        detail: err?.detail,
+        hint: err?.hint,
+        position: err?.position,
+        where: err?.where,
+        causeMessage: err?.cause?.message,
+        causeCode: err?.cause?.code,
+      });
       throw err; // Fail-fast: prevents server from starting with a bad schema
     }
   }
@@ -240,7 +253,7 @@ export async function bootstrapProductionLedger(): Promise<MigrationResult> {
   // Execute 051 bootstrap SQL: INSERT all 001–050 with ON CONFLICT DO NOTHING.
   const bootstrapPath = join(__dirname_local, "051_schema_migrations_ledger_bootstrap.sql");
   const bootstrapSql = readFileSync(bootstrapPath, "utf-8");
-  await db.execute(sql.raw(bootstrapSql));
+  await pool.query(bootstrapSql);
 
   // Also record 051 itself.
   await db.execute(sql`
