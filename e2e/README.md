@@ -49,11 +49,15 @@ npx playwright show-report
 
 | # | What | Resolved value |
 |---|------|----------------|
-| 1 | `.env.e2e` | template in `.env.e2e.example`; `E2E_BASE_URL` defaults to localhost:5000 |
-| 2 | `accounts.ts` | real seeded `*.traveloure.test` emails (from `playwright/fixtures/test-accounts.ts`), pw `TestPass123!`; roles: traveler/expert/provider/ea/admin, env-overridable |
-| 3 | `global-setup.ts` | **login is a modal, not a `/login` page.** Uses the modal's real endpoint `POST /api/auth/login {email,password}` (passport session cookie); authed check = 200 + `GET /api/auth/user`. UI selectors documented inline if true-UI login is ever needed. |
-| 4 | `smoke.spec.ts` | authed home per role from `getRoleHomePath` — traveler `/dashboard`, expert `/expert/dashboard`, provider `/provider/dashboard`, ea `/ea/dashboard`, admin `/admin/dashboard` |
+| 1 | `.env.e2e` | template in `.env.e2e.example`; `E2E_BASE_URL` defaults to localhost:5000 (this repo's dev port) |
+| 2 | `accounts.ts` | real seeded emails (verified vs `playwright/fixtures/test-accounts.ts`), pw `TestPass123!`, env-overridable: traveler `test-traveler-kyoto@`, expert `kyoto-food@`, provider `kyoto-photography@`, ea `test-ea@`, admin `test-admin@` (all `…@traveloure.test`) |
+| 3 | `global-setup.ts` | **login is the SignInModal dialog, not a `/login` page.** Calls the modal's real endpoint `POST /api/auth/login {email,password}` from the browser context (passport session cookie → storageState); authed check = `GET /api/auth/user`. UI testids documented inline if true-UI login is ever needed. |
+| 4 | `smoke.spec.ts` | title `/traveloure/i` (set client-side by `SEOHead`); authed routes from `getRoleHomePath` — traveler `/dashboard`, expert `/expert/dashboard` (provider `/provider/dashboard`, ea `/ea/dashboard`, admin `/admin/dashboard` available for later flows) |
 | 5 | ESM | repo is `"type":"module"`; config uses `process.cwd()`, no `__dirname` |
+
+> **Most likely first red:** the landing smoke asserts **zero** console errors. A
+> deploy missing a client key (e.g. Google Maps) can log console errors on `/` and
+> trip this. If so, that's a real finding — fix the deploy or scope the assertion.
 
 ## Next layers (after smoke is green)
 

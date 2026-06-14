@@ -1,82 +1,52 @@
+// e2e/global-setup.ts
+// Runs ONCE before the suite. Logs in each role and saves its session to e2e/auth/<role>.json.
+// Specs then reuse those sessions via test.use({ storageState }) — no re-login per test.
+
+import { chromium, type FullConfig } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { request, type FullConfig } from '@playwright/test';
-import { accounts, allRoles } from './fixtures/accounts';
+import { ROLES, ACCOUNTS, PASSWORD } from './fixtures/accounts';
 
-/**
- * SWAP #3 — logs in each role once and persists its session to
- * e2e/auth/<role>.json (gitignored), consumed by specs via authFile(role).
- *
- * Why API login (not the modal UI): in this app "login" is the SignInModal
- * dialog — there is NO `/login` page route. The modal POSTs
- *   POST /api/auth/login   { email, password }
- * which establishes a passport session cookie (verified in
- * client/src/components/SignInModal.tsx + server .../auth/emailAuth.ts).
- * Hitting that endpoint directly and saving the cookie jar is the robust,
- * headless-friendly equivalent of "fill email/password/submit", and the
- * authed-confirmation check is the 200 + /api/auth/user round-trip below.
- *
- * If you ever need true UI login instead, drive the modal with:
- *   [data-testid="input-email"], [data-testid="input-password"],
- *   [data-testid="button-auth-submit"]  (dialog: [data-testid="modal-sign-in"]).
- */
+const AUTH_DIR = path.join(process.cwd(), 'e2e', 'auth');
+
 export default async function globalSetup(config: FullConfig) {
-  const baseURL =
-    config.projects[0]?.use?.baseURL ||
-    process.env.E2E_BASE_URL ||
-    'http://localhost:5000';
+  const baseURL = config.projects[0]?.use?.baseURL ?? process.env.E2E_BASE_URL;
+  if (!baseURL) throw new Error('E2E_BASE_URL not set and no baseURL in config');
+  fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-  const authDir = path.join(process.cwd(), 'e2e', 'auth');
-  fs.mkdirSync(authDir, { recursive: true });
+  for (const role of ROLES) {
+    const browser = await chromium.launch();
+    const context = await browser.newContext({ baseURL });
+    const page = await context.newPage();
 
-  const failures: string[] = [];
-
-  for (const role of allRoles) {
-    const account = accounts[role];
-    const ctx = await request.newContext({ baseURL });
-
-    try {
-      const res = await ctx.post('/api/auth/login', {
-        data: { email: account.email, password: account.password },
-      });
-
-      if (!res.ok()) {
-        const body = await res.text().catch(() => '');
-        failures.push(
-          `  - ${role} (${account.email}): login ${res.status()} ${res.statusText()} ${body.slice(0, 200)}`,
-        );
-        await ctx.dispose();
-        continue;
-      }
-
-      // Authed-confirmation check: the session cookie should now resolve a user.
-      const me = await ctx.get('/api/auth/user');
-      if (!me.ok()) {
-        failures.push(
-          `  - ${role} (${account.email}): /api/auth/user ${me.status()} after login`,
-        );
-        await ctx.dispose();
-        continue;
-      }
-
-      await ctx.storageState({ path: path.join(authDir, `${role}.json`) });
-      // eslint-disable-next-line no-console
-      console.log(`[e2e auth] ${role} → ${account.email} ✓`);
-    } catch (err: any) {
-      failures.push(`  - ${role} (${account.email}): ${err?.message ?? err}`);
-    } finally {
-      await ctx.dispose();
+    // ── SWAP #3: login + the authed-confirmation ────────────────────────────────────
+    // This app has NO `/login` page — auth is the SignInModal dialog, which POSTs
+    //   POST /api/auth/login  { email, password }
+    // and gets back a passport session cookie (see client/src/components/SignInModal.tsx
+    // + server/replit_integrations/auth/emailAuth.ts). We call that endpoint from the
+    // browser context so the cookie lands in the same jar storageState persists — the
+    // robust headless equivalent of fill-email / fill-password / click-submit.
+    const login = await page.request.post('/api/auth/login', {
+      data: { email: ACCOUNTS[role].email, password: PASSWORD },
+    });
+    if (!login.ok()) {
+      throw new Error(
+        `login failed for ${role} (${ACCOUNTS[role].email}): ${login.status()} ${login.statusText()} ` +
+          `${(await login.text().catch(() => '')).slice(0, 200)}\n` +
+          `Check: E2E_BASE_URL reachable · E2E_TEST_PASSWORD matches seed · account exists & has a password.`,
+      );
     }
-  }
+    // Authed-confirmation: the session cookie must now resolve a user.
+    const me = await page.request.get('/api/auth/user');
+    if (!me.ok()) {
+      throw new Error(`authed-confirmation failed for ${role}: /api/auth/user returned ${me.status()}`);
+    }
+    // To drive the real UI instead, open the SignInModal and use its testids:
+    //   [data-testid="input-email"], [data-testid="input-password"], [data-testid="button-auth-submit"]
+    // ──────────────────────────────────────────────────────────────────────────────
 
-  if (failures.length) {
-    throw new Error(
-      `\n[e2e global-setup] ${failures.length}/${allRoles.length} role logins failed against ${baseURL}:\n` +
-        failures.join('\n') +
-        `\n\nChecklist:\n` +
-        `  • E2E_BASE_URL points at a reachable deploy\n` +
-        `  • E2E_TEST_PASSWORD matches the seed (default TestPass123!)\n` +
-        `  • the per-role E2E_*_EMAIL accounts exist & are seeded with passwords\n`,
-    );
+    await context.storageState({ path: path.join(AUTH_DIR, `${role}.json`) });
+    await browser.close();
+    console.log(`✓ auth saved: ${role} (${ACCOUNTS[role].email})`);
   }
 }
