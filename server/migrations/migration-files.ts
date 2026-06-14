@@ -86,9 +86,14 @@ export const MIGRATION_FILES = [
   "064_concierge_booking_fee_band.sql",
   "065_seed_booking_concierge_offering_type.sql",
   "066_concierge_booking_fee_percent.sql",
-  // 067–074: new migrations from our branch (season tags, demand requests,
-  // impressions, changes tracking, affiliate clicks, feed composition settings).
-  // These files should be added when merging from the source branch.
+  "067_seed_feed_composition_settings.sql",
+  "068_season_tags.sql",
+  "069_demand_requests.sql",
+  "070_service_recommendations.sql",
+  "071_provider_impressions.sql",
+  "072_changes_tracking.sql",
+  "073_affiliate_clicks_base.sql",
+  "074_affiliate_booking_requests_base.sql",
   "075_seed_feed_composition_settings.sql",
   "076_phase2_optimizer_prices.sql",
   "077_event_coordination_profiles.sql",
