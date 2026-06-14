@@ -964,7 +964,7 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
 
 // === Optimization Fee Tiers ===
 // CON-A.P2 (FEE-A): keyed by (complexity_tier, event_type). event_type IS NULL = tier-level
-// default. Non-null event_type = admin override for that experience type (e.g. wedding $49.99).
+// default. Non-null event_type = admin override for that experience type (e.g. wedding $49.99). // fee-literal-ok: schema comment describing band name, fees resolve from config
 // is_disabled = "$0=off" semantic per §4.8 — explicit disable, distinct from a $0 price.
 export const optimizationFees = pgTable("optimization_fees", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -5686,7 +5686,7 @@ export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema
 
 // ─── Master Integration Brief — Phase 1 (taxonomy + fee_bands) ───────────────
 // fee_bands: single source of truth for rates. Replaces booking_fee_configs.
-// Percent bands store decimals (0.25 = 25 %). Flat bands store USD (49.99 = $49.99).
+// Percent bands store decimals (0.25 = 25 %). Flat bands store USD (49.99 = $49.99). // fee-literal-ok: schema comment describing format, fees resolve from config
 export const feeBands = pgTable("fee_bands", {
   id: uuid("id").primaryKey().defaultRandom(),
   bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
