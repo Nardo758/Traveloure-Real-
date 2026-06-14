@@ -1047,7 +1047,7 @@ Return JSON:
         placeType: "neighborhood",
         localRating: "4.6",
         touristMentions: 890,
-        localMentions: 4500,
+        localMentions: 4500, // fee-literal-ok: mock social-media mention count, not fee config
         gemScore: 78,
         discoveryStatus: "discovered",
         daysUntilMainstream: 0,

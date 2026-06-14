@@ -22,7 +22,7 @@ export interface IntentSubmission {
 }
 
 // Event types align with the AI Concierge fee config (FEE-A) — wedding/proposal/
-// corporate trigger the $49.99 override; the rest fall back to the $9.99 standard.
+// corporate trigger the $49.99 override; the rest fall back to the $9.99 standard. // fee-literal-ok: UI comment describing config bands, fees resolve from DB
 const EVENT_TYPE_OPTIONS = [
   { value: "vacation", label: "Vacation / travel" },
   { value: "wedding", label: "Wedding" },

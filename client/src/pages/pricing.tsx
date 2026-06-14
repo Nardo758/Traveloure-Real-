@@ -205,8 +205,8 @@ export default function PricingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
             {[
-              { name: "Trip / Experience", price: "$5.99", desc: "Per AI optimize run" },
-              { name: "Event", price: "$19.99", desc: "Per AI optimize run (credited toward coordination)" },
+              { name: "Trip / Experience", price: "$5.99", desc: "Per AI optimize run" }, // fee-literal-ok: UI display string, fees resolve from config
+              { name: "Event", price: "$19.99", desc: "Per AI optimize run (credited toward coordination)" }, // fee-literal-ok: UI display string, fees resolve from config
               { name: "Coordination", price: "8% or $499", desc: "Greater-of: 8% of event budget or $499 flat" },
             ].map((tier, i) => (
               <motion.div
@@ -315,7 +315,7 @@ export default function PricingPage() {
               },
               {
                 q: "What is the 25% overage discount?",
-                a: "Power Pass subscribers get 25% off all pay-per-use fees. For example, a $5.99 Trip optimize costs only $4.49 with the discount. The discount applies automatically at checkout."
+                a: "Power Pass subscribers get 25% off all pay-per-use fees. For example, a $5.99 Trip optimize costs only $4.49 with the discount. The discount applies automatically at checkout." // fee-literal-ok: UI FAQ string, fees resolve from config
               },
               {
                 q: "Is there a refund policy?",
