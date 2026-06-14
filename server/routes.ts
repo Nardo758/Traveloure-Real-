@@ -96,7 +96,6 @@ import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
-import bookingsDomainRoutes from "./routes/bookings-domain.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
