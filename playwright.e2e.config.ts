@@ -1,13 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 
-// Loads .env.e2e if present; harmless otherwise.
+// Loads .env.e2e if present; harmless otherwise. (dotenv/config loads .env, not
+// .env.e2e — so we point it explicitly.)
 dotenv.config({ path: '.env.e2e' });
 
 // E2E_BASE_URL is REQUIRED — it must be the HTTPS deploy URL. There is no
 // localhost fallback: the app's session cookie is Secure (httpOnly+secure), so
 // it is silently dropped over http, which would surface as a misleading 401 in
-// global-setup. Fail loudly here instead.
+// global-setup. Fail loudly here instead. (HTTPS is asserted in global-setup.)
 const baseURL = process.env.E2E_BASE_URL;
 if (!baseURL) {
   throw new Error(
@@ -22,7 +23,7 @@ if (!baseURL) {
 // (./playwright/tests). Run this one with:  -c playwright.e2e.config.ts
 export default defineConfig({
   testDir: './e2e/specs',
-  globalSetup: './e2e/global-setup.ts',
+  globalSetup: './e2e/global-setup.ts', // logs in each role once → storageState
   timeout: 30_000,
   expect: { timeout: 7_000 },
   fullyParallel: true,
@@ -31,12 +32,12 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace: 'on-first-retry',       // bot reads the trace on failure
+    screenshot: 'only-on-failure', // + screenshot
+    video: 'retain-on-failure',    // + video
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    { name: 'mobile', use: { ...devices['Pixel 7'] } }, // PlanCard + optimize gate are mobile-critical
   ],
 });
