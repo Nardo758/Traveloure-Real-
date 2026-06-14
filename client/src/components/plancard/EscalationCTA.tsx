@@ -8,7 +8,7 @@
  *
  * Always visible, soft style (D2). Bookable-now vs queued copy per D4.
  *
- * The "polish this" CTA resolves to the ai_plan_polish expert offering type ($49.99 tier).
+ * The "polish this" CTA resolves to the ai_plan_polish expert offering type ($49.99 tier). // fee-literal-ok: UI comment describing band name, fee resolves from config
  */
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";

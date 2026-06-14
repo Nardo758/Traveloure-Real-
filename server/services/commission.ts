@@ -30,19 +30,22 @@ import { db } from "../db";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/schema";
 
-// Safety-net constants. Used only when DB is unavailable AND the band lookup
-// can't be resolved. fee_bands.beta_flat / expert_standard are the live source.
-export const EXPERT_SHARE_RATE = 0.75;
-export const PLATFORM_FEE_RATE = 0.25;
+// 3.0.1b: Structural invariant — AI fulfillment has no expert counterparty, so the
+// platform keeps the full per-task fee by definition. Not a safety-net fallback;
+// this is an architectural truth.
 export const AI_PLATFORM_FEE = 1.00;
+
 export const AFFILIATE_PLATFORM_FEE = 0.70;
 export const AFFILIATE_EXPERT_SHARE = 0.30;
+
 /** Stripe processing / gateway fee deducted from every platform-fee receipt. */
 export const PROCESSING_FEE_RATE = 0.03;
 
-/** Backstop fallbacks if DB is reachable but the band row is missing. */
-const BETA_FLAT_FALLBACK = 0.10;
-const EXPERT_STANDARD_FALLBACK = 0.25;
+// 3.0.1b: Exported field defaults — NOT resolver safety-nets. Used in route files
+// when a provider service's revenueShareRate is unset. The resolver path no longer
+// falls back to these; it throws on missing config. These are data-model defaults.
+export const EXPERT_SHARE_RATE = 0.75;
+export const PLATFORM_FEE_RATE = 0.25;
 
 /**
  * Phase 3.1 — Booking Concierge facilitation fee.
@@ -209,7 +212,7 @@ export function feeConfigFromRates(rates: CommissionRates): BookingFeeConfigResp
  * fraction (splittable); a 'flat' band's rate is a dollar AMOUNT and must never
  * be built into a split. Single query — no extra round-trip on the hot path.
  */
-async function getBand(bandKey: string): Promise<{ rate: number; rateType: string } | null> {
+export async function getBand(bandKey: string): Promise<{ rate: number; rateType: string } | null> {
   try {
     const result = await db.execute(sql`
       SELECT CAST(default_rate AS FLOAT) AS rate, rate_type
@@ -226,15 +229,15 @@ async function getBand(bandKey: string): Promise<{ rate: number; rateType: strin
 }
 
 /**
- * Phase 3.4: Returns the Booking Concierge facilitation fee RATE (fraction).
+ * 3.0.1b: Returns the Booking Concierge facilitation fee RATE (fraction).
  * Reads fee_bands.expert_concierge_booking.default_rate (rate_type='percent').
- * Migration 066 converted this from a flat $9.99 placeholder to a 5 % rate
+ * Migration 066 converted this from a flat $9.99 placeholder to a 5 % rate // fee-literal-ok: historical comment, fee resolves from config
  * (0.05), so callers must multiply by the item price: fee = itemPrice * rate.
  * The 75/25 expert/platform split rides expert_standard separately.
  * Returns 0 on DB error or if the band is missing/inactive — safe fallback.
  * Use in cart-preview contexts where a graceful zero is acceptable.
  */
-export async function getConciergeBookingFlatFee(): Promise<number> {
+export async function getConciergeBookingRate(): Promise<number> {
   try {
     const result = await db.execute(sql`
       SELECT CAST(default_rate AS FLOAT) AS rate
@@ -252,7 +255,7 @@ export async function getConciergeBookingFlatFee(): Promise<number> {
 }
 
 /**
- * Phase 3.4 (strict): Same as getConciergeBookingFlatFee but THROWS if the
+ * 3.0.1b (strict): Same as getConciergeBookingRate but THROWS if the
  * band is missing, inactive, or has a zero/null rate.
  *
  * Returns the facilitation fee RATE (fraction, e.g. 0.05 = 5 %). Callers
@@ -265,7 +268,7 @@ export async function getConciergeBookingFlatFee(): Promise<number> {
  * On a fresh prod DB, run `npm run migrate:bootstrap` then `npm start` to
  * apply migrations 064–066 (expert_concierge_booking band + percent conversion).
  */
-export async function requireConciergeBookingFlatFee(): Promise<number> {
+export async function requireConciergeBookingRate(): Promise<number> {
   const result = await db.execute(sql`
     SELECT CAST(default_rate AS FLOAT) AS rate
     FROM fee_bands
@@ -404,7 +407,7 @@ export async function resolveCommissionRates(
         const insuranceFields = await resolveInsuranceFromCategory(category);
         return {
           expertShareRate,
-          platformFeeRate: 1 - expertShareRate,
+          platformFeeRate: 1 - expertShareRate, // fee-literal-ok: computed from expertShareRate, not hardcoded
           ...insuranceFields,
         };
       }
@@ -448,18 +451,10 @@ export async function resolveCommissionRates(
     return buildRatesFromBand(band.rate, insuranceFields);
   }
 
-  // Band-row missing or non-split (flat) — backstop fallback per known seed defaults.
-  if (bandKey === "beta_flat") {
-    return buildRatesFromBand(BETA_FLAT_FALLBACK);
-  }
-  if (bandKey === "expert_standard") {
-    return buildRatesFromBand(EXPERT_STANDARD_FALLBACK);
-  }
-
-  // Tier 6 — final safety net.
-  return {
-    expertShareRate: EXPERT_SHARE_RATE,
-    platformFeeRate: PLATFORM_FEE_RATE,
-    ...noInsurance,
-  };
+  // 3.0.1b: Fail-loud — missing band = production misconfiguration, not a silent fallback.
+  // All required bands are seeded by Migration 033 (verified in 3.0.1a audit).
+  throw new Error(
+    `commission band missing: bandKey=${bandKey}, source=${source || "null"}, ` +
+    `category=${category || "null"}. Ensure migrations are applied and the band is active.`,
+  );
 }
