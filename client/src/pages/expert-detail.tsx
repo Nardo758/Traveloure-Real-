@@ -1,4 +1,4 @@
-import { useRoute, Link, useLocation } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,8 +33,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ExpertDetailPage() {
-  const [, params] = useRoute("/experts/:id");
-  const expertId = params?.id;
+  const { id: expertId } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
