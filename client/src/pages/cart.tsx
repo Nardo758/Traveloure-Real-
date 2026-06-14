@@ -195,7 +195,7 @@ interface OptimizationPaymentState {
 }
 
 export default function CartPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, updatePreferredCurrency } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -322,8 +322,15 @@ export default function CartPage() {
   const [newTripDestination, setNewTripDestination] = useState("");
   const [selectedPlanItemIds, setSelectedPlanItemIds] = useState<Set<string>>(new Set());
   const [displayCurrency, setDisplayCurrency] = useState<string>(
-    () => localStorage.getItem("traveloure_currency") || "USD"
+    () => user?.preferredCurrency || localStorage.getItem("traveloure_currency") || "USD"
   );
+
+  // Sync displayCurrency from user profile when it loads (overrides localStorage if user has a preference)
+  useEffect(() => {
+    if (user?.preferredCurrency && user.preferredCurrency !== displayCurrency) {
+      setDisplayCurrency(user.preferredCurrency);
+    }
+  }, [user?.preferredCurrency]);
 
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
@@ -415,7 +422,7 @@ export default function CartPage() {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
       }
-      const res = await apiRequest("POST", "/api/checkout", {});
+      const res = await apiRequest("POST", "/api/checkout", { currency: displayCurrency });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -475,6 +482,9 @@ export default function CartPage() {
   const handleCurrencyChange = (code: string) => {
     setDisplayCurrency(code);
     localStorage.setItem("traveloure_currency", code);
+    if (user && updatePreferredCurrency) {
+      updatePreferredCurrency(code);
+    }
   };
 
   // Content items (Discover saves) — eligible for "Start planning"
@@ -1402,7 +1412,7 @@ export default function CartPage() {
                       </div>
                       {displayCurrency !== "USD" && (
                         <p className="text-xs text-muted-foreground" data-testid="text-currency-disclaimer">
-                          Prices shown in {displayCurrency}. You will be charged in USD.
+                          Prices shown and charged in {displayCurrency}.
                         </p>
                       )}
                     </CardContent>
@@ -1751,7 +1761,7 @@ export default function CartPage() {
                           <p className="text-2xl font-bold text-foreground">
                             {formatPrice(optimizationPreview.feeCents / 100)}
                           </p>
-                          <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? " · charged in USD" : ""}</p>
+                          <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? ` · charged in ${displayCurrency}` : ""}</p>
                         </div>
                       )}
 
