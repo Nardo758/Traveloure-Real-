@@ -12,6 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "seed:beta": "tsx server/seeds/run-beta-seed.ts",
+    "seed:e2e-accounts": "tsx server/seeds/e2e-test-accounts.seed.ts",
     "seed:california": "tsx scripts/seed-california-full.ts",
     "verify:california": "tsx scripts/verify-california.ts",
     "verify:selection-controls": "tsx scripts/verify-selection-controls.ts",
