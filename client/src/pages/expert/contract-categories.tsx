@@ -46,7 +46,7 @@ const contractCategories = [
     avgRating: 4.9,
     active: true,
     subCategories: ["Beach Getaways", "City Breaks", "Adventure Trips"],
-    commissionRate: 15,
+    commissionRate: 15, // fee-literal-ok: mock UI display data, not actual fee logic
   },
   {
     id: 2,
@@ -58,7 +58,7 @@ const contractCategories = [
     avgRating: 5.0,
     active: true,
     subCategories: ["Proposals", "Honeymoons", "Anniversaries"],
-    commissionRate: 18,
+    commissionRate: 18, // fee-literal-ok: mock UI display data, not actual fee logic
   },
   {
     id: 3,
@@ -70,7 +70,7 @@ const contractCategories = [
     avgRating: 4.8,
     active: true,
     subCategories: ["Birthdays", "Reunions", "Graduations"],
-    commissionRate: 12,
+    commissionRate: 12, // fee-literal-ok: mock UI display data, not actual fee logic
   },
   {
     id: 4,
@@ -82,7 +82,7 @@ const contractCategories = [
     avgRating: 4.7,
     active: false,
     subCategories: ["Bachelor Parties", "Bachelorette Parties", "Group Adventures"],
-    commissionRate: 14,
+    commissionRate: 14, // fee-literal-ok: mock UI display data, not actual fee logic
   },
   {
     id: 5,
@@ -94,7 +94,7 @@ const contractCategories = [
     avgRating: 4.9,
     active: true,
     subCategories: ["Retreats", "Conferences", "Team Building"],
-    commissionRate: 20,
+    commissionRate: 20, // fee-literal-ok: mock UI display data, not actual fee logic
   },
 ];
 

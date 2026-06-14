@@ -7056,7 +7056,7 @@ router.post("/api/content/checkout", isAuthenticated, async (req, res) => {
 
       // --- Server-side item resolution (price is NOT trusted from client) ---
       let resolvedTitle: string;
-      let resolvedPrice: number;       // in whole currency units, e.g. 49.99
+      let resolvedPrice: number;       // in whole currency units, e.g. 49.99 // fee-literal-ok: comment example, fee resolves from config
       let resolvedCurrency: string;
       let resolvedDestination: string;
 

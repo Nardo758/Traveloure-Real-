@@ -155,7 +155,7 @@ const preResearchedTrips = [
     rating: 4.6,
     reviews: 98,
     price: 1599,
-    originalPrice: 1999,
+    originalPrice: 1999, // fee-literal-ok: mock UI display price, not fee config
     image: null,
     highlights: ["Sahara Camping", "Medina Tour", "Camel Trek"],
     expertPick: false,
