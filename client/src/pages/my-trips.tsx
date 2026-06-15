@@ -173,18 +173,18 @@ export default function MyTrips() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/trip/${trip.id}`}>
+                <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="outline" data-testid={`button-view-${trip.id}`}>
                     View
                   </Button>
                 </Link>
-                <Link href="/chat">
+                <Link href="/chat" onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-chat-${trip.id}`}>
                     Chat
                   </Button>
                 </Link>
                 {!isCompleted && (
-                  <Link href={`/trip/${trip.id}/edit`}>
+                  <Link href={`/trip/${trip.id}/edit`} onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-edit-${trip.id}`}>
                       Edit
                     </Button>
