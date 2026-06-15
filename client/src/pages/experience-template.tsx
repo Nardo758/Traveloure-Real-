@@ -94,7 +94,6 @@ import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { PlanCard } from "@/components/plancard/PlanCard";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
