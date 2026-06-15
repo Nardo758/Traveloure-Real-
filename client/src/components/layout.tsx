@@ -565,6 +565,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link href="/chat" className="hover:text-foreground transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
                 <li><Link href="/how-it-works" className="hover:text-foreground transition-colors" data-testid="link-footer-how-it-works">How It Works</Link></li>
                 <li><Link href="/pricing" className="hover:text-foreground transition-colors" data-testid="link-footer-pricing">Pricing</Link></li>
+                <li><Link href="/features" className="hover:text-foreground transition-colors" data-testid="link-footer-features">Features</Link></li>
+                <li><Link href="/global-calendar" className="hover:text-foreground transition-colors" data-testid="link-footer-global-calendar">Global Calendar</Link></li>
+                <li><Link href="/executive-assistant" className="hover:text-foreground transition-colors" data-testid="link-footer-executive-assistant">Executive Assistant</Link></li>
               </ul>
             </div>
 
@@ -586,6 +589,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li><Link href="/help" className="hover:text-foreground transition-colors" data-testid="link-footer-help">Help Center</Link></li>
                 <li><Link href="/contact" className="hover:text-foreground transition-colors" data-testid="link-footer-contact">Contact Us</Link></li>
+                <li><Link href="/visa-help" className="hover:text-foreground transition-colors" data-testid="link-footer-visa-help">Visa Help</Link></li>
                 <li><Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
                 <li><Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-footer-terms">Terms of Service</Link></li>
                 <li><Link href="/faq" className="hover:text-foreground transition-colors" data-testid="link-footer-faq">FAQ</Link></li>
