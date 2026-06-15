@@ -349,10 +349,34 @@ export async function registerRoutes(
   // expert_service_offerings is the canonical template catalog. The 6 service
   // creation templates are seeded here so the table is no longer disconnected
   // from the template UI and from-template flow.
+  // Migration 030 restored expert_service_categories with FK constraint.
+  // We look up the "Itinerary Planning" category at runtime rather than
+  // hardcoding a UUID, so the seed survives across environments.
   (async () => {
     try {
-      // expert_service_categories was dropped by migration 013; insert with null categoryId.
-      const categoryId: string | null = null;
+      // Look up a real category from expert_service_categories (migration 030)
+      let categoryId: string | null = null;
+      const categoryRows = await db.select({ id: expertServiceCategories.id })
+        .from(expertServiceCategories)
+        .where(eq(expertServiceCategories.name, 'Itinerary Planning'))
+        .limit(1);
+      if (categoryRows.length > 0) {
+        categoryId = categoryRows[0].id;
+      } else {
+        // Fallback: create the category if it doesn't exist (idempotent)
+        const [newCategory] = await db.insert(expertServiceCategories).values({
+          name: 'Itinerary Planning',
+          isDefault: true,
+          sortOrder: 0,
+        }).returning();
+        categoryId = newCategory.id;
+      }
+
+      // Defensive: if we still don't have a category, skip seeding (FK will fail)
+      if (!categoryId) {
+        console.warn("[Seed] No expert_service_categories row available; skipping expert_service_offerings seed.");
+        return;
+      }
 
       const CANONICAL_OFFERINGS = [
         { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
