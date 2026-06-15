@@ -465,7 +465,7 @@ export async function registerRoutes(
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const status = req.query.status as string | undefined;
     const trips = await storage.getTrips(userId, status);
     res.json(trips);
@@ -2036,6 +2036,81 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     } catch (err) {
       console.error("Error fetching city neighborhoods:", err);
       res.status(500).json({ message: "Failed to fetch neighborhoods" });
+    }
+  });
+
+  // City lookup endpoint for planning modals
+  app.get("/api/cities/lookup", async (req, res) => {
+    try {
+      const q = (req.query.q as string)?.trim();
+      if (!q) return res.json({ cityId: null });
+      const rows = await db
+        .select({
+          id: travelPulseCities.id,
+          cityName: travelPulseCities.cityName,
+          country: travelPulseCities.country,
+          countryCode: travelPulseCities.countryCode,
+        })
+        .from(travelPulseCities)
+        .where(ilike(travelPulseCities.cityName, `%${q}%`))
+        .limit(1);
+      if (rows.length === 0) return res.json({ cityId: null });
+      return res.json({
+        cityId: rows[0].id,
+        cityName: rows[0].cityName,
+        country: rows[0].country,
+        countryCode: rows[0].countryCode,
+      });
+    } catch (err: any) {
+      console.error("Error in city lookup:", err);
+      res.status(500).json({ message: "Lookup failed", error: err.message });
+    }
+  });
+
+  // Neighborhoods for a specific city (filtered, for planning modal dropdown)
+  app.get("/api/cities/neighborhoods", async (req, res) => {
+    try {
+      const city = (req.query.city as string)?.trim();
+      if (!city) return res.json([]);
+      const rows = await db
+        .select({
+          id: cityNeighborhoods.id,
+          name: cityNeighborhoods.name,
+          slug: cityNeighborhoods.slug,
+          description: cityNeighborhoods.description,
+        })
+        .from(cityNeighborhoods)
+        .where(ilike(cityNeighborhoods.city, city))
+        .orderBy(cityNeighborhoods.name);
+      return res.json(rows);
+    } catch (err: any) {
+      console.error("Error fetching city neighborhoods:", err);
+      res.status(500).json({ message: "Failed to fetch neighborhoods" });
+    }
+  });
+
+  // Hidden gems for a city (for planning modal chips)
+  app.get("/api/cities/gems", async (req, res) => {
+    try {
+      const city = (req.query.city as string)?.trim();
+      if (!city) return res.json([]);
+      const limit = parseInt(req.query.limit as string) || 5;
+      const rows = await db
+        .select({
+          id: travelPulseHiddenGems.id,
+          placeName: travelPulseHiddenGems.placeName,
+          placeType: travelPulseHiddenGems.placeType,
+          description: travelPulseHiddenGems.description,
+          gemScore: travelPulseHiddenGems.gemScore,
+        })
+        .from(travelPulseHiddenGems)
+        .where(ilike(travelPulseHiddenGems.city, city))
+        .orderBy(desc(travelPulseHiddenGems.gemScore))
+        .limit(limit);
+      return res.json(rows);
+    } catch (err: any) {
+      console.error("Error fetching city gems:", err);
+      res.status(500).json({ message: "Failed to fetch gems" });
     }
   });
 

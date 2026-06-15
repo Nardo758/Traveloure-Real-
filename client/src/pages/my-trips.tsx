@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Select,
   SelectContent,
@@ -114,6 +115,8 @@ export default function MyTrips() {
     return Math.round((elapsed / total) * 100);
   };
 
+  const [, setLocation] = useLocation();
+
   const TripCard = ({ trip }: { trip: any }) => {
     const Icon = eventTypeIcons[trip.eventType || "vacation"] || Plane;
     const progress = getProgressValue(trip);
@@ -124,7 +127,11 @@ export default function MyTrips() {
     const daysAway = differenceInDays(start, now);
 
     return (
-      <Card className="border border-[#E5E7EB] hover:shadow-md transition-shadow" data-testid={`card-trip-${trip.id}`}>
+      <Card
+        className="border border-[#E5E7EB] hover:shadow-md transition-shadow cursor-pointer"
+        data-testid={`trip-card-${trip.id}`}
+        onClick={() => setLocation(`/trip/${trip.id}`)}
+      >
         <CardContent className={viewMode === "list" ? "p-5" : "p-4"}>
           <div className={viewMode === "list" ? "flex items-start gap-4" : "space-y-4"}>
             <div className={`${viewMode === "list" ? "w-16 h-16" : "w-full h-32"} rounded-lg bg-gradient-to-br from-[#FFE3E8] to-[#FFF1F3] flex items-center justify-center flex-shrink-0`}>
@@ -166,18 +173,18 @@ export default function MyTrips() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/trip/${trip.id}`}>
+                <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="outline" data-testid={`button-view-${trip.id}`}>
                     View
                   </Button>
                 </Link>
-                <Link href="/chat">
+                <Link href="/chat" onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-chat-${trip.id}`}>
                     Chat
                   </Button>
                 </Link>
                 {!isCompleted && (
-                  <Link href={`/trip/${trip.id}/edit`}>
+                  <Link href={`/trip/${trip.id}/edit`} onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-edit-${trip.id}`}>
                       Edit
                     </Button>
