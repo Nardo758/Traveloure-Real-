@@ -195,4 +195,12 @@ export const MIGRATION_FILES = [
   "084_itinerary_changes_source_tracking.sql",
   "085_affiliate_clicks_content_fields.sql",
   "086_seed_feed_composition_settings.sql",
+  // 087: Explicit seed for the 8 service-category fee bands (activities, transport,
+  // accommodation, food, entertainment, shopping, sightseeing, culture).
+  // These cannot be delegated to 046_phase1_5_enumerate_legacy_bands.sql because
+  // 046 reads from booking_fee_configs — which is empty on a blank CI database
+  // (runtime-seeded, not schema-push-seeded). Without this migration, commission.ts
+  // throws on any booking whose category is one of these 8 names, crashing the
+  // server on a fresh DB and silently billing at the wrong rate otherwise.
+  "087_seed_category_fee_bands.sql",
 ] as const;
