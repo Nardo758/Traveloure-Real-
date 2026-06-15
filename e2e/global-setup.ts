@@ -64,4 +64,43 @@ export default async function globalSetup(config: FullConfig) {
     await browser.close();
     console.log(`✓ auth saved: ${role} (${ACCOUNTS[role].email})`);
   }
+
+  // ── Vite dev-server warm-up ─────────────────────────────────────────────────
+  // The Replit Vite dev server lazy-compiles each route chunk on first request.
+  // On a cold start this takes 30-90 s per new route.  Without warming, the
+  // first test that visits an uncompiled route eats most of its timeout budget
+  // just waiting for Vite, leaving no room for the actual test assertions.
+  //
+  // We visit the key test routes once here (with a generous 120 s per route)
+  // using the traveler session so link-logo renders.  Subsequent test pages
+  // served from the same Vite process get the compiled bundle instantly.
+  //
+  // Failures here are non-fatal: a warning is logged and tests continue.  The
+  // tests themselves still have their own 90 s element waits as fallback.
+  console.log('⏳ Warming up Vite routes (may take up to 4 min)…');
+  const warmBrowser = await chromium.launch();
+  const warmCtx = await warmBrowser.newContext({
+    baseURL,
+    storageState: path.join(AUTH_DIR, 'traveler.json'),
+  });
+  const warmPage = await warmCtx.newPage();
+
+  const warmRoutes: Array<{ url: string; selector: string; label: string }> = [
+    { url: '/',              selector: '[data-testid="link-logo"]',      label: 'home'         },
+    { url: '/discover',      selector: '[data-testid="link-logo"]',      label: 'discover'     },
+    { url: '/local-experts', selector: '[data-testid="role-switcher"]',  label: 'local-experts'},
+  ];
+
+  for (const { url, selector, label } of warmRoutes) {
+    try {
+      await warmPage.goto(url, { waitUntil: 'domcontentloaded' });
+      await warmPage.waitForSelector(selector, { timeout: 120_000 });
+      console.log(`  ✓ warmed: ${label} (${url})`);
+    } catch (err: any) {
+      console.warn(`  ⚠ warm-up timeout for ${label} (non-fatal): ${String(err?.message ?? err).slice(0, 120)}`);
+    }
+  }
+
+  await warmBrowser.close();
+  console.log('✓ Vite warm-up complete');
 }
