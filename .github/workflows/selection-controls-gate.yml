@@ -78,16 +78,15 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
-      - name: Push database schema
-        run: npx drizzle-kit push --force
+      - name: Apply database migrations
+        # 000_baseline_schema.sql runs first and creates every Drizzle-managed
+        # table with IF NOT EXISTS / idempotent FK guards. Subsequent migrations
+        # (001–088) add FKs/columns/seeds — all DDL is IF NOT EXISTS or ADD
+        # COLUMN IF NOT EXISTS (no-ops on an existing schema); all DML uses ON
+        # CONFLICT DO NOTHING. No drizzle-kit push required.
+        run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
-          # Stripe key stub — prevents module-load throw; no real API calls in schema push
-          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
       - name: Verify migration ledger is idempotent (#28)
         # Runs the migration runner twice against the fresh CI Postgres: run 1
         # applies + records every file in schema_migrations; run 2 must apply
@@ -161,6 +160,92 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: selection-controls-report
+          path: playwright-report/
+          retention-days: 14
+
+  e2e-journey-2:
+    name: e2e-journey-2 (Stage 3 exit gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+      - name: Apply database migrations
+        # drizzle-kit push --force requires an interactive TTY which CI doesn't
+        # have (throws "Interactive prompts require a TTY terminal"). Use
+        # migrate-entry.ts instead — applies all SQL migrations, no TTY needed.
+        run: npx tsx server/migrations/migrate-entry.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Start dev server (PR artifact — localhost only)
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+      - name: Seed E2E test accounts
+        # Creates the role-scoped accounts global-setup.ts logs in as.
+        # Must run after the server is ready (DB exists and migrations applied).
+        run: npm run seed:e2e-accounts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          E2E_TEST_PASSWORD: TestPass123!
+      - name: Journey-2 E2E test (Stage 3 exit gate)
+        # Uses playwright.local.config.ts: testDir=./e2e/specs + globalSetup
+        # that accepts http://localhost (NODE_ENV=development skips the Secure
+        # cookie / HTTPS guard introduced for production deployments).
+        run: npx playwright test journey-2 --project=chromium --config playwright.local.config.ts
+        env:
+          BASE_URL: http://localhost:5000
+          E2E_TEST_PASSWORD: TestPass123!
+          NODE_ENV: development
+          CI: 'true'
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-2-report
           path: playwright-report/
           retention-days: 14
 

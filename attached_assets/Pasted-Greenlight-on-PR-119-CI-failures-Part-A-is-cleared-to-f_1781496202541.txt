@@ -1,0 +1,60 @@
+Greenlight on PR #119 CI failures. Part A is cleared to fix. Part B is
+CONFIRM-ONLY — hard stop before fixing. Part C investigate + fix the gate.
+
+── PART A — #3/#4 migration collision (GREENLIT: Option C) ──
+The CI DB applies schema twice: `drizzle-kit push --force` (selection-controls-
+gate.yml:82) then `runMigrations()` (line 95) replays 078 → duplicate-column crash.
+Fix: build the CI DB via MIGRATIONS ONLY.
+- Remove the `drizzle-kit push --force` step (line 82). The app already runs
+  migrations on startup; that's the sole schema path.
+- Do NOT remove `preferredCurrency` from the Drizzle schema (the seed's typed
+  query needs it — breaks the ORM).
+- Do NOT delete migration 078 (prod builds via migrations — drifts prod).
+- Do NOT make 078 `ADD COLUMN IF NOT EXISTS` (masks drift, recreates dual-apply).
+
+COMPLETENESS GATE before calling it fixed: spin up a blank Postgres, run
+migrations only, confirm the app starts and the seed runs with NO missing-
+table/column errors.
+- Clean → done.
+- Surfaces OTHER missing tables/columns → STOP and report. It means the migration
+  chain is incomplete and push was masking it (a latent prod-deploy risk). List
+  every gap (table/column with no migration). Do NOT backfill silently — report
+  the gaps for review first.
+
+── PART B — #1/#2 deploy unreachable (CONFIRM ONLY, HARD STOP) ──
+The server exits on startup migration failure (index.ts:291), so a migration
+crash makes the app unreachable. Determine which case this is, with log evidence:
+(a) The live app is crash-looping on a startup migration (e.g., 078 colliding on
+    the live DB) → unreachable. Also check: does the migration ledger
+    (verify-migration-ledger.ts) prevent 078 re-running on an already-migrated
+    DB? If it does, the live crash is NOT 078 — find the real reason.
+(b) The PR branch simply isn't deployed to E2E_BASE_URL → nothing serving the
+    PR's code.
+Report which, with the live startup logs. WRITE NO FIX for #1/#2 until I greenlight
+the specific cause.
+
+── PART C — the "e2e-journey-2 (Stage 3 exit gate)" check ──
+Find its actual definition. Then:
+- If it runs journey-2 as a REQUIRED check on PRs: make it non-required /
+  conditional until Stage 3. The UI it tests doesn't exist yet, so it fails at
+  assertions even after the bootstrap is fixed — it shouldn't gate Stage 1 PRs.
+- If it's an orphaned/dead job: remove it.
+Report what you found and the change.
+
+── WHAT NOT TO DO ──
+- No `drizzle-kit push --force` anywhere as a schema path. Migrations canonical.
+- Don't remove `preferredCurrency`, delete 078, or make it IF NOT EXISTS.
+- Don't weaken/skip/.fixme any gate to force green.
+- Don't fix #1/#2 before Part B confirms the cause.
+- Don't backfill missing migrations silently if the completeness gate finds gaps.
+
+── VERIFY BEFORE COMMIT (Part A + C) ──
+- selection-controls-gate.yml no longer contains `drizzle-kit push`.
+- Blank DB → migrations → app starts → seed runs clean.
+- #3/#4 green (or the chain-incompleteness gaps reported).
+- tsc clean.
+
+── REPORT ──
+Part A: fixed, or the chain-incompleteness gap list.
+Part B: cause (crash-loop vs not-deployed) with logs — no fix yet.
+Part C: gate definition + the change made.

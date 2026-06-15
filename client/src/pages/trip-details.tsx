@@ -764,7 +764,7 @@ export default function TripDetails() {
                     ) : advisor ? (
                       <div
                         className="flex items-start gap-4 p-4 rounded-xl border border-border bg-muted/20"
-                        data-testid="expert-advisor-card"
+                        data-testid="advisor-card"
                       >
                         <Avatar className="w-14 h-14 flex-shrink-0">
                           <AvatarImage src={advisor.profile_image_url ?? undefined} />
@@ -833,7 +833,7 @@ export default function TripDetails() {
                             <Button
                               className="gap-2"
                               onClick={() => setExpertPickerOpen(true)}
-                              data-testid="button-add-expert"
+                              data-testid="button-find-expert"
                             >
                               <UserPlus className="w-4 h-4" />
                               Add a local expert
@@ -845,14 +845,6 @@ export default function TripDetails() {
                               </Button>
                             </Link>
                           </div>
-                          {/* Expert escalation upsell — CON-A.P7 / N3 */}
-                          <div className="mt-6">
-                            <EscalationCTA
-                              tripId={trip.id}
-                              destination={trip.destination}
-                              eventType={(trip as any).eventType}
-                            />
-                          </div>
                         </div>
                         <div className="relative">
                           <img
@@ -863,6 +855,15 @@ export default function TripDetails() {
                         </div>
                       </div>
                     )}
+
+                    {/* Expert escalation upsell — always visible on expert tab (CON-A.P7 / N3) */}
+                    <div>
+                      <EscalationCTA
+                        tripId={trip.id}
+                        destination={trip.destination}
+                        eventType={(trip as any).eventType}
+                      />
+                    </div>
 
                     {/* Expert Suggestions Panel */}
                     {advisor && (

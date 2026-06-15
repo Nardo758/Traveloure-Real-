@@ -451,8 +451,12 @@ export async function resolveCommissionRates(
     return buildRatesFromBand(band.rate, insuranceFields);
   }
 
-  // 3.0.1b: Fail-loud — missing band = production misconfiguration, not a silent fallback.
-  // All required bands are seeded by Migration 033 (verified in 3.0.1a audit).
+  // Fail loud — a missing or flat band means the DB is misconfigured.
+  // A silent fallback to expert_standard would bill at the wrong rate (75/25)
+  // for any category whose band is absent, masking the misconfiguration in
+  // production. An explicit throw surfaces the problem immediately so it can
+  // be fixed (apply migration 087 or whichever migration seeds the missing band)
+  // rather than silently charging the wrong commission.
   throw new Error(
     `commission band missing: bandKey=${bandKey}, source=${source || "null"}, ` +
     `category=${category || "null"}. Ensure migrations are applied and the band is active.`,
