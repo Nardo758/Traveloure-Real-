@@ -2606,6 +2606,65 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
   });
 
 
+router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { requesterType, requesterId, amountCents, notes } = req.body;
+      if (!requesterType || !requesterId) {
+        return res.status(400).json({ error: "requesterType and requesterId are required" });
+      }
+      if (!['expert', 'provider'].includes(requesterType)) {
+        return res.status(400).json({ error: "requesterType must be 'expert' or 'provider'" });
+      }
+
+      let summary;
+      if (requesterType === 'expert') {
+        summary = await storage.getExpertEarningsSummary(requesterId);
+      } else {
+        summary = await storage.getProviderEarningsSummary(requesterId);
+      }
+
+      const payoutAmountCents = amountCents ?? Math.round(summary.available * 100);
+      if (payoutAmountCents <= 0) {
+        return res.status(400).json({ error: "No available earnings to payout" });
+      }
+      if (payoutAmountCents > Math.round(summary.available * 100)) {
+        return res.status(400). json({ error: "Payout amount exceeds available earnings" });
+      }
+
+      let payout;
+      const now = new Date();
+      if (requesterType === 'expert') {
+        payout = await storage.createExpertPayout({
+          expertId: requesterId,
+          amount: (payoutAmountCents / 100).toFixed(2),
+          status: "pending",
+          requestedAt: now,
+          notes: notes || "Admin-triggered payout",
+        });
+      } else {
+        payout = await storage.createProviderPayout({
+          providerId: requesterId,
+          amount: (payoutAmountCents / 100).toFixed(2),
+          status: "pending",
+          requestedAt: now,
+          notes: notes || "Admin-triggered payout",
+        });
+      }
+
+      res.status(201).json({ ...payout, requesterType });
+    } catch (error: any) {
+      console.error("Error creating admin payout:", error);
+      res.status(500).json({ message: "Failed to create payout", error: error.message });
+    }
+  });
+
 router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
