@@ -8,24 +8,6 @@
 //   C. Expert match card surfaces in discover with destination context
 //   D. Expert advisor request is sent from trip-details expert tab
 //
-/* @deploy-only: This spec requires an HTTPS origin to receive the session cookie.
- *
- * Root cause: server/replit_integrations/auth/replitAuth.ts configures the session
- * cookie with { secure: true } unconditionally (no NODE_ENV guard). HTTP origins
- * (http://localhost) cannot receive a Secure cookie, so every request lands
- * unauthenticated and all authenticated flows silently fail.
- *
- * Resolution options (prerequisite for making this runnable in CI):
- *   Option A — env-gate the Secure flag:
- *     secure: process.env.NODE_ENV === 'production'
- *   Option B — run CI via HTTPS using a self-signed cert + --ignore-certificate-errors
- *
- * Until one of the above is applied, run this spec ONLY against an HTTPS deploy:
- *   BASE_URL=https://<your-replit-deploy>.replit.app npx playwright test journey-2
- *
- * TODO: Before releasing Stage 4, apply Option A or B and add a CI job that mirrors
- * the e2e-selection-controls job in .github/workflows/selection-controls-gate.yml.
- */
 
 import { test, expect, authFile } from '../fixtures/roles';
 
