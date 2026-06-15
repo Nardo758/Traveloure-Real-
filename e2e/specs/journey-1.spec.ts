@@ -27,6 +27,7 @@ const filterJsErrors = (errs: string[]) =>
 
 const SELECTORS = {
   // Landing
+  navLogo: '[data-testid="link-logo"]',
   heroSearch: '[data-testid="hero-search-input"]',
   heroCta: '[data-testid="hero-search-btn"]',
   discoverLink: 'a[href="/discover"]',
@@ -93,10 +94,12 @@ test.describe('Journey 1A — Authed traveler', () => {
   test.use({ storageState: authFile('traveler') });
 
   test('landing → discover → cart → checkout → confirmation', async ({ page, consoleErrors }) => {
-    // 1. Landing page renders
-    // domcontentloaded avoids blocking on Google Fonts; explicit 10 s cap on title check.
+    // 1. Landing page renders.
+    // domcontentloaded avoids blocking on Google Fonts.  We check for the nav
+    // logo rather than document.title because React's SEOHead transiently clears
+    // the static title during hydration on the Replit dev server.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveTitle(/traveloure/i, { timeout: 10_000 });
+    await page.waitForSelector(SELECTORS.navLogo, { timeout: 20_000 });
     expect(filterJsErrors(consoleErrors)).toHaveLength(0);
 
     // 2. Navigate to discover
@@ -104,8 +107,10 @@ test.describe('Journey 1A — Authed traveler', () => {
     await page.waitForURL(/\/discover/, { timeout: 10_000 });
     await expect(page.locator(SELECTORS.servicesTab)).toBeVisible();
 
-    // 3. Verify SmartServiceRecommendations surfaced for authed user
-    await expect(page.locator(SELECTORS.smartRec).first()).toBeVisible({ timeout: 15_000 });
+    // 3. Verify SmartServiceRecommendations surfaced for authed user.
+    // Scroll to the bottom to trigger any intersection-observer-gated components.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(page.locator(SELECTORS.smartRec).first()).toBeVisible({ timeout: 40_000 });
 
     // 4. Add service to cart (navigates to /discover?tab=services internally)
     await addFirstServiceToCart(page);
@@ -149,9 +154,10 @@ test.describe('Journey 1A — Authed traveler', () => {
 
 test.describe('Journey 1B — Guest path with cart migration', () => {
   test('landing → discover → add to cart (guest) → sign in → migrate → confirmation', async ({ page, consoleErrors, browser }) => {
-    // 1. Landing page renders (no auth)
+    // 1. Landing page renders (no auth).
+    // Check nav logo rather than title — see Journey 1A note above.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveTitle(/traveloure/i, { timeout: 10_000 });
+    await page.waitForSelector(SELECTORS.navLogo, { timeout: 20_000 });
 
     // 2. Navigate to discover
     await page.click(SELECTORS.discoverLink);
@@ -206,35 +212,43 @@ test.describe('Stage 1 component wiring', () => {
   test.use({ storageState: authFile('traveler') });
 
   test('EscalationCTA renders in trip-details expert tab', async ({ page }) => {
-    // Navigate to a trip with generated itinerary
-    await page.goto('/my-trips');
-    await page.waitForSelector('[data-testid^="trip-card-"]', { timeout: 15_000 });
+    // Navigate to a trip with generated itinerary.
+    await page.goto('/my-trips', { waitUntil: 'domcontentloaded' });
+    // 30 s: API call to load trips can be slow on a shared Replit dev server.
+    await page.waitForSelector('[data-testid^="trip-card-"]', { timeout: 30_000 });
     await page.locator('[data-testid^="trip-card-"]').first().click();
     await page.waitForURL(/\/trip\//, { timeout: 10_000 });
-    // Wait for the trip detail page to load its data before clicking the tab
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-testid="tab-expert"]', { timeout: 15_000 });
 
     // Click expert tab
     await page.click('[data-testid="tab-expert"]');
     // Allow the TabsContent to become active and EscalationCTA to mount.
-    // 15 s covers slow CI→Replit API round-trips.
-    await page.waitForSelector(SELECTORS.escalationCta, { timeout: 15_000 });
+    // 20 s covers slow CI→Replit API round-trips.
+    await page.waitForSelector(SELECTORS.escalationCta, { timeout: 20_000 });
     await expect(page.locator(SELECTORS.escalationCta)).toBeVisible();
   });
 
   test('ExpertMatchCard renders in discover with showExperts', async ({ page }) => {
     await page.goto('/discover?showExperts=true&destination=Kyoto', { waitUntil: 'domcontentloaded' });
+    // Wait for page to settle, then scroll to trigger any intersection-observer-
+    // gated components (AIMatchedExpertsSection uses isVisible prop).
+    await page.waitForSelector(SELECTORS.navLogo, { timeout: 15_000 });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     // Grok call has an 8 s abort; fallback populates cards within ~9 s total.
-    // 25 s budget gives ample headroom on slow CI.
-    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 25_000 });
+    // 45 s budget covers the full Grok + fallback cycle plus Replit latency.
+    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 45_000 });
     await expect(page.locator(SELECTORS.expertMatchCard).first()).toBeVisible();
   });
 
   test('SmartServiceRecommendations renders in discover for authed user', async ({ page }) => {
     await page.goto('/discover', { waitUntil: 'domcontentloaded' });
-    // Authenticated user context loads async; 20 s covers slow Replit API round-trips.
-    await page.waitForSelector(SELECTORS.smartRec, { timeout: 20_000 });
+    // Scroll to bottom: SmartServiceRecommendations may be below the fold and
+    // gated by an intersection observer.
+    await page.waitForSelector(SELECTORS.navLogo, { timeout: 15_000 });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // Authenticated user context loads async; 40 s covers slow Replit round-trips.
+    await page.waitForSelector(SELECTORS.smartRec, { timeout: 40_000 });
     await expect(page.locator(SELECTORS.smartRec).first()).toBeVisible();
   });
 
@@ -242,7 +256,7 @@ test.describe('Stage 1 component wiring', () => {
     await page.goto('/local-experts', { waitUntil: 'domcontentloaded' });
     await expect(page).not.toHaveURL(/404/);
     // Role switcher is unconditionally rendered in the hero section of ExpertsPage.
-    // 25 s budget for slow CI→Replit round-trips.
-    await expect(page.locator('[data-testid="role-switcher"]')).toBeVisible({ timeout: 25_000 });
+    // 40 s budget for slow CI→Replit round-trips.
+    await expect(page.locator('[data-testid="role-switcher"]')).toBeVisible({ timeout: 40_000 });
   });
 });

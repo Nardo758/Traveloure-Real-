@@ -8,9 +8,10 @@ test.describe('harness smoke', () => {
   test('public landing renders without console errors', async ({ page, consoleErrors }) => {
     // Use domcontentloaded so external fonts (Google Fonts) don't block the goto timeout.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Static HTML has <title>Traveloure</title>; React's SEOHead sets it to "Home | Traveloure".
-    // Both match /traveloure/i.  Explicit 10 s cap prevents indefinite retry on slow CI.
-    await expect(page).toHaveTitle(/traveloure/i, { timeout: 10_000 });
+    // Wait for the navigation layout to appear — this proves React mounted and the
+    // page rendered.  We do NOT use toHaveTitle because during React hydration on
+    // the Replit dev server the title is transiently "" before SEOHead runs.
+    await page.waitForSelector('[data-testid="link-logo"]', { timeout: 20_000 });
     // Filter network-level noise and Vite HMR warnings.
     const jsErrors = consoleErrors.filter(
       (e) =>

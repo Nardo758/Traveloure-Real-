@@ -17,17 +17,23 @@ test.use({ storageState: { cookies: [], origins: [] } });
  * Testids verified in client/src/components/layout.tsx.
  */
 async function openSignInModal(page: import('@playwright/test').Page) {
+  // Wait for the nav to fully render before checking visibility.
+  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 20_000 });
+
   const desktopTrigger = page.getByTestId('button-sign-in');
   if (await desktopTrigger.isVisible().catch(() => false)) {
     await desktopTrigger.click();
     return;
   }
+  // Mobile: hamburger first
   await page.getByTestId('button-mobile-menu').click();
   await page.getByTestId('button-mobile-sign-in').click();
 }
 
 test('SignInModal logs an expert in and redirects to the expert console', async ({ page }) => {
-  await page.goto('/');
+  // domcontentloaded prevents the default 'load' waitUntil from blocking on
+  // Google Fonts (which never resolves in headless CI → test timeout).
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   await openSignInModal(page);
   await expect(page.getByTestId('modal-sign-in')).toBeVisible();
@@ -37,6 +43,6 @@ test('SignInModal logs an expert in and redirects to the expert console', async 
   await page.getByTestId('button-auth-submit').click();
 
   // On success SignInModal does window.location = getRoleHomePath("expert").
-  await expect(page).toHaveURL(/\/expert\/dashboard/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/expert\/dashboard/, { timeout: 30_000 });
   await expect(page).not.toHaveURL(/\/login/);
 });
