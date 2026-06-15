@@ -54,14 +54,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
 
   test('EnhancedPlanningModal generates itinerary and redirects to comparison or trip', async ({ page, consoleErrors }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Soft skip when link-logo doesn't appear — server may still be cold after warm-up.
-    // This test skips anyway once we discover the planning trigger is absent.
-    const navReady = await page.waitForSelector(SELECTORS.navLogo, { timeout: 90_000 }).then(() => true).catch(() => false);
-    if (!navReady) {
-      console.log('Journey 2A: nav not ready after 90 s — skipping (server cold)');
-      test.skip();
-      return;
-    }
+    await waitForNav(page);
 
     // Check the planning modal trigger exists before trying to open it.
     const triggerCount = await countVisible(page, SELECTORS.planningModalTrigger, 10_000);
