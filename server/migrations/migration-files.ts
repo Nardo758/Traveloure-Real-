@@ -98,4 +98,16 @@ export const MIGRATION_FILES = [
   "076_phase2_optimizer_prices.sql",
   "077_event_coordination_profiles.sql",
   "078_user_preferred_currency.sql",
+  // Source-branch files 067–074 (original names): recovered and registered at 079–086.
+  // These ran in source-branch environments under their original 06x numbers but were
+  // absent from MIGRATION_FILES after the merge. All SQL is idempotent so running them
+  // on environments that already applied the DDL via drizzle-kit push is a no-op.
+  "079_season_tag_on_offering_types.sql",
+  "080_service_demand_requests.sql",
+  "081_demand_request_notified_at.sql",
+  "082_content_impressions.sql",
+  "083_impressions_dedup_index.sql",
+  "084_itinerary_changes_source_tracking.sql",
+  "085_affiliate_clicks_content_fields.sql",
+  "086_seed_feed_composition_settings.sql",
 ] as const;
