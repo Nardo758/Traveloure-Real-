@@ -15,8 +15,17 @@ export default async function globalSetup(config: FullConfig) {
   // The session cookie is Secure — over http it is dropped, so login would 200
   // but /api/auth/user would 401, misreading as bad credentials. Catch the real
   // cause up front.
-  if (!baseURL.startsWith('https://')) {
-    throw new Error('E2E_BASE_URL must be HTTPS — the session cookie is Secure and is dropped over http');
+  // In production the session cookie is Secure — https is required.
+  // In development (NODE_ENV !== 'production') Task #638 env-gated the Secure
+  // flag, so http://localhost works for local CI runs.
+  const isLocalHttp =
+    process.env.NODE_ENV !== 'production' &&
+    (baseURL.includes('localhost') || baseURL.includes('127.0.0.1'));
+  if (!baseURL.startsWith('https://') && !isLocalHttp) {
+    throw new Error(
+      'E2E base URL must be HTTPS for production deployments — the session cookie is Secure and is dropped over http. ' +
+        'For local CI runs set NODE_ENV=development and point BASE_URL at localhost.',
+    );
   }
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
