@@ -4,19 +4,105 @@
  * Keep runtime and tests on this single list. Importing from here avoids
  * pulling in the DB client during chain-integrity checks.
  *
- * Notes:
- * - `052_phase5_expert_endorsements.sql` is intentionally excluded. It is a
- *   superseded duplicate schema attempt for `upsell_expert_endorsements` whose
- *   columns (service_id, offering_type_key, city_key, active) diverge from the
- *   live Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The CI
- *   workflow runs drizzle-kit push before migrations, so the table already exists
- *   without an `active` column when 052 runs — its partial indexes would crash.
- *   Do NOT register or execute this file (per architecture doc).
- * - `051_affiliate_booking_trip_link.sql` was renamed 060_affiliate_booking_trip_link.sql
- *   to eliminate the duplicate 051_ prefix collision with
- *   051_schema_migrations_ledger_bootstrap.sql.
- * - `058_*` is intentionally absent — the planned migration was cancelled and its DDL
- *   was folded into `057_expert_offering_type_fk.sql`. The sequence jumps from 057 → 059.
+ * ─── Intentional gaps / exclusions ──────────────────────────────────────────
+ *
+ * 052  `052_phase5_expert_endorsements.sql` is excluded. It is a superseded
+ *      duplicate schema attempt for `upsell_expert_endorsements` whose columns
+ *      (service_id, offering_type_key, city_key, active) diverge from the live
+ *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The CI
+ *      workflow runs drizzle-kit push before migrations, so the table already
+ *      exists without an `active` column when 052 runs — its partial indexes
+ *      would crash. Do NOT register or execute this file.
+ *
+ * 051  `051_affiliate_booking_trip_link.sql` was renamed
+ *      060_affiliate_booking_trip_link.sql to eliminate the duplicate 051_
+ *      prefix collision with 051_schema_migrations_ledger_bootstrap.sql.
+ *
+ * 058  Intentionally absent — the planned migration was cancelled and its DDL
+ *      was folded into `057_expert_offering_type_fk.sql`. Sequence: 057 → 059.
+ *
+ * ─── 062–063 orphaned source-branch files (deleted, never registered) ────────
+ *
+ * 062  `062_concierge_booking_fee_band.sql` — an orphaned source-branch file
+ *      that seeded the 'expert_concierge_booking' fee_band row. Its DDL is
+ *      fully covered by the registered `064_concierge_booking_fee_band.sql`
+ *      which contains identical idempotent DDL (ON CONFLICT DO NOTHING).
+ *      Deleted from disk; was never registered here.
+ *
+ * 063  `063_seed_booking_concierge_offering_type.sql` — an orphaned source-
+ *      branch file that seeded the 'booking_concierge' expert_offering_types
+ *      row. Its DDL is fully covered by the registered
+ *      `065_seed_booking_concierge_offering_type.sql`. Deleted from disk;
+ *      was never registered here.
+ *
+ * ─── 067–074 source-branch / canonical consolidation audit ──────────────────
+ *
+ * During a branch merge, two files briefly existed for each number 067–074:
+ * an older source-branch file and the newer canonical file now registered here.
+ * Both sets had applied_at timestamps in the schema_migrations ledger (all DDL
+ * used CREATE TABLE IF NOT EXISTS / ON CONFLICT DO NOTHING — no crashes).
+ * The source-branch files have been deleted from disk; the canonical files are
+ * the sole authoritative versions. Per-number audit:
+ *
+ * 067  Retired: `067_season_tag_on_offering_types.sql`
+ *      (ALTER TABLE offering_types ADD COLUMN season_tags; superseded — the
+ *      seasonal data model was redesigned as a standalone seasonal_opportunities
+ *      table in 068). Canonical: `067_seed_feed_composition_settings.sql`
+ *      (platform_settings seed for Discover feed composition knobs).
+ *
+ * 068  Retired: `068_service_demand_requests.sql`
+ *      (early schema draft for demand signals; superseded by the expanded
+ *      service_demand_signals table in 069). Canonical: `068_season_tags.sql`
+ *      (CREATE TABLE seasonal_opportunities + indexes).
+ *
+ * 069  Retired: `069_demand_request_notified_at.sql`
+ *      (ALTER TABLE adding notified_at column; column was incorporated directly
+ *      into the CREATE TABLE in 069 instead). Canonical: `069_demand_requests.sql`
+ *      (CREATE TABLE service_demand_signals + market_intelligence +
+ *      pricing_intelligence + demand_signals + indexes).
+ *
+ * 070  Retired: `070_content_impressions.sql`
+ *      (early schema for provider impression counters; superseded by the
+ *      richer provider_performance_metrics table in 071). Canonical:
+ *      `070_service_recommendations.sql` (CREATE TABLE service_recommendations +
+ *      recommendation_conversions + service_gap_analysis + indexes).
+ *
+ * 071  Retired: `071_impressions_dedup_index.sql`
+ *      (CREATE UNIQUE INDEX IF NOT EXISTS on the early impressions table; table
+ *      was superseded so index is moot). Canonical: `071_provider_impressions.sql`
+ *      (CREATE TABLE provider_performance_metrics + market_intelligence +
+ *      pricing_intelligence + demand_signals + indexes).
+ *
+ * 072  Retired: `072_itinerary_changes_source_tracking.sql`
+ *      (ALTER TABLE itinerary_changes ADD COLUMN source_type; absorbed into the
+ *      CREATE TABLE in a later schema iteration). Canonical:
+ *      `072_changes_tracking.sql` (CREATE TABLE content_placement_rules +
+ *      indexes for admin-editable affiliate/content surface placement rules).
+ *
+ * 073  Retired: `073_affiliate_clicks_content_fields.sql`
+ *      (ALTER TABLE affiliate_clicks ADD COLUMN content_source, content_id;
+ *      columns folded into the base CREATE TABLE in 073 instead). Canonical:
+ *      `073_affiliate_clicks_base.sql` (CREATE TABLE affiliate_clicks +
+ *      attribution columns + indexes; the ALTER in migration 005 is idempotent
+ *      whether or not this CREATE ran first).
+ *
+ * 074  Retired: `074_seed_feed_composition_settings.sql`
+ *      (a seed attempt for platform_settings; superseded by 067 which landed
+ *      the same rows with the same ON CONFLICT DO NOTHING guard). Canonical:
+ *      `074_affiliate_booking_requests_base.sql` (CREATE TABLE
+ *      affiliate_booking_requests + indexes; migration 060 adds trip_id FK via
+ *      ALTER TABLE IF NOT EXISTS idempotently).
+ *
+ * ─── 075 content duplicate (deleted, removed from list) ─────────────────────
+ *
+ * 075  `075_seed_feed_composition_settings.sql` was byte-for-byte identical to
+ *      `067_seed_feed_composition_settings.sql` (same INSERT … ON CONFLICT DO
+ *      NOTHING rows). Running both was harmless (idempotent) but confusing.
+ *      Consolidated into 067; 075 deleted from disk and removed from this list.
+ *      Any prod DB that already has 075 in schema_migrations can leave it — the
+ *      runner only fails when a listed file is absent from the ledger, not vice
+ *      versa. New prod deploys should stamp 075 via the bootstrap script to
+ *      avoid a "file not found" error if the ledger was captured mid-conflict.
  */
 export const MIGRATION_FILES = [
   "001_guest_invite_system.sql",
@@ -94,7 +180,6 @@ export const MIGRATION_FILES = [
   "072_changes_tracking.sql",
   "073_affiliate_clicks_base.sql",
   "074_affiliate_booking_requests_base.sql",
-  "075_seed_feed_composition_settings.sql",
   "076_phase2_optimizer_prices.sql",
   "077_event_coordination_profiles.sql",
   "078_user_preferred_currency.sql",
