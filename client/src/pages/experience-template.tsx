@@ -93,6 +93,7 @@ import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
@@ -2023,6 +2024,25 @@ export default function ExperienceTemplatePage() {
             </CardContent>
           </Card>
 
+          {/* Linked Trip PlanCard Preview */}
+          {linkedTripId && (
+            <div className="w-full max-w-xl mx-auto mt-4 px-4 sm:px-0">
+              <PlanCard
+                trip={{
+                  id: linkedTripId,
+                  destination: destination || "",
+                  title: experienceType?.name,
+                  startDate: startDate?.toISOString(),
+                  endDate: endDate?.toISOString(),
+                  numberOfTravelers: adults + kids,
+                  budget: cartTotal,
+                  eventType: experienceType?.name?.toLowerCase(),
+                }}
+                stage="summary"
+                role="owner"
+              />
+            </div>
+          )}
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
