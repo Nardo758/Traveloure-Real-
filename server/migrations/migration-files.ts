@@ -195,12 +195,17 @@ export const MIGRATION_FILES = [
   "084_itinerary_changes_source_tracking.sql",
   "085_affiliate_clicks_content_fields.sql",
   "086_seed_feed_composition_settings.sql",
-  // 087: Explicit seed for the 8 service-category fee bands (activities, transport,
-  // accommodation, food, entertainment, shopping, sightseeing, culture).
+  // 087: Explicit seed for the 9 service-category fee bands (activities, transport,
+  // accommodation, food, dining, entertainment, shopping, sightseeing, culture).
   // These cannot be delegated to 046_phase1_5_enumerate_legacy_bands.sql because
   // 046 reads from booking_fee_configs — which is empty on a blank CI database
   // (runtime-seeded, not schema-push-seeded). Without this migration, commission.ts
-  // throws on any booking whose category is one of these 8 names, crashing the
+  // throws on any booking whose category is one of these names, crashing the
   // server on a fresh DB and silently billing at the wrong rate otherwise.
   "087_seed_category_fee_bands.sql",
+  // 088: Seed the 'dining' fee_band for existing deployments where 087 is already
+  // applied. The verify-fee-config-parity CI gate calls resolveCommissionRates with
+  // category='dining'; without this row the resolver throws "commission band missing".
+  // Idempotent (ON CONFLICT DO NOTHING) — safe on both fresh and existing DBs.
+  "088_seed_dining_fee_band.sql",
 ] as const;
