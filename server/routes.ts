@@ -464,7 +464,7 @@ export async function registerRoutes(
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const status = req.query.status as string | undefined;
     const trips = await storage.getTrips(userId, status);
     res.json(trips);

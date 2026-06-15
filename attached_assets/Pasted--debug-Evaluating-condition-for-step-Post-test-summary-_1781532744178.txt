@@ -1,0 +1,236 @@
+##[debug]Evaluating condition for step: 'Post test summary as PR comment'
+##[debug]Evaluating: always()
+##[debug]Evaluating always:
+##[debug]=> true
+##[debug]Result: true
+##[debug]Starting: Post test summary as PR comment
+##[debug]Loading inputs
+##[debug]Evaluating: format('const fs = require(''fs'');
+##[debug]const reportPath = ''playwright-report/index.html'';
+##[debug]if (!fs.existsSync(reportPath)) return;
+##[debug]const report = fs.readFileSync(reportPath, ''utf8'');
+##[debug]const passed  = (report.match(/passed/g)  || []).length;
+##[debug]const failed  = (report.match(/failed/g)  || []).length;
+##[debug]const skipped = (report.match(/skipped/g) || []).length;
+##[debug]const icon = failed > 0 ? ''❌'' : ''✅'';
+##[debug]const body = `## ${{icon}} E2E Test Results\n\n` +
+##[debug]  `✅ **Passed:** ${{passed}}  ❌ **Failed:** ${{failed}}  ⏭️ **Skipped:** ${{skipped}}\n\n` +
+##[debug]  `[View full report](https://github.com/{0}/actions/runs/{1})`;
+##[debug]github.rest.issues.createComment({{
+##[debug]  issue_number: context.issue.number,
+##[debug]  owner: context.repo.owner,
+##[debug]  repo: context.repo.repo,
+##[debug]  body,
+##[debug]}}).catch(() => console.log(''Could not post comment (OK for non-PR runs)''));
+##[debug]', github.repository, github.run_id)
+##[debug]Evaluating format:
+##[debug]..Evaluating String:
+##[debug]..=> 'const fs = require(''fs'');
+##[debug]const reportPath = ''playwright-report/index.html'';
+##[debug]if (!fs.existsSync(reportPath)) return;
+##[debug]const report = fs.readFileSync(reportPath, ''utf8'');
+##[debug]const passed  = (report.match(/passed/g)  || []).length;
+##[debug]const failed  = (report.match(/failed/g)  || []).length;
+##[debug]const skipped = (report.match(/skipped/g) || []).length;
+##[debug]const icon = failed > 0 ? ''❌'' : ''✅'';
+##[debug]const body = `## ${{icon}} E2E Test Results\n\n` +
+##[debug]  `✅ **Passed:** ${{passed}}  ❌ **Failed:** ${{failed}}  ⏭️ **Skipped:** ${{skipped}}\n\n` +
+##[debug]  `[View full report](https://github.com/{0}/actions/runs/{1})`;
+##[debug]github.rest.issues.createComment({{
+##[debug]  issue_number: context.issue.number,
+##[debug]  owner: context.repo.owner,
+##[debug]  repo: context.repo.repo,
+##[debug]  body,
+##[debug]}}).catch(() => console.log(''Could not post comment (OK for non-PR runs)''));
+##[debug]'
+##[debug]..Evaluating Index:
+##[debug]....Evaluating github:
+##[debug]....=> Object
+##[debug]....Evaluating String:
+##[debug]....=> 'repository'
+##[debug]..=> 'Nardo758/Traveloure-Real-'
+##[debug]..Evaluating Index:
+##[debug]....Evaluating github:
+##[debug]....=> Object
+##[debug]....Evaluating String:
+##[debug]....=> 'run_id'
+##[debug]..=> '27549748024'
+##[debug]=> 'const fs = require(''fs'');
+##[debug]const reportPath = ''playwright-report/index.html'';
+##[debug]if (!fs.existsSync(reportPath)) return;
+##[debug]const report = fs.readFileSync(reportPath, ''utf8'');
+##[debug]const passed  = (report.match(/passed/g)  || []).length;
+##[debug]const failed  = (report.match(/failed/g)  || []).length;
+##[debug]const skipped = (report.match(/skipped/g) || []).length;
+##[debug]const icon = failed > 0 ? ''❌'' : ''✅'';
+##[debug]const body = `## ${icon} E2E Test Results\n\n` +
+##[debug]  `✅ **Passed:** ${passed}  ❌ **Failed:** ${failed}  ⏭️ **Skipped:** ${skipped}\n\n` +
+##[debug]  `[View full report](https://github.com/Nardo758/Traveloure-Real-/actions/runs/27549748024)`;
+##[debug]github.rest.issues.createComment({
+##[debug]  issue_number: context.issue.number,
+##[debug]  owner: context.repo.owner,
+##[debug]  repo: context.repo.repo,
+##[debug]  body,
+##[debug]}).catch(() => console.log(''Could not post comment (OK for non-PR runs)''));
+##[debug]'
+##[debug]Result: 'const fs = require(''fs'');
+##[debug]const reportPath = ''playwright-report/index.html'';
+##[debug]if (!fs.existsSync(reportPath)) return;
+##[debug]const report = fs.readFileSync(reportPath, ''utf8'');
+##[debug]const passed  = (report.match(/passed/g)  || []).length;
+##[debug]const failed  = (report.match(/failed/g)  || []).length;
+##[debug]const skipped = (report.match(/skipped/g) || []).length;
+##[debug]const icon = failed > 0 ? ''❌'' : ''✅'';
+##[debug]const body = `## ${icon} E2E Test Results\n\n` +
+##[debug]  `✅ **Passed:** ${passed}  ❌ **Failed:** ${failed}  ⏭️ **Skipped:** ${skipped}\n\n` +
+##[debug]  `[View full report](https://github.com/Nardo758/Traveloure-Real-/actions/runs/27549748024)`;
+##[debug]github.rest.issues.createComment({
+##[debug]  issue_number: context.issue.number,
+##[debug]  owner: context.repo.owner,
+##[debug]  repo: context.repo.repo,
+##[debug]  body,
+##[debug]}).catch(() => console.log(''Could not post comment (OK for non-PR runs)''));
+##[debug]'
+##[debug]Evaluating: github.token
+##[debug]Evaluating Index:
+##[debug]..Evaluating github:
+##[debug]..=> Object
+##[debug]..Evaluating String:
+##[debug]..=> 'token'
+##[debug]=> '***'
+##[debug]Result: '***'
+##[debug]Evaluating: (runner.debug == '1')
+##[debug]Evaluating Equal:
+##[debug]..Evaluating Index:
+##[debug]....Evaluating runner:
+##[debug]....=> Object
+##[debug]....Evaluating String:
+##[debug]....=> 'debug'
+##[debug]..=> '1'
+##[debug]..Evaluating String:
+##[debug]..=> '1'
+##[debug]=> true
+##[debug]Expanded: ('1' == '1')
+##[debug]Result: true
+##[debug]Loading env
+Run actions/github-script@v7
+request {
+  method: 'POST',
+  baseUrl: 'https://api.github.com',
+  headers: {
+    accept: 'application/vnd.github.v3+json',
+    'user-agent': 'actions/github-script octokit-core.js/5.0.1 Node.js/20.20.2 (linux; x64)'
+  },
+  mediaType: { format: '', previews: [] },
+  request: {
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype] {},
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 0,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    fetch: [Function: proxyFetch],
+    hook: [Function: bound bound register]
+  },
+  url: '/repos/{owner}/{repo}/issues/{issue_number}/comments',
+  issue_number: 119,
+  owner: 'Nardo758',
+  repo: 'Traveloure-Real-',
+  body: '## ❌ E2E Test Results\n' +
+    '\n' +
+    '✅ **Passed:** 6  ❌ **Failed:** 6  ⏭️ **Skipped:** 11\n' +
+    '\n' +
+    '[View full report](https://github.com/Nardo758/Traveloure-Real-/actions/runs/27549748024)'
+}
+POST /repos/Nardo758/Traveloure-Real-/issues/119/comments - 403 in 229ms
+Could not post comment (OK for non-PR runs)
+##[debug]Node Action run completed with exit code 0
+##[debug]Set output result = 
+##[debug]Finishing: Post test summary as PR comment
+0s
+##[debug]Evaluating condition for step: 'Post Setup Node.js'
+##[debug]Evaluating: success()
+##[debug]Evaluating success:
+##[debug]=> false
+##[debug]Result: false
+0s
+##[debug]Evaluating condition for step: 'Post Checkout code'
+##[debug]Evaluating: always()
+##[debug]Evaluating always:
+##[debug]=> true
+##[debug]Result: true
+##[debug]Starting: Post Checkout code
+##[debug]Loading inputs
+##[debug]Evaluating: github.repository
+##[debug]Evaluating Index:
+##[debug]..Evaluating github:
+##[debug]..=> Object
+##[debug]..Evaluating String:
+##[debug]..=> 'repository'
+##[debug]=> 'Nardo758/Traveloure-Real-'
+##[debug]Result: 'Nardo758/Traveloure-Real-'
+##[debug]Evaluating: github.token
+##[debug]Evaluating Index:
+##[debug]..Evaluating github:
+##[debug]..=> Object
+##[debug]..Evaluating String:
+##[debug]..=> 'token'
+##[debug]=> '***'
+##[debug]Result: '***'
+##[debug]Loading env
+Post job cleanup.
+##[debug]Getting git version
+/usr/bin/git version
+git version 2.54.0
+##[debug]0
+##[debug]git version 2.54.0
+##[debug]
+##[debug]Set git useragent to: git/2.54.0 (github-actions-checkout)
+::add-mask::***
+Temporarily overriding HOME='/home/runner/work/_temp/4ff0dedd-a2f1-4205-bec1-eb108075efc0' before making global git config changes
+Adding repository directory to the temporary git global config as a safe directory
+/usr/bin/git config --global --add safe.directory /home/runner/work/Traveloure-Real-/Traveloure-Real-
+##[debug]0
+##[debug]
+/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+##[debug]1
+##[debug]
+/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+##[debug]0
+##[debug]
+/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+http.https://github.com/.extraheader
+##[debug]0
+##[debug]http.https://github.com/.extraheader
+##[debug]
+/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+##[debug]0
+##[debug]
+/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+##[debug]0
+##[debug]
+/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+##[debug]1
+##[debug]
+/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+##[debug]0
+##[debug]
+##[debug]Unsetting HOME override
+##[debug]Node Action run completed with exit code 0
+##[debug]Finishing: Post Checkout code
