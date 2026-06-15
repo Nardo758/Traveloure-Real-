@@ -9,9 +9,9 @@
  * 052  `052_phase5_expert_endorsements.sql` is excluded. It is a superseded
  *      duplicate schema attempt for `upsell_expert_endorsements` whose columns
  *      (service_id, offering_type_key, city_key, active) diverge from the live
- *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The CI
- *      workflow runs drizzle-kit push before migrations, so the table already
- *      exists without an `active` column when 052 runs — its partial indexes
+ *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The baseline
+ *      migration (000) creates the table from the real schema, so when 052 runs
+ *      the table already exists without an `active` column — its partial indexes
  *      would crash. Do NOT register or execute this file.
  *
  * 051  `051_affiliate_booking_trip_link.sql` was renamed
@@ -105,6 +105,13 @@
  *      avoid a "file not found" error if the ledger was captured mid-conflict.
  */
 export const MIGRATION_FILES = [
+  // 000: Full idempotent baseline — every Drizzle-managed table with
+  // CREATE TABLE IF NOT EXISTS, CREATE TYPE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS,
+  // and FK constraints wrapped in DO $$ EXCEPTION WHEN duplicate_object THEN NULL END $$.
+  // Generated from the live schema via pg_dump --schema-only. Runs first on fresh
+  // databases (CI, new deploys) so that migrations 001+ can safely reference all tables.
+  // On existing deployments where the schema already exists, every statement is a no-op.
+  "000_baseline_schema.sql",
   "001_guest_invite_system.sql",
   "002_transport_booking_options.sql",
   "003_fix_test_account_roles.sql",
