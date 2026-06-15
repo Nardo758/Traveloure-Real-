@@ -18,7 +18,7 @@ const EXPERIENCE_TYPES = [
 interface Destination {
   city: string;
   country: string;
-  cityId: string;
+  cityId: string | null;
 }
 
 interface PlanningWithBookingProps {
@@ -160,9 +160,7 @@ export default function PlanningWithBooking({
     const parts = cityInput.split(',').map((s) => s.trim());
     const city = parts[0];
     const country = parts[1] || '';
-    const cityId = `${city.toLowerCase().replace(/\s+/g, '-')}-${country.toLowerCase().substring(0, 2)}`;
-
-    setDestinations([...destinations, { city, country, cityId }]);
+    setDestinations([...destinations, { city, country, cityId: null }]);
     setCityInput('');
   };
 
