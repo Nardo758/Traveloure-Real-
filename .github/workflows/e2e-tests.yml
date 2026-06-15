@@ -49,11 +49,10 @@ jobs:
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
-      - name: Push database schema for E2E seed
-        run: npx drizzle-kit push --force
+      - name: Apply pending migrations to E2E database
+        run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
 
       - name: Seed E2E test accounts
         run: npm run seed:e2e-accounts
