@@ -109,7 +109,12 @@ async function seedE2EAccounts() {
   console.log("Set E2E_BASE_URL to your HTTPS deploy URL and E2E_TEST_PASSWORD to the same password used here.");
 }
 
-seedE2EAccounts().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+export { seedE2EAccounts };
+
+// Run directly (tsx server/seeds/e2e-test-accounts.seed.ts)
+if (process.argv[1] && process.argv[1].endsWith("e2e-test-accounts.seed.ts")) {
+  seedE2EAccounts().catch((err) => {
+    console.error("Seed failed:", err);
+    process.exit(1);
+  });
+}
