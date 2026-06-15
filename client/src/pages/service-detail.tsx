@@ -36,6 +36,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 interface PricingTier {
   label: string;
@@ -88,6 +89,7 @@ interface ProviderVerification {
 export default function ServiceDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
 
   const { data: service, isLoading: serviceLoading } = useQuery<Service>({
@@ -338,8 +340,14 @@ export default function ServiceDetailPage() {
                 <div className="space-y-3">
                   <Button 
                     className="w-full" 
-                    onClick={() => addToCartMutation.mutate()}
-                    disabled={addToCartMutation.isPending || !user}
+                    onClick={() => {
+                      if (!user) {
+                        openSignInModal();
+                        return;
+                      }
+                      addToCartMutation.mutate();
+                    }}
+                    disabled={addToCartMutation.isPending}
                     data-testid="button-add-to-cart"
                   >
                     {addToCartMutation.isPending ? (
@@ -368,11 +376,12 @@ export default function ServiceDetailPage() {
                   </Button>
                 </div>
 
-                {!user && (
-                  <p className="text-xs text-muted-foreground text-center mt-4">
-                    <a href="/" className="underline">Sign in</a> to book this service
+                {/* Provider commission transparency */}
+                <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <p className="text-xs text-muted-foreground text-center">
+                    Provider earns 90% of booking. Platform fee: 10%.
                   </p>
-                )}
+                </div>
               </CardContent>
             </Card>
           </div>

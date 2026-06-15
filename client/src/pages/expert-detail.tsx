@@ -412,7 +412,18 @@ export default function ExpertDetailPage() {
                                     </span>
                                   )}
                                 </div>
-                                <Button>Book Now</Button>
+                                <Button
+                                  onClick={() => {
+                                    if (!isAuthenticated) {
+                                      openSignInModal();
+                                      return;
+                                    }
+                                    navigate(`/cart?expertId=${expertId}&serviceId=${service.id}`);
+                                  }}
+                                  data-testid={`button-book-service-${service.id}`}
+                                >
+                                  Book Now
+                                </Button>
                               </div>
                             </CardContent>
                           </Card>
