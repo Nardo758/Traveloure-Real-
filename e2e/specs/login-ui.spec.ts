@@ -1,8 +1,7 @@
 // e2e/specs/login-ui.spec.ts
 // Exercises the REAL SignInModal UI (not the API path the global-setup fixture
 // uses), so a regression in the modal — trigger, fields, submit, or the
-// post-login redirect — is caught. The API-login fixture stays as session setup
-// for every other spec; this is the one place the human login flow is tested.
+// post-login redirect — is caught.
 
 import { test, expect } from '../fixtures/roles';
 import { ACCOUNTS, PASSWORD } from '../fixtures/accounts';
@@ -11,28 +10,25 @@ import { ACCOUNTS, PASSWORD } from '../fixtures/accounts';
 test.use({ storageState: { cookies: [], origins: [] } });
 
 /**
- * Opens the SignInModal across viewports: the desktop header exposes
- * [data-testid="button-sign-in"] directly; on mobile it lives behind the
- * hamburger ([data-testid="button-mobile-menu"] → button-mobile-sign-in).
- * Testids verified in client/src/components/layout.tsx.
+ * Opens the SignInModal.  Desktop nav exposes [data-testid="button-sign-in"]
+ * directly; on mobile it lives behind the hamburger.
+ *
+ * We wait for link-logo with a 60 s budget because the Replit Vite dev server
+ * needs up to ~50 s to compile and serve the JS bundle on a cold start.
  */
 async function openSignInModal(page: import('@playwright/test').Page) {
-  // Wait for the nav to fully render before checking visibility.
-  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 20_000 });
+  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 60_000 });
 
   const desktopTrigger = page.getByTestId('button-sign-in');
   if (await desktopTrigger.isVisible().catch(() => false)) {
     await desktopTrigger.click();
     return;
   }
-  // Mobile: hamburger first
   await page.getByTestId('button-mobile-menu').click();
   await page.getByTestId('button-mobile-sign-in').click();
 }
 
 test('SignInModal logs an expert in and redirects to the expert console', async ({ page }) => {
-  // domcontentloaded prevents the default 'load' waitUntil from blocking on
-  // Google Fonts (which never resolves in headless CI → test timeout).
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   await openSignInModal(page);
@@ -42,7 +38,6 @@ test('SignInModal logs an expert in and redirects to the expert console', async 
   await page.getByTestId('input-password').fill(PASSWORD);
   await page.getByTestId('button-auth-submit').click();
 
-  // On success SignInModal does window.location = getRoleHomePath("expert").
   await expect(page).toHaveURL(/\/expert\/dashboard/, { timeout: 30_000 });
   await expect(page).not.toHaveURL(/\/login/);
 });

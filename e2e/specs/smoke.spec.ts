@@ -1,18 +1,16 @@
 // e2e/specs/smoke.spec.ts
 // Proves the harness is wired: public page renders, and each saved session is authenticated.
-// Once this is green, layer the conformance table and the five-flow specs on top.
 
 import { test, expect, authFile } from '../fixtures/roles';
 
 test.describe('harness smoke', () => {
   test('public landing renders without console errors', async ({ page, consoleErrors }) => {
-    // Use domcontentloaded so external fonts (Google Fonts) don't block the goto timeout.
+    // domcontentloaded prevents the goto from blocking on Google Fonts (external CDN).
+    // link-logo is a React-rendered element; Vite dev server in Replit needs up to
+    // 60 s to compile and serve the JS bundle on first request after a cold start.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Wait for the navigation layout to appear — this proves React mounted and the
-    // page rendered.  We do NOT use toHaveTitle because during React hydration on
-    // the Replit dev server the title is transiently "" before SEOHead runs.
-    await page.waitForSelector('[data-testid="link-logo"]', { timeout: 20_000 });
-    // Filter network-level noise and Vite HMR warnings.
+    await page.waitForSelector('[data-testid="link-logo"]', { timeout: 60_000 });
+
     const jsErrors = consoleErrors.filter(
       (e) =>
         !e.includes('Failed to load resource') &&
