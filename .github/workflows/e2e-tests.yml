@@ -49,6 +49,12 @@ jobs:
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
+      - name: Push database schema for E2E seed
+        run: npx drizzle-kit push --force
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+
       - name: Seed E2E test accounts
         run: npm run seed:e2e-accounts
         env:
