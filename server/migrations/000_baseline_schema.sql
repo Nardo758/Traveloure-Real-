@@ -2,8 +2,10 @@
 -- Idempotent baseline DDL for all tables managed by the Drizzle ORM.
 -- Runs first in the migration chain on a fresh CI database so that
 -- migrations 001+ can safely add FKs/columns to pre-existing tables.
--- All DDL is IF NOT EXISTS; FK constraints are wrapped in DO $$ blocks.
--- Generated from the live schema via pg_dump --schema-only.
+-- Generated from the live schema via pg_dump --schema-only and transformed:
+--   CREATE TABLE/SEQUENCE/INDEX -> IF NOT EXISTS
+--   CREATE TYPE (no IF NOT EXISTS in Postgres) -> DO $$ EXCEPTION WHEN duplicate_object
+--   ALTER TABLE ADD CONSTRAINT -> DO $$ EXCEPTION WHEN duplicate_object
 
 
 --
@@ -13,7 +15,8 @@
 
 
 
-CREATE TYPE IF NOT EXISTS public.content_status AS ENUM (
+DO $$ BEGIN
+  CREATE TYPE public.content_status AS ENUM (
     'draft',
     'pending_review',
     'published',
@@ -23,8 +26,11 @@ CREATE TYPE IF NOT EXISTS public.content_status AS ENUM (
     'archived',
     'deleted'
 );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE IF NOT EXISTS public.content_type AS ENUM (
+DO $$ BEGIN
+  CREATE TYPE public.content_type AS ENUM (
     'trip',
     'itinerary',
     'service',
@@ -43,17 +49,16 @@ CREATE TYPE IF NOT EXISTS public.content_type AS ENUM (
     'affiliate_product',
     'other'
 );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE FUNCTION public.update_updated_at_column() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
   NEW.updated_at = NOW();
-
-RETURN NEW;
-
+  RETURN NEW;
 END;
-
 $$;
 
 CREATE TABLE IF NOT EXISTS public.access_audit_logs (
