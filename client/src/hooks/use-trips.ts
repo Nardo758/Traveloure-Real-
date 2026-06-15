@@ -167,6 +167,35 @@ export function useGenerateItinerary() {
   });
 }
 
+export function useOptimizeTrip() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (tripId: string) => {
+      const res = await fetch(`/api/trips/${tripId}/optimize`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to optimize trip");
+      return res.json() as Promise<{ comparisonId: string; status: string; message: string }>;
+    },
+    onSuccess: (data, tripId) => {
+      queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", tripId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "plancard"] });
+      toast({
+        title: "Optimization Started",
+        description: "AI is generating optimized itinerary variants. Check back in a moment.",
+      });
+      if (data?.comparisonId) {
+        window.location.href = `/itinerary-comparison/${data.comparisonId}`;
+      }
+    },
+  });
+}
+
 export function useGeneratedItinerary(tripId: string) {
   return useQuery({
     queryKey: ["/api/generated-itineraries", tripId],

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
+import { useTrip, useOptimizeTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
@@ -23,6 +23,7 @@ import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCa
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
 import { InlineTransportSelector, type InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 
 type Section = "activities" | "transport";
 
@@ -136,7 +137,7 @@ export default function TripDetails() {
   const deepSection = searchParams.get("section");
   const justOptimized = searchParams.get("optimized") === "1";
   const { data: trip, isLoading } = useTrip(id || "");
-  const generateItinerary = useGenerateItinerary();
+  const optimizeTrip = useOptimizeTrip();
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
   const { user } = useAuth();
@@ -155,6 +156,7 @@ export default function TripDetails() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
+  const [showPlanningModal, setShowPlanningModal] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
   // G7: "Plan ready" banner
   const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
@@ -524,11 +526,11 @@ export default function TripDetails() {
                       Share with friends
                     </Button>
                     <Button 
-                      onClick={() => generateItinerary.mutate(trip.id)}
-                      disabled={generateItinerary.isPending}
+                      onClick={() => optimizeTrip.mutate(trip.id)}
+                      disabled={optimizeTrip.isPending}
                       data-testid="button-regenerate"
                     >
-                      {generateItinerary.isPending ? (
+                      {optimizeTrip.isPending ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
                         <Sparkles className="w-4 h-4 mr-2" />
@@ -542,7 +544,7 @@ export default function TripDetails() {
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
                   {/* Itinerary Timeline */}
-                  {(itineraryLoading || generateItinerary.isPending) ? (
+                  {(itineraryLoading || optimizeTrip.isPending) ? (
                     <div className="space-y-6">
                       {[1, 2, 3].map((i) => (
                         <div key={i} className="space-y-3">
@@ -570,14 +572,24 @@ export default function TripDetails() {
                       <p className="text-muted-foreground max-w-md mx-auto mb-6">
                         Generate a personalized day-by-day plan for {trip.destination} using AI.
                       </p>
-                      <Button
-                        onClick={() => generateItinerary.mutate(trip.id)}
-                        disabled={generateItinerary.isPending}
-                        data-testid="button-generate-itinerary"
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Generate My Itinerary
-                      </Button>
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Button
+                          onClick={() => optimizeTrip.mutate(trip.id)}
+                          disabled={optimizeTrip.isPending}
+                          data-testid="button-generate-itinerary"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate My Itinerary
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowPlanningModal(true)}
+                          data-testid="button-plan-with-preferences"
+                        >
+                          <MapPin className="w-4 h-4 mr-2" />
+                          Plan with Preferences
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -1353,6 +1365,25 @@ export default function TripDetails() {
           </p>
         </DialogContent>
       </Dialog>
+
+      {/* Enhanced Planning Modal — Stage 3.1 wiring */}
+      <EnhancedPlanningModal
+        isOpen={showPlanningModal}
+        onClose={() => setShowPlanningModal(false)}
+        initialDestination={(() => {
+          if (!trip?.destination) return null;
+          const parts = trip.destination.split(',').map((s) => s.trim());
+          const city = parts[0] || trip.destination;
+          const country = parts[1] || '';
+          return {
+            city,
+            country,
+            cityId: `${city.toLowerCase().replace(/\s+/g, '-')}-${country.toLowerCase().substring(0, 2)}`,
+          };
+        })()}
+        mode="single"
+        userId={user?.id || ''}
+      />
     </div>
   );
 }
