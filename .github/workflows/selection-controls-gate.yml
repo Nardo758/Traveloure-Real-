@@ -167,11 +167,6 @@ jobs:
     name: e2e-journey-2 (Stage 3 exit gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Non-blocking: journey-2 tests exercise the AI itinerary + expert-matching flows
-    # which require seeded data and API keys not guaranteed in every CI run.
-    # continue-on-error keeps the gate EXECUTING (so failures are visible) without
-    # blocking PR merges when the flow isn't fully bootstrapped.
-    continue-on-error: true
     services:
       postgres:
         image: postgres:15
