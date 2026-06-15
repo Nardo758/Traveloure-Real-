@@ -3709,18 +3709,29 @@ router.post("/api/geocode", async (req, res) => {
 
   // Expert Matching - Match experts to traveler needs
   const expertMatchSchema = z.object({
+    // Legacy format: full travelerProfile object
     travelerProfile: z.object({
       destination: z.string(),
       tripDates: z.object({
         start: z.string(),
         end: z.string(),
-      }),
+      }).optional(),
       eventType: z.string().optional(),
       budget: z.number().optional(),
       travelers: z.number(),
       interests: z.array(z.string()).optional(),
       preferences: z.record(z.any()).optional(),
-    }),
+    }).optional(),
+    // New format from AIMatchedExpertsSection
+    tripDetails: z.object({
+      destination: z.string(),
+      dates: z.object({ start: z.string().optional(), end: z.string().optional() }).optional(),
+      travelers: z.number().optional(),
+      experienceType: z.string().optional(),
+      preferences: z.array(z.string()).optional(),
+      budget: z.object({ min: z.number(), max: z.number() }).optional(),
+    }).optional(),
+    tripId: z.string().optional(),
     expertIds: z.array(z.string()).optional(),
     limit: z.number().optional().default(5),
   });
@@ -3733,21 +3744,41 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
-      const { travelerProfile, expertIds, limit } = parsed.data;
+      if (!parsed.data.travelerProfile && !parsed.data.tripDetails) {
+        return res.status(400).json({ message: "Either travelerProfile or tripDetails is required" });
+      }
+
+      // Support both Replit Auth (claims.sub) and email auth (id)
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { expertIds, limit } = parsed.data;
+
+      // Normalize to a common travelerProfile shape
+      let travelerProfile: any;
+      if (parsed.data.travelerProfile) {
+        travelerProfile = parsed.data.travelerProfile;
+      } else {
+        const td = parsed.data.tripDetails!;
+        travelerProfile = {
+          destination: td.destination,
+          tripDates: td.dates,
+          budget: td.budget?.max,
+          travelers: td.travelers ?? 2,
+          eventType: td.experienceType,
+          interests: td.preferences || [],
+        };
+      }
 
       // Get expert profiles from database
       const expertsQuery = await db.select()
         .from(users)
         .where(eq(users.role, "local_expert"));
 
-      // Filter to specific expert IDs if provided
-      let expertsList = expertIds 
+      let expertsList = expertIds
         ? expertsQuery.filter(e => expertIds.includes(e.id))
         : expertsQuery.slice(0, limit || 5);
 
       if (expertsList.length === 0) {
-        return res.json({ matches: [], message: "No experts found" });
+        return res.json({ matches: [] });
       }
 
       // Get local expert forms for more profile info
@@ -3755,60 +3786,120 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
         .from(localExpertForms)
         .where(eq(localExpertForms.status, "approved"));
 
-      const expertProfiles = expertsList.map(expert => {
+      // Build full expert objects matching the client's MatchedExpert.expert shape
+      const expertObjs = expertsList.map(expert => {
         const form = expertForms.find((f: any) => f.userId === expert.id);
         return {
           id: expert.id,
-          name: `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Expert",
-          destinations: (form?.destinations as string[]) || [],
-          specialties: (form?.specialties as string[]) || [],
-          experienceTypes: (form?.experienceTypes as string[]) || [],
-          languages: (form?.languages as string[]) || [],
-          yearsOfExperience: form?.yearsOfExperience || "1-3 years",
+          firstName: expert.firstName || "",
+          lastName: expert.lastName || "",
+          profileImageUrl: expert.profileImageUrl || null,
           bio: form?.bio || "",
-          averageRating: 4.5,
-          reviewCount: 0,
+          specialties: (form?.specialties as string[]) || [],
+          reviewsCount: 0,
+          tripsCount: 0,
+          responseTime: (form as any)?.responseTime || "< 1 hour",
+          verified: (expert as any).verified || false,
+          superExpert: false,
+          expertForm: form ? {
+            destinations: (form.destinations as string[]) || [],
+            languages: (form.languages as string[]) || [],
+            yearsExperience: form.yearsOfExperience || "",
+            responseTime: (form as any).responseTime || "",
+          } : undefined,
+          experienceTypes: [],
+          selectedServices: [],
+          specializations: (form?.specialties as string[]) || [],
         };
       });
 
-      const matches = await aiOrchestrator.matchExperts(
-        travelerProfile,
-        expertProfiles,
-        { userId, limit }
-      );
+      // Simplified profiles for Grok AI matching
+      const grokProfiles = expertObjs.map(e => ({
+        id: e.id,
+        name: `${e.firstName} ${e.lastName}`.trim() || "Expert",
+        destinations: (e.expertForm?.destinations as string[]) || [],
+        specialties: e.specialties,
+        experienceTypes: [],
+        languages: (e.expertForm?.languages as string[]) || [],
+        yearsOfExperience: e.expertForm?.yearsExperience || "1-3 years",
+        bio: e.bio,
+        averageRating: 4.5,
+        reviewCount: 0,
+      }));
 
-      // Store match scores in database
-      for (const match of matches) {
-        await db.insert(expertMatchScores).values({
-          expertId: match.expertId,
-          travelerId: userId,
-          overallScore: match.overallScore,
-          destinationMatch: match.breakdown.destinationMatch,
-          specialtyMatch: match.breakdown.specialtyMatch,
-          experienceTypeMatch: match.breakdown.experienceTypeMatch,
-          budgetAlignment: match.breakdown.budgetAlignment,
-          availabilityScore: match.breakdown.availabilityScore,
-          strengths: match.strengths,
-          reasoning: match.reasoning,
-          requestContext: travelerProfile,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-        }).catch(err => console.error("Failed to store match score:", err));
+      let shapedMatches: any[];
+      try {
+        const grokMatches = await aiOrchestrator.matchExperts(
+          travelerProfile,
+          grokProfiles,
+          { userId, limit }
+        );
 
-        // Also persist to analytics table for trend tracking
-        storage.createExpertMatchAnalytics({
-          expertId: match.expertId,
-          travelerId: userId,
-          matchScore: match.overallScore,
-          breakdown: match.breakdown,
-          reasoning: match.reasoning,
-          travelerDestination: travelerProfile.destination,
-          travelerBudget: travelerProfile.budget?.toString(),
-          travelerInterests: travelerProfile.interests || [],
-          travelerGroupSize: travelerProfile.travelers,
-        }).catch(err => console.error("Failed to store match analytics:", err));
+        shapedMatches = grokMatches.map((m: any) => {
+          const expertObj = expertObjs.find(e => e.id === m.expertId) || expertObjs[0];
+          return {
+            expert: expertObj,
+            score: m.overallScore ?? 85,
+            breakdown: {
+              destinationExpertise: m.breakdown?.destinationMatch ?? 80,
+              styleAlignment: m.breakdown?.specialtyMatch ?? 80,
+              budgetFit: m.breakdown?.budgetAlignment ?? 80,
+              experienceRelevance: m.breakdown?.experienceTypeMatch ?? 80,
+              availability: m.breakdown?.availabilityScore ?? 80,
+            },
+            reasoning: m.reasoning || `Expert in ${travelerProfile.destination || "this destination"}`,
+            strengths: m.strengths || [],
+          };
+        });
+
+        // Store match scores (fire-and-forget)
+        for (const m of grokMatches) {
+          db.insert(expertMatchScores).values({
+            expertId: m.expertId,
+            travelerId: userId,
+            overallScore: m.overallScore,
+            destinationMatch: m.breakdown?.destinationMatch ?? 0,
+            specialtyMatch: m.breakdown?.specialtyMatch ?? 0,
+            experienceTypeMatch: m.breakdown?.experienceTypeMatch ?? 0,
+            budgetAlignment: m.breakdown?.budgetAlignment ?? 0,
+            availabilityScore: m.breakdown?.availabilityScore ?? 0,
+            strengths: m.strengths,
+            reasoning: m.reasoning,
+            requestContext: travelerProfile,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          }).catch(err => console.error("Failed to store match score:", err));
+
+          storage.createExpertMatchAnalytics({
+            expertId: m.expertId,
+            travelerId: userId,
+            matchScore: m.overallScore,
+            breakdown: m.breakdown,
+            reasoning: m.reasoning,
+            travelerDestination: travelerProfile.destination,
+            travelerBudget: travelerProfile.budget?.toString(),
+            travelerInterests: travelerProfile.interests || [],
+            travelerGroupSize: travelerProfile.travelers,
+          }).catch(err => console.error("Failed to store match analytics:", err));
+        }
+      } catch (_grokErr) {
+        // Fallback: return DB experts with default scores when Grok is unavailable
+        console.warn("Grok matching unavailable, using DB fallback:", (_grokErr as any)?.message);
+        shapedMatches = expertObjs.map((e, i) => ({
+          expert: e,
+          score: 90 - i * 5,
+          breakdown: {
+            destinationExpertise: 85,
+            styleAlignment: 80,
+            budgetFit: 80,
+            experienceRelevance: 80,
+            availability: 85,
+          },
+          reasoning: `Expert in ${travelerProfile.destination || "this destination"}`,
+          strengths: e.specialties.slice(0, 3),
+        }));
       }
 
-      res.json({ matches });
+      res.json({ matches: shapedMatches });
     } catch (error: any) {
       console.error("Grok expert matching error:", error);
       res.status(500).json({ message: error.message || "Expert matching failed" });

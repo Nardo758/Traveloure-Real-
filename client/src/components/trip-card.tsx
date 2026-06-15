@@ -25,7 +25,7 @@ export function TripCard({ trip }: TripCardProps) {
       >
         <Card 
           className="overflow-hidden cursor-pointer group border-border hover:shadow-xl transition-all duration-300"
-          data-testid={`card-trip-${trip.id}`}
+          data-testid={`trip-card-${trip.id}`}
         >
           {/* Image */}
           <div className="relative h-48 overflow-hidden">
