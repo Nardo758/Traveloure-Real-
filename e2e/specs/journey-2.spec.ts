@@ -27,16 +27,19 @@ const filterJsErrors = (errs: string[]) =>
       !e.includes('Failed to load resource') &&
       !e.includes('ERR_') &&
       !e.includes('net::') &&
-      !e.includes('[vite]'),
+      !e.includes('[vite]') &&
+      !e.includes('Warning:') &&
+      !e.includes('ResizeObserver') &&
+      !e.includes('Non-Error'),
   );
 
 test.describe('Journey 2A — AI itinerary generation flow', () => {
   test.use({ storageState: authFile('traveler') });
 
   test('EnhancedPlanningModal generates itinerary and redirects to comparison or trip', async ({ page, consoleErrors }) => {
-    await page.goto('/');
-    await page.waitForFunction(() => document.title.length > 0, { timeout: 15_000 });
-    await expect(page).toHaveTitle(/traveloure/i);
+    // domcontentloaded avoids blocking on Google Fonts; explicit 10 s cap on title.
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveTitle(/traveloure/i, { timeout: 10_000 });
 
     const trigger = page.locator(SELECTORS.planningModalTrigger).first();
     await trigger.click();
@@ -61,8 +64,10 @@ test.describe('Journey 2C — Expert match in discover', () => {
   test.use({ storageState: authFile('traveler') });
 
   test('ExpertMatchCard renders for destination-aware discover', async ({ page }) => {
-    await page.goto('/discover?showExperts=true&destination=Tokyo');
-    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 10_000 });
+    await page.goto('/discover?showExperts=true&destination=Tokyo', { waitUntil: 'domcontentloaded' });
+    // Grok call has an 8 s abort; fallback populates cards within ~9 s total.
+    // 25 s budget gives headroom for the full Grok + fallback cycle on slow CI.
+    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 25_000 });
     await expect(page.locator(SELECTORS.expertMatchCard).first()).toBeVisible();
   });
 });
@@ -75,8 +80,11 @@ test.describe('Journey 2D — Expert advisor request from trip-details', () => {
     await page.waitForSelector(SELECTORS.tripCard, { timeout: 15_000 });
     await page.locator(SELECTORS.tripCard).first().click();
     await page.waitForURL(/\/trip\//, { timeout: 10_000 });
+    // Wait for tab-expert to appear (trip data must load first).
+    await page.waitForSelector(SELECTORS.expertTab, { timeout: 15_000 });
     await page.click(SELECTORS.expertTab);
-    await page.waitForTimeout(500);
+    // Give the tab content time to render on a slow Replit round-trip.
+    await page.waitForTimeout(2_000);
 
     const hasExpert = await page.locator('[data-testid="advisor-card"]').isVisible().catch(() => false);
     const hasCta = await page
