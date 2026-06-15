@@ -16,6 +16,7 @@ import { seedMajorCitiesBackfill } from "./seeds/major-cities-backfill.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
+import { seedE2EAccounts } from "./seeds/e2e-test-accounts.seed";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -274,6 +275,13 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
+  }
+
+  try {
+    await seedE2EAccounts();
+    logger.info("E2E test accounts ready");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed E2E test accounts");
   }
 
   seedingDurationMs = Date.now() - seedingStartTime;
