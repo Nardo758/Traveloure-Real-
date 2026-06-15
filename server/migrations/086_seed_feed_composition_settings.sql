@@ -1,16 +1,15 @@
--- Discover Feed Composition Brief — admin-row seed (no schema change).
+-- Migration 086: Discover Feed Composition settings seed.
 --
--- GET /api/feed-composition-config (server/routes/content.routes.ts) reads
--- these platform_settings keys to drive the Discover feed-composition layer
--- (client/src/lib/feed-composition.ts): recommendation cadence, wanted-slot
--- cap/spacing, and the honest-disclosure label copy. The endpoint falls back
--- to these exact code defaults when rows are absent, so this seed changes no
--- behavior — it makes the knobs DISCOVERABLE in the admin platform-settings
--- list (which shows only existing rows) instead of editable only by admins
--- who already know the key names.
+-- Source-branch file: 074_seed_feed_composition_settings.sql
 --
--- Idempotent: ON CONFLICT (setting_key) DO NOTHING — an admin-tuned value is
--- never overwritten (mirrors the 033 seed pattern).
+-- Seeds the five platform_settings keys that drive the Discover feed
+-- composition layer. This is the canonical source-branch seed; migrations
+-- 067 and 075 contain identical SQL for the same keys. All three are fully
+-- idempotent via ON CONFLICT (setting_key) DO NOTHING, so re-running
+-- whichever of the three executes first is safe — subsequent runs are no-ops.
+--
+-- GET /api/feed-composition-config reads these keys to control recommendation
+-- cadence, wanted-slot gating, and disclosure label copy.
 
 INSERT INTO platform_settings (setting_key, setting_value, description)
 VALUES
