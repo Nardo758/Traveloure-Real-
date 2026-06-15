@@ -166,7 +166,7 @@ jobs:
     name: e2e-journey-2 (Stage 3 exit gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
+    if: false  # Stage 3 exit gate — skipped until Stage 3 UI is built; re-enable then
     services:
       postgres:
         image: postgres:15
