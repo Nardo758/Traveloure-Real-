@@ -35,9 +35,10 @@ jobs:
 
       - name: Wait for Replit deployment
         id: server-check
-        # continue-on-error: server unavailability is an infrastructure issue, not
-        # a test-code bug. Downstream steps are conditioned on server_available=true.
-        continue-on-error: true
+        # Hard-fail if the Replit dev server does not respond within 10 minutes.
+        # A passing E2E job with no tests executed provides no signal — if the
+        # server is unavailable the gate must fail explicitly so engineers know
+        # to re-run when the Replit workspace is active.
         run: |
           # 60 attempts × 10 s = 10 minute window.  Replit dev servers can take
           # several minutes to wake from sleep when the first request arrives.
@@ -48,41 +49,31 @@ jobs:
               -o /dev/null -w "%{http_code}" "$E2E_BASE_URL" 2>/dev/null || echo "000")
             if echo "$http_code" | grep -qE "^(200|301|302|304)$"; then
               echo "✓ Replit deployment is accessible (HTTP $http_code)"
-              echo "server_available=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "Attempt $attempt/$max_attempts: HTTP $http_code — waiting for deployment..."
             sleep 10
             attempt=$((attempt + 1))
           done
-          echo "⚠ Deployment not responding after $max_attempts attempts"
-          echo "server_available=false" >> "$GITHUB_OUTPUT"
-          exit 0
+          echo "::error::Replit dev server did not respond within 10 minutes (${max_attempts} attempts)."
+          echo "::error::E2E tests cannot run against an unavailable server — re-run this workflow"
+          echo "::error::while the Replit workspace is active to get real test results."
+          exit 1
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
-      - name: Skip notice (server unavailable)
-        if: steps.server-check.outputs.server_available != 'true'
-        run: |
-          echo "::warning::Replit dev server did not respond within 10 minutes."
-          echo "::warning::E2E tests skipped — this is an infrastructure issue, not a test-code regression."
-          echo "::warning::Re-run this workflow while the Replit workspace is active to get real results."
-
       - name: Apply pending migrations to E2E database
-        if: steps.server-check.outputs.server_available == 'true'
         run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Seed E2E test accounts
-        if: steps.server-check.outputs.server_available == 'true'
         run: npm run seed:e2e-accounts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
 
       - name: Run E2E deploy tests (journey-1 + Stage 1 gates)
-        if: steps.server-check.outputs.server_available == 'true'
         run: npm run test:e2e:deploy
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
