@@ -119,14 +119,7 @@ test.describe('Journey 1A — Authed traveler', () => {
 test.describe('Journey 1B — Guest path with cart migration', () => {
   test('landing → discover → add to cart (guest) → sign in → migrate → confirmation', async ({ page, consoleErrors }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Soft skip when link-logo doesn't appear — server may still be cold after warm-up.
-    // This test skips anyway once we discover there are no services in the DB.
-    const navReady = await page.waitForSelector(SELECTORS.navLogo, { timeout: 90_000 }).then(() => true).catch(() => false);
-    if (!navReady) {
-      console.log('Journey 1B: nav not ready after 90 s — skipping (server cold)');
-      test.skip();
-      return;
-    }
+    await waitForNav(page);
 
     await page.goto('/discover?tab=services', { waitUntil: 'domcontentloaded' });
 
