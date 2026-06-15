@@ -109,7 +109,27 @@ async function seedE2EAccounts() {
   console.log("Set E2E_BASE_URL to your HTTPS deploy URL and E2E_TEST_PASSWORD to the same password used here.");
 }
 
-export { seedE2EAccounts };
+/**
+ * Purges E2E test accounts from production.
+ * Call this at startup when ENVIRONMENT === 'PROD' to remove any accounts
+ * that were manually seeded before the env-gate was in place.
+ * Idempotent — safe to run repeatedly; exits silently when no rows match.
+ */
+async function purgeE2EAccountsFromProd() {
+  const { inArray } = await import("drizzle-orm");
+  const emails = E2E_ACCOUNTS.map((a) => a.email.toLowerCase());
+  const deleted = await db
+    .delete(users)
+    .where(inArray(users.email, emails))
+    .returning({ email: users.email, role: users.role });
+
+  if (deleted.length > 0) {
+    console.warn("[security] Removed E2E test accounts from PROD DB:");
+    deleted.forEach((r) => console.warn(`  - ${r.email} (${r.role})`));
+  }
+}
+
+export { seedE2EAccounts, purgeE2EAccountsFromProd };
 
 // Run directly (tsx server/seeds/e2e-test-accounts.seed.ts)
 if (process.argv[1] && process.argv[1].endsWith("e2e-test-accounts.seed.ts")) {
