@@ -8,6 +8,8 @@ test.describe('harness smoke', () => {
   test('public landing renders without console errors', async ({ page, consoleErrors }) => {
     await page.goto('/');
     // Title is set client-side by SEOHead → "Traveloure - …"; toHaveTitle auto-waits.
+    // waitForFunction guards against a brief empty-title window during Vite HMR on Desktop Chrome.
+    await page.waitForFunction(() => document.title.length > 0, { timeout: 15_000 });
     await expect(page).toHaveTitle(/traveloure/i); // SWAP #4 if the title differs
     // Filter out network-level noise (Failed to load resource, 4xx on optional API calls)
     // and Vite HMR warnings that appear in some deploy environments.
