@@ -78,11 +78,25 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
+      - name: Push canonical schema
+        # drizzle-kit push --force requires an interactive TTY (throws
+        # "Interactive prompts require a TTY terminal" on a bare CI runner).
+        # `script -q -c "..." /dev/null` allocates a pseudo-TTY, forwards the
+        # exit code (bsdutils 2.37.2 on ubuntu-22.04), and suppresses the
+        # typescript output file written by script. This creates all base tables
+        # from schema.ts so that migrate-entry.ts FKs resolve correctly.
+        run: script -q -c "npx drizzle-kit push --force" /dev/null
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          # Stripe validates its key at module-load time; stub prevents crash.
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
       - name: Apply database migrations
-        # drizzle-kit push --force requires an interactive TTY (prompts for
-        # renamed-table conflicts) which CI doesn't have. Use migrate-entry.ts
-        # instead — it applies all SQL migrations sequentially and records them
-        # in schema_migrations, with no interactive prompts.
+        # Runs all registered SQL migrations against the push-built schema.
+        # All DDL uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS — no-ops on
+        # tables already created by push. All DML uses ON CONFLICT DO NOTHING —
+        # seeds catalog data (fee_bands, service_categories, offering types, etc.)
+        # without conflicts. Migration 001's FKs to users/user_experiences now
+        # resolve because push created those tables in the previous step.
         run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
