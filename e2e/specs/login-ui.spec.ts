@@ -13,11 +13,12 @@ test.use({ storageState: { cookies: [], origins: [] } });
  * Opens the SignInModal.  Desktop nav exposes [data-testid="button-sign-in"]
  * directly; on mobile it lives behind the hamburger.
  *
- * We wait for link-logo with a 60 s budget because the Replit Vite dev server
- * needs up to ~50 s to compile and serve the JS bundle on a cold start.
+ * We wait for link-logo with a 120 s budget because the Replit Vite dev server
+ * needs up to ~90 s to compile and serve the JS bundle on a cold start.
+ * global-setup warms Vite before tests; 120 s here is a safety margin.
  */
 async function openSignInModal(page: import('@playwright/test').Page) {
-  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 60_000 });
+  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
 
   const desktopTrigger = page.getByTestId('button-sign-in');
   if (await desktopTrigger.isVisible().catch(() => false)) {

@@ -7,9 +7,10 @@ test.describe('harness smoke', () => {
   test('public landing renders without console errors', async ({ page, consoleErrors }) => {
     // domcontentloaded prevents the goto from blocking on Google Fonts (external CDN).
     // link-logo is a React-rendered element; Vite dev server in Replit needs up to
-    // 60 s to compile and serve the JS bundle on first request after a cold start.
+    // 90 s to compile and serve the JS bundle on first request after a cold start.
+    // global-setup warms up Vite before tests run; 120 s here is a safety margin.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-testid="link-logo"]', { timeout: 60_000 });
+    await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
 
     const jsErrors = consoleErrors.filter(
       (e) =>
