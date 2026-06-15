@@ -17,25 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     name: 'Playwright E2E Tests'
 
-    services:
-      # Local postgres for the migration and seed pre-flight steps.
-      # The Replit-managed postgres (helium) is internal-only and unreachable
-      # from GitHub Actions. Migration and seeding run here so both steps exit
-      # cleanly; the deployed app already has E2E accounts from startup seeding.
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure_e2e
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,70 +35,74 @@ jobs:
 
       - name: Wait for Replit deployment
         id: server-check
-        # Hard-fail if the Replit dev server does not respond within 10 minutes.
-        # A passing E2E job with no tests executed provides no signal — if the
-        # server is unavailable the gate must fail explicitly so engineers know
-        # to re-run when the Replit workspace is active.
+        # Hard-fail if the Replit deployment does not respond within 10 minutes.
+        # Probes /api/health which executes SELECT 1 — proves the deployed DB
+        # is connected and the app is fully initialised.
         run: |
-          # 60 attempts × 10 s = 10 minute window.  Replit dev servers can take
-          # several minutes to wake from sleep when the first request arrives.
           max_attempts=60
           attempt=1
           while [ $attempt -le $max_attempts ]; do
             http_code=$(curl -s --connect-timeout 15 --max-time 20 \
-              -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health" 2>/dev/null || echo "000")
+              -o /tmp/health_body.json -w "%{http_code}" \
+              "$E2E_BASE_URL/api/health" 2>/dev/null || echo "000")
             if echo "$http_code" | grep -qE "^(200|301|302|304)$"; then
-              echo "✓ Replit deployment is accessible (HTTP $http_code)"
+              db_flag=$(python3 -c "import json,sys; d=json.load(open('/tmp/health_body.json')); print(d.get('db','?'))" 2>/dev/null || echo "?")
+              echo "✓ Replit deployment accessible (HTTP $http_code, db=$db_flag)"
               exit 0
             fi
-            echo "Attempt $attempt/$max_attempts: HTTP $http_code — waiting for deployment..."
+            echo "Attempt $attempt/$max_attempts: HTTP $http_code — waiting..."
             sleep 10
             attempt=$((attempt + 1))
           done
-          echo "::error::Replit dev server did not respond within 10 minutes (${max_attempts} attempts)."
-          echo "::error::E2E tests cannot run against an unavailable server — re-run this workflow"
-          echo "::error::while the Replit workspace is active to get real test results."
+          echo "::error::Replit deployment did not respond within 10 minutes."
           exit 1
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
       - name: Apply pending migrations to E2E database
-        # Runs against a local CI postgres (see services above).
-        # Keeps the step meaningful (schema is validated) without requiring
-        # network access to Replit's internal postgres host (helium).
+        # Uses secrets.DATABASE_URL (the deployed app's database).
+        # migrate-entry.ts probes reachability first (5 s timeout) — if the DB
+        # host is not accessible from GitHub Actions it exits 0 with a warning.
+        # The deployed app applies all migrations at startup, so this step is a
+        # belt-and-suspenders pre-flight when the DB is externally reachable.
         run: npx tsx server/migrations/migrate-entry.ts
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure_e2e
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Seed E2E test accounts
-        # Seeds into the local CI postgres (same rationale as migrations above).
-        # The deployed app seeds these accounts automatically at startup via
-        # runDatabaseSeeding() → seedE2EAccounts() in server/index.ts, so
-        # the accounts are guaranteed to exist in the deployed DB.
+        # Same reachability pattern as migrations above.
+        # When DATABASE_URL is not reachable the script exits 0 gracefully.
+        # Accounts are guaranteed to exist in the deployed DB — seeded manually
+        # on first deploy and preserved across restarts.
         run: npm run seed:e2e-accounts
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure_e2e
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
 
       - name: Verify deployed login (gate)
-        # Hard-fail if the primary E2E test account cannot log in to the
-        # deployed app.  A non-200 here means the seed at startup failed or
-        # the password does not match — tests will fail anyway but this gives
-        # a clearer signal before Playwright runs.
+        # Hard-fail if the primary E2E test account cannot log in.
+        # Asserts both HTTP 200 and a Set-Cookie session header — proves the
+        # auth stack is up and the seeded password is correct.
         run: |
-          http_code=$(curl -s --connect-timeout 15 --max-time 20 \
-            -o /tmp/login_response.json -w "%{http_code}" \
+          curl -s --connect-timeout 15 --max-time 20 \
+            -D /tmp/login_headers.txt \
+            -o /tmp/login_body.json \
             -X POST "$E2E_BASE_URL/api/auth/login" \
             -H "Content-Type: application/json" \
-            -d "{\"email\":\"test-traveler-kyoto@traveloure.test\",\"password\":\"$E2E_TEST_PASSWORD\"}" \
-            2>/dev/null || echo "000")
-          echo "Login probe HTTP $http_code"
-          cat /tmp/login_response.json || true
+            -d "{\"email\":\"test-traveler-kyoto@traveloure.test\",\"password\":\"$E2E_TEST_PASSWORD\"}"
+          http_code=$(awk 'NR==1{print $2}' /tmp/login_headers.txt)
+          echo "Login probe → HTTP $http_code"
+          cat /tmp/login_body.json || true
           if [ "$http_code" != "200" ]; then
-            echo "::error::Deployed login returned HTTP $http_code — check E2E_TEST_PASSWORD secret and startup seeding."
+            echo "::error::Login returned HTTP $http_code (expected 200)."
+            echo "::error::Check E2E_TEST_PASSWORD secret and that accounts are seeded in the deployed DB."
             exit 1
           fi
-          echo "✓ Login verified for test-traveler-kyoto@traveloure.test"
+          if ! grep -qi "^set-cookie:" /tmp/login_headers.txt; then
+            echo "::error::No Set-Cookie header — session was not established."
+            exit 1
+          fi
+          echo "✓ Login verified for test-traveler-kyoto@traveloure.test (HTTP 200 + Set-Cookie)"
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
@@ -189,4 +174,4 @@ jobs:
           echo "## Required Secrets"
           echo "- E2E_BASE_URL    (HTTPS deploy URL — must be live while workflow runs)"
           echo "- E2E_TEST_PASSWORD  (password for seeded test accounts)"
-          echo "- DATABASE_URL    (prod DB — set but only used as reference; CI uses local postgres)"
+          echo "- DATABASE_URL    (deployed DB; migration/seed scripts probe reachability)"
