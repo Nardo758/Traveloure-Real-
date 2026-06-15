@@ -212,7 +212,7 @@ function Router() {
         <Layout><LandingPage /></Layout>
       </Route>
       <Route path="/landing-mockups">
-        <LandingMockups />
+        {process.env.NODE_ENV === "development" ? <LandingMockups /> : <Redirect to="/" />}
       </Route>
       <Route path="/how-it-works">
         <Layout><HowItWorks /></Layout>
@@ -227,7 +227,7 @@ function Router() {
         <EarnPage />
       </Route>
       <Route path="/architecture">
-        <ArchitectureDiagram />
+        {process.env.NODE_ENV === "development" ? <ArchitectureDiagram /> : <Redirect to="/" />}
       </Route>
       <Route path="/concierge">
         <ConciergePage />
@@ -373,7 +373,7 @@ function Router() {
         <PaymentPage />
       </Route>
       <Route path="/booking-demo">
-        <BookingDemo />
+        {process.env.NODE_ENV === "development" ? <BookingDemo /> : <Redirect to="/" />}
       </Route>
       <Route path="/visa-help">
         <Layout><VisaHelpPage /></Layout>
@@ -395,7 +395,7 @@ function Router() {
       </Route>
       
       <Route path="/layout-mock">
-        <LayoutMock />
+        {process.env.NODE_ENV === "development" ? <LayoutMock /> : <Redirect to="/" />}
       </Route>
 
       {/* Trip/Itinerary detail pages — must be BEFORE catch-all routes */}
