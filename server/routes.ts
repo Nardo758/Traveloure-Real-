@@ -68,7 +68,8 @@ import { opportunityEngineService } from "./services/opportunity-engine.service"
 import { aiUsageService } from "./services/ai-usage.service";
 import { getSequencingRulesForTemplate } from "./services/smart-sequencing.service";
 import { complexityTier } from "./services/smart-sequencing.service";
-import { getFee } from "./services/optimization-fee.service";
+import { getFee, resolveCoordinationFee } from "./services/optimization-fee.service";
+import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { experienceTypes as experienceTypesTable } from "@shared/schema";
 import Stripe from "stripe";
@@ -7690,6 +7691,95 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error) {
       console.error("Error deleting booking:", error);
       res.status(500).json({ message: "Failed to delete booking" });
+    }
+  });
+
+  // ── Event Coordination Extensions (CON-A.P4 / Stage 2) ─────────────────
+  // Wire resolveCoordinationFee + buildEventTimeline into the coordination state
+  // surface so the frontend can display fee previews and event timelines.
+
+  app.get("/api/coordination-states/:id/fee", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+
+      const eventType = state.experienceType;
+      const budgetCents = state.totalEstimatedCost
+        ? Math.round(parseFloat(state.totalEstimatedCost) * 100)
+        : 0;
+
+      const fee = await resolveCoordinationFee(eventType, budgetCents);
+      res.json(fee);
+    } catch (error) {
+      console.error("Error resolving coordination fee:", error);
+      res.status(500).json({ message: "Failed to resolve coordination fee" });
+    }
+  });
+
+  app.get("/api/coordination-states/:id/timeline", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+
+      const tripId = state.tripId;
+      const eventType = state.experienceType;
+      if (!tripId) {
+        return res.status(400).json({ message: "No trip linked to this coordination state" });
+      }
+
+      const timeline = await buildEventTimeline(tripId, eventType);
+      res.json(timeline);
+    } catch (error) {
+      console.error("Error building event timeline:", error);
+      res.status(500).json({ message: "Failed to build event timeline" });
+    }
+  });
+
+  app.get("/api/coordination-states/:id/vendor-gaps", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+
+      const tripId = state.tripId;
+      const eventType = state.experienceType;
+      if (!tripId) {
+        return res.status(400).json({ message: "No trip linked to this coordination state" });
+      }
+
+      const gaps = await getEventVendorGaps(tripId, eventType);
+      res.json(gaps);
+    } catch (error) {
+      console.error("Error getting vendor gaps:", error);
+      res.status(500).json({ message: "Failed to get vendor gaps" });
+    }
+  });
+
+  // ── Expert Coordination State (CON-A.P4 / Stage 2) ───────────────────
+  // Experts can read the coordination state for trips they are assigned to.
+
+  app.get("/api/expert/coordination-states/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      // Verify the expert is assigned to this trip
+      const isAssigned = await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      if (!isAssigned) {
+        return res.status(403).json({ message: "Not assigned to this trip" });
+      }
+      // Find the active coordination state for this trip
+      const states = await storage.getCoordinationStatesByTripId(req.params.tripId);
+      if (!states || states.length === 0) {
+        return res.status(404).json({ message: "No coordination state found for this trip" });
+      }
+      res.json(states[0]);
+    } catch (error) {
+      console.error("Error fetching expert coordination state:", error);
+      res.status(500).json({ message: "Failed to fetch coordination state" });
     }
   });
 
