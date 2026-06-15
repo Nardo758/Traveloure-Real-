@@ -341,6 +341,7 @@ export interface IStorage {
   // Coordination States
   getCoordinationStates(userId: string): Promise<CoordinationState[]>;
   getCoordinationState(id: string): Promise<CoordinationState | undefined>;
+  getCoordinationStatesByTripId(tripId: string): Promise<CoordinationState[]>;
   getActiveCoordinationState(userId: string, experienceType: string): Promise<CoordinationState | undefined>;
   createCoordinationState(state: InsertCoordinationState): Promise<CoordinationState>;
   updateCoordinationState(id: string, updates: Partial<InsertCoordinationState>): Promise<CoordinationState | undefined>;
@@ -354,6 +355,9 @@ export interface IStorage {
   updateCoordinationBooking(id: string, updates: Partial<InsertCoordinationBooking>): Promise<CoordinationBooking | undefined>;
   confirmCoordinationBooking(id: string, bookingReference: string, confirmationDetails?: any): Promise<CoordinationBooking | undefined>;
   deleteCoordinationBooking(id: string): Promise<void>;
+
+  // Expert Workspace
+  isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
 
   // Destination Calendar Events
   getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]>;
@@ -1966,6 +1970,12 @@ export class DatabaseStorage implements IStorage {
   async getCoordinationState(id: string): Promise<CoordinationState | undefined> {
     const [state] = await db.select().from(coordinationStates).where(eq(coordinationStates.id, id));
     return state;
+  }
+
+  async getCoordinationStatesByTripId(tripId: string): Promise<CoordinationState[]> {
+    return await db.select().from(coordinationStates)
+      .where(eq(coordinationStates.tripId, tripId))
+      .orderBy(desc(coordinationStates.updatedAt));
   }
 
   async getActiveCoordinationState(userId: string, experienceType: string): Promise<CoordinationState | undefined> {
