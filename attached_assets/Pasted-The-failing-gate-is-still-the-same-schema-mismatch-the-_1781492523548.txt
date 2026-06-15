@@ -1,0 +1,45 @@
+The failing gate is still the same schema mismatch: the seed step is querying preferred_currency, but the database used by the pull_request E2E workflow does not have that column yet.
+
+What failed
+
+In the E2E Tests workflow, the seed script crashes in server/seeds/e2e-test-accounts.seed.ts:40.
+The SQL error is: column "preferred_currency" does not exist.
+The failing run exited during seeding, so the downstream Playwright/selection-control gates also fail because the E2E setup never completes.
+Why it failed
+
+The PR adds a drizzle-kit push --force step, but the failing job log you surfaced is from ref 99963dec6ebae0d45fec3437a6ce3caba6a41925, which is the merge of PR #116 into main, and the workflow shown still fails during Seed E2E test accounts.
+That means either:
+PR #118’s workflow change has not actually been the code used by the failing run yet, or
+the new schema-push step ran but did not update the same database the seed script later queries, or
+the workflow/checks you listed are failing from other jobs still running against main/old workflow state.
+Evidence from the job log
+
+The failing workflow file is .github/workflows/e2e-tests.yml.
+The error is explicit:
+Seed failed: DrizzleQueryError
+cause: error: column "preferred_currency" does not exist
+failure location: server/seeds/e2e-test-accounts.seed.ts:40
+So this is not a Playwright DOM/assertion failure yet. It’s a database bootstrap failure before tests really start.
+
+Most likely root cause High confidence: the new step in PR #118 hasn’t fixed the DB seen by the pull_request gates because the check that failed is still using the workflow/ref before that PR is merged, or the schema push is targeting the wrong DB / not persisting to the DB the seed step uses.
+
+What to do next
+
+Open PR #118’s failing run and confirm whether the log contains this step:
+Push database schema for E2E seed
+If that step is missing, then the failing check is still from old workflow state / another required check path.
+If that step is present, inspect its output:
+Did npx drizzle-kit push --force succeed?
+Did it connect to the same DATABASE_URL used by the seed step?
+Confirm the seed step also uses the same DATABASE_URL secret/context as the schema-push step.
+If both use the same DB and push succeeds, then inspect whether preferred_currency is represented in the actual Drizzle schema/config that push reads.
+GitHub-side checks to keep in mind
+
+Required checks must pass on the latest commit SHA for the PR, and sometimes the PR status box shows checks for the merge commit instead of just the head commit. Troubleshooting required status checks
+When debugging workflow failures, GitHub recommends verifying the correct pull_request ref is checked out and that the needed secrets/token are available to the run. Automating Dependabot with GitHub Actions
+Also, there are more recent commits on main than the 5 I fetched. If you want, I can look at the next page in the GitHub UI here: https://github.com/Nardo758/Traveloure-Real-/commits/main
+
+If you want, I can next:
+
+inspect PR #118’s latest commit/check association more deeply, or
+start a follow-up coding agent task to make the workflow seed step use an explicitly verified schema/bootstrap path.
