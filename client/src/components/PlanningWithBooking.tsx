@@ -3,8 +3,8 @@
  * Flow: Plan Trip → Generate Itinerary → Review & Book → Payment → Confirmation
  */
 
-import React, { useState } from 'react';
-import { X, Calendar, Users, MapPin, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Calendar, Users, MapPin, Sparkles, CheckCircle, Gem } from 'lucide-react';
 import BookingFlowModal from './booking/BookingFlowModal';
 
 const EXPERIENCE_TYPES = [
@@ -58,6 +58,53 @@ export default function PlanningWithBooking({
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [generatedTripId, setGeneratedTripId] = useState('');
+
+  // City lookup state
+  const [pendingCityId, setPendingCityId] = useState<string | null>(null);
+  const [cityLookupLoading, setCityLookupLoading] = useState(false);
+  const [neighborhoods, setNeighborhoods] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [gems, setGems] = useState<{ id: string; placeName: string; placeType: string | null }[]>([]);
+  const lookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced city lookup as user types
+  useEffect(() => {
+    if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
+    const q = cityInput.split(',')[0].trim();
+    if (!q || q.length < 2) {
+      setPendingCityId(null);
+      return;
+    }
+    lookupTimerRef.current = setTimeout(async () => {
+      setCityLookupLoading(true);
+      try {
+        const res = await fetch(`/api/cities/lookup?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setPendingCityId(data.cityId ?? null);
+      } catch {
+        setPendingCityId(null);
+      } finally {
+        setCityLookupLoading(false);
+      }
+    }, 500);
+    return () => { if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current); };
+  }, [cityInput]);
+
+  // Fetch neighborhoods + gems when a destination resolves
+  useEffect(() => {
+    const resolvedDest = destinations.find(d => d.cityId !== null);
+    if (!resolvedDest) {
+      setNeighborhoods([]);
+      setGems([]);
+      return;
+    }
+    Promise.all([
+      fetch(`/api/cities/neighborhoods?city=${encodeURIComponent(resolvedDest.city)}`).then(r => r.json()),
+      fetch(`/api/cities/gems?city=${encodeURIComponent(resolvedDest.city)}&limit=5`).then(r => r.json()),
+    ]).then(([nbh, gms]) => {
+      setNeighborhoods(Array.isArray(nbh) ? nbh : []);
+      setGems(Array.isArray(gms) ? gms : []);
+    }).catch(() => {});
+  }, [destinations]);
 
   // Handle form submission
   const handleGenerate = async () => {
@@ -156,12 +203,12 @@ export default function PlanningWithBooking({
   // Add destination
   const handleAddDestination = () => {
     if (!cityInput.trim()) return;
-
     const parts = cityInput.split(',').map((s) => s.trim());
     const city = parts[0];
     const country = parts[1] || '';
-    setDestinations([...destinations, { city, country, cityId: null }]);
+    setDestinations(prev => [...prev, { city, country, cityId: pendingCityId }]);
     setCityInput('');
+    setPendingCityId(null);
   };
 
   const removeDestination = (index: number) => {
@@ -226,14 +273,17 @@ export default function PlanningWithBooking({
                     {destinations.map((dest, index) => (
                       <div
                         key={index}
-                        className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                        className={`px-3 py-1 rounded-full text-sm flex items-center gap-2 ${dest.cityId ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'}`}
+                        data-testid={`chip-destination-${index}`}
                       >
+                        {dest.cityId && <CheckCircle className="w-3 h-3 text-purple-600 shrink-0" />}
                         {dest.city}
                         {dest.country && `, ${dest.country}`}
                         {(mode === 'multi' || destinations.length > 1) && (
                           <button
                             onClick={() => removeDestination(index)}
                             className="hover:text-purple-900"
+                            data-testid={`button-remove-destination-${index}`}
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -245,17 +295,29 @@ export default function PlanningWithBooking({
 
                 {(mode === 'multi' || destinations.length === 0) && (
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={cityInput}
-                      onChange={(e) => setCityInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleAddDestination()}
-                      placeholder="City, Country (e.g., Tokyo, Japan)"
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={cityInput}
+                        onChange={(e) => setCityInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddDestination()}
+                        placeholder="City, Country (e.g., Tokyo, Japan)"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        data-testid="input-destination"
+                      />
+                      {cityLookupLoading && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">looking up…</span>
+                      )}
+                      {!cityLookupLoading && pendingCityId && cityInput.trim() && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-green-600" data-testid="text-city-matched">
+                          <CheckCircle className="w-3 h-3" /> matched
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={handleAddDestination}
                       className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                      data-testid="button-add-destination"
                     >
                       Add
                     </button>
@@ -264,6 +326,46 @@ export default function PlanningWithBooking({
 
                 {errors.destinations && (
                   <p className="text-red-500 text-sm mt-1">{errors.destinations}</p>
+                )}
+
+                {/* Neighborhoods dropdown — shown only when a destination has a resolved cityId */}
+                {neighborhoods.length > 0 && (
+                  <div className="mt-3">
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                      Focus neighborhood <span className="font-normal text-gray-400">(optional)</span>
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-400 bg-white"
+                      data-testid="select-neighborhood"
+                      defaultValue=""
+                    >
+                      <option value="">Any neighborhood</option>
+                      {neighborhoods.map(n => (
+                        <option key={n.id} value={n.slug}>{n.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Hidden gems chips — shown only when a destination has a resolved cityId */}
+                {gems.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
+                      <Gem className="w-3 h-3 text-purple-500" />
+                      Local hidden gems to consider
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {gems.map(g => (
+                        <span
+                          key={g.id}
+                          className="px-2 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-full text-xs"
+                          data-testid={`chip-gem-${g.id}`}
+                        >
+                          {g.placeName}{g.placeType ? ` · ${g.placeType}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
 
