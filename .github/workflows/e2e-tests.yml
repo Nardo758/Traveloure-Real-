@@ -63,11 +63,20 @@ jobs:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
       - name: Apply pending migrations to E2E database
+        # The deployed app runs migrations at startup via run-migrations.ts.
+        # This step attempts a direct DB connection which cannot reach the
+        # Replit-internal postgres (helium) from GitHub Actions — it is kept
+        # for completeness but must not block the test gate.
+        continue-on-error: true
         run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Seed E2E test accounts
+        # E2E accounts are seeded automatically at app startup (runDatabaseSeeding).
+        # This step is a belt-and-suspenders attempt; continue-on-error so an
+        # unreachable internal DB does not prevent the actual Playwright gate.
+        continue-on-error: true
         run: npm run seed:e2e-accounts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
