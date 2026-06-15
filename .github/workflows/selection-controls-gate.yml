@@ -78,16 +78,14 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
-      - name: Push database schema
-        run: npx drizzle-kit push --force
+      - name: Apply database migrations
+        # drizzle-kit push --force requires an interactive TTY (prompts for
+        # renamed-table conflicts) which CI doesn't have. Use migrate-entry.ts
+        # instead — it applies all SQL migrations sequentially and records them
+        # in schema_migrations, with no interactive prompts.
+        run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
-          # Stripe key stub — prevents module-load throw; no real API calls in schema push
-          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
       - name: Verify migration ledger is idempotent (#28)
         # Runs the migration runner twice against the fresh CI Postgres: run 1
         # applies + records every file in schema_migrations; run 2 must apply
@@ -191,15 +189,13 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
-      - name: Push database schema
-        run: npx drizzle-kit push --force
+      - name: Apply database migrations
+        # drizzle-kit push --force requires an interactive TTY which CI doesn't
+        # have (throws "Interactive prompts require a TTY terminal"). Use
+        # migrate-entry.ts instead — applies all SQL migrations, no TTY needed.
+        run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
-          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
       - name: Start dev server (PR artifact — localhost only)
         run: npx tsx server/index.ts &
         env:
