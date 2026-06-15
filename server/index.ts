@@ -16,7 +16,7 @@ import { seedMajorCitiesBackfill } from "./seeds/major-cities-backfill.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
-import { seedE2EAccounts } from "./seeds/e2e-test-accounts.seed";
+import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -287,6 +287,14 @@ async function runDatabaseSeeding() {
       logger.info("E2E test accounts ready (staging/dev)");
     } catch (err) {
       logger.error({ err }, "Failed to seed E2E test accounts");
+    }
+  } else {
+    // PROD: purge any E2E test accounts that may have been manually seeded
+    // before this env-gate existed. Idempotent — no-op once already clean.
+    try {
+      await purgeE2EAccountsFromProd();
+    } catch (err) {
+      logger.error({ err }, "Failed to purge E2E test accounts from prod DB");
     }
   }
 
