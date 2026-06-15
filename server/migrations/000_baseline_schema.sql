@@ -26,7 +26,7 @@ DO $$ BEGIN
     'archived',
     'deleted'
 );
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
@@ -49,7 +49,7 @@ DO $$ BEGIN
     'affiliate_product',
     'other'
 );
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger
@@ -2750,10 +2750,7 @@ CREATE TABLE IF NOT EXISTS public.saved_trips (
     status text DEFAULT 'active'::text
 );
 
-CREATE TABLE IF NOT EXISTS public.schema_migrations (
-    migration_name text NOT NULL,
-    applied_at timestamp with time zone DEFAULT now() NOT NULL
-);
+-- [baseline] CREATE TABLE schema_migrations excluded (managed by migration runner)
 
 CREATE TABLE IF NOT EXISTS public.search_analytics (
     id character varying NOT NULL,
@@ -3088,11 +3085,7 @@ CREATE TABLE IF NOT EXISTS public.service_templates (
     created_at timestamp without time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.sessions (
-    sid character varying NOT NULL,
-    sess jsonb NOT NULL,
-    expire timestamp without time zone NOT NULL
-);
+-- [baseline] CREATE TABLE sessions excluded (managed by migration runner)
 
 CREATE TABLE IF NOT EXISTS public.shared_itineraries (
     id character varying NOT NULL,
@@ -4263,1669 +4256,1661 @@ ALTER TABLE ONLY public.payment_intents ALTER COLUMN id SET DEFAULT nextval('pub
 DO $$ BEGIN
   ALTER TABLE ONLY public.access_audit_logs
     ADD CONSTRAINT access_audit_logs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_booking_analytics
     ADD CONSTRAINT activity_booking_analytics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_cache
     ADD CONSTRAINT activity_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_cache
     ADD CONSTRAINT activity_cache_product_code_unique UNIQUE (product_code);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_comments
     ADD CONSTRAINT activity_comments_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_demand_trends
     ADD CONSTRAINT activity_demand_trends_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_booking_requests
     ADD CONSTRAINT affiliate_booking_requests_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_clicks
     ADD CONSTRAINT affiliate_clicks_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_earnings
     ADD CONSTRAINT affiliate_earnings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_partners
     ADD CONSTRAINT affiliate_partners_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_platforms
     ADD CONSTRAINT affiliate_platforms_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_products
     ADD CONSTRAINT affiliate_products_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_scrape_jobs
     ADD CONSTRAINT affiliate_scrape_jobs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_trips
     ADD CONSTRAINT affiliate_trips_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_blueprints
     ADD CONSTRAINT ai_blueprints_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_cost_tracking
     ADD CONSTRAINT ai_cost_tracking_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_discovered_gems
     ADD CONSTRAINT ai_discovered_gems_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_generated_itineraries
     ADD CONSTRAINT ai_generated_itineraries_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_interactions
     ADD CONSTRAINT ai_interactions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_usage_logs
     ADD CONSTRAINT ai_usage_logs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.api_usage_logs
     ADD CONSTRAINT api_usage_logs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.booking_fee_configs
     ADD CONSTRAINT booking_fee_configs_category_unique UNIQUE (category);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.booking_fee_configs
     ADD CONSTRAINT booking_fee_configs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.booking_funnel_analytics
     ADD CONSTRAINT booking_funnel_analytics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.booking_requests
     ADD CONSTRAINT booking_requests_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.bookings
     ADD CONSTRAINT bookings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.cart_items
     ADD CONSTRAINT cart_items_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.category_field_schema
     ADD CONSTRAINT category_field_schema_category_key_field_key_key UNIQUE (category_key, field_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.category_field_schema
     ADD CONSTRAINT category_field_schema_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.city_media_cache
     ADD CONSTRAINT city_media_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.city_neighborhoods
     ADD CONSTRAINT city_neighborhoods_city_country_slug_uniq UNIQUE (city, country, slug);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.city_neighborhoods
     ADD CONSTRAINT city_neighborhoods_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.concierge_requests
     ADD CONSTRAINT concierge_requests_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.contact_submissions
     ADD CONSTRAINT contact_submissions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_analytics
     ADD CONSTRAINT content_analytics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_flags
     ADD CONSTRAINT content_flags_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_impressions
     ADD CONSTRAINT content_impressions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_invoices
     ADD CONSTRAINT content_invoices_invoice_number_unique UNIQUE (invoice_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_invoices
     ADD CONSTRAINT content_invoices_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_placement_rules
     ADD CONSTRAINT content_placement_rules_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_registry
     ADD CONSTRAINT content_registry_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_registry
     ADD CONSTRAINT content_registry_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_versions
     ADD CONSTRAINT content_versions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT conversations_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_bookings
     ADD CONSTRAINT coordination_bookings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_states
     ADD CONSTRAINT coordination_states_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.credit_transactions
     ADD CONSTRAINT credit_transactions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.cross_sell_events
     ADD CONSTRAINT cross_sell_events_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.custom_venues
     ADD CONSTRAINT custom_venues_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.daily_revenue_summary
     ADD CONSTRAINT daily_revenue_summary_date_unique UNIQUE (date);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.daily_revenue_summary
     ADD CONSTRAINT daily_revenue_summary_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.day_boundaries
     ADD CONSTRAINT day_boundaries_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.demand_signals
     ADD CONSTRAINT demand_signals_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_benchmarks
     ADD CONSTRAINT destination_benchmarks_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_events
     ADD CONSTRAINT destination_events_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_intelligence
     ADD CONSTRAINT destination_intelligence_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_metrics_history
     ADD CONSTRAINT destination_metrics_history_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_search_patterns
     ADD CONSTRAINT destination_search_patterns_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_seasons
     ADD CONSTRAINT destination_seasons_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.discovery_jobs
     ADD CONSTRAINT discovery_jobs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_ai_tasks
     ADD CONSTRAINT ea_ai_tasks_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_client_relationships
     ADD CONSTRAINT ea_client_relationships_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_communications
     ADD CONSTRAINT ea_communications_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_events
     ADD CONSTRAINT ea_events_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_executives
     ADD CONSTRAINT ea_executives_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_gifts
     ADD CONSTRAINT ea_gifts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_saved_venues
     ADD CONSTRAINT ea_saved_venues_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_travel_arrangements
     ADD CONSTRAINT ea_travel_arrangements_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.email_verification_tokens
     ADD CONSTRAINT email_verification_tokens_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.energy_tracking
     ADD CONSTRAINT energy_tracking_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_coordination_profiles
     ADD CONSTRAINT event_coordination_profiles_event_type_key UNIQUE (event_type);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_coordination_profiles
     ADD CONSTRAINT event_coordination_profiles_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_invites
     ADD CONSTRAINT event_invites_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_invites
     ADD CONSTRAINT event_invites_unique_token_key UNIQUE (unique_token);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_packages
     ADD CONSTRAINT event_packages_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_filter_options
     ADD CONSTRAINT experience_template_filter_options_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_filters
     ADD CONSTRAINT experience_template_filters_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_steps
     ADD CONSTRAINT experience_template_steps_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_tabs
     ADD CONSTRAINT experience_template_tabs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_types
     ADD CONSTRAINT experience_types_name_unique UNIQUE (name);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_types
     ADD CONSTRAINT experience_types_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_types
     ADD CONSTRAINT experience_types_slug_unique UNIQUE (slug);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_universal_filter_options
     ADD CONSTRAINT experience_universal_filter_options_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_universal_filters
     ADD CONSTRAINT experience_universal_filters_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_ai_tasks
     ADD CONSTRAINT expert_ai_tasks_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_city_queues
     ADD CONSTRAINT expert_city_queues_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_earnings
     ADD CONSTRAINT expert_earnings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_experience_types
     ADD CONSTRAINT expert_experience_types_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_handoffs
     ADD CONSTRAINT expert_handoffs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_analytics
     ADD CONSTRAINT expert_match_analytics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_scores
     ADD CONSTRAINT expert_match_scores_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_neighborhoods
     ADD CONSTRAINT expert_neighborhoods_expert_id_neighborhood_id_key UNIQUE (expert_id, neighborhood_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_neighborhoods
     ADD CONSTRAINT expert_neighborhoods_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_offering_types
     ADD CONSTRAINT expert_offering_types_offering_type_key_key UNIQUE (offering_type_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_offering_types
     ADD CONSTRAINT expert_offering_types_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_payouts
     ADD CONSTRAINT expert_payouts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_referrals
     ADD CONSTRAINT expert_referrals_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_requests
     ADD CONSTRAINT expert_requests_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_service_categories
     ADD CONSTRAINT expert_service_categories_name_key UNIQUE (name);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_service_categories
     ADD CONSTRAINT expert_service_categories_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_service_offerings
     ADD CONSTRAINT expert_service_offerings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_specializations
     ADD CONSTRAINT expert_specializations_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_templates
     ADD CONSTRAINT expert_templates_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_templates
     ADD CONSTRAINT expert_templates_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_tips
     ADD CONSTRAINT expert_tips_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_tips
     ADD CONSTRAINT expert_tips_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_updated_itineraries
     ADD CONSTRAINT expert_updated_itineraries_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_vendor_coordination
     ADD CONSTRAINT expert_vendor_coordination_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.faqs
     ADD CONSTRAINT faqs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.fee_bands
     ADD CONSTRAINT fee_bands_band_key_key UNIQUE (band_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.fee_bands
     ADD CONSTRAINT fee_bands_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.fever_event_cache
     ADD CONSTRAINT fever_event_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.flight_cache
     ADD CONSTRAINT flight_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.generated_itineraries
     ADD CONSTRAINT generated_itineraries_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.generated_itineraries
     ADD CONSTRAINT generated_itineraries_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.guest_travel_plans
     ADD CONSTRAINT guest_travel_plans_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.help_guide_trips
     ADD CONSTRAINT help_guide_trips_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.hotel_cache
     ADD CONSTRAINT hotel_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.hotel_offer_cache
     ADD CONSTRAINT hotel_offer_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.influencer_curated_content
     ADD CONSTRAINT influencer_curated_content_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.influencer_referrals
     ADD CONSTRAINT influencer_referrals_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.invite_send_log
     ADD CONSTRAINT invite_send_log_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.invite_templates
     ADD CONSTRAINT invite_templates_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_changes
     ADD CONSTRAINT itinerary_changes_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_comparisons
     ADD CONSTRAINT itinerary_comparisons_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_items
     ADD CONSTRAINT itinerary_items_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variant_items
     ADD CONSTRAINT itinerary_variant_items_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variant_metrics
     ADD CONSTRAINT itinerary_variant_metrics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variants
     ADD CONSTRAINT itinerary_variants_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.lead_routing_logs
     ADD CONSTRAINT lead_routing_logs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.live_events
     ADD CONSTRAINT live_events_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.local_expert_forms
     ADD CONSTRAINT local_expert_forms_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.local_expert_forms
     ADD CONSTRAINT local_expert_forms_referral_code_unique UNIQUE (referral_code);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.local_knowledge_nuggets
     ADD CONSTRAINT local_knowledge_nuggets_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.location_cache
     ADD CONSTRAINT location_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.maps_export_cache
     ADD CONSTRAINT maps_export_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.market_intelligence
     ADD CONSTRAINT market_intelligence_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.messages
     ADD CONSTRAINT messages_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.neighborhood_coverage_target
     ADD CONSTRAINT neighborhood_coverage_target_pkey PRIMARY KEY (neighborhood_id, category_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.notifications
     ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.optimization_fees
     ADD CONSTRAINT optimization_fees_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.page_view_analytics
     ADD CONSTRAINT page_view_analytics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.password_reset_tokens
     ADD CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.payment_intents
     ADD CONSTRAINT payment_intents_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.platform_fees
     ADD CONSTRAINT platform_fees_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.platform_revenue
     ADD CONSTRAINT platform_revenue_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.platform_settings
     ADD CONSTRAINT platform_settings_pkey PRIMARY KEY (setting_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.poi_cache
     ADD CONSTRAINT poi_cache_amadeus_id_unique UNIQUE (amadeus_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.poi_cache
     ADD CONSTRAINT poi_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.pricing_intelligence
     ADD CONSTRAINT pricing_intelligence_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_availability
     ADD CONSTRAINT provider_availability_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_availability_schedule
     ADD CONSTRAINT provider_availability_schedule_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_blackout_dates
     ADD CONSTRAINT provider_blackout_dates_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_booking_requests
     ADD CONSTRAINT provider_booking_requests_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_earnings
     ADD CONSTRAINT provider_earnings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_neighborhood_coverage
     ADD CONSTRAINT provider_neighborhood_coverag_provider_id_neighborhood_id_c_key UNIQUE (provider_id, neighborhood_id, category_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_neighborhood_coverage
     ADD CONSTRAINT provider_neighborhood_coverage_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_payouts
     ADD CONSTRAINT provider_payouts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_performance_metrics
     ADD CONSTRAINT provider_performance_metrics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_pricing
     ADD CONSTRAINT provider_pricing_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_settings
     ADD CONSTRAINT provider_settings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_settings
     ADD CONSTRAINT provider_settings_user_id_unique UNIQUE (user_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.realtime_signals
     ADD CONSTRAINT realtime_signals_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.recommendation_conversions
     ADD CONSTRAINT recommendation_conversions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.reminder_emails
     ADD CONSTRAINT reminder_emails_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.restaurant_cache
     ADD CONSTRAINT restaurant_cache_external_id_unique UNIQUE (external_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.restaurant_cache
     ADD CONSTRAINT restaurant_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.revenue_splits
     ADD CONSTRAINT revenue_splits_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.review_moderation_logs
     ADD CONSTRAINT review_moderation_logs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.review_ratings
     ADD CONSTRAINT review_ratings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.safety_cache
     ADD CONSTRAINT safety_cache_amadeus_id_unique UNIQUE (amadeus_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.safety_cache
     ADD CONSTRAINT safety_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.saved_items
     ADD CONSTRAINT saved_items_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.saved_items
     ADD CONSTRAINT saved_items_user_content_unique UNIQUE (user_id, content_type, content_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.saved_trips
     ADD CONSTRAINT saved_trips_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
-DO $$ BEGIN
-  ALTER TABLE ONLY public.schema_migrations
-    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (migration_name);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- [baseline] schema_migrations constraint excluded (managed by migration runner)
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.search_analytics
     ADD CONSTRAINT search_analytics_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.seasonal_opportunities
     ADD CONSTRAINT seasonal_opportunities_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.serp_cache
     ADD CONSTRAINT serp_cache_cache_key_unique UNIQUE (cache_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.serp_cache
     ADD CONSTRAINT serp_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.serp_inquiries
     ADD CONSTRAINT serp_inquiries_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.serp_provider_tracking
     ADD CONSTRAINT serp_provider_tracking_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.serp_provider_tracking
     ADD CONSTRAINT serp_provider_tracking_serp_provider_id_unique UNIQUE (serp_provider_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_categories
     ADD CONSTRAINT service_categories_name_unique UNIQUE (name);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_categories
     ADD CONSTRAINT service_categories_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_categories
     ADD CONSTRAINT service_categories_slug_unique UNIQUE (slug);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_demand_requests
     ADD CONSTRAINT service_demand_requests_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_demand_signals
     ADD CONSTRAINT service_demand_signals_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_gap_analysis
     ADD CONSTRAINT service_gap_analysis_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_offering_types
     ADD CONSTRAINT service_offering_types_offering_type_key_key UNIQUE (offering_type_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_offering_types
     ADD CONSTRAINT service_offering_types_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_provider_forms
     ADD CONSTRAINT service_provider_forms_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_recommendations
     ADD CONSTRAINT service_recommendations_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_reviews
     ADD CONSTRAINT service_reviews_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_reviews
     ADD CONSTRAINT service_reviews_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_subcategories
     ADD CONSTRAINT service_subcategories_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_templates
     ADD CONSTRAINT service_templates_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
-DO $$ BEGIN
-  ALTER TABLE ONLY public.sessions
-    ADD CONSTRAINT sessions_pkey PRIMARY KEY (sid);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- [baseline] sessions constraint excluded (managed by migration runner)
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_itineraries
     ADD CONSTRAINT shared_itineraries_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_itineraries
     ADD CONSTRAINT shared_itineraries_share_token_unique UNIQUE (share_token);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_trip_views
     ADD CONSTRAINT shared_trip_views_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_trips
     ADD CONSTRAINT shared_trips_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.spontaneous_opportunities
     ADD CONSTRAINT spontaneous_opportunities_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.submit_itinerary_feedbacks
     ADD CONSTRAINT submit_itinerary_feedbacks_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_category_matrix
     ADD CONSTRAINT template_category_matrix_pkey PRIMARY KEY (template_key, category_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_purchases
     ADD CONSTRAINT template_purchases_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_reviews
     ADD CONSTRAINT template_reviews_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.temporal_anchors
     ADD CONSTRAINT temporal_anchors_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_help_me_guide_activities
     ADD CONSTRAINT tourist_help_me_guide_activities_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_help_me_guide_events
     ADD CONSTRAINT tourist_help_me_guide_events_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_place_category
     ADD CONSTRAINT tourist_place_category_name_unique UNIQUE (name);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_place_category
     ADD CONSTRAINT tourist_place_category_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_place_results
     ADD CONSTRAINT tourist_place_results_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_places_searches
     ADD CONSTRAINT tourist_places_searches_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_preferences
     ADD CONSTRAINT tourist_preferences_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tracking_sequences
     ADD CONSTRAINT tracking_sequences_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tracking_sequences
     ADD CONSTRAINT tracking_sequences_prefix_year_month_unique UNIQUE (prefix, year_month);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.transfer_cache
     ADD CONSTRAINT transfer_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.transport_booking_options
     ADD CONSTRAINT transport_booking_options_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.transport_legs
     ADD CONSTRAINT transport_legs_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_calendar_events
     ADD CONSTRAINT travel_pulse_calendar_events_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_cities
     ADD CONSTRAINT travel_pulse_cities_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_city_alerts
     ADD CONSTRAINT travel_pulse_city_alerts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_crowd_forecasts
     ADD CONSTRAINT travel_pulse_crowd_forecasts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_discovery_scores
     ADD CONSTRAINT travel_pulse_discovery_scores_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_happening_now
     ADD CONSTRAINT travel_pulse_happening_now_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_hidden_gems
     ADD CONSTRAINT travel_pulse_hidden_gems_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_live_activity
     ADD CONSTRAINT travel_pulse_live_activity_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_live_scores
     ADD CONSTRAINT travel_pulse_live_scores_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_trending
     ADD CONSTRAINT travel_pulse_trending_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_truth_checks
     ADD CONSTRAINT travel_pulse_truth_checks_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travel_pulse_truth_checks
     ADD CONSTRAINT travel_pulse_truth_checks_query_hash_unique UNIQUE (query_hash);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travelpayouts_cache
     ADD CONSTRAINT travelpayouts_cache_cache_key_unique UNIQUE (cache_key);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.travelpayouts_cache
     ADD CONSTRAINT travelpayouts_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trending_experiences
     ADD CONSTRAINT trending_experiences_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_alerts
     ADD CONSTRAINT trip_alerts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_analytics_enhanced
     ADD CONSTRAINT trip_analytics_enhanced_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_collaborators
     ADD CONSTRAINT trip_collaborators_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_collaborators
     ADD CONSTRAINT trip_collaborators_trip_id_user_id_key UNIQUE (trip_id, user_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_emergency_contacts
     ADD CONSTRAINT trip_emergency_contacts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_expert_advisors
     ADD CONSTRAINT trip_expert_advisors_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_items
     ADD CONSTRAINT trip_items_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_other_services
     ADD CONSTRAINT trip_other_services_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_participants
     ADD CONSTRAINT trip_participants_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_flights
     ADD CONSTRAINT trip_selected_flights_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_hotels
     ADD CONSTRAINT trip_selected_hotels_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_places
     ADD CONSTRAINT trip_selected_places_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_services
     ADD CONSTRAINT trip_selected_services_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_suggestions
     ADD CONSTRAINT trip_suggestions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_transactions
     ADD CONSTRAINT trip_transactions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trips
     ADD CONSTRAINT trips_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trips
     ADD CONSTRAINT trips_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.upsell_expert_endorsements
     ADD CONSTRAINT upsell_expert_endorsements_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.upsell_impressions
     ADD CONSTRAINT upsell_impressions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.upsell_slot_config
     ADD CONSTRAINT upsell_slot_config_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.upsell_slot_config
     ADD CONSTRAINT upsell_slot_config_surface_key UNIQUE (surface);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_chats
     ADD CONSTRAINT user_and_expert_chats_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_chats
     ADD CONSTRAINT user_and_expert_chats_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_contracts
     ADD CONSTRAINT user_and_expert_contracts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experience_items
     ADD CONSTRAINT user_experience_items_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experiences
     ADD CONSTRAINT user_experiences_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experiences
     ADD CONSTRAINT user_experiences_tracking_number_unique UNIQUE (tracking_number);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_filter_preferences
     ADD CONSTRAINT user_filter_preferences_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_saved_gems
     ADD CONSTRAINT user_saved_gems_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_spontaneity_preferences
     ADD CONSTRAINT user_spontaneity_preferences_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_email_unique UNIQUE (email);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_assignments
     ADD CONSTRAINT vendor_assignments_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_availability_slots
     ADD CONSTRAINT vendor_availability_slots_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_contracts
     ADD CONSTRAINT vendor_contracts_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendors
     ADD CONSTRAINT vendors_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.visa_requirements_cache
     ADD CONSTRAINT visa_requirements_cache_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.wallets
     ADD CONSTRAINT wallets_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.wallets
     ADD CONSTRAINT wallets_user_id_unique UNIQUE (user_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON public.sessions USING btree (expire);
@@ -6117,1489 +6102,1489 @@ CREATE TRIGGER update_invite_templates_updated_at BEFORE UPDATE ON public.invite
 DO $$ BEGIN
   ALTER TABLE ONLY public.access_audit_logs
     ADD CONSTRAINT access_audit_logs_actor_id_users_id_fk FOREIGN KEY (actor_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.access_audit_logs
     ADD CONSTRAINT access_audit_logs_target_user_id_users_id_fk FOREIGN KEY (target_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_booking_analytics
     ADD CONSTRAINT activity_booking_analytics_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.activity_comments
     ADD CONSTRAINT activity_comments_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_booking_requests
     ADD CONSTRAINT affiliate_booking_requests_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_booking_requests
     ADD CONSTRAINT affiliate_booking_requests_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_booking_requests
     ADD CONSTRAINT affiliate_booking_requests_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_clicks
     ADD CONSTRAINT affiliate_clicks_partner_id_affiliate_partners_id_fk FOREIGN KEY (partner_id) REFERENCES public.affiliate_partners(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_clicks
     ADD CONSTRAINT affiliate_clicks_product_id_affiliate_products_id_fk FOREIGN KEY (product_id) REFERENCES public.affiliate_products(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_earnings
     ADD CONSTRAINT affiliate_earnings_click_id_affiliate_clicks_id_fk FOREIGN KEY (click_id) REFERENCES public.affiliate_clicks(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_earnings
     ADD CONSTRAINT affiliate_earnings_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_earnings
     ADD CONSTRAINT affiliate_earnings_partner_id_affiliate_partners_id_fk FOREIGN KEY (partner_id) REFERENCES public.affiliate_partners(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_products
     ADD CONSTRAINT affiliate_products_partner_id_affiliate_partners_id_fk FOREIGN KEY (partner_id) REFERENCES public.affiliate_partners(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_scrape_jobs
     ADD CONSTRAINT affiliate_scrape_jobs_partner_id_affiliate_partners_id_fk FOREIGN KEY (partner_id) REFERENCES public.affiliate_partners(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.affiliate_trips
     ADD CONSTRAINT affiliate_trips_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_blueprints
     ADD CONSTRAINT ai_blueprints_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_blueprints
     ADD CONSTRAINT ai_blueprints_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_generated_itineraries
     ADD CONSTRAINT ai_generated_itineraries_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_generated_itineraries
     ADD CONSTRAINT ai_generated_itineraries_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_interactions
     ADD CONSTRAINT ai_interactions_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_interactions
     ADD CONSTRAINT ai_interactions_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ai_usage_logs
     ADD CONSTRAINT ai_usage_logs_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.api_usage_logs
     ADD CONSTRAINT api_usage_logs_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.booking_funnel_analytics
     ADD CONSTRAINT booking_funnel_analytics_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.bookings
     ADD CONSTRAINT bookings_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.bookings
     ADD CONSTRAINT bookings_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.cart_items
     ADD CONSTRAINT cart_items_custom_venue_id_custom_venues_id_fk FOREIGN KEY (custom_venue_id) REFERENCES public.custom_venues(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.cart_items
     ADD CONSTRAINT cart_items_service_id_provider_services_id_fk FOREIGN KEY (service_id) REFERENCES public.provider_services(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.cart_items
     ADD CONSTRAINT cart_items_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.cart_items
     ADD CONSTRAINT cart_items_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.city_media_cache
     ADD CONSTRAINT city_media_cache_city_id_travel_pulse_cities_id_fk FOREIGN KEY (city_id) REFERENCES public.travel_pulse_cities(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.concierge_requests
     ADD CONSTRAINT concierge_requests_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.contact_submissions
     ADD CONSTRAINT contact_submissions_assigned_admin_id_users_id_fk FOREIGN KEY (assigned_admin_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_analytics
     ADD CONSTRAINT content_analytics_tracking_number_content_registry_tracking_num FOREIGN KEY (tracking_number) REFERENCES public.content_registry(tracking_number) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_flags
     ADD CONSTRAINT content_flags_reporter_id_users_id_fk FOREIGN KEY (reporter_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_flags
     ADD CONSTRAINT content_flags_resolved_by_users_id_fk FOREIGN KEY (resolved_by) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_flags
     ADD CONSTRAINT content_flags_tracking_number_content_registry_tracking_number_ FOREIGN KEY (tracking_number) REFERENCES public.content_registry(tracking_number) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_invoices
     ADD CONSTRAINT content_invoices_customer_id_users_id_fk FOREIGN KEY (customer_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_invoices
     ADD CONSTRAINT content_invoices_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_invoices
     ADD CONSTRAINT content_invoices_tracking_number_content_registry_tracking_numb FOREIGN KEY (tracking_number) REFERENCES public.content_registry(tracking_number) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_registry
     ADD CONSTRAINT content_registry_flagged_by_users_id_fk FOREIGN KEY (flagged_by) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_registry
     ADD CONSTRAINT content_registry_moderator_id_users_id_fk FOREIGN KEY (moderator_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_registry
     ADD CONSTRAINT content_registry_owner_id_users_id_fk FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_versions
     ADD CONSTRAINT content_versions_changed_by_users_id_fk FOREIGN KEY (changed_by) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.content_versions
     ADD CONSTRAINT content_versions_tracking_number_content_registry_tracking_numb FOREIGN KEY (tracking_number) REFERENCES public.content_registry(tracking_number) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_bookings
     ADD CONSTRAINT coordination_bookings_availability_slot_id_vendor_availability_ FOREIGN KEY (availability_slot_id) REFERENCES public.vendor_availability_slots(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_bookings
     ADD CONSTRAINT coordination_bookings_coordination_id_coordination_states_id_fk FOREIGN KEY (coordination_id) REFERENCES public.coordination_states(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_bookings
     ADD CONSTRAINT coordination_bookings_service_id_provider_services_id_fk FOREIGN KEY (service_id) REFERENCES public.provider_services(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_bookings
     ADD CONSTRAINT coordination_bookings_vendor_id_users_id_fk FOREIGN KEY (vendor_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_states
     ADD CONSTRAINT coordination_states_assigned_expert_id_users_id_fk FOREIGN KEY (assigned_expert_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_states
     ADD CONSTRAINT coordination_states_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.coordination_states
     ADD CONSTRAINT coordination_states_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.credit_transactions
     ADD CONSTRAINT credit_transactions_wallet_id_wallets_id_fk FOREIGN KEY (wallet_id) REFERENCES public.wallets(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.custom_venues
     ADD CONSTRAINT custom_venues_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.custom_venues
     ADD CONSTRAINT custom_venues_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.day_boundaries
     ADD CONSTRAINT day_boundaries_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_events
     ADD CONSTRAINT destination_events_contributor_id_users_id_fk FOREIGN KEY (contributor_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_events
     ADD CONSTRAINT destination_events_reviewed_by_users_id_fk FOREIGN KEY (reviewed_by) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.destination_search_patterns
     ADD CONSTRAINT destination_search_patterns_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_ai_tasks
     ADD CONSTRAINT ea_ai_tasks_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_client_relationships
     ADD CONSTRAINT ea_client_relationships_client_user_id_users_id_fk FOREIGN KEY (client_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_client_relationships
     ADD CONSTRAINT ea_client_relationships_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_communications
     ADD CONSTRAINT ea_communications_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_communications
     ADD CONSTRAINT ea_communications_executive_id_ea_executives_id_fk FOREIGN KEY (executive_id) REFERENCES public.ea_executives(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_events
     ADD CONSTRAINT ea_events_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_events
     ADD CONSTRAINT ea_events_executive_id_ea_executives_id_fk FOREIGN KEY (executive_id) REFERENCES public.ea_executives(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_executives
     ADD CONSTRAINT ea_executives_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_gifts
     ADD CONSTRAINT ea_gifts_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_gifts
     ADD CONSTRAINT ea_gifts_executive_id_ea_executives_id_fk FOREIGN KEY (executive_id) REFERENCES public.ea_executives(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_saved_venues
     ADD CONSTRAINT ea_saved_venues_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_travel_arrangements
     ADD CONSTRAINT ea_travel_arrangements_ea_user_id_users_id_fk FOREIGN KEY (ea_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.ea_travel_arrangements
     ADD CONSTRAINT ea_travel_arrangements_executive_id_ea_executives_id_fk FOREIGN KEY (executive_id) REFERENCES public.ea_executives(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.email_verification_tokens
     ADD CONSTRAINT email_verification_tokens_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.energy_tracking
     ADD CONSTRAINT energy_tracking_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_invites
     ADD CONSTRAINT event_invites_experience_id_fkey FOREIGN KEY (experience_id) REFERENCES public.user_experiences(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.event_invites
     ADD CONSTRAINT event_invites_organizer_id_fkey FOREIGN KEY (organizer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_filter_options
     ADD CONSTRAINT experience_template_filter_options_filter_id_experience_templat FOREIGN KEY (filter_id) REFERENCES public.experience_template_filters(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_filters
     ADD CONSTRAINT experience_template_filters_tab_id_experience_template_tabs_id_ FOREIGN KEY (tab_id) REFERENCES public.experience_template_tabs(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_steps
     ADD CONSTRAINT experience_template_steps_experience_type_id_experience_types_i FOREIGN KEY (experience_type_id) REFERENCES public.experience_types(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_template_tabs
     ADD CONSTRAINT experience_template_tabs_experience_type_id_experience_types_id FOREIGN KEY (experience_type_id) REFERENCES public.experience_types(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_universal_filter_options
     ADD CONSTRAINT experience_universal_filter_options_filter_id_experience_univer FOREIGN KEY (filter_id) REFERENCES public.experience_universal_filters(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.experience_universal_filters
     ADD CONSTRAINT experience_universal_filters_experience_type_id_experience_type FOREIGN KEY (experience_type_id) REFERENCES public.experience_types(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_ai_tasks
     ADD CONSTRAINT expert_ai_tasks_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_earnings
     ADD CONSTRAINT expert_earnings_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_experience_types
     ADD CONSTRAINT expert_experience_types_experience_type_id_experience_types_id_ FOREIGN KEY (experience_type_id) REFERENCES public.experience_types(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_experience_types
     ADD CONSTRAINT expert_experience_types_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_analytics
     ADD CONSTRAINT expert_match_analytics_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_analytics
     ADD CONSTRAINT expert_match_analytics_traveler_id_users_id_fk FOREIGN KEY (traveler_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_scores
     ADD CONSTRAINT expert_match_scores_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_scores
     ADD CONSTRAINT expert_match_scores_traveler_id_users_id_fk FOREIGN KEY (traveler_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_match_scores
     ADD CONSTRAINT expert_match_scores_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_neighborhoods
     ADD CONSTRAINT expert_neighborhoods_expert_id_fkey FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_neighborhoods
     ADD CONSTRAINT expert_neighborhoods_neighborhood_id_fkey FOREIGN KEY (neighborhood_id) REFERENCES public.city_neighborhoods(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_payouts
     ADD CONSTRAINT expert_payouts_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_referrals
     ADD CONSTRAINT expert_referrals_referred_id_users_id_fk FOREIGN KEY (referred_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_referrals
     ADD CONSTRAINT expert_referrals_referrer_id_users_id_fk FOREIGN KEY (referrer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_requests
     ADD CONSTRAINT expert_requests_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_service_offerings
     ADD CONSTRAINT expert_service_offerings_category_id_expert_service_categories_ FOREIGN KEY (category_id) REFERENCES public.expert_service_categories(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_specializations
     ADD CONSTRAINT expert_specializations_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_templates
     ADD CONSTRAINT expert_templates_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_tips
     ADD CONSTRAINT expert_tips_booking_id_service_bookings_id_fk FOREIGN KEY (booking_id) REFERENCES public.service_bookings(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_tips
     ADD CONSTRAINT expert_tips_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_tips
     ADD CONSTRAINT expert_tips_traveler_id_users_id_fk FOREIGN KEY (traveler_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_updated_itineraries
     ADD CONSTRAINT expert_updated_itineraries_created_by_id_users_id_fk FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_updated_itineraries
     ADD CONSTRAINT expert_updated_itineraries_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_vendor_coordination
     ADD CONSTRAINT expert_vendor_coordination_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_vendor_coordination
     ADD CONSTRAINT expert_vendor_coordination_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.expert_vendor_coordination
     ADD CONSTRAINT expert_vendor_coordination_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.generated_itineraries
     ADD CONSTRAINT generated_itineraries_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.guest_travel_plans
     ADD CONSTRAINT guest_travel_plans_invite_id_fkey FOREIGN KEY (invite_id) REFERENCES public.event_invites(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.help_guide_trips
     ADD CONSTRAINT help_guide_trips_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.hotel_offer_cache
     ADD CONSTRAINT hotel_offer_cache_hotel_cache_id_hotel_cache_id_fk FOREIGN KEY (hotel_cache_id) REFERENCES public.hotel_cache(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.influencer_curated_content
     ADD CONSTRAINT influencer_curated_content_influencer_id_users_id_fk FOREIGN KEY (influencer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.influencer_referrals
     ADD CONSTRAINT influencer_referrals_influencer_id_users_id_fk FOREIGN KEY (influencer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.influencer_referrals
     ADD CONSTRAINT influencer_referrals_referred_user_id_users_id_fk FOREIGN KEY (referred_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.invite_send_log
     ADD CONSTRAINT invite_send_log_invite_id_fkey FOREIGN KEY (invite_id) REFERENCES public.event_invites(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.invite_templates
     ADD CONSTRAINT invite_templates_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_changes
     ADD CONSTRAINT itinerary_changes_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_comparisons
     ADD CONSTRAINT itinerary_comparisons_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_comparisons
     ADD CONSTRAINT itinerary_comparisons_user_experience_id_user_experiences_id_fk FOREIGN KEY (user_experience_id) REFERENCES public.user_experiences(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_comparisons
     ADD CONSTRAINT itinerary_comparisons_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_items
     ADD CONSTRAINT itinerary_items_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_items
     ADD CONSTRAINT itinerary_items_vendor_contract_id_vendor_contracts_id_fk FOREIGN KEY (vendor_contract_id) REFERENCES public.vendor_contracts(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variant_items
     ADD CONSTRAINT itinerary_variant_items_provider_service_id_provider_services_i FOREIGN KEY (provider_service_id) REFERENCES public.provider_services(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variant_items
     ADD CONSTRAINT itinerary_variant_items_variant_id_itinerary_variants_id_fk FOREIGN KEY (variant_id) REFERENCES public.itinerary_variants(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variant_metrics
     ADD CONSTRAINT itinerary_variant_metrics_variant_id_itinerary_variants_id_fk FOREIGN KEY (variant_id) REFERENCES public.itinerary_variants(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.itinerary_variants
     ADD CONSTRAINT itinerary_variants_comparison_id_itinerary_comparisons_id_fk FOREIGN KEY (comparison_id) REFERENCES public.itinerary_comparisons(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.live_events
     ADD CONSTRAINT live_events_search_id_tourist_places_searches_id_fk FOREIGN KEY (search_id) REFERENCES public.tourist_places_searches(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.local_expert_forms
     ADD CONSTRAINT local_expert_forms_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.local_knowledge_nuggets
     ADD CONSTRAINT local_knowledge_nuggets_expert_user_id_users_id_fk FOREIGN KEY (expert_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.maps_export_cache
     ADD CONSTRAINT maps_export_cache_variant_id_itinerary_variants_id_fk FOREIGN KEY (variant_id) REFERENCES public.itinerary_variants(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.messages
     ADD CONSTRAINT messages_conversation_id_conversations_id_fk FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.neighborhood_coverage_target
     ADD CONSTRAINT neighborhood_coverage_target_neighborhood_id_fkey FOREIGN KEY (neighborhood_id) REFERENCES public.city_neighborhoods(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.notifications
     ADD CONSTRAINT notifications_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.page_view_analytics
     ADD CONSTRAINT page_view_analytics_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.password_reset_tokens
     ADD CONSTRAINT password_reset_tokens_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.platform_revenue
     ADD CONSTRAINT platform_revenue_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.platform_revenue
     ADD CONSTRAINT platform_revenue_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_availability_schedule
     ADD CONSTRAINT provider_availability_schedule_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_blackout_dates
     ADD CONSTRAINT provider_blackout_dates_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_booking_requests
     ADD CONSTRAINT provider_booking_requests_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_booking_requests
     ADD CONSTRAINT provider_booking_requests_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_booking_requests
     ADD CONSTRAINT provider_booking_requests_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_earnings
     ADD CONSTRAINT provider_earnings_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_neighborhood_coverage
     ADD CONSTRAINT provider_neighborhood_coverage_neighborhood_id_fkey FOREIGN KEY (neighborhood_id) REFERENCES public.city_neighborhoods(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_neighborhood_coverage
     ADD CONSTRAINT provider_neighborhood_coverage_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_payouts
     ADD CONSTRAINT provider_payouts_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_performance_metrics
     ADD CONSTRAINT provider_performance_metrics_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_category_id_service_categories_id_fk FOREIGN KEY (category_id) REFERENCES public.service_categories(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_expert_offering_type_id_fkey FOREIGN KEY (expert_offering_type_id) REFERENCES public.expert_offering_types(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_reviewed_by_users_id_fk FOREIGN KEY (reviewed_by) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_subcategory_id_service_subcategories_id_fk FOREIGN KEY (subcategory_id) REFERENCES public.service_subcategories(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_services
     ADD CONSTRAINT provider_services_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.provider_settings
     ADD CONSTRAINT provider_settings_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.realtime_signals
     ADD CONSTRAINT realtime_signals_opportunity_id_spontaneous_opportunities_id_fk FOREIGN KEY (opportunity_id) REFERENCES public.spontaneous_opportunities(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.recommendation_conversions
     ADD CONSTRAINT recommendation_conversions_recommendation_id_service_recommenda FOREIGN KEY (recommendation_id) REFERENCES public.service_recommendations(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.recommendation_conversions
     ADD CONSTRAINT recommendation_conversions_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.review_moderation_logs
     ADD CONSTRAINT review_moderation_logs_review_id_fkey FOREIGN KEY (review_id) REFERENCES public.service_reviews(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.review_ratings
     ADD CONSTRAINT review_ratings_local_expert_id_users_id_fk FOREIGN KEY (local_expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.review_ratings
     ADD CONSTRAINT review_ratings_reviewer_id_users_id_fk FOREIGN KEY (reviewer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.saved_items
     ADD CONSTRAINT saved_items_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.search_analytics
     ADD CONSTRAINT search_analytics_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_contract_id_user_and_expert_contracts_id_fk FOREIGN KEY (contract_id) REFERENCES public.user_and_expert_contracts(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_service_id_provider_services_id_fk FOREIGN KEY (service_id) REFERENCES public.provider_services(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_traveler_id_users_id_fk FOREIGN KEY (traveler_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_bookings
     ADD CONSTRAINT service_bookings_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_provider_forms
     ADD CONSTRAINT service_provider_forms_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_recommendations
     ADD CONSTRAINT service_recommendations_demand_signal_id_service_demand_signals FOREIGN KEY (demand_signal_id) REFERENCES public.service_demand_signals(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_reviews
     ADD CONSTRAINT service_reviews_booking_id_service_bookings_id_fk FOREIGN KEY (booking_id) REFERENCES public.service_bookings(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_reviews
     ADD CONSTRAINT service_reviews_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_reviews
     ADD CONSTRAINT service_reviews_service_id_provider_services_id_fk FOREIGN KEY (service_id) REFERENCES public.provider_services(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_reviews
     ADD CONSTRAINT service_reviews_traveler_id_users_id_fk FOREIGN KEY (traveler_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_subcategories
     ADD CONSTRAINT service_subcategories_category_id_service_categories_id_fk FOREIGN KEY (category_id) REFERENCES public.service_categories(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.service_templates
     ADD CONSTRAINT service_templates_category_id_service_categories_id_fk FOREIGN KEY (category_id) REFERENCES public.service_categories(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_itineraries
     ADD CONSTRAINT shared_itineraries_shared_by_user_id_users_id_fk FOREIGN KEY (shared_by_user_id) REFERENCES public.users(id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_itineraries
     ADD CONSTRAINT shared_itineraries_shared_with_user_id_users_id_fk FOREIGN KEY (shared_with_user_id) REFERENCES public.users(id);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_itineraries
     ADD CONSTRAINT shared_itineraries_variant_id_itinerary_variants_id_fk FOREIGN KEY (variant_id) REFERENCES public.itinerary_variants(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_trip_views
     ADD CONSTRAINT shared_trip_views_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.shared_trips
     ADD CONSTRAINT shared_trips_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.submit_itinerary_feedbacks
     ADD CONSTRAINT submit_itinerary_feedbacks_contract_id_user_and_expert_contract FOREIGN KEY (contract_id) REFERENCES public.user_and_expert_contracts(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.submit_itinerary_feedbacks
     ADD CONSTRAINT submit_itinerary_feedbacks_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_purchases
     ADD CONSTRAINT template_purchases_buyer_id_users_id_fk FOREIGN KEY (buyer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_purchases
     ADD CONSTRAINT template_purchases_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_purchases
     ADD CONSTRAINT template_purchases_template_id_expert_templates_id_fk FOREIGN KEY (template_id) REFERENCES public.expert_templates(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_reviews
     ADD CONSTRAINT template_reviews_purchase_id_template_purchases_id_fk FOREIGN KEY (purchase_id) REFERENCES public.template_purchases(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_reviews
     ADD CONSTRAINT template_reviews_reviewer_id_users_id_fk FOREIGN KEY (reviewer_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.template_reviews
     ADD CONSTRAINT template_reviews_template_id_expert_templates_id_fk FOREIGN KEY (template_id) REFERENCES public.expert_templates(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.temporal_anchors
     ADD CONSTRAINT temporal_anchors_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.temporal_anchors
     ADD CONSTRAINT temporal_anchors_user_experience_id_user_experiences_id_fk FOREIGN KEY (user_experience_id) REFERENCES public.user_experiences(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_help_me_guide_activities
     ADD CONSTRAINT tourist_help_me_guide_activities_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_help_me_guide_events
     ADD CONSTRAINT tourist_help_me_guide_events_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_place_results
     ADD CONSTRAINT tourist_place_results_search_id_tourist_places_searches_id_fk FOREIGN KEY (search_id) REFERENCES public.tourist_places_searches(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_preferences
     ADD CONSTRAINT tourist_preferences_preference_id_tourist_place_results_id_fk FOREIGN KEY (preference_id) REFERENCES public.tourist_place_results(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.tourist_preferences
     ADD CONSTRAINT tourist_preferences_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.transport_booking_options
     ADD CONSTRAINT transport_booking_options_transport_leg_id_transport_legs_id_fk FOREIGN KEY (transport_leg_id) REFERENCES public.transport_legs(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.transport_booking_options
     ADD CONSTRAINT transport_booking_options_variant_id_itinerary_variants_id_fk FOREIGN KEY (variant_id) REFERENCES public.itinerary_variants(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.transport_legs
     ADD CONSTRAINT transport_legs_variant_id_itinerary_variants_id_fk FOREIGN KEY (variant_id) REFERENCES public.itinerary_variants(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_alerts
     ADD CONSTRAINT trip_alerts_acknowledged_by_user_id_users_id_fk FOREIGN KEY (acknowledged_by_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_alerts
     ADD CONSTRAINT trip_alerts_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_analytics_enhanced
     ADD CONSTRAINT trip_analytics_enhanced_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_analytics_enhanced
     ADD CONSTRAINT trip_analytics_enhanced_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_collaborators
     ADD CONSTRAINT trip_collaborators_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_collaborators
     ADD CONSTRAINT trip_collaborators_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_collaborators
     ADD CONSTRAINT trip_collaborators_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_emergency_contacts
     ADD CONSTRAINT trip_emergency_contacts_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_expert_advisors
     ADD CONSTRAINT trip_expert_advisors_local_expert_id_users_id_fk FOREIGN KEY (local_expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_expert_advisors
     ADD CONSTRAINT trip_expert_advisors_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_items
     ADD CONSTRAINT trip_items_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_other_services
     ADD CONSTRAINT trip_other_services_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_participants
     ADD CONSTRAINT trip_participants_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_participants
     ADD CONSTRAINT trip_participants_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_flights
     ADD CONSTRAINT trip_selected_flights_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_hotels
     ADD CONSTRAINT trip_selected_hotels_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_places
     ADD CONSTRAINT trip_selected_places_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_selected_services
     ADD CONSTRAINT trip_selected_services_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_suggestions
     ADD CONSTRAINT trip_suggestions_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_suggestions
     ADD CONSTRAINT trip_suggestions_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_transactions
     ADD CONSTRAINT trip_transactions_assigned_to_participant_id_trip_participants_ FOREIGN KEY (assigned_to_participant_id) REFERENCES public.trip_participants(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_transactions
     ADD CONSTRAINT trip_transactions_paid_by_participant_id_trip_participants_id_f FOREIGN KEY (paid_by_participant_id) REFERENCES public.trip_participants(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_transactions
     ADD CONSTRAINT trip_transactions_paid_to_vendor_contract_id_vendor_contracts_i FOREIGN KEY (paid_to_vendor_contract_id) REFERENCES public.vendor_contracts(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trip_transactions
     ADD CONSTRAINT trip_transactions_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trips
     ADD CONSTRAINT trips_expert_id_users_id_fk FOREIGN KEY (expert_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trips
     ADD CONSTRAINT trips_managed_by_ea_id_users_id_fk FOREIGN KEY (managed_by_ea_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trips
     ADD CONSTRAINT trips_primary_expert_id_fkey FOREIGN KEY (primary_expert_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.trips
     ADD CONSTRAINT trips_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.upsell_expert_endorsements
     ADD CONSTRAINT upsell_expert_endorsements_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.provider_services(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_chats
     ADD CONSTRAINT user_and_expert_chats_contract_id_user_and_expert_contracts_id_ FOREIGN KEY (contract_id) REFERENCES public.user_and_expert_contracts(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_chats
     ADD CONSTRAINT user_and_expert_chats_itinerary_submit_id_submit_itinerary_feed FOREIGN KEY (itinerary_submit_id) REFERENCES public.submit_itinerary_feedbacks(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_chats
     ADD CONSTRAINT user_and_expert_chats_receiver_id_users_id_fk FOREIGN KEY (receiver_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_and_expert_chats
     ADD CONSTRAINT user_and_expert_chats_sender_id_users_id_fk FOREIGN KEY (sender_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experience_items
     ADD CONSTRAINT user_experience_items_provider_service_id_provider_services_id_ FOREIGN KEY (provider_service_id) REFERENCES public.provider_services(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experience_items
     ADD CONSTRAINT user_experience_items_step_id_experience_template_steps_id_fk FOREIGN KEY (step_id) REFERENCES public.experience_template_steps(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experience_items
     ADD CONSTRAINT user_experience_items_user_experience_id_user_experiences_id_fk FOREIGN KEY (user_experience_id) REFERENCES public.user_experiences(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experiences
     ADD CONSTRAINT user_experiences_experience_type_id_experience_types_id_fk FOREIGN KEY (experience_type_id) REFERENCES public.experience_types(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experiences
     ADD CONSTRAINT user_experiences_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_experiences
     ADD CONSTRAINT user_experiences_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_filter_preferences
     ADD CONSTRAINT user_filter_preferences_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_saved_gems
     ADD CONSTRAINT user_saved_gems_gem_id_ai_discovered_gems_id_fk FOREIGN KEY (gem_id) REFERENCES public.ai_discovered_gems(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.user_spontaneity_preferences
     ADD CONSTRAINT user_spontaneity_preferences_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_assignments
     ADD CONSTRAINT vendor_assignments_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_assignments
     ADD CONSTRAINT vendor_assignments_vendor_id_vendors_id_fk FOREIGN KEY (vendor_id) REFERENCES public.vendors(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_availability_slots
     ADD CONSTRAINT vendor_availability_slots_provider_id_users_id_fk FOREIGN KEY (provider_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_availability_slots
     ADD CONSTRAINT vendor_availability_slots_service_id_provider_services_id_fk FOREIGN KEY (service_id) REFERENCES public.provider_services(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_contracts
     ADD CONSTRAINT vendor_contracts_assigned_to_participant_id_trip_participants_i FOREIGN KEY (assigned_to_participant_id) REFERENCES public.trip_participants(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_contracts
     ADD CONSTRAINT vendor_contracts_trip_id_trips_id_fk FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.vendor_contracts
     ADD CONSTRAINT vendor_contracts_vendor_id_vendors_id_fk FOREIGN KEY (vendor_id) REFERENCES public.vendors(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.wallets
     ADD CONSTRAINT wallets_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR SQLSTATE '42P16' OR SQLSTATE '42701' THEN NULL;
 END $$;
 
 --
