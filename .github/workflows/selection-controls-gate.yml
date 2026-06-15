@@ -227,10 +227,22 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a tsx || true
           exit 1
+      - name: Seed E2E test accounts
+        # Creates the role-scoped accounts global-setup.ts logs in as.
+        # Must run after the server is ready (DB exists and migrations applied).
+        run: npm run seed:e2e-accounts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          E2E_TEST_PASSWORD: TestPass123!
       - name: Journey-2 E2E test (Stage 3 exit gate)
-        run: npx playwright test journey-2 --project=chromium
+        # Uses playwright.local.config.ts: testDir=./e2e/specs + globalSetup
+        # that accepts http://localhost (NODE_ENV=development skips the Secure
+        # cookie / HTTPS guard introduced for production deployments).
+        run: npx playwright test journey-2 --project=chromium --config playwright.local.config.ts
         env:
           BASE_URL: http://localhost:5000
+          E2E_TEST_PASSWORD: TestPass123!
+          NODE_ENV: development
           CI: 'true'
       - name: Upload report
         if: always()
