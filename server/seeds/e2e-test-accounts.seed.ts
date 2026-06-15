@@ -2,6 +2,8 @@
 /**
  * E2E Test Account Seed
  * Creates the 5 test accounts that the E2E harness expects.
+ * Also seeds one upcoming Kyoto trip for the traveler account so
+ * tests that navigate /my-trips → trip-details can find a card.
  * Run after `npm run seed:beta` or on a fresh DB before E2E.
  *
  * Usage: tsx server/seeds/e2e-test-accounts.seed.ts
@@ -9,6 +11,7 @@
 
 import { db } from "../db";
 import { users } from "@shared/models/auth";
+import { trips } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
@@ -57,6 +60,48 @@ async function seedE2EAccounts() {
       authProvider: "email",
     });
     console.log(`  + Created ${account.email} (${account.role})`);
+  }
+
+  // Seed one upcoming Kyoto trip for the traveler so /my-trips shows a card
+  const traveler = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, "test-traveler-kyoto@traveloure.test"))
+    .then((r) => r[0]);
+
+  if (traveler) {
+    const existingTrips = await db
+      .select()
+      .from(trips)
+      .where(eq(trips.userId, traveler.id))
+      .then((r) => r);
+
+    if (existingTrips.length === 0) {
+      // Create a trip ~60 days from now
+      const start = new Date();
+      start.setDate(start.getDate() + 60);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      await db.insert(trips).values({
+        userId: traveler.id,
+        title: "Kyoto Discovery Trip",
+        destination: "Kyoto, Japan",
+        startDate: fmt(start),
+        endDate: fmt(end),
+        status: "planning",
+        eventType: "vacation",
+        numberOfTravelers: 2,
+        adults: 2,
+        kids: 0,
+      });
+      console.log(`  + Seeded Kyoto trip for ${traveler.email}`);
+    } else {
+      console.log(`  ✓ Traveler already has ${existingTrips.length} trip(s)`);
+    }
   }
 
   console.log("\nE2E accounts ready.");

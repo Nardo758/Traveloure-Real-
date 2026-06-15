@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,13 @@ export function AIMatchedExpertsSection({
       setMatchedExperts(data);
     },
   });
+
+  useEffect(() => {
+    if (isVisible && destination && !matchExpertsMutation.isPending && matchedExperts.length === 0) {
+      matchExpertsMutation.mutate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVisible, destination]);
 
   const displayedExperts = showAll ? matchedExperts : matchedExperts.slice(0, 3);
   const hasMore = matchedExperts.length > 3;
