@@ -63,7 +63,7 @@ const BUDGET_TIERS = [
 interface Destination {
   city: string;
   country: string;
-  cityId: string;
+  cityId: string | null;
 }
 
 interface EnhancedPlanningModalProps {
@@ -120,8 +120,7 @@ export default function EnhancedPlanningModal({
     const parts = cityInput.split(',').map((s) => s.trim());
     const city = parts[0];
     const country = parts[1] || '';
-    const cityId = `${city.toLowerCase().replace(/\s+/g, '-')}-${country.toLowerCase().substring(0, 2)}`;
-    setDestinations([...destinations, { city, country, cityId }]);
+    setDestinations([...destinations, { city, country, cityId: null }]);
     setCityInput('');
   };
 
