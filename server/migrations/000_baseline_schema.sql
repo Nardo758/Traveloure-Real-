@@ -6089,11 +6089,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS service_demand_requests_user_uniq ON public.se
 
 CREATE UNIQUE INDEX IF NOT EXISTS trip_expert_advisors_trip_expert_unique ON public.trip_expert_advisors USING btree (trip_id, local_expert_id);
 
-CREATE TRIGGER update_event_invites_updated_at BEFORE UPDATE ON public.event_invites FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DO $$ BEGIN
+  CREATE TRIGGER update_event_invites_updated_at BEFORE UPDATE ON public.event_invites FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
-CREATE TRIGGER update_guest_travel_plans_updated_at BEFORE UPDATE ON public.guest_travel_plans FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DO $$ BEGIN
+  CREATE TRIGGER update_guest_travel_plans_updated_at BEFORE UPDATE ON public.guest_travel_plans FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
-CREATE TRIGGER update_invite_templates_updated_at BEFORE UPDATE ON public.invite_templates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DO $$ BEGIN
+  CREATE TRIGGER update_invite_templates_updated_at BEFORE UPDATE ON public.invite_templates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 DO $$ BEGIN
   ALTER TABLE ONLY public.access_audit_logs
