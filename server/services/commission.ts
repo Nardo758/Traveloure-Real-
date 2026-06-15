@@ -451,19 +451,12 @@ export async function resolveCommissionRates(
     return buildRatesFromBand(band.rate, insuranceFields);
   }
 
-  // Band not found or is a flat amount — fall back to expert_standard split.
-  // Category-named bands (e.g. "accommodation") may not exist in fee_bands;
-  // rather than crashing the cart, use the canonical 75/25 split.
-  const fallbackBand = await getBand("expert_standard");
-  if (fallbackBand && fallbackBand.rateType === "percent") {
-    console.warn(
-      `[commission] band "${bandKey}" not found or not a percent band — ` +
-      `falling back to expert_standard for category=${category || "null"}`,
-    );
-    const insuranceFields = await resolveInsuranceFromCategory(category);
-    return buildRatesFromBand(fallbackBand.rate, insuranceFields);
-  }
-  // expert_standard itself is missing — hard fail with a clear message.
+  // Fail loud — a missing or flat band means the DB is misconfigured.
+  // A silent fallback to expert_standard would bill at the wrong rate (75/25)
+  // for any category whose band is absent, masking the misconfiguration in
+  // production. An explicit throw surfaces the problem immediately so it can
+  // be fixed (apply migration 087 or whichever migration seeds the missing band)
+  // rather than silently charging the wrong commission.
   throw new Error(
     `commission band missing: bandKey=${bandKey}, source=${source || "null"}, ` +
     `category=${category || "null"}. Ensure migrations are applied and the band is active.`,
