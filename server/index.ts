@@ -277,11 +277,17 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
   }
 
-  try {
-    await seedE2EAccounts();
-    logger.info("E2E test accounts ready");
-  } catch (err) {
-    logger.error({ err }, "Failed to seed E2E test accounts");
+  // E2E test accounts — seeded in non-production environments only.
+  // ENVIRONMENT=PROD is set in the shared env vars for the deployed app.
+  // This guard prevents known-password admin test accounts from being created
+  // in the live production database.
+  if (process.env.ENVIRONMENT !== "PROD") {
+    try {
+      await seedE2EAccounts();
+      logger.info("E2E test accounts ready (staging/dev)");
+    } catch (err) {
+      logger.error({ err }, "Failed to seed E2E test accounts");
+    }
   }
 
   seedingDurationMs = Date.now() - seedingStartTime;
