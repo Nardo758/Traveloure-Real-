@@ -367,6 +367,56 @@ export default function ExpertWorkspace() {
     staleTime: 30 * 1000,
   });
 
+  const tripExperienceType = workspaceConstraints?.tripExperienceType ?? null;
+  const isEvent = ["wedding", "proposal", "corporate", "birthday"].includes(tripExperienceType ?? "");
+
+  // ── Event Coordination (Stage 2) ─────────────────────────────────────
+  const { data: eventCoordState } = useQuery<any>({
+    queryKey: [`/api/expert/coordination-states`, tripId],
+    queryFn: async () => {
+      const res = await fetch(`/api/expert/coordination-states/${tripId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!tripId && isEvent,
+    staleTime: 60 * 1000,
+  });
+
+  const coordinationId = eventCoordState?.id;
+
+  const { data: eventTimeline } = useQuery<any>({
+    queryKey: [`/api/coordination-states`, coordinationId, "timeline"],
+    queryFn: async () => {
+      const res = await fetch(`/api/coordination-states/${coordinationId}/timeline`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!coordinationId,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: eventVendorGaps } = useQuery<any>({
+    queryKey: [`/api/coordination-states`, coordinationId, "vendor-gaps"],
+    queryFn: async () => {
+      const res = await fetch(`/api/coordination-states/${coordinationId}/vendor-gaps`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!coordinationId,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: eventCoordFee } = useQuery<any>({
+    queryKey: [`/api/coordination-states`, coordinationId, "fee"],
+    queryFn: async () => {
+      const res = await fetch(`/api/coordination-states/${coordinationId}/fee`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!coordinationId,
+    staleTime: 60 * 1000,
+  });
+
   const { data: partnerBookingRequests, isLoading: partnerBookingLoading } = useQuery<any[]>({
     queryKey: ["/api/affiliate-booking-requests/expert"],
     staleTime: 30 * 1000,
@@ -952,6 +1002,7 @@ export default function ExpertWorkspace() {
           <div style={{ borderBottom: `1px solid ${G[200]}`, padding: "0 10px", display: "flex", gap: 0, flexShrink: 0, overflowX: "auto" }}>
             {[
               { k: "gaps", l: totalConstraintIssues > 0 ? `⚠️ Schedule Check (${totalConstraintIssues})` : "⚠️ Schedule Check" },
+              ...(isEvent ? [{ k: "event-coord", l: "📅 Event Coord" }] : []),
               { k: "browse", l: "🔍 Browse" },
               { k: "commission", l: "💰 Earnings" },
               { k: "providers", l: "👥 Providers" },
@@ -1109,6 +1160,92 @@ export default function ExpertWorkspace() {
                   <div style={{ fontSize: 11, fontWeight: 600, color: "#15803D", display: "flex", alignItems: "center", gap: 5 }}>
                     <TrendingUp style={{ width: 12, height: 12 }} /> Estimated earnings: ${parseFloat(commission.expertShare).toFixed(2)}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Event Coordination Tab (Stage 2) */}
+          {rightTab === "event-coord" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+                <CalendarDays style={{ width: 14, height: 14, color: P }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Event Coordination</span>
+              </div>
+
+              {!coordinationId && (
+                <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "12px", fontSize: 12, color: G[500] }}>
+                  No coordination state linked to this trip yet. The traveler will create one during the concierge flow.
+                </div>
+              )}
+
+              {coordinationId && eventCoordFee && (
+                <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Coordination Fee</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#15803D", lineHeight: 1 }}>
+                    ${(eventCoordFee.feeCents / 100).toFixed(2)}
+                  </div>
+                  {eventCoordFee.optimizeCreditCents > 0 && (
+                    <div style={{ fontSize: 11, color: "#15803D", marginTop: 4 }}>
+                      ✓ ${(eventCoordFee.optimizeCreditCents / 100).toFixed(2)} optimize fee credited
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: G[500], marginTop: 4 }}>
+                    Rule: {eventCoordFee.rule} · Greater of $499 or 8% of budget
+                  </div>
+                </div>
+              )}
+
+              {coordinationId && eventTimeline && eventTimeline.blocks && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Timeline</div>
+                  <div style={{ fontSize: 12, color: G[500], marginBottom: 8 }}>
+                    Anchor: {eventTimeline.anchorType} at {eventTimeline.anchorTime}
+                  </div>
+                  {eventTimeline.blocks.map((block: any, idx: number) => (
+                    <div key={block.key ?? idx} style={{ border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px", marginBottom: 6, background: block.isLocked ? "#FEF3C7" : "white" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: G[900] }}>{block.label}</span>
+                        {block.isLocked && <Bdg c="amber">Locked</Bdg>}
+                      </div>
+                      <div style={{ fontSize: 11, color: G[500], marginTop: 2 }}>
+                        {block.startTime} – {block.endTime} ({block.duration} min)
+                      </div>
+                      {block.vendorName && (
+                        <div style={{ fontSize: 11, color: "#2563EB", marginTop: 2 }}>
+                          Vendor: {block.vendorName} ({block.vendorStatus})
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {eventTimeline.conflicts && eventTimeline.conflicts.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {eventTimeline.conflicts.map((c: any, idx: number) => (
+                        <div key={idx} style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8, padding: "8px 10px", marginBottom: 6, fontSize: 11, color: "#DC2626" }}>
+                          <strong>{c.type}</strong>: {c.description}
+                          {c.suggestion && <div style={{ marginTop: 2, color: "#B45309" }}>💡 {c.suggestion}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {coordinationId && eventVendorGaps && eventVendorGaps.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 }}>Vendor Gaps</div>
+                  {eventVendorGaps.map((gap: any, idx: number) => (
+                    <div key={idx} style={{ border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px", marginBottom: 6, background: gap.priority === "critical" ? "#FEF2F2" : gap.priority === "high" ? "#FFFBEB" : G[50] }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: G[900] }}>{gap.label}</span>
+                        <Bdg c={gap.priority === "critical" ? "rose" : gap.priority === "high" ? "amber" : "gray"}>{gap.priority}</Bdg>
+                      </div>
+                      <div style={{ fontSize: 11, color: G[500], marginTop: 2 }}>{gap.reason}</div>
+                      <div style={{ fontSize: 10, color: G[400], marginTop: 2 }}>
+                        Needed: {gap.neededFrom} – {gap.neededUntil}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
