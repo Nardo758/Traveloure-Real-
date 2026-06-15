@@ -87,6 +87,7 @@ async function seedE2EAccounts() {
       const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
       await db.insert(trips).values({
+        id: crypto.randomUUID(),
         userId: traveler.id,
         title: "Kyoto Discovery Trip",
         destination: "Kyoto, Japan",
