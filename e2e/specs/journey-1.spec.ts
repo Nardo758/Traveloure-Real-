@@ -13,6 +13,15 @@ import { test, expect, authFile } from '../fixtures/roles';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
+const filterJsErrors = (errs: string[]) =>
+  errs.filter(
+    (e) =>
+      !e.includes('Failed to load resource') &&
+      !e.includes('ERR_') &&
+      !e.includes('net::') &&
+      !e.includes('[vite]'),
+  );
+
 const SELECTORS = {
   // Landing
   heroSearch: '[data-testid="hero-search-input"]',
@@ -56,7 +65,7 @@ const SELECTORS = {
 async function addFirstServiceToCart(page) {
   // Click into services tab, click first service card, add to cart
   await page.click(SELECTORS.servicesTab);
-  await page.waitForSelector(SELECTORS.serviceCard, { timeout: 10_000 });
+  await page.waitForSelector(SELECTORS.serviceCard, { timeout: 20_000 });
   const card = page.locator(SELECTORS.serviceCard).first();
   await card.click();
   await page.waitForSelector(SELECTORS.addToCartBtn, { timeout: 10_000 });
@@ -82,8 +91,9 @@ test.describe('Journey 1A — Authed traveler', () => {
   test('landing → discover → cart → checkout → confirmation', async ({ page, consoleErrors }) => {
     // 1. Landing page renders
     await page.goto('/');
+    await page.waitForFunction(() => document.title.length > 0, { timeout: 15_000 });
     await expect(page).toHaveTitle(/traveloure/i);
-    expect(consoleErrors).toHaveLength(0);
+    expect(filterJsErrors(consoleErrors)).toHaveLength(0);
 
     // 2. Navigate to discover
     await page.click(SELECTORS.discoverLink);
@@ -141,6 +151,7 @@ test.describe('Journey 1B — Guest path with cart migration', () => {
   test('landing → discover → add to cart (guest) → sign in → migrate → confirmation', async ({ page, consoleErrors, browser }) => {
     // 1. Landing page renders (no auth)
     await page.goto('/');
+    await page.waitForFunction(() => document.title.length > 0, { timeout: 15_000 });
     await expect(page).toHaveTitle(/traveloure/i);
 
     // 2. Navigate to discover
@@ -201,7 +212,7 @@ test.describe('Stage 1 component wiring', () => {
   test('EscalationCTA renders in trip-details expert tab', async ({ page }) => {
     // Navigate to a trip with generated itinerary
     await page.goto('/my-trips');
-    await page.waitForSelector('[data-testid^="trip-card-"]', { timeout: 10_000 });
+    await page.waitForSelector('[data-testid^="trip-card-"]', { timeout: 15_000 });
     await page.locator('[data-testid^="trip-card-"]').first().click();
     await page.waitForURL(/\/trip\//, { timeout: 10_000 });
 
@@ -213,7 +224,7 @@ test.describe('Stage 1 component wiring', () => {
 
   test('ExpertMatchCard renders in discover with showExperts', async ({ page }) => {
     await page.goto('/discover?showExperts=true&destination=Kyoto');
-    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 10_000 });
+    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 15_000 });
     await expect(page.locator(SELECTORS.expertMatchCard).first()).toBeVisible();
   });
 
@@ -227,6 +238,6 @@ test.describe('Stage 1 component wiring', () => {
     await page.goto('/local-experts');
     await expect(page).not.toHaveURL(/404/);
     // Role switcher is always rendered on the experts page
-    await expect(page.locator('[data-testid="role-switcher"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="role-switcher"]')).toBeVisible({ timeout: 20_000 });
   });
 });

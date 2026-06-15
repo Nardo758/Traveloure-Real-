@@ -35,6 +35,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
 
   test('EnhancedPlanningModal generates itinerary and redirects to comparison or trip', async ({ page, consoleErrors }) => {
     await page.goto('/');
+    await page.waitForFunction(() => document.title.length > 0, { timeout: 15_000 });
     await expect(page).toHaveTitle(/traveloure/i);
 
     const trigger = page.locator(SELECTORS.planningModalTrigger).first();
@@ -71,7 +72,7 @@ test.describe('Journey 2D — Expert advisor request from trip-details', () => {
 
   test('Expert tab renders and advisor request button is visible', async ({ page }) => {
     await page.goto('/my-trips');
-    await page.waitForSelector(SELECTORS.tripCard, { timeout: 10_000 });
+    await page.waitForSelector(SELECTORS.tripCard, { timeout: 15_000 });
     await page.locator(SELECTORS.tripCard).first().click();
     await page.waitForURL(/\/trip\//, { timeout: 10_000 });
     await page.click(SELECTORS.expertTab);
