@@ -352,7 +352,7 @@ export function ExpertMatchCard({
               className="flex-1 bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs gap-1"
               onClick={() => onRequestMatch(expert.id)}
               disabled={isLoading}
-              data-testid="button-request-match"
+              data-testid={`button-request-expert-${expert.id}`}
             >
               <Sparkles className="w-3 h-3" />
               {isLoading ? "Matching..." : "Request Expert"}

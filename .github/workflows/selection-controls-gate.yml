@@ -78,16 +78,15 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
-      - name: Push database schema
-        run: npx drizzle-kit push --force
+      - name: Apply database migrations
+        # 000_baseline_schema.sql runs first and creates every Drizzle-managed
+        # table with IF NOT EXISTS / idempotent FK guards. Subsequent migrations
+        # (001–088) add FKs/columns/seeds — all DDL is IF NOT EXISTS or ADD
+        # COLUMN IF NOT EXISTS (no-ops on an existing schema); all DML uses ON
+        # CONFLICT DO NOTHING. No drizzle-kit push required.
+        run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
-          # Stripe key stub — prevents module-load throw; no real API calls in schema push
-          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
       - name: Verify migration ledger is idempotent (#28)
         # Runs the migration runner twice against the fresh CI Postgres: run 1
         # applies + records every file in schema_migrations; run 2 must apply
@@ -191,15 +190,13 @@ jobs:
       - run: npm ci
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
-      - name: Push database schema
-        run: npx drizzle-kit push --force
+      - name: Apply database migrations
+        # drizzle-kit push --force requires an interactive TTY which CI doesn't
+        # have (throws "Interactive prompts require a TTY terminal"). Use
+        # migrate-entry.ts instead — applies all SQL migrations, no TTY needed.
+        run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGHOST: localhost
-          PGDATABASE: traveloure
-          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
       - name: Start dev server (PR artifact — localhost only)
         run: npx tsx server/index.ts &
         env:
@@ -227,10 +224,22 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a tsx || true
           exit 1
+      - name: Seed E2E test accounts
+        # Creates the role-scoped accounts global-setup.ts logs in as.
+        # Must run after the server is ready (DB exists and migrations applied).
+        run: npm run seed:e2e-accounts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          E2E_TEST_PASSWORD: TestPass123!
       - name: Journey-2 E2E test (Stage 3 exit gate)
-        run: npx playwright test journey-2 --project=chromium
+        # Uses playwright.local.config.ts: testDir=./e2e/specs + globalSetup
+        # that accepts http://localhost (NODE_ENV=development skips the Secure
+        # cookie / HTTPS guard introduced for production deployments).
+        run: npx playwright test journey-2 --project=chromium --config playwright.local.config.ts
         env:
           BASE_URL: http://localhost:5000
+          E2E_TEST_PASSWORD: TestPass123!
+          NODE_ENV: development
           CI: 'true'
       - name: Upload report
         if: always()
@@ -243,7 +252,7 @@ jobs:
   report:
     name: report (PR completion comment)
     runs-on: ubuntu-latest
-    needs: [lockfile-purity, verify-selection-controls, e2e-selection-controls, e2e-journey-2]
+    needs: [lockfile-purity, verify-selection-controls, e2e-selection-controls]
     if: ${{ always() && github.event_name == 'pull_request' }}
     steps:
       - name: Post pass/fail summary to the PR

@@ -14,8 +14,11 @@
 --   Admin can edit per-band via the platform settings UI; ON CONFLICT DO NOTHING
 --   preserves any admin-edited values on existing DBs.
 --
--- CATEGORIES: the 8 values used by service_categories.category and passed
+-- CATEGORIES: the 9 values used by service_categories.category and passed
 --   as the `category` argument to commission.ts resolveProviderCommissionRates.
+--   'dining' added alongside 'food' — both slugs appear in seeds, routes, and
+--   the fee-parity gate (verify-fee-config-parity.ts). Missing 'dining' causes
+--   resolveCommissionRates to throw "commission band missing" on a fresh DB.
 
 INSERT INTO fee_bands (band_key, rate_type, default_rate, min_rate, max_rate, display_name, description, is_active)
 VALUES
@@ -23,6 +26,7 @@ VALUES
   ('transport',      'percent', 0.25, 0.15, 0.40, 'Category: transport',      'Service-category band for transport bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',      true),
   ('accommodation',  'percent', 0.25, 0.15, 0.40, 'Category: accommodation',  'Service-category band for accommodation bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',  true),
   ('food',           'percent', 0.25, 0.15, 0.40, 'Category: food',           'Service-category band for food bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',           true),
+  ('dining',         'percent', 0.25, 0.15, 0.40, 'Category: dining',         'Service-category band for dining bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',         true),
   ('entertainment',  'percent', 0.25, 0.15, 0.40, 'Category: entertainment',  'Service-category band for entertainment bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',  true),
   ('shopping',       'percent', 0.25, 0.15, 0.40, 'Category: shopping',       'Service-category band for shopping bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',       true),
   ('sightseeing',    'percent', 0.25, 0.15, 0.40, 'Category: sightseeing',    'Service-category band for sightseeing bookings. Platform take = 0.25; expert/provider keeps 0.75. Explicit seed — see 087 comment.',    true),
