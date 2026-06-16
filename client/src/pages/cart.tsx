@@ -222,10 +222,33 @@ export default function CartPage() {
   const [tripEndDate, setTripEndDate] = useState("");
   const [tripTravelers, setTripTravelers] = useState(2);
 
+  // Guest cart pending items (stored when unauthenticated users click add-to-cart)
+  const [guestPendingIds, setGuestPendingIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("traveloure_guest_cart_pending") || "[]");
+    } catch { return []; }
+  });
+  const [migrationDone, setMigrationDone] = useState(false);
+
   // Initialize guest session ID on first visit (ensures localStorage entry exists)
   useEffect(() => {
     getGuestSessionId();
   }, []);
+
+  // Migrate guest cart items to DB after sign-in
+  useEffect(() => {
+    if (authLoading || !user || guestPendingIds.length === 0 || migrationDone) return;
+    setMigrationDone(true);
+    Promise.all(
+      guestPendingIds.map((serviceId) =>
+        apiRequest("POST", "/api/cart", { serviceId, quantity: 1 }).catch(() => null)
+      )
+    ).then(() => {
+      localStorage.removeItem("traveloure_guest_cart_pending");
+      setGuestPendingIds([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+    });
+  }, [user, authLoading, guestPendingIds, migrationDone]);
 
   // Load experience context from sessionStorage on mount
   useEffect(() => {
@@ -1103,7 +1126,7 @@ export default function CartPage() {
                 onClick={() => openSignInModal()}
                 data-testid="button-sign-in-empty"
               >
-                Sign in to save and optimize
+                Sign in to book
               </button>
             </p>
           </div>
@@ -1145,7 +1168,7 @@ export default function CartPage() {
 
                     if (isContent && contentDisplay) {
                       return (
-                        <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
+                        <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
                           <CardContent className="p-4">
                             <div className="flex gap-4">
                               {contentDisplay.imageUrl && (
@@ -1204,7 +1227,7 @@ export default function CartPage() {
                     }
 
                     return (
-                    <Card key={item.id} data-testid={`card-cart-item-${item.id}`}>
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`}>
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="flex-1">
@@ -1281,7 +1304,7 @@ export default function CartPage() {
                   })}
                   
                   {externalItems.map((item) => (
-                    <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="flex-1">
