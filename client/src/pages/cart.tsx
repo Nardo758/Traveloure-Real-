@@ -1152,7 +1152,7 @@ export default function CartPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 && flowStep === "cart" && !optimizationResult ? (
+        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 && guestPendingIds.length === 0 && flowStep === "cart" && !optimizationResult ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -1403,6 +1403,34 @@ export default function CartPage() {
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
                             Remove
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+
+                  {/* Guest pending items — saved in localStorage before sign-in */}
+                  {!user && guestPendingIds.map((serviceId) => (
+                    <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-[#FF385C]/20">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <ShoppingCart className="w-8 h-8 text-muted-foreground shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm">Saved service</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Sign in to view details and checkout</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => {
+                              const updated = guestPendingIds.filter((id) => id !== serviceId);
+                              localStorage.setItem("traveloure_guest_cart_pending", JSON.stringify(updated));
+                              setGuestPendingIds(updated);
+                            }}
+                            data-testid={`button-remove-pending-${serviceId}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </CardContent>
