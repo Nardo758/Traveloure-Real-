@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { CityTickerTape } from "@/components/CityTickerTape";
@@ -407,6 +409,9 @@ const itemVariants = {
 
 export default function LandingPage() {
   const { openSignInModal } = useSignInModal();
+  const [planningOpen, setPlanningOpen] = useState(false);
+
+  const { data: currentUser } = useQuery<{ id: string } | null>({ queryKey: ["/api/auth/user"] });
 
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
@@ -444,6 +449,7 @@ export default function LandingPage() {
   ];
 
   return (
+    <>
     <div className="flex flex-col min-h-screen bg-background">
       <SEOHead
         title="Home"
@@ -492,6 +498,18 @@ export default function LandingPage() {
             <p className="text-lg md:text-xl text-white/90 leading-relaxed max-w-2xl mx-auto">
               From dream vacations to unforgettable celebrations — plan it yourself with AI or get personalized help from experts.
             </p>
+
+            <div className="mt-8 flex justify-center">
+              <Button
+                size="lg"
+                className="bg-[#FF385C] hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2"
+                onClick={() => setPlanningOpen(true)}
+                data-testid="button-plan-trip"
+              >
+                <Sparkles className="w-4 h-4" />
+                Plan a Trip with AI
+              </Button>
+            </div>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
@@ -964,5 +982,14 @@ export default function LandingPage() {
         </div>
       </section>
     </div>
+
+    {planningOpen && (
+      <EnhancedPlanningModal
+        isOpen={planningOpen}
+        onClose={() => setPlanningOpen(false)}
+        userId={currentUser?.id || ""}
+      />
+    )}
+    </>
   );
 }
