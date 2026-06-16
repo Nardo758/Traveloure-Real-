@@ -235,18 +235,33 @@ export default function CartPage() {
     getGuestSessionId();
   }, []);
 
-  // Migrate guest cart items to DB after sign-in
+  // Migrate guest cart items to DB after sign-in.
+  // Only clears IDs that successfully POST; keeps failed ones for retry and surfaces an error.
   useEffect(() => {
     if (authLoading || !user || guestPendingIds.length === 0 || migrationDone) return;
     setMigrationDone(true);
     Promise.all(
-      guestPendingIds.map((serviceId) =>
-        apiRequest("POST", "/api/cart", { serviceId, quantity: 1 }).catch(() => null)
-      )
-    ).then(() => {
-      localStorage.removeItem("traveloure_guest_cart_pending");
-      setGuestPendingIds([]);
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      guestPendingIds.map(async (serviceId) => {
+        try {
+          await apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
+          return { serviceId, ok: true };
+        } catch (err) {
+          console.error("[Cart] Failed to migrate guest cart item:", serviceId, err);
+          return { serviceId, ok: false };
+        }
+      })
+    ).then((results) => {
+      const failedIds = results.filter((r) => !r.ok).map((r) => r.serviceId);
+      if (failedIds.length > 0) {
+        localStorage.setItem("traveloure_guest_cart_pending", JSON.stringify(failedIds));
+        setGuestPendingIds(failedIds);
+      } else {
+        localStorage.removeItem("traveloure_guest_cart_pending");
+        setGuestPendingIds([]);
+      }
+      if (results.some((r) => r.ok)) {
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      }
     });
   }, [user, authLoading, guestPendingIds, migrationDone]);
 
