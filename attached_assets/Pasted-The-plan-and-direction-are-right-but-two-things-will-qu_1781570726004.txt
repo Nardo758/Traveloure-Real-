@@ -1,0 +1,18 @@
+The plan and direction are right — but two things will quietly break staging if they carry over from prod by default, and "everything else same as prod" is exactly where they'd slip through.
+
+**Staging must have its own database — separate from prod.** This is the make-or-break. If the staging deploy inherits prod's `DATABASE_URL`, then its auto-seed writes the test accounts into the *prod* DB, and journey-1's checkout mutations land in *prod* data — you've recreated the exact problem you're purging, just at a new URL. When you create the staging deployment, give it its own Postgres instance / its own `DATABASE_URL`. Same Stripe test keys, same `ENVIRONMENT`≠`PROD`, but a *distinct* database. A staging deploy pointed at prod's DB is worse than no staging at all, because it looks isolated and isn't.
+
+**Confirm staging auto-seeds the catalog, not just the accounts.** Login working proves the five accounts seeded — it does not prove there's anything bookable to put in a cart. Journey-1 is add-to-cart → checkout, and you already saw Journey 1B skip when no services were seeded. If staging's startup seed creates accounts but no Kyoto services/inventory, the cart can't be filled and journey-1 either skips or reds on an empty cart — neither is the real result you're after. So the agent's post-staging probe needs a third check beyond health and login: that a bookable service exists in the seeded market. If the startup seed doesn't include the catalog, that's the fix before any run.
+
+Those two are blocking. The prod purge has two upgrades that aren't blocking the run but are worth doing while you're in there:
+
+**Make the purge pattern-based, not a hardcoded five-email list.** Your test-account convention is `{market}-{specialty}@traveloure.test` across five markets — that's potentially ~45 accounts, not five. A hardcoded list of five misses the rest if any of them reached prod. Purge `WHERE email LIKE '%@traveloure.test'` instead — `.test` is a reserved TLD that can never belong to a real user, so the pattern is safe and it catches every test account, present and future.
+
+**Add a guard to the seed script itself.** The startup purge is a janitor cleaning up after the fact — it removes test accounts on the next prod boot, but they still got in via a manual seed that bypassed the env-gate, and nothing stops that from happening again. Put a refusal in the seed script: if `ENVIRONMENT === 'PROD'` (or the target is the prod DB), it errors out instead of seeding. That's the lock; the purge is the mop. Together you get defense in depth — the seed can't target prod, and anything that somehow slips in gets purged on restart.
+
+So the order:
+- **You:** create staging with its **own database**, test Stripe keys, `ENVIRONMENT`≠`PROD`; redeploy prod (ships the purge + `db:true`).
+- **Replit agent:** confirm staging health (`db:true`), login (accounts seeded), **and a bookable service exists** (catalog seeded); upgrade the purge to the `@traveloure.test` pattern; add the prod-refusal guard to the seed script; set `E2E_BASE_URL` to staging.
+- **Claude Code:** Model B restructure, point at staging, run journey-1.
+
+The staging-needs-its-own-DB point is the one I'd double-check before you click create — it's the difference between staging doing its job and staging being prod wearing a different hostname.

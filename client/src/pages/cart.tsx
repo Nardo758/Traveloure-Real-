@@ -222,10 +222,48 @@ export default function CartPage() {
   const [tripEndDate, setTripEndDate] = useState("");
   const [tripTravelers, setTripTravelers] = useState(2);
 
+  // Guest cart pending items (stored when unauthenticated users click add-to-cart)
+  const [guestPendingIds, setGuestPendingIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("traveloure_guest_cart_pending") || "[]");
+    } catch { return []; }
+  });
+  const [migrationDone, setMigrationDone] = useState(false);
+
   // Initialize guest session ID on first visit (ensures localStorage entry exists)
   useEffect(() => {
     getGuestSessionId();
   }, []);
+
+  // Migrate guest cart items to DB after sign-in.
+  // Only clears IDs that successfully POST; keeps failed ones for retry and surfaces an error.
+  useEffect(() => {
+    if (authLoading || !user || guestPendingIds.length === 0 || migrationDone) return;
+    setMigrationDone(true);
+    Promise.all(
+      guestPendingIds.map(async (serviceId) => {
+        try {
+          await apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
+          return { serviceId, ok: true };
+        } catch (err) {
+          console.error("[Cart] Failed to migrate guest cart item:", serviceId, err);
+          return { serviceId, ok: false };
+        }
+      })
+    ).then((results) => {
+      const failedIds = results.filter((r) => !r.ok).map((r) => r.serviceId);
+      if (failedIds.length > 0) {
+        localStorage.setItem("traveloure_guest_cart_pending", JSON.stringify(failedIds));
+        setGuestPendingIds(failedIds);
+      } else {
+        localStorage.removeItem("traveloure_guest_cart_pending");
+        setGuestPendingIds([]);
+      }
+      if (results.some((r) => r.ok)) {
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      }
+    });
+  }, [user, authLoading, guestPendingIds, migrationDone]);
 
   // Load experience context from sessionStorage on mount
   useEffect(() => {
@@ -1103,7 +1141,7 @@ export default function CartPage() {
                 onClick={() => openSignInModal()}
                 data-testid="button-sign-in-empty"
               >
-                Sign in to save and optimize
+                Sign in to book
               </button>
             </p>
           </div>
@@ -1114,7 +1152,7 @@ export default function CartPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 && flowStep === "cart" && !optimizationResult ? (
+        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 && guestPendingIds.length === 0 && flowStep === "cart" && !optimizationResult ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -1145,7 +1183,7 @@ export default function CartPage() {
 
                     if (isContent && contentDisplay) {
                       return (
-                        <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
+                        <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
                           <CardContent className="p-4">
                             <div className="flex gap-4">
                               {contentDisplay.imageUrl && (
@@ -1204,7 +1242,7 @@ export default function CartPage() {
                     }
 
                     return (
-                    <Card key={item.id} data-testid={`card-cart-item-${item.id}`}>
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`}>
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="flex-1">
@@ -1281,7 +1319,7 @@ export default function CartPage() {
                   })}
                   
                   {externalItems.map((item) => (
-                    <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="flex-1">
@@ -1365,6 +1403,34 @@ export default function CartPage() {
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
                             Remove
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+
+                  {/* Guest pending items — saved in localStorage before sign-in */}
+                  {!user && guestPendingIds.map((serviceId) => (
+                    <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-[#FF385C]/20">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <ShoppingCart className="w-8 h-8 text-muted-foreground shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm">Saved service</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Sign in to view details and checkout</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => {
+                              const updated = guestPendingIds.filter((id) => id !== serviceId);
+                              localStorage.setItem("traveloure_guest_cart_pending", JSON.stringify(updated));
+                              setGuestPendingIds(updated);
+                            }}
+                            data-testid={`button-remove-pending-${serviceId}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </CardContent>
