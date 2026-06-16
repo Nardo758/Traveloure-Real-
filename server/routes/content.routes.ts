@@ -171,8 +171,13 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
   return mapFeverCategoryToEventType(category);
 }
 
-router.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+router.get("/api/health", async (_req, res) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      res.json({ status: "ok", db: true, timestamp: new Date().toISOString() });
+    } catch {
+      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString() });
+    }
   });
 
 router.get("/api/status", (_req, res) => {

@@ -1,0 +1,22 @@
+Option 1 — staging. And this isn't best-practice purism; there's a concrete reason Option 2 can't even work, plus a security problem you need to fix regardless.
+
+**The decisive reason: journey-1 includes checkout → payment, and your tests use Stripe test cards (`4242…`). Test cards only work in Stripe *test* mode.** So your E2E target has to be in Stripe test mode — and production, for real customers, has to be in *live* mode. Those are mutually exclusive. Which means:
+
+- If your prod deploy uses **live** Stripe keys, journey-1's payment step rejects the test card and the run goes red at checkout — Option 2 literally can't produce a green journey-1.
+- If your prod deploy uses **test** Stripe keys, then it isn't configured the way real production has to be, and you're one config flip away from a broken launch.
+
+Either way, the E2E target can't be prod. A staging deploy in Stripe test mode is the only thing that lets the payment step pass.
+
+**The second reason: journey-1 mutates.** Add-to-cart → checkout → confirmation creates cart items, trips, bookings, payment intents, and transactions. This isn't a one-off — it's becoming your CI gate that runs on *every push*. Point it at prod and every push pollutes your production database with test bookings and junk trips, forever. That corrupts your analytics and your real data the moment you have any.
+
+So: **create a staging deployment** — second Replit deploy, `ENVIRONMENT` not set to `PROD` (so it auto-seeds), Stripe *test* keys. That's the correct, repeatable E2E target, and it's a cheap one-time setup.
+
+Separately — and this matters independent of the choice — **you have known-password test accounts in your production database right now**, manually seeded around the env-gate. That includes `test-admin` with `TestPass123!`. A known-username, known-password *admin* account sitting in prod is a real security hole — anyone who guesses the pattern walks into your admin panel. The env-gate exists precisely to keep these out of prod, and the manual seed bypassed it. **Remove those accounts from the prod DB**, and don't seed test accounts there again. Put it on the pre-launch must-fix list.
+
+Routing for the next moves:
+
+- **You (Replit Deployments panel):** create the staging deploy — `ENVIRONMENT` ≠ `PROD`, Stripe test keys. This is the one piece only you can do.
+- **Replit agent:** once staging is up, confirm `/api/health → db:true` and a test-account login *against the staging URL*, confirm it auto-seeded on startup, and report the staging URL for `E2E_BASE_URL`. Then purge the test accounts from the **prod** DB.
+- **Claude Code:** Model B restructure — strip DB work from `e2e-tests.yml`, point `E2E_BASE_URL` at the staging URL, health-check on `db:true`, run journey-1.
+
+The pattern worth noticing: every shortcut here — manually seeding prod, pointing E2E at prod — trades a small bit of setup now for a landmine later (polluted prod data, live-payment exposure, an admin account in production). The staging deploy is fifteen minutes and it makes all three problems go away at once.

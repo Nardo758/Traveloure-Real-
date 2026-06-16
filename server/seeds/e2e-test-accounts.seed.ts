@@ -36,6 +36,13 @@ const E2E_ACCOUNTS = [
 ];
 
 async function seedE2EAccounts() {
+  if (process.env.ENVIRONMENT === "PROD") {
+    throw new Error(
+      "[e2e-seed] Refusing to seed E2E test accounts into a PROD environment. " +
+      "Set ENVIRONMENT to something other than 'PROD' on the target deployment."
+    );
+  }
+
   console.log("Seeding E2E test accounts...");
   const hash = await hashPassword(PASSWORD);
 
@@ -109,7 +116,32 @@ async function seedE2EAccounts() {
   console.log("Set E2E_BASE_URL to your HTTPS deploy URL and E2E_TEST_PASSWORD to the same password used here.");
 }
 
-seedE2EAccounts().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+/**
+ * Purges ALL @traveloure.test accounts from the production database.
+ * Uses a LIKE pattern rather than a hardcoded list — the .test TLD is
+ * reserved (RFC 2606) and can never belong to a real user, so this is safe
+ * and catches every test account present or future.
+ * Call at startup when ENVIRONMENT === 'PROD'. Idempotent.
+ */
+async function purgeE2EAccountsFromProd() {
+  const { sql } = await import("drizzle-orm");
+  const deleted = await db
+    .delete(users)
+    .where(sql`${users.email} LIKE '%@traveloure.test'`)
+    .returning({ email: users.email, role: users.role });
+
+  if (deleted.length > 0) {
+    console.warn(`[security] Purged ${deleted.length} @traveloure.test account(s) from PROD DB:`);
+    deleted.forEach((r) => console.warn(`  - ${r.email} (${r.role})`));
+  }
+}
+
+export { seedE2EAccounts, purgeE2EAccountsFromProd };
+
+// Run directly (tsx server/seeds/e2e-test-accounts.seed.ts)
+if (process.argv[1] && process.argv[1].endsWith("e2e-test-accounts.seed.ts")) {
+  seedE2EAccounts().catch((err) => {
+    console.error("Seed failed:", err);
+    process.exit(1);
+  });
+}
