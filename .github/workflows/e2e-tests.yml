@@ -1,13 +1,14 @@
-name: E2E Tests
+name: E2E Tests (Model B — deploy-only, no Actions DB)
 
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
   schedule:
-    # Run E2E tests daily at 2am UTC
-    - cron: '0 2 * * *'
+    # Run E2E tests daily at 2:23 UTC (off-peak, avoids top-of-hour congestion)
+    - cron: '23 2 * * *'
 
 jobs:
   playwright-tests:
@@ -24,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
@@ -33,45 +34,71 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Wait for Replit deployment
+      - name: Wait for Replit deployment (health + DB seeded + ready)
         id: server-check
         # Hard-fail if the Replit dev server does not respond within 10 minutes.
         # A passing E2E job with no tests executed provides no signal — if the
         # server is unavailable the gate must fail explicitly so engineers know
         # to re-run when the Replit workspace is active.
+        #
+        # Model B: The deployed app self-seeds its own DB on startup. We only
+        # confirm the app is alive AND its DB is seeded and ready by checking:
+        #   - /health        → DB connectivity (checks.database.status === "healthy")
+        #   - /api/ready     → seeding completion (ready === true)
+        # No Actions-side database work — no DATABASE_URL, no migrations, no seed.
         run: |
           # 60 attempts × 10 s = 10 minute window.  Replit dev servers can take
           # several minutes to wake from sleep when the first request arrives.
           max_attempts=60
           attempt=1
           while [ $attempt -le $max_attempts ]; do
-            http_code=$(curl -s --connect-timeout 15 --max-time 20 \
-              -o /dev/null -w "%{http_code}" "$E2E_BASE_URL" 2>/dev/null || echo "000")
-            if echo "$http_code" | grep -qE "^(200|301|302|304)$"; then
-              echo "✓ Replit deployment is accessible (HTTP $http_code)"
+            # Check 1: /health — DB connectivity and general health
+            health_response=$(curl -s --connect-timeout 15 --max-time 20 \
+              "$E2E_BASE_URL/health" 2>/dev/null || echo "")
+            health_db=$(echo "$health_response" | node -e "
+              let d = '';
+              process.stdin.on('data', c => d += c);
+              process.stdin.on('end', () => {
+                try {
+                  const j = JSON.parse(d);
+                  const db = j.checks?.database?.status === 'healthy';
+                  process.stdout.write(db ? 'yes' : 'no');
+                } catch { process.stdout.write('no'); }
+              });
+            " || echo "no")
+
+            # Check 2: /api/ready — seeding completion (test accounts + data)
+            ready_response=$(curl -s --connect-timeout 15 --max-time 20 \
+              "$E2E_BASE_URL/api/ready" 2>/dev/null || echo "")
+            ready_ok=$(echo "$ready_response" | node -e "
+              let d = '';
+              process.stdin.on('data', c => d += c);
+              process.stdin.on('end', () => {
+                try {
+                  const j = JSON.parse(d);
+                  process.stdout.write(j.ready === true ? 'yes' : 'no');
+                } catch { process.stdout.write('no'); }
+              });
+            " || echo "no")
+
+            if [ "$health_db" = "yes" ] && [ "$ready_ok" = "yes" ]; then
+              echo "✓ Replit deployment is accessible, DB is healthy, and seeding is complete"
+              echo "  Health: $health_response"
+              echo "  Ready:  $ready_response"
               exit 0
             fi
-            echo "Attempt $attempt/$max_attempts: HTTP $http_code — waiting for deployment..."
+
+            echo "Attempt $attempt/$max_attempts: health_db=$health_db  ready=$ready_ok  — waiting..."
             sleep 10
             attempt=$((attempt + 1))
           done
-          echo "::error::Replit dev server did not respond within 10 minutes (${max_attempts} attempts)."
-          echo "::error::E2E tests cannot run against an unavailable server — re-run this workflow"
+
+          echo "::error::Replit dev server did not report healthy DB + complete seeding within 10 minutes (${max_attempts} attempts)."
+          echo "::error::E2E tests cannot run against an unready server — re-run this workflow"
           echo "::error::while the Replit workspace is active to get real test results."
           exit 1
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-
-      - name: Apply pending migrations to E2E database
-        run: npx tsx server/migrations/migrate-entry.ts
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
-      - name: Seed E2E test accounts
-        run: npm run seed:e2e-accounts
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
 
       - name: Run E2E deploy tests (journey-1 + Stage 1 gates)
         run: npm run test:e2e:deploy
@@ -137,7 +164,6 @@ jobs:
           echo "- SmartServiceRecommendations in discover (authed)"
           echo "- /local-experts route renders without 404"
           echo ""
-          echo "## Required Secrets"
+          echo "## Required Secrets (Model B — no DATABASE_URL)"
           echo "- E2E_BASE_URL    (HTTPS deploy URL — must be live while workflow runs)"
-          echo "- E2E_TEST_PASSWORD  (password for seeded test accounts)"
-          echo "- DATABASE_URL    (prod DB — needed by seed:e2e-accounts step)"
+          echo "- E2E_TEST_PASSWORD  (password for seeded test accounts; app seeds itself on startup)"
