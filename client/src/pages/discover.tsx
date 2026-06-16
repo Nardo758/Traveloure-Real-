@@ -808,6 +808,7 @@ export default function DiscoverPage() {
       setAddingToCartId(null);
     },
     onError: (error: any) => {
+      console.error("[Cart] addToCartMutation failed:", error);
       toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
       setAddingToCartId(null);
     },
