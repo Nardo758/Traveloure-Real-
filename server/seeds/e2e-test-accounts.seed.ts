@@ -36,6 +36,13 @@ const E2E_ACCOUNTS = [
 ];
 
 async function seedE2EAccounts() {
+  if (process.env.ENVIRONMENT === "PROD") {
+    throw new Error(
+      "[e2e-seed] Refusing to seed E2E test accounts into a PROD environment. " +
+      "Set ENVIRONMENT to something other than 'PROD' on the target deployment."
+    );
+  }
+
   console.log("Seeding E2E test accounts...");
   const hash = await hashPassword(PASSWORD);
 
@@ -110,21 +117,21 @@ async function seedE2EAccounts() {
 }
 
 /**
- * Purges E2E test accounts from production.
- * Call this at startup when ENVIRONMENT === 'PROD' to remove any accounts
- * that were manually seeded before the env-gate was in place.
- * Idempotent — safe to run repeatedly; exits silently when no rows match.
+ * Purges ALL @traveloure.test accounts from the production database.
+ * Uses a LIKE pattern rather than a hardcoded list — the .test TLD is
+ * reserved (RFC 2606) and can never belong to a real user, so this is safe
+ * and catches every test account present or future.
+ * Call at startup when ENVIRONMENT === 'PROD'. Idempotent.
  */
 async function purgeE2EAccountsFromProd() {
-  const { inArray } = await import("drizzle-orm");
-  const emails = E2E_ACCOUNTS.map((a) => a.email.toLowerCase());
+  const { sql } = await import("drizzle-orm");
   const deleted = await db
     .delete(users)
-    .where(inArray(users.email, emails))
+    .where(sql`${users.email} LIKE '%@traveloure.test'`)
     .returning({ email: users.email, role: users.role });
 
   if (deleted.length > 0) {
-    console.warn("[security] Removed E2E test accounts from PROD DB:");
+    console.warn(`[security] Purged ${deleted.length} @traveloure.test account(s) from PROD DB:`);
     deleted.forEach((r) => console.warn(`  - ${r.email} (${r.role})`));
   }
 }
