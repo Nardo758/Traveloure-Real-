@@ -815,10 +815,16 @@ export default function DiscoverPage() {
 
   const handleAddToCart = (serviceId: string) => {
     if (!user) {
+      const GUEST_CART_KEY = "traveloure_guest_cart_pending";
+      try {
+        const existing: string[] = JSON.parse(localStorage.getItem(GUEST_CART_KEY) || "[]");
+        if (!existing.includes(serviceId)) {
+          localStorage.setItem(GUEST_CART_KEY, JSON.stringify([...existing, serviceId]));
+        }
+      } catch { /* ignore */ }
       toast({ 
-        variant: "destructive", 
-        title: "Sign in required", 
-        description: "Please sign in to add items to your cart" 
+        title: "Saved!", 
+        description: "Sign in to checkout and save your selection." 
       });
       return;
     }
