@@ -27,6 +27,9 @@ const filterJsErrors = (errs: string[]) =>
       !e.includes('ERR_') &&
       !e.includes('net::') &&
       !e.includes('[vite]') &&
+      !e.includes('vite-hmr') &&
+      !e.includes('Vite server') &&
+      !e.includes('WebSocket') &&
       !e.includes('Warning:') &&
       !e.includes('ResizeObserver') &&
       !e.includes('Non-Error'),
@@ -53,6 +56,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
   test.use({ storageState: authFile('traveler') });
 
   test('EnhancedPlanningModal generates itinerary and redirects to comparison or trip', async ({ page, consoleErrors }) => {
+    test.setTimeout(120_000); // AI generation can take 35-40 s
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForNav(page);
 

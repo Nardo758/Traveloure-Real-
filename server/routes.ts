@@ -7100,7 +7100,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           destination,
           startDate,
           endDate,
-          budget: budget?.toString(),
+          budget: budget != null && !isNaN(Number(budget)) ? String(budget) : null,
           travelers: travelers || 1,
           experienceTypeSlug: experienceTypeSlug || null,
           status: "generating",
@@ -9952,9 +9952,9 @@ Respond with this exact JSON structure:
       if (!travelers || typeof travelers !== "number" || travelers < 1) {
         return res.status(400).json({ message: "Number of travelers must be at least 1" });
       }
-      if (!interests || !Array.isArray(interests) || interests.length === 0) {
-        return res.status(400).json({ message: "At least one interest is required" });
-      }
+      const effectiveInterests = Array.isArray(interests) && interests.length > 0
+        ? interests
+        : ["sightseeing", "local culture", "food"];
 
       // Generate itinerary using Grok
       const { grokService } = await import("./services/grok.service");
@@ -9964,7 +9964,7 @@ Respond with this exact JSON structure:
         travelers,
         budget: budget || undefined,
         eventType: eventType || undefined,
-        interests,
+        interests: effectiveInterests,
         pacePreference: pacePreference || "moderate",
         mustSeeAttractions: mustSeeAttractions || [],
         dietaryRestrictions: dietaryRestrictions || [],
@@ -10004,13 +10004,14 @@ Respond with this exact JSON structure:
       });
 
       // NEW: Create comparison and trigger optimization
+      const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
       const [comparison] = await db.insert(itineraryComparisons).values({
         userId,
         title: `${destination} Trip`,
         destination,
         startDate: dates.start,
         endDate: dates.end,
-        budget: budget?.toString() || null,
+        budget: numericBudget,
         travelers: travelers || 1,
         status: 'generating',
       }).returning();
@@ -10127,9 +10128,9 @@ Respond with this exact JSON structure:
       if (!travelers || typeof travelers !== "number" || travelers < 1) {
         return res.status(400).json({ message: "Number of travelers must be at least 1" });
       }
-      if (!interests || !Array.isArray(interests) || interests.length === 0) {
-        return res.status(400).json({ message: "At least one interest is required" });
-      }
+      const effectiveInterests2 = Array.isArray(interests) && interests.length > 0
+        ? interests
+        : ["sightseeing", "local culture", "food"];
 
       const { tripOptimizationService } = await import("./services/trip-optimization.service");
       
@@ -10139,7 +10140,7 @@ Respond with this exact JSON structure:
         travelers,
         budget: budget || undefined,
         eventType: eventType || undefined,
-        interests,
+        interests: effectiveInterests2,
         pacePreference: pacePreference || "moderate",
         cartItems: cartItems || [],
         mustSeeAttractions: mustSeeAttractions || [],

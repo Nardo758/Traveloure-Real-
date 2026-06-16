@@ -29,8 +29,27 @@ export default async function globalSetup(config: FullConfig) {
   }
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
+  const launchOpts = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+    : {};
+
+  // Fast-path: skip re-authentication if all auth files are < 30 min old.
+  // This saves ~3 minutes on repeat runs within the same dev session.
+  const AUTH_TTL_MS = 30 * 60 * 1000;
+  const authFilesFresh = ROLES.every((role) => {
+    const fp = path.join(AUTH_DIR, `${role}.json`);
+    try {
+      return fs.existsSync(fp) && Date.now() - fs.statSync(fp).mtimeMs < AUTH_TTL_MS;
+    } catch {
+      return false;
+    }
+  });
+  if (authFilesFresh) {
+    console.log('⚡ Auth files are fresh — skipping re-authentication and warm-up (< 30 min old)');
+    return;
+  } else {
   for (const role of ROLES) {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch(launchOpts);
     const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
 
@@ -64,6 +83,7 @@ export default async function globalSetup(config: FullConfig) {
     await browser.close();
     console.log(`✓ auth saved: ${role} (${ACCOUNTS[role].email})`);
   }
+  } // end else (auth files not fresh)
 
   // ── Vite dev-server warm-up ─────────────────────────────────────────────────
   // The Replit Vite dev server lazy-compiles each route chunk on first request.
@@ -78,7 +98,7 @@ export default async function globalSetup(config: FullConfig) {
   // Failures here are non-fatal: a warning is logged and tests continue.  The
   // tests themselves still have their own 90 s element waits as fallback.
   console.log('⏳ Warming up Vite routes (may take up to 4 min)…');
-  const warmBrowser = await chromium.launch();
+  const warmBrowser = await chromium.launch(launchOpts);
   const warmCtx = await warmBrowser.newContext({
     baseURL,
     storageState: path.join(AUTH_DIR, 'traveler.json'),
