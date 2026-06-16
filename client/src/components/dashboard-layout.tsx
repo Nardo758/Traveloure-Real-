@@ -24,11 +24,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             className="flex items-center justify-between h-[52px] px-5 sticky top-0 z-40 bg-white"
             style={{ borderBottom: "1px solid #E8E8E2" }}
           >
-            <SidebarTrigger
-              className="h-8 w-8 rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
-              style={{ border: "1px solid #E8E8E2" }}
-              data-testid="button-dashboard-sidebar-toggle"
-            />
+            <div className="flex items-center gap-2">
+              <SidebarTrigger
+                className="h-8 w-8 rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
+                style={{ border: "1px solid #E8E8E2" }}
+                data-testid="button-dashboard-sidebar-toggle"
+              />
+              <Link href="/" data-testid="link-logo" className="flex items-center gap-1.5 text-sm font-semibold text-[#1A1A1A] hover:opacity-80 transition-opacity">
+                Traveloure
+              </Link>
+            </div>
             <div className="flex items-center gap-2">
               <Link href="/notifications">
                 <Button
