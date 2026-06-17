@@ -146,37 +146,47 @@ class LeadRoutingService {
 
   /**
    * Route a lead: score experts, pick the top one, log the decision.
+   * Always logs to lead_routing_logs — including null-assign cases — so
+   * admin dashboards have full visibility into routing failures.
    */
   async routeLead(ctx: LeadContext): Promise<RoutingResult> {
     const scores = await this.scoreExperts(ctx);
 
     if (scores.length === 0) {
-      return { assignedExpertId: null, scores: [], reason: 'No approved experts found' };
+      const reason = 'No approved experts found';
+      void this.logRoutingDecision(ctx, [], null, reason);
+      return { assignedExpertId: null, scores: [], reason };
     }
 
     const top = scores[0];
 
     if (top.totalScore === 0) {
-      return {
-        assignedExpertId: null,
-        scores,
-        reason: 'No expert matched the destination or specialty',
-      };
+      const reason = 'No expert matched the destination or specialty';
+      void this.logRoutingDecision(ctx, scores, null, reason);
+      return { assignedExpertId: null, scores, reason };
     }
 
-    await this.logRoutingDecision(ctx, scores);
+    const reason = `Assigned to ${top.expertName} (score: ${top.totalScore}/100 — dest: ${top.destinationScore}, specialty: ${top.specialtyScore}, availability: ${top.availabilityScore}, response: ${top.responseRateScore})`;
+    void this.logRoutingDecision(ctx, scores, top.expertId, reason);
 
     return {
       assignedExpertId: top.expertId,
       scores,
-      reason: `Assigned to ${top.expertName} (score: ${top.totalScore}/100 — dest: ${top.destinationScore}, specialty: ${top.specialtyScore}, availability: ${top.availabilityScore}, response: ${top.responseRateScore})`,
+      reason,
     };
   }
 
   /**
    * Log the routing decision to lead_routing_logs for admin transparency.
+   * Fire-and-forget — caller uses void; never awaited on critical path.
+   * Logs even when assignedExpertId is null so null-assign incidents are visible.
    */
-  private async logRoutingDecision(ctx: LeadContext, scores: ExpertScore[]) {
+  private async logRoutingDecision(
+    ctx: LeadContext,
+    scores: ExpertScore[],
+    assignedExpertId: string | null,
+    reason: string,
+  ) {
     try {
       await db.execute(sql`
         INSERT INTO lead_routing_logs (
@@ -188,14 +198,15 @@ class LeadRoutingService {
           ${ctx.userId || null},
           ${ctx.destination},
           ${ctx.topic || null},
-          ${scores[0].expertId},
-          ${scores[0].totalScore},
-          ${JSON.stringify(scores.slice(0, 5))}::jsonb,
+          ${assignedExpertId},
+          ${scores[0]?.totalScore ?? 0},
+          ${JSON.stringify({ reason, scores: scores.slice(0, 5) })}::jsonb,
           NOW()
         )
       `);
-    } catch (_) {
-      // Non-critical — don't break the flow if logging fails
+    } catch (err: any) {
+      // Non-critical — routing already completed; log for ops visibility
+      console.warn('[LeadRouting] logRoutingDecision failed (non-fatal):', err?.message);
     }
   }
 }
