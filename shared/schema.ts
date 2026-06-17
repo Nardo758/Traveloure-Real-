@@ -6509,3 +6509,22 @@ export const contentGapAlertsRelations = relations(contentGapAlerts, ({ one }) =
 export const dmoScrapeJobsRelations = relations(dmoScrapeJobs, ({ one }) => ({
   source: one(dmoSources, { fields: [dmoScrapeJobs.sourceId], references: [dmoSources.id] }),
 }));
+
+// ─── Funnel Events (ADR-004) ────────────────────────────────────────────────
+// Append-only audit log spanning the full traveler funnel T0→T7.
+// Fire-and-forget — never await these writes on the request critical path.
+// userId nullable for T0 events that fire before account creation.
+export const funnelEvents = pgTable("funnel_events", {
+  id:         uuid("id").primaryKey().defaultRandom(),
+  sessionId:  varchar("session_id", { length: 128 }),
+  userId:     uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  tripId:     uuid("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  eventType:  varchar("event_type", { length: 64 }).notNull(),
+  stage:      varchar("stage", { length: 4 }).notNull(),   // T0 – T7
+  properties: jsonb("properties"),
+  createdAt:  timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const insertFunnelEventSchema = createInsertSchema(funnelEvents).omit({ id: true, createdAt: true });
+export type InsertFunnelEvent = z.infer<typeof insertFunnelEventSchema>;
+export type FunnelEvent = typeof funnelEvents.$inferSelect;

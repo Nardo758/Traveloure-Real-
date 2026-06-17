@@ -28,7 +28,10 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   });
 }
 
-// Valid user roles for registration
+// Note: userType is accepted in the request body for UX purposes only
+// (e.g. pre-filling onboarding flows). It is NEVER used to set the DB role.
+// All users are created with role='user'. Role upgrades require an approved
+// application form (local_expert_forms or service_provider_forms).
 const validUserTypes = [
   "user",
   "travel_expert",
@@ -43,7 +46,7 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  userType: z.enum(validUserTypes).optional().default("user"),
+  userType: z.enum(validUserTypes).optional().default("user"), // accepted but ignored server-side
 });
 
 const loginSchema = z.object({
@@ -63,7 +66,9 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
-      const { email, password, firstName, lastName, userType } = validation.data;
+      const { email, password, firstName, lastName } = validation.data;
+      // userType from request body is intentionally ignored — all new accounts
+      // start as role='user'. Role upgrades happen via approved application forms.
 
       // Check if user already exists
       const existingUser = await db
@@ -89,7 +94,7 @@ export function setupEmailAuth(app: Express): void {
           password: hashedPassword,
           firstName,
           lastName,
-          role: userType, // Map userType to role
+          role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
           authProvider: "email",
           termsAcceptedAt: new Date(),
           privacyAcceptedAt: new Date(),
