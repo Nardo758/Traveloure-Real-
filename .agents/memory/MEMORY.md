@@ -8,3 +8,4 @@
 - [Route module mount gap](route-mount-gap.md) — paymentsRoutes (and possibly others) imported in routes.ts but never app.use()'d; always verify mounts when a route returns HTML 404
 - [Journey-2 E2E lessons](journey-2-e2e-lessons.md) — budget decimal guard, interests default, DashboardLayout link-logo testid, Playwright process OOM pattern
 - [ADR security fixes applied](adr-security-fixes.md) — role vuln (ADR-002), getUserId helper, admin routes patched, funnel_events table added
+- [users/trips ID column types](id-column-types.md) — users.id and trips.id are VARCHAR not UUID; FK constraints to them must use VARCHAR columns
