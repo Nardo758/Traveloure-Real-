@@ -215,4 +215,8 @@ export const MIGRATION_FILES = [
   // category='dining'; without this row the resolver throws "commission band missing".
   // Idempotent (ON CONFLICT DO NOTHING) — safe on both fresh and existing DBs.
   "088_seed_dining_fee_band.sql",
+  // 089: funnel_events — append-only audit table spanning T0 (anonymous) → T7 (viral).
+  // Single source of truth for conversion funnel analytics. Fire-and-forget writes;
+  // never block the request path. userId nullable for pre-registration T0 events.
+  "089_funnel_events.sql",
 ] as const;
