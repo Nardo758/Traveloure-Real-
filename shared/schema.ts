@@ -6517,8 +6517,8 @@ export const dmoScrapeJobsRelations = relations(dmoScrapeJobs, ({ one }) => ({
 export const funnelEvents = pgTable("funnel_events", {
   id:         uuid("id").primaryKey().defaultRandom(),
   sessionId:  varchar("session_id", { length: 128 }),
-  userId:     uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-  tripId:     uuid("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  userId:     varchar("user_id"),   // varchar to match users.id PK type; no FK — rows survive deletion
+  tripId:     varchar("trip_id"),   // varchar to match trips.id PK type; no FK — rows survive deletion
   eventType:  varchar("event_type", { length: 64 }).notNull(),
   stage:      varchar("stage", { length: 4 }).notNull(),   // T0 – T7
   properties: jsonb("properties"),
