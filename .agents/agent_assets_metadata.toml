@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "UkjsVSZUblyAUTFRQn5Ao"
+uri = "file://Traveloure-Platform-Overview.md"
+type = "text"
+title = "Traveloure — Platform Overview Document"
