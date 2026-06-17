@@ -1,0 +1,254 @@
+You are a senior full-stack architect. I need you to design 
+the complete technical architecture for Traveloure — a 
+three-party travel marketplace connecting Travelers, Local 
+Experts, and Service Providers.
+
+=== PLATFORM CONTEXT ===
+
+Traveloure is the "Airbnb for travel expertise." Three parties:
+- TRAVELERS: Book experts, generate AI itineraries, purchase 
+  credits, join discount membership
+- LOCAL EXPERTS: Get verified, receive routed leads, manage 
+  bookings, earn payouts via Stripe Connect
+- SERVICE PROVIDERS: Get verified (7-step), list services, 
+  receive bookings via expert recommendations
+
+Current stack (already built on Replit):
+- Frontend: React + Vite + TypeScript + Tailwind
+- Backend: Node.js + Express (~18,500 line routes.ts)
+- Database: PostgreSQL via Drizzle ORM
+- Auth: Email/password + Replit OAuth + Facebook OAuth
+- Payments: Stripe Connect + Stripe Identity + Stripe Treasury
+- AI: Itinerary generation via /api/ai/generate-itinerary
+
+=== CURRENT DATA MODEL (must be preserved) ===
+
+Core tables already in production:
+- users: id, role, email, termsAccepted, privacyAccepted
+  Roles: user | travel_expert | local_expert | event_planner 
+  | service_provider | executive_assistant | admin
+- expert_requests: id, tripId, variantId, comparisonId, 
+  destinationCity, requestType, expertFee, 
+  status (pending→queued→assigned→in_progress→completed),
+  assignedAt, completedAt, assignedExpertId
+- local_expert_forms: 6-step application, status, 
+  identityVerificationStatus
+- service_provider_forms: 7-step application, 
+  businessVerificationStatus
+- lead_routing_logs: top5 scores_json, routing decisions
+- cart_items, bookings, trips, itinerary_comparisons
+- expert_city_queues (legacy FIFO — deprecated but present)
+- credits/wallet tables
+
+=== LEAD JOURNEY TO ARCHITECT AROUND ===
+
+TRAVELER FUNNEL (T0→T7):
+T0: Anonymous — public routes, no auth required
+    Pages: /, /how-it-works, /pricing, /experts, /experts/:id,
+    /discover, /experiences, /deals, /spontaneous, /hidden-gems,
+    /itinerary-view/:token, /trips/shared/:token
+    CTA: openSignInModal() — modal-gated, NOT page-gated
+
+T1: Account created — users row, role=user
+T2: Activation — first trip created (storage.createTrip)
+T3: Intent — AI itinerary generated 
+    POST /api/trips/generate-itinerary
+    POST /api/ai/generate-itinerary
+    GET  /api/itinerary-comparisons (multiple variants)
+T4: Cart — apply-to-cart pushes variant items to cart_items
+T5: Qualified Lead — expert_requests row created
+    (tripId, variantId, destinationCity, expertFee, 
+    status=pending) → triggers Smart Lead Routing
+T6: Revenue — checkout (30% platform fee), bookings, 
+    credits purchase, wallet top-up
+T7: Viral — trip participants + bulk-invite + shared tokens
+
+LOCAL EXPERT FUNNEL (6 steps):
+Step 1: Basic Information → local_expert_forms row created
+Step 2: Expertise & Destinations → destinations/specialties
+Step 3: Experience & Portfolio → bio/portfolio
+Step 4: Identity Verification → Stripe Identity → verified
+Step 5: Admin Review → 2-3 business days
+Step 6: Account Activation → status=approved → 
+        routing eligible
+Parallel: Stripe Connect onboarding (separate from approval)
+Active: /expert/* dashboard, assigned-trips, earnings, 
+        content-studio
+
+SERVICE PROVIDER FUNNEL (7 steps):
+Steps 1-3: Business info, categories, location/docs
+Step 4: Owner Identity → Stripe Identity
+Step 5: Business Verification → registry check → verified
+Step 6: Admin Review → 3-5 business days  
+Step 7: Account Activation → status=approved
+Active: /provider/* dashboard, services, bookings, calendar
+
+=== SMART LEAD ROUTING ENGINE ===
+
+Source: server/services/lead-routing.service.ts
+
+POST /api/leads/route — score + auto-assign
+GET  /api/leads/score-preview — dry run
+GET  /api/admin/lead-routing-logs — audit
+PATCH /api/admin/lead-routing-logs/:id/override — reassign
+
+Scoring model (100 points, approved experts only):
+- Destination match: 40pts (exact city=40, partial=25)
+- Specialty match:   25pts (exact=25, partial=15, none=10)
+- Availability:      20pts (20 - activeQueueDepth × 4, min 0)
+- Response rate:     15pts ((responded/total 90d) × 15, 
+                            default 0.5 if no history)
+
+Failure modes to handle:
+1. No approved experts → assignedExpertId: null
+2. Top score = 0 (no destination match) → null assign
+3. Thin markets at launch (e.g. Kyoto with few experts)
+
+Logging: best-effort, swallows errors — under-counts in 
+analytics (known gap)
+
+=== REVENUE STREAMS TO SUPPORT ===
+
+1. Expert commissions: 75% expert / 25% platform
+   (new experts: 85/15 split)
+2. Provider bookings: 4-12% by insurance tier
+   Tier 1 (low-risk): 12% | Tier 2: 8% | 
+   Tier 3: 6% | Premium: 4%
+3. Experience/cart checkout: 30% platform fee (current code)
+   ⚠️ CONFLICT: Business plan says 75/25 for experts — 
+   clarify which surface governs which booking type
+4. Credits/wallet: 
+   $10→10cr | $25→27cr | $50→55cr | $100→120cr | 
+   $200→250cr | $500→650cr
+5. Membership (not yet built — currently credits only):
+   Basic: $19.99/mo | Premium: $39.99/mo
+6. Discount platform: 3% commission on partner bookings
+7. Expert referrals: $50 per qualified referral 
+   (pending→qualified→paid)
+
+=== KNOWN ARCHITECTURE GAPS TO SOLVE ===
+
+GAP 1 — No funnel events table:
+Currently requires stitching: users + trips + 
+expert_requests + lead_routing_logs + bookings
+Need: Single funnel_events table or event stream 
+spanning T0→T7 for analytics
+
+GAP 2 — Self-declared roles at signup:
+role=userType written directly from request body at 
+registration (emailAuth.ts:92) — no server-side gate
+Risk: Inflated expert/provider counts
+Fix needed: Supply metrics must filter on 
+local_expert_forms.status=approved, not users.role
+
+GAP 3 — Approved ≠ Payable:
+Expert can be routing-eligible but Stripe Connect 
+incomplete → can receive leads but not payouts
+Need: Two separate flags tracked independently
+
+GAP 4 — Dead-end qualified leads:
+No fallback when null-assign occurs
+Need: Queue, notification, or admin escalation path
+
+GAP 5 — Legacy queue table:
+expert_city_queues FIFO still exists in schema
+Needs formal deprecation + migration plan
+
+GAP 6 — Modal-gated top of funnel:
+Landing CTA is openSignInModal() — no deep-linkable 
+signup URL, limits paid acquisition attribution
+Consider: /signup?ref= dedicated page
+
+GAP 7 — Revenue dashboard was showing $0:
+Now fixed — API returns real numbers + MoM growth % 
++ 10 recent transactions
+Need: Confirm all 3 revenue surfaces report correctly
+
+GAP 8 — Commission rate conflict:
+Code: flat 30% on experience/cart checkout
+Business plan: 75/25 expert split + 4-12% provider
+Need: Architecture that correctly routes each 
+booking type to the right commission calculation
+
+=== WHAT I NEED YOU TO ARCHITECT ===
+
+1. SYSTEM ARCHITECTURE OVERVIEW
+   - Component diagram: Frontend → API → Services → DB
+   - How the three parties interact at a data level
+   - Where Smart Lead Routing sits in the flow
+
+2. DATABASE SCHEMA IMPROVEMENTS
+   - funnel_events table design (spans T0→T7)
+   - How to track approved vs payable separately
+   - Deprecation plan for expert_city_queues
+   - Any missing indexes for routing queries
+
+3. API LAYER STRUCTURE
+   - How to break up the 18,500-line routes.ts cleanly
+   - Suggested module boundaries (auth, trips, leads, 
+     bookings, experts, providers, admin, payments)
+   - Middleware stack (auth guard, role check, rate limit)
+
+4. LEAD ROUTING SERVICE IMPROVEMENTS
+   - Fallback path when assignedExpertId=null
+   - Fix silent log swallowing
+   - Score preview caching strategy
+   - How to handle thin-market launches
+
+5. PAYMENT ARCHITECTURE
+   - How to correctly apply 30% vs 75/25 vs 4-12% 
+     to the right booking type
+   - Stripe Connect flow for expert payouts
+   - Stripe Treasury for platform funds
+   - Credit system deferred revenue accounting
+   - Membership tier gating (not yet built)
+
+6. AUTH & ROLE ARCHITECTURE
+   - Fix self-declared role vulnerability at signup
+   - Three-gate ProtectedRoute pattern (auth → terms → role)
+   - How to handle role upgrades (user → local_expert 
+     after approval)
+   - Session persistence strategy
+
+7. FUNNEL ANALYTICS ARCHITECTURE
+   - Events table schema
+   - How to stitch T0→T7 without manual joins
+   - Which events to fire at each stage
+   - Admin funnel dashboard data model
+
+8. VIRAL / SHARING ARCHITECTURE
+   - Trip sharing token system (/trips/shared/:token)
+   - Shared itinerary view (/itinerary-view/:token)
+   - Bulk-invite participant flow
+   - Attribution from viral entries back to T1
+
+9. MARKET LAUNCH SCALABILITY
+   - How architecture supports 8 markets in 12 months
+   - Multi-currency + multi-timezone handling
+   - Localization layer (content, pricing, comms)
+   - How to onboard 20-30 providers per market efficiently
+
+10. SECURITY & COMPLIANCE
+    - KYC/KYB data handling (Stripe Identity results)
+    - PII isolation for different regions (GDPR)
+    - Rate limiting on AI generation endpoints
+    - Webhook security for Stripe events
+
+=== OUTPUT FORMAT REQUESTED ===
+
+Please provide:
+A) Architecture Decision Records (ADRs) for the top 5 
+   most critical decisions
+B) Database schema changes in Drizzle ORM syntax
+C) Folder/module structure for the refactored backend
+D) Sequence diagrams for: 
+   - T5 qualified lead → routing → assignment
+   - Expert payout flow
+   - Credit purchase → usage → recognition
+E) Priority order: what to fix first vs later
+F) Anything in the current architecture that is a 
+   production risk RIGHT NOW
+
+Current deployment: Replit (dev) → production build 
+planned soon. The Vite config and Replit plugins are 
+off-limits (read-only). All other code is changeable.
