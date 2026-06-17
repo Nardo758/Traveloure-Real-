@@ -6,3 +6,9 @@ id = "UkjsVSZUblyAUTFRQn5Ao"
 uri = "file://Traveloure-Platform-Overview.md"
 type = "text"
 title = "Traveloure — Platform Overview Document"
+
+[[outputs]]
+id = "6FLOc_pIkgpvirqf9ObwE"
+uri = "file://Traveloure-Technical-Architecture.md"
+type = "text"
+title = "Traveloure — Full Technical Architecture Document"
