@@ -4,14 +4,46 @@
  */
 
 import { Router } from 'express';
-import { db } from '../db';
-import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from '../utils/auth';
+import {
+  getExpertRequestsByUser,
+  getVariantCost,
+  insertSavedTrip,
+  getSavedTripsForUser,
+  insertSharedTrip,
+  getSharedTripByVariantToken,
+  incrementSharedTripViews,
+  getTripOwnerCheck,
+  upsertTripShareToken,
+  getCanonicalTripShareToken,
+  getTripByShareToken,
+  insertSharedTripView,
+  getApprovedExperts,
+  getTripExpertAdvisor,
+  getExistingAdvisorRecord,
+  isExpertApproved,
+  getTripDestination,
+  getExpertQueuePosition,
+  assignExpertAdvisor,
+  createExpertAssignmentNotification,
+  getTripLabel,
+  getExpertAssignedTrips,
+  isTripOwner,
+  isExpertAssignedToTrip,
+  tripExistsById,
+  getTripSuggestions,
+  createTripSuggestion,
+  getPendingSuggestion,
+  updateSuggestionStatus,
+  getGeneratedItinerary,
+  updateGeneratedItineraryData,
+  getTravelerProfile,
+} from '../services/booking-actions.service';
 
 const router = Router();
 
@@ -69,30 +101,8 @@ router.get('/expert-requests', isAuthenticated, async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { tripId } = req.query;
-
-    let result;
-    if (tripId) {
-      result = await db.execute(sql`
-        SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
-               request_type, expert_fee, status, assigned_expert_id, queue_position,
-               notes, optimization_context, created_at, assigned_at, completed_at
-        FROM expert_requests
-        WHERE user_id = ${userId}
-          AND trip_id = ${tripId as string}
-        ORDER BY created_at DESC
-      `);
-    } else {
-      result = await db.execute(sql`
-        SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
-               request_type, expert_fee, status, assigned_expert_id, queue_position,
-               notes, optimization_context, created_at, assigned_at, completed_at
-        FROM expert_requests
-        WHERE user_id = ${userId}
-        ORDER BY created_at DESC
-      `);
-    }
-
-    res.json({ requests: result.rows || [] });
+    const requests = await getExpertRequestsByUser(userId, tripId as string | undefined);
+    res.json({ requests });
   } catch (error: any) {
     console.error('Get expert requests error:', error);
     res.status(500).json({ error: error.message });
@@ -101,8 +111,7 @@ router.get('/expert-requests', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/expert-requests
- * Create expert review request — supports both variant-based (optimizer flow)
- * and trip-based (PlanCard "polish this" CTA) creation.
+ * Create expert review request
  */
 router.post('/expert-requests', isAuthenticated, async (req, res) => {
   try {
@@ -124,7 +133,6 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // Trip-based request (PlanCard CTA) — variantId/comparisonId optional
     const isTripBased = !!tripId && !variantId;
 
     if (!isTripBased && (!variantId || !comparisonId)) {
@@ -136,13 +144,11 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const resolvedDestination = (destination || optimizationContext?.destination || '').toLowerCase();
 
-    // Trip ownership check (auth concern — stays in route layer)
     if (tripId) {
       const owns = await verifyTripOwnership(tripId, resolvedUserId);
       if (!owns) return res.status(403).json({ error: 'You do not own this trip' });
     }
 
-    // Business logic delegated to BookingService
     const { requestId, queuePosition } = await bookingService.submitExpertRequest({
       userId: resolvedUserId, tripId, variantId, comparisonId,
       destination: resolvedDestination, requestType, expertFee, notes, optimizationContext,
@@ -170,75 +176,40 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 router.post('/saved-trips', isAuthenticated, async (req, res) => {
   try {
     const userId = (req as any).user?.claims?.sub;
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-    const { variantId, comparisonId, notes } = req.body;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
+    const { variantId, comparisonId, notes } = req.body;
     if (!variantId || !comparisonId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Get variant data for price snapshot
-    const variant = await db.execute(sql`
-      SELECT total_cost
-      FROM itinerary_variants
-      WHERE id = ${variantId}
-    `);
-
-    const priceSnapshot = variant.rows?.[0]?.total_cost || 0;
-
-    // Calculate expiration (30 days from now)
+    const priceSnapshot = await getVariantCost(variantId);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Create saved trip
-    const result = await db.execute(sql`
-      INSERT INTO saved_trips (
-        id, user_id, variant_id, comparison_id, notes,
-        saved_at, expires_at, price_snapshot, status
-      ) VALUES (
-        ${crypto.randomUUID()},
-        ${userId},
-        ${variantId},
-        ${comparisonId},
-        ${notes || null},
-        NOW(),
-        ${expiresAt.toISOString()},
-        ${priceSnapshot},
-        'active'
-      )
-      RETURNING id
-    `);
-
-    // TODO: Send confirmation email
-    // TODO: Schedule reminder emails (day 7, 14, 28)
+    const savedTripId = await insertSavedTrip({ userId, variantId, comparisonId, notes, priceSnapshot, expiresAt });
 
     res.json({
       success: true,
-      savedTripId: result.rows?.[0]?.id,
+      savedTripId,
       expiresAt: expiresAt.toISOString(),
       message: 'Trip saved! You will receive reminder emails.',
     });
   } catch (error: any) {
     console.error('Save trip error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * POST /api/saved-trips/:id/convert
- * Convert a saved trip into an active Trip record (status: planning)
+ * Convert a saved trip into an active Trip record
  */
 router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    // Business logic delegated to BookingService
     const { tripId } = await bookingService.convertSavedTrip(req.params.id, userId);
     res.json({ success: true, tripId });
   } catch (error: any) {
@@ -257,36 +228,10 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
 router.get('/saved-trips', isAuthenticated, async (req, res) => {
   try {
     const userId = (req as any).user?.claims?.sub;
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const result = await db.execute(sql`
-      SELECT 
-        st.id,
-        st.variant_id,
-        st.comparison_id,
-        st.notes,
-        st.saved_at,
-        st.expires_at,
-        st.price_snapshot,
-        st.status,
-        iv.name as variant_name,
-        iv.total_cost as variant_cost,
-        ic.destination,
-        ic.start_date,
-        ic.end_date,
-        ic.travelers,
-        ic.trip_id
-      FROM saved_trips st
-      LEFT JOIN itinerary_variants iv ON iv.id = st.variant_id
-      LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
-      WHERE st.user_id = ${userId}
-        AND st.status = 'active'
-      ORDER BY st.saved_at DESC
-    `);
-
-    res.json(result.rows || []);
+    const trips = await getSavedTripsForUser(userId);
+    res.json(trips);
   } catch (error: any) {
     console.error('Get saved trips error:', error);
     res.status(500).json({ error: error.message });
@@ -295,40 +240,20 @@ router.get('/saved-trips', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/shared-trips
- * Generate shareable link
+ * Generate shareable link (variant-based)
  */
 router.post('/shared-trips', isAuthenticated, async (req, res) => {
   try {
     const { variantId, comparisonId, sharedBy } = req.body;
-
     if (!variantId || !comparisonId || !sharedBy) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Generate share token
     const shareToken = generateToken();
-
-    // Set expiration (90 days)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 90);
 
-    // Create shared trip
-    await db.execute(sql`
-      INSERT INTO shared_trips (
-        id, variant_id, comparison_id, shared_by,
-        share_token, expires_at, views, bookings, created_at
-      ) VALUES (
-        ${crypto.randomUUID()},
-        ${variantId},
-        ${comparisonId},
-        ${sharedBy},
-        ${shareToken},
-        ${expiresAt.toISOString()},
-        0,
-        0,
-        NOW()
-      )
-    `);
+    await insertSharedTrip({ variantId, comparisonId, sharedBy, shareToken, expiresAt });
 
     res.json({
       success: true,
@@ -338,10 +263,7 @@ router.post('/shared-trips', isAuthenticated, async (req, res) => {
     });
   } catch (error: any) {
     console.error('Share trip error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -352,45 +274,21 @@ router.post('/shared-trips', isAuthenticated, async (req, res) => {
 router.get('/shared-trips/:token', async (req, res) => {
   try {
     const { token } = req.params;
-
-    // Get shared trip
-    const shared = await db.execute(sql`
-      SELECT st.*, iv.*, ic.*
-      FROM shared_trips st
-      JOIN itinerary_variants iv ON st.variant_id = iv.id
-      JOIN itinerary_comparisons ic ON st.comparison_id = ic.id
-      WHERE st.share_token = ${token}
-        AND st.expires_at > NOW()
-    `);
-
-    if (!shared.rows || shared.rows.length === 0) {
+    const row = await getSharedTripByVariantToken(token);
+    if (!row) {
       return res.status(404).json({ error: 'Shared trip not found or expired' });
     }
-
-    // Increment view count
-    await db.execute(sql`
-      UPDATE shared_trips
-      SET views = views + 1
-      WHERE share_token = ${token}
-    `);
-
-    res.json({
-      success: true,
-      shared: shared.rows[0],
-    });
+    await incrementSharedTripViews(token);
+    res.json({ success: true, shared: row });
   } catch (error: any) {
     console.error('Get shared trip error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * POST /api/trips/:id/share
  * Generate (or retrieve) a share token for a trip plan.
- * Creates/reuses a shared_trips record (trip_id column) for the trip.
  */
 router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
   try {
@@ -399,40 +297,24 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
 
     const { id } = req.params;
 
-    // Validate UUID format
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidPattern.test(id)) {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    // Verify ownership
-    const tripResult = await db.execute(sql`
-      SELECT id, user_id FROM trips WHERE id = ${id} AND user_id = ${userId}
-    `);
-
-    if (!tripResult.rows || tripResult.rows.length === 0) {
+    const owns = await getTripOwnerCheck(id, userId);
+    if (!owns) {
       return res.status(404).json({ error: 'Trip not found or not owned by you' });
     }
 
-    // Atomic upsert: INSERT ... ON CONFLICT (trip_id) DO NOTHING, then SELECT
-    // The UNIQUE constraint on shared_trips.trip_id prevents race-condition duplicates.
     const shareToken = generateToken();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 90);
-    const sharedTripId = crypto.randomUUID();
 
-    await db.execute(sql`
-      INSERT INTO shared_trips (id, trip_id, shared_by, share_token, expires_at, views, bookings, created_at)
-      VALUES (${sharedTripId}, ${id}, ${userId}, ${shareToken}, ${expiresAt.toISOString()}, 0, 0, NOW())
-      ON CONFLICT (trip_id) DO NOTHING
-    `);
+    await upsertTripShareToken(id, userId, shareToken, expiresAt);
+    const canonical = await getCanonicalTripShareToken(id);
 
-    // Always read back the canonical token (covers both insert and conflict case)
-    const canonical = await db.execute(sql`
-      SELECT share_token FROM shared_trips WHERE trip_id = ${id} LIMIT 1
-    `);
-
-    res.json({ success: true, shareToken: canonical.rows[0].share_token });
+    res.json({ success: true, shareToken: canonical });
   } catch (error: any) {
     console.error('Trip share error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -441,53 +323,25 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
 
 /**
  * GET /api/trips/shared/:token
- * Public endpoint — fetch trip plan by share token (shared_trips.share_token), log the view.
- * No auth required.
+ * Public endpoint — fetch trip plan by share token, log the view.
  */
 router.get('/trips/shared/:token', async (req, res) => {
   try {
     const { token } = req.params;
 
-    // Fetch via shared_trips.share_token -> trips + generated_itineraries
-    const result = await db.execute(sql`
-      SELECT
-        st.id as shared_trip_id,
-        t.id, t.title, t.destination, t.start_date, t.end_date,
-        t.number_of_travelers, t.status,
-        gi.itinerary_data
-      FROM shared_trips st
-      JOIN trips t ON t.id = st.trip_id
-      LEFT JOIN generated_itineraries gi ON gi.trip_id = t.id AND gi.status = 'generated'
-      WHERE st.share_token = ${token}
-        AND (st.expires_at IS NULL OR st.expires_at > NOW())
-      LIMIT 1
-    `);
-
-    if (!result.rows || result.rows.length === 0) {
+    const result = await getTripByShareToken(token);
+    if (!result) {
       return res.status(404).json({ error: 'Shared trip not found or link has expired' });
     }
 
-    interface SharedTripResultRow {
-      shared_trip_id: string;
-      id: string;
-      [key: string]: unknown;
-    }
-    const row = result.rows[0] as SharedTripResultRow;
+    const { row, sharedTripId } = result;
 
-    // Log view into shared_trip_views using shared_trip_id (relational integrity preserved)
     const viewerIp = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
       || req.socket?.remoteAddress
       || null;
 
-    await db.execute(sql`
-      INSERT INTO shared_trip_views (id, shared_trip_id, viewer_ip, viewed_at)
-      VALUES (${crypto.randomUUID()}, ${row.shared_trip_id}::uuid, ${viewerIp}, NOW())
-    `);
-
-    // Increment view counter on shared_trips
-    await db.execute(sql`
-      UPDATE shared_trips SET views = views + 1 WHERE share_token = ${token}
-    `);
+    await insertSharedTripView(sharedTripId, viewerIp);
+    await incrementSharedTripViews(token);
 
     res.json({ success: true, trip: row });
   } catch (error: any) {
@@ -499,66 +353,12 @@ router.get('/trips/shared/:token', async (req, res) => {
 /**
  * GET /api/trip-experts?destination=X
  * Return approved experts, optionally filtered by destination.
- * Named /api/trip-experts to avoid shadowing the existing /api/experts endpoint.
  */
 router.get('/trip-experts', async (req, res) => {
   try {
     const { destination } = req.query as { destination?: string };
-
-    let result;
-    if (destination && destination.trim()) {
-      const destLower = destination.trim().toLowerCase();
-      const destPattern = `%${destLower}%`;
-      result = await db.execute(sql`
-        SELECT
-          lef.id, lef.user_id,
-          lef.first_name, lef.last_name,
-          lef.bio, lef.specialties, lef.destinations,
-          lef.hourly_rate, lef.years_of_experience,
-          lef.availability, lef.response_time,
-          u.profile_image_url,
-          COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
-          COUNT(rr.id) as review_count
-        FROM local_expert_forms lef
-        JOIN users u ON u.id = lef.user_id
-        LEFT JOIN review_ratings rr ON rr.local_expert_id = lef.user_id
-        WHERE lef.status = 'approved'
-          AND EXISTS (
-            SELECT 1 FROM jsonb_array_elements_text(lef.destinations) d
-            WHERE lower(d) LIKE ${destPattern}
-          )
-        GROUP BY lef.id, lef.user_id, lef.first_name, lef.last_name, lef.bio,
-                 lef.specialties, lef.destinations, lef.hourly_rate,
-                 lef.years_of_experience, lef.availability, lef.response_time,
-                 u.profile_image_url
-        ORDER BY avg_rating DESC, review_count DESC
-        LIMIT 20
-      `);
-    } else {
-      result = await db.execute(sql`
-        SELECT
-          lef.id, lef.user_id,
-          lef.first_name, lef.last_name,
-          lef.bio, lef.specialties, lef.destinations,
-          lef.hourly_rate, lef.years_of_experience,
-          lef.availability, lef.response_time,
-          u.profile_image_url,
-          COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
-          COUNT(rr.id) as review_count
-        FROM local_expert_forms lef
-        JOIN users u ON u.id = lef.user_id
-        LEFT JOIN review_ratings rr ON rr.local_expert_id = lef.user_id
-        WHERE lef.status = 'approved'
-        GROUP BY lef.id, lef.user_id, lef.first_name, lef.last_name, lef.bio,
-                 lef.specialties, lef.destinations, lef.hourly_rate,
-                 lef.years_of_experience, lef.availability, lef.response_time,
-                 u.profile_image_url
-        ORDER BY avg_rating DESC, review_count DESC
-        LIMIT 20
-      `);
-    }
-
-    res.json(result.rows || []);
+    const experts = await getApprovedExperts(destination);
+    res.json(experts);
   } catch (error: any) {
     console.error('Get experts error:', error);
     res.status(500).json({ error: error.message });
@@ -568,7 +368,6 @@ router.get('/trip-experts', async (req, res) => {
 /**
  * GET /api/trips/:id/expert-advisor
  * Return the assigned expert advisor for a trip (or null).
- * Ownership is enforced: only the trip's owner can read this.
  */
 router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
@@ -577,49 +376,16 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
 
     const { id } = req.params;
 
-    // Ownership check — prevents IDOR leakage
-    const ownerCheck = await db.execute(sql`
-      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
-    `);
-    if (!ownerCheck.rows || ownerCheck.rows.length === 0) {
+    const owns = await isTripOwner(id, userId);
+    if (!owns) {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    const result = await db.execute(sql`
-      SELECT
-        tea.id as advisor_id,
-        tea.status,
-        tea.message,
-        tea.expert_response,
-        tea.assigned_at,
-        lef.id as expert_form_id,
-        lef.first_name, lef.last_name,
-        lef.bio, lef.specialties, lef.destinations,
-        lef.hourly_rate,
-        u.profile_image_url,
-        COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
-        COUNT(rr.id) as review_count
-      FROM trip_expert_advisors tea
-      JOIN local_expert_forms lef ON lef.user_id = tea.local_expert_id
-      JOIN users u ON u.id = tea.local_expert_id
-      LEFT JOIN review_ratings rr ON rr.local_expert_id = tea.local_expert_id
-      WHERE tea.trip_id = ${id}
-        AND tea.status IN ('pending', 'accepted')
-      GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
-               lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
-               lef.destinations, lef.hourly_rate, u.profile_image_url
-      ORDER BY tea.assigned_at DESC
-      LIMIT 1
-    `);
-
-    if (!result.rows || result.rows.length === 0) {
+    const advisorRow = await getTripExpertAdvisor(id);
+    if (!advisorRow) {
       return res.json({ advisor: null });
     }
 
-    const advisorRow = result.rows[0] as Record<string, unknown>;
-
-    // Surface the expert's first response from trip_expert_advisors.expert_response
-    // (set by the expert when they accept/respond to this specific trip request)
     const rawResponse = advisorRow.expert_response as string | null;
     const expertFirstMessage = rawResponse
       ? (rawResponse.length > 140 ? rawResponse.slice(0, 140) + '…' : rawResponse)
@@ -649,105 +415,35 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'expertUserId is required' });
     }
 
-    // Verify trip ownership
-    const tripCheck = await db.execute(sql`
-      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
-    `);
-    if (!tripCheck.rows || tripCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Trip not found' });
-    }
+    const owns = await isTripOwner(id, userId);
+    if (!owns) return res.status(404).json({ error: 'Trip not found' });
 
-    // Check if already assigned (pending or accepted)
-    const existing = await db.execute(sql`
-      SELECT id, status FROM trip_expert_advisors
-      WHERE trip_id = ${id} AND status IN ('pending', 'accepted')
-      LIMIT 1
-    `);
-
-    if (existing.rows && existing.rows.length > 0) {
-      // Idempotent: return the existing advisor record instead of erroring
-      const existingRow = existing.rows[0] as Record<string, unknown>;
+    const existing = await getExistingAdvisorRecord(id);
+    if (existing) {
       return res.json({
         success: true,
-        advisorId: existingRow.id,
-        status: existingRow.status,
+        advisorId: existing.id,
+        status: existing.status,
         existing: true,
       });
     }
 
-    // Verify expert exists and is approved
-    const expertCheck = await db.execute(sql`
-      SELECT user_id FROM local_expert_forms
-      WHERE user_id = ${expertUserId} AND status = 'approved'
-    `);
-    if (!expertCheck.rows || expertCheck.rows.length === 0) {
+    const expertOk = await isExpertApproved(expertUserId);
+    if (!expertOk) {
       return res.status(404).json({ error: 'Expert not found or not approved' });
     }
 
-    // Fetch trip details for expert_requests record
-    const tripInfo = await db.execute(sql`
-      SELECT destination FROM trips WHERE id = ${id}
-    `);
-    const destination = (tripInfo.rows[0] as any)?.destination || 'unknown';
+    const destination = await getTripDestination(id);
+    const queuePosition = await getExpertQueuePosition(destination);
 
-    // Get queue position for expert_requests
-    const queueResult = await db.execute(sql`
-      SELECT COALESCE(MAX(queue_position), 0) + 1 as next_position
-      FROM expert_requests
-      WHERE destination_city = ${destination.toLowerCase()}
-        AND status IN ('queued', 'assigned')
-    `);
-    const queuePosition = (queueResult.rows?.[0] as any)?.next_position || 1;
+    const { expertRequestId, advisorId } = await assignExpertAdvisor({
+      userId, tripId: id, expertUserId, destination, queuePosition, message,
+    });
 
-    // Create both records atomically inside a transaction
-    const expertRequestId = crypto.randomUUID();
-    const advisorId = crypto.randomUUID();
-
-    await db.execute(sql`BEGIN`);
-    try {
-      await db.execute(sql`
-        INSERT INTO expert_requests (
-          id, user_id, trip_id, destination_city, request_type,
-          status, queue_position, notes, assigned_expert_id, created_at
-        ) VALUES (
-          ${expertRequestId}, ${userId}, ${id},
-          ${destination.toLowerCase()}, 'review',
-          'queued', ${queuePosition}, ${message || null},
-          ${expertUserId}, NOW()
-        )
-      `);
-
-      await db.execute(sql`
-        INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
-        VALUES (${advisorId}, ${id}, ${expertUserId}, 'pending', ${message || null}, NOW())
-      `);
-
-      await db.execute(sql`COMMIT`);
-    } catch (txErr) {
-      await db.execute(sql`ROLLBACK`);
-      throw txErr;
-    }
-
-    // Notify the assigned expert with a workspace deep-link in the data payload
-    try {
-      const tripMeta = await db.execute(sql`
-        SELECT title, destination FROM trips WHERE id = ${id} LIMIT 1
-      `);
-      const tripRow = (tripMeta.rows?.[0] as any) || {};
-      const tripLabel = tripRow.title || tripRow.destination || 'a new trip';
-      await db.execute(sql`
-        INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
-        VALUES (
-          ${crypto.randomUUID()}, ${expertUserId}, 'booking_request',
-          'New trip assignment',
-          ${`You've been assigned to ${tripLabel}. Open the workspace to start planning.`},
-          ${JSON.stringify({ tripId: id, workspacePath: `/expert/workspace/${id}` })}::jsonb,
-          false, NOW()
-        )
-      `);
-    } catch (notifErr) {
-      console.warn('Could not create expert assignment notification:', notifErr);
-    }
+    // Notify assigned expert (non-blocking)
+    getTripLabel(id)
+      .then(label => createExpertAssignmentNotification(expertUserId, id, label))
+      .catch(err => console.warn('Could not create expert assignment notification:', err));
 
     res.json({ success: true, advisorId, expertRequestId, status: 'pending' });
   } catch (error: any) {
@@ -765,42 +461,13 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
     const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const result = await db.execute(sql`
-      SELECT
-        t.id as trip_id,
-        t.title as trip_title,
-        t.destination,
-        t.start_date,
-        t.end_date,
-        tea.status,
-        tea.assigned_at,
-        u.id as traveler_user_id,
-        u.first_name as traveler_first_name,
-        u.last_name as traveler_last_name,
-        COALESCE(
-          (SELECT COUNT(*) FROM trip_suggestions ts WHERE ts.trip_id = t.id AND ts.expert_id = ${userId}),
-          0
-        )::int as suggestion_count
-      FROM trip_expert_advisors tea
-      JOIN trips t ON t.id = tea.trip_id
-      JOIN users u ON u.id = t.user_id
-      WHERE tea.local_expert_id = ${userId}
-        AND tea.status IN ('pending', 'accepted')
-      ORDER BY tea.assigned_at DESC
-    `);
-
-    const trips = (result.rows || []).map((row: any) => ({
-      ...row,
-      traveler_name: [row.traveler_first_name, row.traveler_last_name].filter(Boolean).join(' ') || 'Traveler',
-    }));
-
+    const trips = await getExpertAssignedTrips(userId);
     res.json(trips);
   } catch (error: any) {
     console.error('Get expert assigned trips error:', error);
     res.status(500).json({ error: error.message });
   }
 });
-
 
 /**
  * GET /api/trips/:id/suggestions
@@ -813,50 +480,20 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
 
     const { id } = req.params;
 
-    // Check if requester is trip owner
-    const ownerCheck = await db.execute(sql`
-      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
-    `);
-    const isOwner = ownerCheck.rows && ownerCheck.rows.length > 0;
-
-    // If not owner, check if requester is an assigned expert for this trip
-    let isExpert = false;
-    if (!isOwner) {
-      const expertCheck = await db.execute(sql`
-        SELECT id FROM trip_expert_advisors
-        WHERE trip_id = ${id}
-          AND local_expert_id = ${userId}
-          AND status IN ('pending', 'accepted')
-        LIMIT 1
-      `);
-      isExpert = expertCheck.rows && expertCheck.rows.length > 0;
+    const owner = await isTripOwner(id, userId);
+    let expert = false;
+    if (!owner) {
+      expert = await isExpertAssignedToTrip(id, userId);
     }
 
-    if (!isOwner && !isExpert) {
-      // Also verify the trip exists so we don't leak 403 vs 404 info
-      const tripExists = await db.execute(sql`SELECT id FROM trips WHERE id = ${id}`);
-      if (!tripExists.rows || tripExists.rows.length === 0) {
-        return res.status(404).json({ error: 'Trip not found' });
-      }
+    if (!owner && !expert) {
+      const exists = await tripExistsById(id);
+      if (!exists) return res.status(404).json({ error: 'Trip not found' });
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Owners see all suggestions; experts see only their own
-    const result = await db.execute(sql`
-      SELECT
-        ts.id, ts.trip_id, ts.expert_id, ts.type, ts.day_number,
-        ts.title, ts.description, ts.estimated_cost, ts.status,
-        ts.rejection_note, ts.created_at, ts.reviewed_at,
-        u.first_name as expert_first_name, u.last_name as expert_last_name,
-        u.profile_image_url as expert_profile_image_url
-      FROM trip_suggestions ts
-      JOIN users u ON u.id = ts.expert_id
-      WHERE ts.trip_id = ${id}
-        ${isExpert && !isOwner ? sql`AND ts.expert_id = ${userId}` : sql``}
-      ORDER BY ts.created_at DESC
-    `);
-
-    res.json({ suggestions: result.rows || [] });
+    const suggestions = await getTripSuggestions(id, expert && !owner ? userId : undefined);
+    res.json({ suggestions });
   } catch (error: any) {
     console.error('Get trip suggestions error:', error);
     res.status(500).json({ error: error.message });
@@ -879,24 +516,17 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'type and title are required' });
     }
 
-    // Verify expert is assigned to this trip
-    const expertCheck = await db.execute(sql`
-      SELECT tea.id FROM trip_expert_advisors tea
-      WHERE tea.trip_id = ${id}
-        AND tea.local_expert_id = ${userId}
-        AND tea.status IN ('pending', 'accepted')
-      LIMIT 1
-    `);
-
-    if (!expertCheck.rows || expertCheck.rows.length === 0) {
+    const assigned = await isExpertAssignedToTrip(id, userId);
+    if (!assigned) {
       return res.status(403).json({ error: 'You are not an assigned expert for this trip' });
     }
 
-    const suggestionId = crypto.randomUUID();
-    await db.execute(sql`
-      INSERT INTO trip_suggestions (id, trip_id, expert_id, type, day_number, title, description, estimated_cost, status, created_at)
-      VALUES (${suggestionId}, ${id}, ${userId}, ${type}, ${dayNumber ?? null}, ${title}, ${description ?? null}, ${estimatedCost ?? null}, 'pending', NOW())
-    `);
+    const suggestionId = await createTripSuggestion({
+      tripId: id, expertId: userId, type,
+      dayNumber: dayNumber ?? null, title,
+      description: description ?? null,
+      estimatedCost: estimatedCost ?? null,
+    });
 
     res.json({ success: true, suggestionId });
   } catch (error: any) {
@@ -908,7 +538,6 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
 /**
  * PATCH /api/trips/:id/suggestions/:suggestionId
  * Trip owner approves or rejects a suggestion.
- * On approval, the suggestion is appended to the generated itinerary for that day.
  */
 router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req, res) => {
   try {
@@ -922,59 +551,22 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
       return res.status(400).json({ error: 'status must be "approved" or "rejected"' });
     }
 
-    // Only trip owner can review suggestions
-    const ownerCheck = await db.execute(sql`
-      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
-    `);
-    if (!ownerCheck.rows || ownerCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    const owns = await isTripOwner(id, userId);
+    if (!owns) return res.status(403).json({ error: 'Access denied' });
 
-    // Fetch the suggestion details before updating
-    const suggestionResult = await db.execute(sql`
-      SELECT id, type, day_number, title, description, estimated_cost
-      FROM trip_suggestions
-      WHERE id = ${suggestionId} AND trip_id = ${id} AND status = 'pending'
-    `);
-
-    if (!suggestionResult.rows || suggestionResult.rows.length === 0) {
+    const suggestion = await getPendingSuggestion(suggestionId, id);
+    if (!suggestion) {
       return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
     }
 
-    const suggestion = suggestionResult.rows[0] as {
-      id: string;
-      type: string;
-      day_number: number | null;
-      title: string;
-      description: string | null;
-      estimated_cost: string | null;
-    };
+    await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
 
-    // Update suggestion status
-    await db.execute(sql`
-      UPDATE trip_suggestions
-      SET status = ${status},
-          rejection_note = ${rejectionNote ?? null},
-          reviewed_at = NOW()
-      WHERE id = ${suggestionId} AND trip_id = ${id}
-    `);
-
-    // If approved, apply the suggestion to the generated itinerary
     if (status === 'approved') {
-      const itineraryResult = await db.execute(sql`
-        SELECT id, itinerary_data
-        FROM generated_itineraries
-        WHERE trip_id = ${id} AND status = 'generated'
-        ORDER BY created_at DESC
-        LIMIT 1
-      `);
-
-      if (itineraryResult.rows && itineraryResult.rows.length > 0) {
-        const itineraryRow = itineraryResult.rows[0] as { id: string; itinerary_data: any };
-        const itineraryData = itineraryRow.itinerary_data || {};
+      const itinerary = await getGeneratedItinerary(id);
+      if (itinerary) {
+        const itineraryData = itinerary.itinerary_data || {};
         const days: any[] = Array.isArray(itineraryData.days) ? itineraryData.days : [];
 
-        // Build the new activity entry from the suggestion
         const newActivity = {
           type: suggestion.type || 'activity',
           title: suggestion.title,
@@ -984,7 +576,6 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
           expertCurated: true,
         };
 
-        // Find the target day (default to day 1)
         const targetDay = suggestion.day_number ?? 1;
         const dayEntry = days.find((d: any) => d.day === targetDay);
 
@@ -992,7 +583,6 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
           if (!Array.isArray(dayEntry.activities)) dayEntry.activities = [];
           dayEntry.activities.push(newActivity);
         } else {
-          // Day not found — append to the last day or create a new entry
           if (days.length > 0) {
             const lastDay = days[days.length - 1];
             if (!Array.isArray(lastDay.activities)) lastDay.activities = [];
@@ -1002,14 +592,7 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
           }
         }
 
-        const updatedItineraryData = { ...itineraryData, days };
-
-        await db.execute(sql`
-          UPDATE generated_itineraries
-          SET itinerary_data = ${JSON.stringify(updatedItineraryData)}::jsonb,
-              updated_at = NOW()
-          WHERE id = ${itineraryRow.id}
-        `);
+        await updateGeneratedItineraryData(itinerary.id, { ...itineraryData, days });
       }
     }
 
@@ -1022,8 +605,7 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
 
 /**
  * GET /api/trips/:tripId/traveler-profile
- * Returns traveler contact info for an assigned expert to complete bookings on behalf of the client.
- * Only accessible by experts assigned to this trip.
+ * Returns traveler contact info for an assigned expert.
  */
 router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) => {
   try {
@@ -1032,45 +614,17 @@ router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) 
 
     const { tripId } = req.params;
 
-    // Verify this expert is assigned to the trip
-    const assignmentCheck = await db.execute(sql`
-      SELECT tea.id FROM trip_expert_advisors tea
-      WHERE tea.trip_id = ${tripId}
-        AND tea.local_expert_id = ${expertId}
-        AND tea.status IN ('pending', 'accepted')
-      LIMIT 1
-    `);
-
-    if (!assignmentCheck.rows || assignmentCheck.rows.length === 0) {
+    const assigned = await isExpertAssignedToTrip(tripId, expertId);
+    if (!assigned) {
       return res.status(403).json({ error: 'Not authorized to view this trip profile' });
     }
 
-    // Fetch trip + traveler user info
-    const result = await db.execute(sql`
-      SELECT
-        t.id as trip_id,
-        t.title as trip_title,
-        t.destination,
-        t.start_date,
-        t.end_date,
-        t.number_of_travelers,
-        u.id as traveler_user_id,
-        u.first_name,
-        u.last_name,
-        u.email,
-        u.profile_image_url
-      FROM trips t
-      JOIN users u ON u.id = t.user_id
-      WHERE t.id = ${tripId}
-      LIMIT 1
-    `);
-
-    if (!result.rows || result.rows.length === 0) {
+    const row: any = await getTravelerProfile(tripId);
+    if (!row) {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    const row: any = result.rows[0];
-    const profile = {
+    res.json({
       tripId: row.trip_id,
       tripTitle: row.trip_title,
       destination: row.destination,
@@ -1080,9 +634,7 @@ router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) 
       travelerName: [row.first_name, row.last_name].filter(Boolean).join(' ') || 'Traveler',
       travelerEmail: row.email || null,
       profileImageUrl: row.profile_image_url || null,
-    };
-
-    res.json(profile);
+    });
   } catch (error: any) {
     console.error('Get traveler profile error:', error);
     res.status(500).json({ error: error.message });
