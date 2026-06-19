@@ -5,8 +5,7 @@ import { api } from "@shared/routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { db } from "../db";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -54,7 +53,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, expertOfferingTypes } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -177,7 +176,7 @@ router.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
 
 router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const adminUser = await storage.getUser((req.user as any).claims.sub);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -210,7 +209,7 @@ router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
 
       const { credits, price } = pkg;
 
-      const userRecord = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const userRecord = await storage.getUser(userId);
       const userEmail = userRecord?.email || undefined;
 
       const { getBaseUrl } = await import("../services/stripe.service");
@@ -304,9 +303,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       ));
       const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
       if (distinctCatIds.length > 0) {
-        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
-          .from(serviceCategories)
-          .where(inArray(serviceCategories.id, distinctCatIds));
+        const catRows = await storage.getServiceCategorySlugsByIds(distinctCatIds);
         for (const row of catRows) {
           catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
         }
@@ -319,9 +316,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       ));
       const offeringTypeKeyMap = new Map<string, string>();
       if (distinctOfferingTypeIds.length > 0) {
-        const typeRows = await db.select({ id: expertOfferingTypes.id, key: expertOfferingTypes.offeringTypeKey })
-          .from(expertOfferingTypes)
-          .where(inArray(expertOfferingTypes.id, distinctOfferingTypeIds));
+        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctOfferingTypeIds);
         for (const row of typeRows) {
           offeringTypeKeyMap.set(row.id, row.key);
         }
@@ -558,9 +553,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       ));
       const catSlugMap = new Map<string, string>();
       if (distinctCatIds.length > 0) {
-        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
-          .from(serviceCategories)
-          .where(inArray(serviceCategories.id, distinctCatIds));
+        const catRows = await storage.getServiceCategorySlugsByIds(distinctCatIds);
         for (const row of catRows) {
           catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
         }
@@ -758,23 +751,11 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       if (!bandKey || bandKey.length > 100) {
         return res.status(400).json({ error: "Invalid bandKey" });
       }
-      const result = await db.execute(sql`
-        SELECT
-          band_key,
-          rate_type,
-          CAST(default_rate AS FLOAT) AS default_rate,
-          CAST(min_rate AS FLOAT) AS min_rate,
-          CAST(max_rate AS FLOAT) AS max_rate,
-          display_name,
-          description
-        FROM fee_bands
-        WHERE band_key = ${bandKey} AND is_active = true
-        LIMIT 1
-      `);
-      if (result.rows && result.rows.length > 0) {
+      const band = await storage.getFeeBandByKey(bandKey);
+      if (band) {
         // Cache for 60 s — same TTL as the server-side resolver cache.
         res.setHeader("Cache-Control", "public, max-age=60");
-        return res.json(result.rows[0]);
+        return res.json(band);
       }
       return res.status(404).json({ error: "Band not found", bandKey });
     } catch (error: any) {

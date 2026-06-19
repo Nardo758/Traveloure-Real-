@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { db } from "../db";
+import { storage } from "../storage";
 import { z } from "zod";
-import { crossSellEvents, serviceBookings, providerServices, users } from "@shared/schema";
+import { crossSellEvents, serviceBookings, providerServices } from "@shared/schema";
+import { db } from "../db";
 import { eq, and, inArray, sql, desc, count } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 
@@ -12,7 +13,7 @@ const router = Router();
 async function requireAdmin(req: any, res: any): Promise<boolean> {
   const userId = req.user?.claims?.sub;
   if (!userId) { res.status(401).json({ message: "Unauthorized" }); return false; }
-  const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+  const user = await storage.getUser(userId);
   if (!user || user.role !== "admin") { res.status(403).json({ message: "Admin access required" }); return false; }
   return true;
 }
@@ -57,7 +58,7 @@ router.post("/api/cross-sell-events", async (req, res) => {
       sessionId: e.sessionId ?? null,
     }));
 
-    await db.insert(crossSellEvents).values(rows);
+    await storage.recordCrossSellEvents(rows);
     res.status(201).json({ recorded: rows.length });
   } catch (err: any) {
     console.error("[cross-sell] insert error:", err);
@@ -72,12 +73,7 @@ router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req,
     const userId = (req as any).user.claims.sub;
 
     // providerServices uses userId (not providerId) as the owner FK
-    const services = await db
-      .select({ id: providerServices.id })
-      .from(providerServices)
-      .where(eq(providerServices.userId, userId));
-
-    const serviceIds = services.map((s) => s.id);
+    const serviceIds = await storage.getProviderServiceIdsForUser(userId);
     if (serviceIds.length === 0) {
       return res.json({ impressions: 0, clicks: 0, ctr: 0, conversions: 0, byService: [] });
     }
