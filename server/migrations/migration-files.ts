@@ -219,4 +219,7 @@ export const MIGRATION_FILES = [
   // Single source of truth for conversion funnel analytics. Fire-and-forget writes;
   // never block the request path. userId nullable for pre-registration T0 events.
   "089_funnel_events.sql",
+  // 090: Widen destination_seasons.average_temp from varchar(20) to varchar(60)
+  // to accommodate long temperature range strings like "10-20°C (highlands) / 24-28°C (jungle)".
+  "090_widen_destination_seasons_average_temp.sql",
 ] as const;
