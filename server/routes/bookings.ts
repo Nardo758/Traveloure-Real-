@@ -9,6 +9,7 @@ import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
 import { isAuthenticated } from '../replit_integrations/auth';
+import { storage } from '../storage';
 import Stripe from 'stripe';
 
 const router = Router();
@@ -68,14 +69,8 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
     }
 
     // Fast-path: if the webhook already confirmed this booking, return success immediately
-    const { db } = await import('../db');
-    const { sql } = await import('drizzle-orm');
-    const existing = await db.execute(sql`
-      SELECT status FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1
-    `);
-    const currentStatus = (existing.rows?.[0] as any)?.status;
-
-    if (currentStatus === 'confirmed') {
+    const existing = await storage.getBookingStatusForUser(bookingId, userId);
+    if (existing?.status === 'confirmed') {
       console.log(`[confirm-payment] booking ${bookingId} already confirmed by webhook — returning success`);
       return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
     }
@@ -122,24 +117,7 @@ router.post('/bulk-status', isAuthenticated, async (req, res) => {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
 
-    const { db } = await import('../db');
-    const { sql } = await import('drizzle-orm');
-
-    // Query status for each booking ID individually (safe, no dynamic IN clause needed)
-    const statuses: Record<string, { status: string; confirmationCode: string | null }> = {};
-    for (const bookingId of bookingIds) {
-      const result = await db.execute(sql`
-        SELECT id, status, confirmation_code
-        FROM bookings
-        WHERE id = ${bookingId} AND user_id = ${userId}
-        LIMIT 1
-      `);
-      const row = result.rows?.[0] as any;
-      if (row) {
-        statuses[row.id] = { status: row.status, confirmationCode: row.confirmation_code ?? null };
-      }
-    }
-
+    const statuses = await storage.getBulkBookingStatuses(bookingIds, userId);
     const allConfirmed = bookingIds.every((id: string) => statuses[id]?.status === 'confirmed');
     res.json({ statuses, allConfirmed });
   } catch (error: any) {
