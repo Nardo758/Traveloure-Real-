@@ -9,6 +9,9 @@ import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
+import { bookingService } from '../services/booking.service';
+import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from '../utils/auth';
 
 const router = Router();
 
@@ -133,126 +136,30 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const resolvedDestination = (destination || optimizationContext?.destination || '').toLowerCase();
 
-    // Verify trip ownership when a tripId is supplied (prevents cross-user contamination)
+    // Trip ownership check (auth concern — stays in route layer)
     if (tripId) {
-      const tripRow = await db.execute(sql`
-        SELECT user_id FROM trips WHERE id = ${tripId} LIMIT 1
-      `);
-      if (!tripRow.rows || tripRow.rows.length === 0) {
-        return res.status(404).json({ error: 'Trip not found' });
-      }
-      if ((tripRow.rows[0] as any).user_id !== resolvedUserId) {
-        return res.status(403).json({ error: 'You do not own this trip' });
-      }
+      const owns = await verifyTripOwnership(tripId, resolvedUserId);
+      if (!owns) return res.status(403).json({ error: 'You do not own this trip' });
     }
 
-    // Prevent duplicate pending/admin-confirm requests for the same trip
-    // (assigned = expert is already working → allow re-request if they finish)
-    if (tripId) {
-      const existing = await db.execute(sql`
-        SELECT id FROM expert_requests
-        WHERE user_id = ${resolvedUserId}
-          AND trip_id = ${tripId}
-          AND status IN ('queued', 'pending')
-        LIMIT 1
-      `);
-      if (existing.rows && existing.rows.length > 0) {
-        return res.status(409).json({
-          error: 'A pending expert request already exists for this trip',
-          requestId: (existing.rows[0] as any).id,
-        });
-      }
-    }
-
-    // Get current queue position for this city
-    const queueResult = await db.execute(sql`
-      SELECT COALESCE(MAX(queue_position), 0) + 1 as next_position
-      FROM expert_requests
-      WHERE destination_city = ${resolvedDestination}
-        AND status IN ('queued', 'assigned')
-    `);
-
-    const queuePosition = queueResult.rows?.[0]?.next_position || 1;
-
-    const optimizationContextJson = optimizationContext ? JSON.stringify(optimizationContext) : null;
-    const requestId = crypto.randomUUID();
-
-    // Create expert request, returning full row
-    const result = await db.execute(sql`
-      INSERT INTO expert_requests (
-        id, user_id, trip_id, variant_id, comparison_id, destination_city,
-        request_type, expert_fee, status, queue_position, notes,
-        optimization_context, created_at
-      ) VALUES (
-        ${requestId},
-        ${resolvedUserId},
-        ${tripId || null},
-        ${variantId || null},
-        ${comparisonId || null},
-        ${resolvedDestination},
-        ${requestType || 'polish'},
-        ${expertFee || null},
-        'queued',
-        ${queuePosition},
-        ${notes || null},
-        ${optimizationContextJson}::jsonb,
-        NOW()
-      )
-      RETURNING id, user_id, trip_id, status, queue_position, destination_city,
-                request_type, notes, optimization_context, created_at
-    `);
-
-    const created = result.rows?.[0] ?? {};
-
-    // Notify experts in destination queue (fire & forget)
-    try {
-      const { storage } = await import('../storage');
-      const experts = await db.execute(sql`
-        SELECT DISTINCT u.id, u.first_name, u.last_name
-        FROM users u
-        JOIN expert_service_categories esc ON u.id = esc.expert_id
-        WHERE u.role = 'expert' AND u.status = 'verified'
-          AND LOWER(esc.destination) LIKE LOWER(${'%' + resolvedDestination + '%'})
-        LIMIT 10
-      `);
-
-      for (const expert of experts.rows || []) {
-        try {
-          await storage.createNotification({
-            userId: (expert as any).id,
-            type: 'expert_request',
-            title: 'New Expert Request',
-            message: `New ${requestType || 'polish'} request for ${resolvedDestination} — you are #${queuePosition} in queue.`,
-            relatedId: requestId,
-            relatedType: 'expert_request',
-            data: {
-              requestId,
-              destination: resolvedDestination,
-              queuePosition,
-              requestType,
-            },
-          });
-        } catch (err) {
-          console.error(`Failed to notify expert ${(expert as any).id}:`, err);
-        }
-      }
-    } catch (notifErr) {
-      console.error('Failed to notify experts of request:', notifErr);
-    }
+    // Business logic delegated to BookingService
+    const { requestId, queuePosition } = await bookingService.submitExpertRequest({
+      userId: resolvedUserId, tripId, variantId, comparisonId,
+      destination: resolvedDestination, requestType, expertFee, notes, optimizationContext,
+    });
 
     res.json({
       success: true,
-      request: created,
-      requestId: (created as any).id,
+      requestId,
       queuePosition,
       message: `Expert request submitted. You are #${queuePosition} in the queue for ${resolvedDestination}.`,
     });
   } catch (error: any) {
+    if (error.code === 'DUPLICATE_REQUEST') {
+      return res.status(409).json({ error: error.message, requestId: error.requestId });
+    }
     console.error('Expert request error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -328,82 +235,16 @@ router.post('/saved-trips', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { id } = req.params;
-
-    // Validate UUID format — non-UUID strings cause a PostgreSQL cast error
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidPattern.test(id)) {
-      return res.status(404).json({ error: 'Saved trip not found or already converted' });
-    }
-
-    // Fetch the saved trip owned by this user
-    const savedResult = await db.execute(sql`
-      SELECT st.*, ic.destination, ic.start_date, ic.end_date, ic.travelers, ic.budget
-      FROM saved_trips st
-      LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
-      WHERE st.id = ${id}
-        AND st.user_id = ${userId}
-        AND st.status = 'active'
-    `);
-
-    if (!savedResult.rows || savedResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Saved trip not found or already converted' });
-    }
-
-    interface SavedTripRow {
-      destination: string | null;
-      start_date: string | null;
-      end_date: string | null;
-      travelers: number | null;
-      budget: string | null;
-    }
-    const saved = savedResult.rows[0] as SavedTripRow;
-    const destination = saved.destination || 'My Destination';
-    const startDate = saved.start_date || new Date().toISOString().split('T')[0];
-    const endDate = saved.end_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const travelers = saved.travelers || 1;
-    const budget = saved.budget || null;
-
-    // Atomically mark saved trip as converted — prevents duplicate conversions under concurrent requests
-    const markResult = await db.execute(sql`
-      UPDATE saved_trips
-      SET status = 'converted'
-      WHERE id = ${id}
-        AND user_id = ${userId}
-        AND status = 'active'
-      RETURNING id
-    `);
-
-    if (!markResult.rows || markResult.rows.length === 0) {
-      return res.status(409).json({ error: 'Already converted or not eligible' });
-    }
-
-    // Create a Trip record in planning status
-    const tripId = crypto.randomUUID();
-    await db.execute(sql`
-      INSERT INTO trips (
-        id, user_id, title, destination, start_date, end_date,
-        number_of_travelers, budget, status, created_at, updated_at
-      ) VALUES (
-        ${tripId},
-        ${userId},
-        ${`Trip to ${destination}`},
-        ${destination},
-        ${startDate},
-        ${endDate},
-        ${travelers},
-        ${budget},
-        'planning',
-        NOW(),
-        NOW()
-      )
-    `);
-
+    // Business logic delegated to BookingService
+    const { tripId } = await bookingService.convertSavedTrip(req.params.id, userId);
     res.json({ success: true, tripId });
   } catch (error: any) {
+    const status = (error as any).status;
+    if (status === 404) return res.status(404).json({ error: error.message });
+    if (status === 409) return res.status(409).json({ error: error.message });
     console.error('Convert saved trip error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
