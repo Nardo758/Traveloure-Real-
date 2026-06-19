@@ -6,15 +6,7 @@
  */
 
 import { Router } from "express";
-import { db } from "../db";
-import {
-  itineraryComparisons,
-  itineraryVariants,
-  itineraryVariantItems,
-  itineraryVariantMetrics,
-  transportLegs
-} from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { storage } from "../storage";
 import { 
   generateActivityNote, 
   generateDayNotes, 
@@ -32,9 +24,7 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
     const { id } = req.params;
     
     // Get comparison data
-    const comparison = await db.query.itineraryComparisons.findFirst({
-      where: eq(itineraryComparisons.id, id),
-    });
+    const comparison = await storage.getItineraryComparison(id);
     
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
@@ -45,19 +35,11 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
     let variant;
     
     if (variantId) {
-      variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, variantId),
-      });
+      variant = await storage.getItineraryVariantById(variantId);
     }
     
     if (!variant) {
-      // Get the first variant (user's original)
-      const variants = await db.query.itineraryVariants.findMany({
-        where: eq(itineraryVariants.comparisonId, comparison.id),
-        orderBy: (v, { asc }) => [asc(v.sortOrder)],
-        limit: 1,
-      });
-      variant = variants[0];
+      variant = await storage.getFirstVariantByComparisonId(comparison.id);
     }
     
     if (!variant) {
@@ -65,17 +47,10 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
     }
     
     // Get all items for the variant
-    const items = await db.query.itineraryVariantItems.findMany({
-      where: eq(itineraryVariantItems.variantId, variant.id),
-      orderBy: (item, { asc }) => [asc(item.dayNumber), asc(item.sortOrder)],
-    });
+    const items = await storage.getOrderedVariantItemsByVariantId(variant.id);
 
     // Get transport legs for the variant
-    const legs = await db
-      .select()
-      .from(transportLegs)
-      .where(eq(transportLegs.variantId, variant.id))
-      .orderBy(transportLegs.dayNumber, transportLegs.legOrder);
+    const legs = await storage.getOrderedTransportLegsByVariantId(variant.id);
     
     // Generate methodology notes for each activity
     const itemsWithNotes = items.map((item, idx) => {
@@ -224,9 +199,7 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     const { id } = req.params;
     
     // Get comparison data
-    const comparison = await db.query.itineraryComparisons.findFirst({
-      where: eq(itineraryComparisons.id, id),
-    });
+    const comparison = await storage.getItineraryComparison(id);
     
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
@@ -237,18 +210,11 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     let variant;
     
     if (variantId) {
-      variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, variantId),
-      });
+      variant = await storage.getItineraryVariantById(variantId);
     }
     
     if (!variant) {
-      const variants = await db.query.itineraryVariants.findMany({
-        where: eq(itineraryVariants.comparisonId, comparison.id),
-        orderBy: (v, { asc }) => [asc(v.sortOrder)],
-        limit: 1,
-      });
-      variant = variants[0];
+      variant = await storage.getFirstVariantByComparisonId(comparison.id);
     }
     
     if (!variant) {
@@ -256,10 +222,7 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     }
     
     // Get all items
-    const items = await db.query.itineraryVariantItems.findMany({
-      where: eq(itineraryVariantItems.variantId, variant.id),
-      orderBy: (item, { asc }) => [asc(item.dayNumber), asc(item.sortOrder)],
-    });
+    const items = await storage.getOrderedVariantItemsByVariantId(variant.id);
     
     // Generate .ics content
     const icsContent = generateICSContent(comparison, items);
@@ -279,9 +242,7 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
     const { id } = req.params;
 
     // Get comparison data
-    const comparison = await db.query.itineraryComparisons.findFirst({
-      where: eq(itineraryComparisons.id, id),
-    });
+    const comparison = await storage.getItineraryComparison(id);
 
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
@@ -292,18 +253,11 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
     let variant;
 
     if (variantId) {
-      variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, variantId),
-      });
+      variant = await storage.getItineraryVariantById(variantId);
     }
 
     if (!variant) {
-      const variants = await db.query.itineraryVariants.findMany({
-        where: eq(itineraryVariants.comparisonId, comparison.id),
-        orderBy: (v, { asc }) => [asc(v.sortOrder)],
-        limit: 1,
-      });
-      variant = variants[0];
+      variant = await storage.getFirstVariantByComparisonId(comparison.id);
     }
 
     if (!variant) {
@@ -311,14 +265,9 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
     }
 
     // Get all items and metrics
-    const items = await db.query.itineraryVariantItems.findMany({
-      where: eq(itineraryVariantItems.variantId, variant.id),
-      orderBy: (item, { asc }) => [asc(item.dayNumber), asc(item.sortOrder)],
-    });
+    const items = await storage.getOrderedVariantItemsByVariantId(variant.id);
 
-    const metrics = await db.query.itineraryVariantMetrics.findFirst({
-      where: eq(itineraryVariantMetrics.variantId, variant.id),
-    });
+    const metrics = await storage.getVariantMetricFirstByVariantId(variant.id);
 
     // Dynamic require to avoid module loading issues
     const PDFDocument = require("pdfkit");
