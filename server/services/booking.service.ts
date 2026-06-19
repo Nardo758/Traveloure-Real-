@@ -591,6 +591,171 @@ class BookingService {
     }
     return code;
   }
+
+  // ---------------------------------------------------------------------------
+  // Expert Request — queue position + insert + expert notifications
+  // ---------------------------------------------------------------------------
+
+  async submitExpertRequest(params: {
+    userId: string;
+    tripId?: string;
+    variantId?: string;
+    comparisonId?: string;
+    destination: string;
+    requestType?: string;
+    expertFee?: number;
+    notes?: string;
+    optimizationContext?: any;
+  }): Promise<{ requestId: string; queuePosition: number }> {
+    const {
+      userId, tripId, variantId, comparisonId,
+      destination, requestType, expertFee, notes, optimizationContext,
+    } = params;
+
+    // Prevent duplicate pending requests for the same trip
+    if (tripId) {
+      const existing = await db.execute(sql`
+        SELECT id FROM expert_requests
+        WHERE user_id = ${userId}
+          AND trip_id = ${tripId}
+          AND status IN ('queued', 'pending')
+        LIMIT 1
+      `);
+      if (existing.rows && existing.rows.length > 0) {
+        const err: any = new Error('A pending expert request already exists for this trip');
+        err.code = 'DUPLICATE_REQUEST';
+        err.requestId = (existing.rows[0] as any).id;
+        throw err;
+      }
+    }
+
+    // Calculate next queue position for this city
+    const queueResult = await db.execute(sql`
+      SELECT COALESCE(MAX(queue_position), 0) + 1 AS next_position
+      FROM expert_requests
+      WHERE destination_city = ${destination}
+        AND status IN ('queued', 'assigned')
+    `);
+    const queuePosition = Number(queueResult.rows?.[0]?.next_position) || 1;
+
+    const requestId = crypto.randomUUID();
+    const optimizationContextJson = optimizationContext ? JSON.stringify(optimizationContext) : null;
+
+    await db.execute(sql`
+      INSERT INTO expert_requests (
+        id, user_id, trip_id, variant_id, comparison_id, destination_city,
+        request_type, expert_fee, status, queue_position, notes,
+        optimization_context, created_at
+      ) VALUES (
+        ${requestId}, ${userId}, ${tripId || null}, ${variantId || null},
+        ${comparisonId || null}, ${destination},
+        ${requestType || 'polish'}, ${expertFee || null},
+        'queued', ${queuePosition}, ${notes || null},
+        ${optimizationContextJson}::jsonb, NOW()
+      )
+    `);
+
+    // Notify matching experts — fire & forget
+    this.notifyExpertsOfRequest(requestId, destination, requestType, queuePosition).catch(err =>
+      console.error('[BookingService] Failed to notify experts of request:', err)
+    );
+
+    return { requestId, queuePosition };
+  }
+
+  private async notifyExpertsOfRequest(
+    requestId: string,
+    destination: string,
+    requestType: string | undefined,
+    queuePosition: number,
+  ): Promise<void> {
+    const { storage } = await import('../storage');
+    const experts = await db.execute(sql`
+      SELECT DISTINCT u.id, u.first_name, u.last_name
+      FROM users u
+      JOIN expert_service_categories esc ON u.id = esc.expert_id
+      WHERE u.role = 'expert' AND u.status = 'verified'
+        AND LOWER(esc.destination) LIKE LOWER(${'%' + destination + '%'})
+      LIMIT 10
+    `);
+    for (const expert of experts.rows || []) {
+      await storage.createNotification({
+        userId: (expert as any).id,
+        type: 'expert_request',
+        title: 'New Expert Request',
+        message: `New ${requestType || 'polish'} request for ${destination} — you are #${queuePosition} in queue.`,
+        relatedId: requestId,
+        relatedType: 'expert_request',
+        data: { requestId, destination, queuePosition, requestType },
+      }).catch(err => console.error(`[BookingService] Failed to notify expert ${(expert as any).id}:`, err));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Convert Saved Trip → active Trip record (planning status)
+  // ---------------------------------------------------------------------------
+
+  async convertSavedTrip(savedTripId: string, userId: string): Promise<{ tripId: string }> {
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(savedTripId)) {
+      const err: any = new Error('Saved trip not found or already converted');
+      err.status = 404;
+      throw err;
+    }
+
+    const savedResult = await db.execute(sql`
+      SELECT st.*, ic.destination, ic.start_date, ic.end_date, ic.travelers, ic.budget
+      FROM saved_trips st
+      LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
+      WHERE st.id = ${savedTripId}
+        AND st.user_id = ${userId}
+        AND st.status = 'active'
+    `);
+
+    if (!savedResult.rows || savedResult.rows.length === 0) {
+      const err: any = new Error('Saved trip not found or already converted');
+      err.status = 404;
+      throw err;
+    }
+
+    const saved = savedResult.rows[0] as any;
+
+    // Atomic status flip — prevents duplicate conversions under concurrent requests
+    const markResult = await db.execute(sql`
+      UPDATE saved_trips
+      SET status = 'converted'
+      WHERE id = ${savedTripId}
+        AND user_id = ${userId}
+        AND status = 'active'
+      RETURNING id
+    `);
+
+    if (!markResult.rows || markResult.rows.length === 0) {
+      const err: any = new Error('Already converted or not eligible');
+      err.status = 409;
+      throw err;
+    }
+
+    const destination = saved.destination || 'My Destination';
+    const startDate = saved.start_date || new Date().toISOString().split('T')[0];
+    const endDate = saved.end_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const travelers = saved.travelers || 1;
+    const budget = saved.budget || null;
+    const tripId = crypto.randomUUID();
+
+    await db.execute(sql`
+      INSERT INTO trips (
+        id, user_id, title, destination, start_date, end_date,
+        number_of_travelers, budget, status, created_at, updated_at
+      ) VALUES (
+        ${tripId}, ${userId}, ${`Trip to ${destination}`}, ${destination},
+        ${startDate}, ${endDate}, ${travelers}, ${budget},
+        'planning', NOW(), NOW()
+      )
+    `);
+
+    return { tripId };
+  }
 }
 
 export const bookingService = new BookingService();
