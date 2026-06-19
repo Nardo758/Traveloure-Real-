@@ -57,7 +57,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, expertNeighborhoods, neighborhoodCoverageTarget } from "@shared/schema";
+import { cityNeighborhoods, expertNeighborhoods } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -67,7 +67,6 @@ import { experienceCatalogService } from "../services/experience-catalog.service
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
 import { generateKml } from "../services/kml-generator";
@@ -90,6 +89,58 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+import {
+  getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
+  updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
+  updateUserRole, getUserVerificationStatus, getUserCommissionOverride,
+  setUserCommissionOverride, insertNotification, getAdminNotifications,
+  getApprovedProviderForms, getProviderUserInfo, getProviderServicesForUser,
+  getProviderUsersBulk, updateProviderServiceStatus, updateProviderServiceFeatured,
+  updateProviderServiceAffinityTags, checkAndDeleteProviderService,
+  resolveOrCreateItineraryPlanningCategory, createExpertServiceOfferingRow,
+  getAllExpertServiceOfferings, updateExpertServiceOfferingRoles,
+  validateDefaultCommissionBandInheritance, validateCommissionBand,
+  getPayoutRecipientId, getPayoutAmount, getAdminUsersPaginated, getAdminUsersPage,
+  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips,
+  getAllServiceReviewsForAnalytics, getAllTripsForAnalytics, getAllTrips, getAllServiceReviews,
+  getExpertsByCountryAnalytics, getProvidersByCountryAnalytics, getTripsByDestinationAnalytics,
+  getExpertsByCountryDetailed, getExpertsByCity, getExpertStatusSummary, getExpertsByExperience,
+  getProvidersByBusinessType, getProvidersByCountryDetailed, getProviderStatusSummary,
+  getActiveServicesCount, getTopProvidersByBookings,
+  getTourismDestinationDemand, getTourismBookingTrends, getTourismSourceMarkets,
+  getUsersByMonth, getTourismSpendingPatterns, getTourismPartyComposition,
+  getTourismSeasonality, getTourismEventTypes, getTourismSummaryMetrics,
+  dbHealthPing, pingDb, adminSearchUsers, adminSearchTrips, adminSearchServices, getAdminGlobalCounts,
+  getAnalyticsByCountry, getExpertAnalytics, getProviderAnalytics, getTourismAnalytics,
+  adminGlobalSearch, getAdminSearchCounts,
+  getServiceReviewsList, getAdminReviews, getReviewModerationLogs, getServiceReviewById, getReviewById,
+  updateServiceReviewStatus, moderateReview, insertReviewModerationLog,
+  getServiceReviewsForServiceRating, updateProviderServiceRating, recalcServiceRating,
+  getFeeConfigs, upsertFeeConfig, getFeeBands, getFeeBand, updateFeeBand, checkActiveBand,
+  getPlatformSettings, getPlatformSettingValue, upsertPlatformSetting,
+  getServiceOfferingTypesList, getAllServiceOfferingTypes,
+  createServiceOfferingTypeRow, updateServiceOfferingTypeRow, deleteServiceOfferingTypeRow,
+  getExpertOfferingTypesList, createExpertOfferingTypeRow, updateExpertOfferingTypeRow, deleteExpertOfferingTypeRow,
+  getLeadRoutingLogs, overrideLeadRouting, getRoutingQueueItems, getExpertRequest,
+  confirmLeadAssignmentTx, reassignExpertRequest, getExpertNameById, getExpertRequestRow,
+  getLocalKnowledgeNuggetCounts,
+  getTravelPulseCitiesForAutoIndex, getTravelPulseCitiesList,
+  getAffiliateProductsForAutoIndex, getActiveAffiliateProducts,
+  getContentRegistryForAutoIndex, getPublishedContentRegistry,
+  getOptimizationFees, findOptimizationFee, updateOptimizationFee, createOptimizationFee,
+  getEventPackages, createEventPackage, patchEventPackage, archiveEventPackage,
+  getNeighborhoodsWithSummary, getNeighborhoodById, getNeighborhoodExperts,
+  getNeighborhoodCoverageTargets, validateCategoryKey, getServiceCategoryByKey,
+  upsertNeighborhoodCoverageTarget, deleteNeighborhoodCoverageTargetRow, deleteNeighborhoodCoverageTarget,
+  getNeighborhoodCurrentLead, getExpertFormForNeighborhoodCheck, getExpertFormCityInfo,
+  clearNeighborhoodLeadTx, swapNeighborhoodLeadTx,
+  validateAdjacencyTargets, updateNeighborhoodAdjacencyTx,
+  getItineraryForTrip, getGeneratedItinerary, upsertTripAnalyticsEnhanced,
+  getLocationSummary, getLocationSummaryData, getDestinationDemandReport, getProviderMarketReport,
+  getGeographicInsightsReport, getConversionFunnelReport,
+  getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
+  getUsersBasicByIds, getProviderServiceById, deleteProviderService,
+} from "../services/admin-query.service";
 
 const router = Router();
 
@@ -156,21 +207,21 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-  const user = await db.select({ role: users.role }).from(users)
-    .where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
+  const user = await getAdminRole(req.user?.claims?.sub);
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
   next();
 };
 
 router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const user = await getFullAdminUser(userId);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     
     try {
       // Get counts from database
-      const allUsers = await db.select().from(users);
+      const allUsers = await getAllUsersBasic();
       const allBookings = await storage.getServiceBookings({});
       const pendingExperts = await storage.getLocalExpertForms("pending");
       const pendingProviders = await storage.getServiceProviderForms("pending");
@@ -218,7 +269,7 @@ router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
 
 
 router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -251,7 +302,7 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
  * Stripe webhook arrived (e.g. browser closed mid-payment).
  */
 router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res) => {
-  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -288,7 +339,7 @@ router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res
  * Returns the current auto-cancel scheduler configuration.
  */
 router.get("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
-  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -304,7 +355,7 @@ router.get("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req
  * Updates the staleness threshold (hours) used by the auto-cancel scheduler.
  */
 router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
-  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -326,7 +377,7 @@ router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (r
  * Manually triggers the auto-cancel sweep immediately.
  */
 router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, res) => {
-  const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -343,7 +394,7 @@ router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, 
 });
 
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -368,7 +419,7 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
 router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      const adminUser = await getFullAdminUser(userId);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -376,10 +427,7 @@ router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) =
       const status = req.query.status as string | undefined;
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
 
-      const baseQuery = db.select().from(contactSubmissions);
-      const submissions = status
-        ? await baseQuery.where(eq(contactSubmissions.status, status)).orderBy(desc(contactSubmissions.createdAt)).limit(limit)
-        : await baseQuery.orderBy(desc(contactSubmissions.createdAt)).limit(limit);
+      const submissions = await getContactSubmissions(status, limit);
 
       res.json(submissions);
     } catch (err) {
@@ -392,7 +440,7 @@ router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) =
 router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      const adminUser = await getFullAdminUser(userId);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -404,10 +452,7 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, 
       if (responseNotes !== undefined) updates.responseNotes = responseNotes;
       if (assignedAdminId !== undefined) updates.assignedAdminId = assignedAdminId;
 
-      const [updated] = await db.update(contactSubmissions)
-        .set(updates)
-        .where(eq(contactSubmissions.id, req.params.id))
-        .returning();
+      const updated = await updateContactSubmission(req.params.id, updates);
 
       if (!updated) return res.status(404).json({ message: "Submission not found" });
       res.json(updated);
@@ -420,7 +465,7 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, 
   // Admin: Get all expert applications
 
 router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -431,10 +476,7 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
     const userIds = Array.from(new Set(forms.map(f => f.userId).filter(Boolean)));
     let overrideByUser = new Map<string, string | null>();
     if (userIds.length > 0) {
-      const overrideRows = await db
-        .select({ id: users.id, override: users.commissionOverrideExpertSharePercent })
-        .from(users)
-        .where(inArray(users.id, userIds));
+      const overrideRows = await getUserCommissionOverrides(userIds);
       overrideByUser = new Map(overrideRows.map(r => [r.id, r.override ?? null]));
     }
     const enriched = forms.map(f => ({
@@ -447,7 +489,7 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
   // Admin: Update expert application status
 
 router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -461,10 +503,10 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     if (status === "approved") {
       // Use the expertType from the form, default to "expert" for backwards compatibility
       const role = (updated as any).expertType || "expert";
-      await db.update(users).set({ role }).where(eq(users.id, updated.userId));
+      await updateUserRole(updated.userId, role);
 
       // Notify the user to complete Stripe Connect setup
-      await db.insert(notifications).values({
+      await insertNotification({
         userId: updated.userId,
         type: "application_approved",
         title: "Application Approved! 🎉",
@@ -482,8 +524,7 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
   // percent (e.g. 80 → expert keeps 80%, platform takes 20%).
 
 router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, res) => {
-  const admin = await db.select({ role: users.role }).from(users)
-    .where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+  const admin = await getAdminRole((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
   const schema = z.object({
@@ -494,17 +535,13 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
   if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
 
   await storage.updateProviderVerification(req.params.id, parsed.data);
-  const [updated] = await db.select({
-    id: users.id,
-    providerVerificationStatus: users.providerVerificationStatus,
-    backgroundCheckConfirmed: users.backgroundCheckConfirmed,
-  }).from(users).where(eq(users.id, req.params.id));
+  const updated = await getUserVerificationStatus(req.params.id);
   if (!updated) return res.status(404).json({ message: "User not found" });
   res.json(updated);
 });
 
 router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
-    const admin = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const admin = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!admin || admin.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -520,19 +557,12 @@ router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async 
       }
       nextValue = pct.toFixed(2);
     }
-    const [before] = await db
-      .select({ id: users.id, prev: users.commissionOverrideExpertSharePercent })
-      .from(users)
-      .where(eq(users.id, targetId))
-      .limit(1);
+    const before = await getUserCommissionOverride(targetId);
     if (!before) {
       return res.status(404).json({ message: "User not found" });
     }
-    await db
-      .update(users)
-      .set({ commissionOverrideExpertSharePercent: nextValue })
-      .where(eq(users.id, targetId));
-    await db.insert(accessAuditLogs).values({
+    await setUserCommissionOverride(targetId, nextValue);
+    await insertAccessAuditLog({
       actorId: admin.id,
       actorRole: "admin",
       action: "update_commission_override",
@@ -549,7 +579,7 @@ router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async 
   // Get current user's provider application
 
 router.get("/api/admin/provider-applications", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -561,46 +591,18 @@ router.get("/api/admin/provider-applications", isAuthenticated, async (req, res)
   // Admin: Get active platform service providers with their services
 
 router.get("/api/admin/platform-service-providers", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
 
-    const { serviceProviderForms, providerServices, serviceCategories } = await import("@shared/schema");
-
     // Get approved provider forms
-    const approvedForms = await db
-      .select()
-      .from(serviceProviderForms)
-      .where(eq(serviceProviderForms.status, "approved"))
-      .orderBy(sql`created_at desc`);
+    const approvedForms = await getApprovedProviderForms();
 
     // For each provider, fetch their services and user info
-    const enriched = await Promise.all(approvedForms.map(async (form) => {
-      const [providerUser] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, profileImageUrl: users.profileImageUrl, providerVerificationStatus: users.providerVerificationStatus, backgroundCheckConfirmed: users.backgroundCheckConfirmed })
-        .from(users).where(eq(users.id, form.userId));
-
-      const services = await db
-        .select({
-          id: providerServices.id,
-          serviceName: providerServices.serviceName,
-          serviceType: providerServices.serviceType,
-          price: providerServices.price,
-          priceType: providerServices.priceType,
-          deliveryMethod: providerServices.deliveryMethod,
-          status: providerServices.status,
-          isFeatured: providerServices.isFeatured,
-          bookingsCount: providerServices.bookingsCount,
-          totalRevenue: providerServices.totalRevenue,
-          averageRating: providerServices.averageRating,
-          reviewCount: providerServices.reviewCount,
-          location: providerServices.location,
-          formStatus: providerServices.formStatus,
-          categoryId: providerServices.categoryId,
-        })
-        .from(providerServices)
-        .where(eq(providerServices.userId, form.userId))
-        .orderBy(sql`bookings_count desc`);
+    const enriched = await Promise.all(approvedForms.map(async (form: any) => {
+      const providerUser = await getProviderUserInfo(form.userId);
+      const services = await getProviderServicesForUser(form.userId);
 
       const totalBookings = services.reduce((s, sv) => s + (sv.bookingsCount ?? 0), 0);
       const totalRevenue = services.reduce((s, sv) => s + parseFloat(sv.totalRevenue ?? "0"), 0);
@@ -621,7 +623,7 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
   // Admin: Update provider application status
 
 router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -633,9 +635,9 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     
     // If approved, update user role to service_provider
     if (status === "approved") {
-      await db.update(users).set({ role: "service_provider" }).where(eq(users.id, updated.userId));
+      await updateUserRole(updated.userId, "service_provider");
       // Notify the user to complete Stripe Connect setup
-      await db.insert(notifications).values({
+      await insertNotification({
         userId: updated.userId,
         type: "application_approved",
         title: "Application Approved! 🎉",
@@ -651,7 +653,7 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
 
 router.post("/api/admin/service-templates", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -659,25 +661,15 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       if (!title) {
         return res.status(400).json({ message: "title is required" });
       }
-      // Resolve (or create) the canonical Itinerary Planning category
-      let categoryRow = await db.select({ id: expertServiceCategories.id })
-        .from(expertServiceCategories)
-        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-        .then(r => r[0]);
-      if (!categoryRow) {
-        const [inserted] = await db.insert(expertServiceCategories)
-          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
-          .returning({ id: expertServiceCategories.id });
-        categoryRow = inserted;
-      }
-      const [esoRow] = await db.insert(expertServiceOfferings).values({
+      const categoryRow = await resolveOrCreateItineraryPlanningCategory();
+      const esoRow = await createExpertServiceOfferingRow({
         categoryId:  categoryRow.id,
         name:        title,
         description: description ?? null,
         price:       suggestedPrice ?? "0",
         isDefault:   true,
         sortOrder:   sortOrder ?? 0,
-      }).returning();
+      });
       // Return ServiceTemplate-compatible shape so existing admin UIs don't break
       res.status(201).json({
         id:               esoRow.id,
@@ -706,7 +698,7 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
 
 router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -727,7 +719,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
   // Delete template (admin only - soft delete)
 
 router.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -743,18 +735,14 @@ router.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, r
 
 router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
       const roleFilter = req.query.role as string | undefined;
 
-      // expertId and isActive columns were dropped in migration 013 — all ESO rows are platform templates
-      const rows = await db
-        .select()
-        .from(expertServiceOfferings)
-        .orderBy(expertServiceOfferings.sortOrder);
+      const rows = await getAllExpertServiceOfferings();
 
       // Apply role filter in JS (simpler than Postgres array operator for admin use)
       const filtered = roleFilter
@@ -787,7 +775,7 @@ router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -803,14 +791,7 @@ router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (re
         return res.status(400).json({ message: `Invalid roles: ${invalid.join(", ")}` });
       }
 
-      // updatedAt and expertId columns were dropped in migration 013
-      const [updated] = await db
-        .update(expertServiceOfferings)
-        .set({
-          targetRoles: targetRoles.length > 0 ? targetRoles : null,
-        })
-        .where(eq(expertServiceOfferings.id, req.params.id))
-        .returning();
+      const updated = await updateExpertServiceOfferingRoles(req.params.id, targetRoles.length > 0 ? targetRoles : null);
 
       if (!updated) {
         return res.status(404).json({ message: "Template not found" });
@@ -832,7 +813,7 @@ router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (re
   // Get all categories with subcategories
 
 router.get("/api/admin/categories", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -851,7 +832,7 @@ router.get("/api/admin/categories", isAuthenticated, async (req, res) => {
   // Get single category
 
 router.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -867,7 +848,7 @@ router.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -893,7 +874,7 @@ router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
 router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const user = await getFullAdminUser(userId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -905,14 +886,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
         if (newBandKey === null || newBandKey === "" || newBandKey === undefined) {
           // Explicit inheritance — only allowed if default_commission_band_key
           // is set AND references an active fee_bands row.
-          const fallback = await db.execute(sql`
-            SELECT s.setting_value, fb.is_active
-            FROM platform_settings s
-            LEFT JOIN fee_bands fb ON fb.band_key = s.setting_value
-            WHERE s.setting_key = 'default_commission_band_key'
-            LIMIT 1
-          `);
-          const row = fallback.rows?.[0] as any;
+          const row = await validateDefaultCommissionBandInheritance();
           if (!row || !row.setting_value) {
             return res.status(400).json({
               error: "category_unpriced_in_tiered_mode",
@@ -928,11 +902,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
           }
         } else {
           // Explicit band — validate it exists, is active, rate_type='percent'.
-          const bandCheck = await db.execute(sql`
-            SELECT rate_type, is_active
-            FROM fee_bands WHERE band_key = ${newBandKey} LIMIT 1
-          `);
-          const bandRow = bandCheck.rows?.[0] as any;
+          const bandRow = await validateCommissionBand(newBandKey);
           if (!bandRow) {
             return res.status(400).json({
               error: "commission_band_not_found",
@@ -989,7 +959,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
         ? billingFields.filter(f => (input as any)[f] !== undefined && (before as any)[f] !== (input as any)[f])
         : [];
       if (changedBilling.length > 0) {
-        await db.insert(accessAuditLogs).values({
+        await insertAccessAuditLog({
           actorId: userId,
           actorRole: user.role,
           action: "service_category_billing_update",
@@ -1002,7 +972,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
           },
           ipAddress: req.ip ?? null,
           userAgent: req.get("user-agent") ?? null,
-        }).catch(err => console.error("[service-category] audit log failed (non-fatal):", err));
+        }).catch((err: any) => console.error("[service-category] audit log failed (non-fatal):", err));
       }
 
       res.json(updated);
@@ -1017,7 +987,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
   // Delete category (admin only)
 
 router.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1029,7 +999,7 @@ router.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => 
 
 router.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1052,7 +1022,7 @@ router.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, 
 
 router.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1073,7 +1043,7 @@ router.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) =
   // Delete subcategory (admin only)
 
 router.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1084,7 +1054,7 @@ router.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) 
   // Seed 15 core categories (admin only - run once)
 
 router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1142,7 +1112,7 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
   // Get all expert service categories with offerings (public)
 
 router.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1155,7 +1125,7 @@ router.get("/api/admin/custom-services/pending", isAuthenticated, async (req, re
 router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
       const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1185,7 +1155,7 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
 router.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
       const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1216,7 +1186,7 @@ router.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req
   // Get all published templates (public)
 
 router.get("/api/admin/destination-events/pending", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, ((req.user as any)?.claims?.sub ?? (req.user as any)?.id))).then(r => r[0]);
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1229,7 +1199,7 @@ router.get("/api/admin/destination-events/pending", isAuthenticated, async (req,
 router.post("/api/admin/destination-events/:id/approve", isAuthenticated, async (req, res) => {
     try {
       const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1255,7 +1225,7 @@ router.post("/api/admin/destination-events/:id/approve", isAuthenticated, async 
 router.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (req, res) => {
     try {
       const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1292,55 +1262,13 @@ router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res)
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { feverEventCache, hotelCache, activityCache, flightCache } = await import("@shared/schema");
-      const { sql } = await import("drizzle-orm");
-      
-      // Get events by city
-      const eventData = await db.select({
-        cityCode: feverEventCache.cityCode,
-        city: feverEventCache.city,
-        count: sql<number>`count(*)::int`,
-        lastUpdated: sql<string>`max(${feverEventCache.lastUpdated})`,
-      })
-      .from(feverEventCache)
-      .groupBy(feverEventCache.cityCode, feverEventCache.city);
+      const { eventData, hotelData, activityData, flightData } = await getLocationSummaryData();
 
-      // Get hotels by city
-      const hotelData = await db.select({
-        cityCode: hotelCache.cityCode,
-        city: hotelCache.city,
-        count: sql<number>`count(*)::int`,
-        lastUpdated: sql<string>`max(${hotelCache.lastUpdated})`,
-      })
-      .from(hotelCache)
-      .groupBy(hotelCache.cityCode, hotelCache.city);
-
-      // Get activities by destination
-      const activityData = await db.select({
-        destination: activityCache.destination,
-        city: activityCache.city,
-        count: sql<number>`count(*)::int`,
-        lastUpdated: sql<string>`max(${activityCache.lastUpdated})`,
-      })
-      .from(activityCache)
-      .groupBy(activityCache.destination, activityCache.city);
-
-      // Get flights by origin/destination
-      const flightData = await db.select({
-        origin: flightCache.originCode,
-        destination: flightCache.destinationCode,
-        count: sql<number>`count(*)::int`,
-        lastUpdated: sql<string>`max(${flightCache.lastUpdated})`,
-      })
-      .from(flightCache)
-      .groupBy(flightCache.originCode, flightCache.destinationCode);
-
-      // Get totals
       const totals = {
-        events: eventData.reduce((sum, e) => sum + e.count, 0),
-        hotels: hotelData.reduce((sum, h) => sum + h.count, 0),
-        activities: activityData.reduce((sum, a) => sum + a.count, 0),
-        flights: flightData.reduce((sum, f) => sum + f.count, 0),
+        events: eventData.reduce((sum: number, e: any) => sum + e.count, 0),
+        hotels: hotelData.reduce((sum: number, h: any) => sum + h.count, 0),
+        activities: activityData.reduce((sum: number, a: any) => sum + a.count, 0),
+        flights: flightData.reduce((sum: number, f: any) => sum + f.count, 0),
       };
 
       res.json({
@@ -1693,8 +1621,7 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
 
       const providerIds = Array.from(new Set(all.map(s => s.userId)));
       const providerRows = providerIds.length > 0
-        ? await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
-            .from(users).where(inArray(users.id, providerIds))
+        ? await getUsersBasicByIds(providerIds)
         : [];
       const providerMap = Object.fromEntries(providerRows.map(p => [p.id, p]));
 
@@ -1736,10 +1663,7 @@ router.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res)
       if (!["active", "paused", "draft", "suspended"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
-      const [updated] = await db.update(providerServices)
-        .set({ status, updatedAt: new Date() })
-        .where(eq(providerServices.id, req.params.id))
-        .returning();
+      const updated = await updateProviderServiceStatus(req.params.id, status);
       if (!updated) return res.status(404).json({ message: "Service not found" });
       res.json(updated);
     } catch (err: any) {
@@ -1755,10 +1679,7 @@ router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
       const { isFeatured } = req.body;
-      const [updated] = await db.update(providerServices)
-        .set({ isFeatured: Boolean(isFeatured), updatedAt: new Date() })
-        .where(eq(providerServices.id, req.params.id))
-        .returning();
+      const updated = await updateProviderServiceFeatured(req.params.id, Boolean(isFeatured));
       if (!updated) return res.status(404).json({ message: "Service not found" });
       res.json(updated);
     } catch (err: any) {
@@ -1784,10 +1705,7 @@ router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (re
       ];
       const sanitized: string[] = contentAffinityTags.filter((t: any) => typeof t === "string" && validTags.includes(t));
 
-      const [updated] = await db.update(providerServices)
-        .set({ contentAffinityTags: sanitized, updatedAt: new Date() })
-        .where(eq(providerServices.id, req.params.id))
-        .returning();
+      const updated = await updateProviderServiceAffinityTags(req.params.id, sanitized);
       if (!updated) return res.status(404).json({ message: "Service not found" });
       res.json(updated);
     } catch (err: any) {
@@ -1802,9 +1720,9 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
-      const [row] = await db.select().from(providerServices).where(eq(providerServices.id, req.params.id)).limit(1);
+      const row = await getProviderServiceById(req.params.id);
       if (!row) return res.status(404).json({ message: "Service not found" });
-      await db.delete(providerServices).where(eq(providerServices.id, req.params.id));
+      await deleteProviderService(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to delete service", error: err.message });
@@ -2682,9 +2600,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
       }
       let updated;
       if (status === 'completed') {
-        const recipientId = requesterType === 'expert'
-          ? (await db.select({ expertId: expertPayouts.expertId }).from(expertPayouts).where(eq(expertPayouts.id, id)))[0]?.expertId
-          : (await db.select({ providerId: providerPayouts.providerId }).from(providerPayouts).where(eq(providerPayouts.id, id)))[0]?.providerId;
+        const recipientId = await getPayoutRecipientId(id, requesterType);
 
         if (!recipientId) {
           return res.status(404).json({ error: "Payout not found" });
@@ -2694,9 +2610,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
 
         if (recipientStripe.stripeAccountId && recipientStripe.canReceivePayments) {
           const { stripeConnectService } = await import('../services/stripe-connect.service');
-          const payoutAmount = requesterType === 'expert'
-            ? (await db.select({ amount: expertPayouts.amount }).from(expertPayouts).where(eq(expertPayouts.id, id)))[0]?.amount
-            : (await db.select({ amount: providerPayouts.amount }).from(providerPayouts).where(eq(providerPayouts.id, id)))[0]?.amount;
+          const payoutAmount = await getPayoutAmount(id, requesterType);
 
           const payoutAmountNum = parseFloat(payoutAmount || '0');
 
@@ -2807,12 +2721,11 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      const allUsers = await db.select().from(users).where(whereClause).limit(limit).offset(offset).orderBy(desc(users.createdAt));
-      const [totalResult] = await db.select({ count: count() }).from(users).where(whereClause);
+      const { allUsers, totalResult } = await getAdminUsersPage(whereClause, limit, offset);
 
-      const enrichedUsers = await Promise.all(allUsers.map(async (u) => {
-        const userTrips = await db.select({ count: count() }).from(trips).where(eq(trips.userId, u.id));
-        const userBookings = await db.select().from(serviceBookings).where(eq(serviceBookings.travelerId, u.id));
+      const enrichedUsers = await Promise.all(allUsers.map(async (u: any) => {
+        const userTrips = await getUserTripCount(u.id);
+        const userBookings = await getUserServiceBookings(u.id);
         const totalSpent = userBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
         return {
           id: u.id,
@@ -2821,7 +2734,7 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
           role: u.role || "user",
           status: "active",
           joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
-          trips: userTrips[0]?.count || 0,
+          trips: Number(userTrips) || 0,
           spent: `$${totalSpent.toLocaleString()}`,
         };
       }));
@@ -2864,7 +2777,7 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
       }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-      const allTrips = await db.select().from(trips).where(whereClause).orderBy(desc(trips.createdAt)).limit(100);
+      const allTrips = await getAdminTrips(whereClause);
 
       const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
         const owner = await storage.getUser(t.userId || '');
@@ -2906,10 +2819,10 @@ router.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) =>
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const allUsers = await db.select().from(users);
+      const allUsers = await getAllUsersBasic();
       const allBookings = await storage.getServiceBookings({});
-      const allTrips = await db.select().from(trips);
-      const allReviews = await db.select().from(serviceReviews);
+      const allTrips = await getAllTrips();
+      const allReviews = await getAllServiceReviews();
 
       const totalUsers = allUsers.length;
       const completedBookings = allBookings.filter(b => b.status === "completed");
@@ -2982,38 +2895,7 @@ router.get("/api/admin/analytics/by-country", isAuthenticated, async (req, res) 
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      // Get experts by country
-      const expertsByCountry = await db.select({
-        country: localExpertForms.country,
-        count: sql<number>`count(*)::int`,
-        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
-        pending: sql<number>`sum(case when status = 'pending' then 1 else 0 end)::int`,
-      })
-      .from(localExpertForms)
-      .groupBy(localExpertForms.country)
-      .orderBy(sql`count(*) desc`);
-
-      // Get providers by country (from serviceProviderForms)
-      const { serviceProviderForms } = await import("@shared/schema");
-      const providersByCountry = await db.select({
-        country: serviceProviderForms.country,
-        count: sql<number>`count(*)::int`,
-        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
-        pending: sql<number>`sum(case when status = 'pending' then 1 else 0 end)::int`,
-      })
-      .from(serviceProviderForms)
-      .groupBy(serviceProviderForms.country)
-      .orderBy(sql`count(*) desc`);
-
-      // Get trips by destination country (extract country from destination string)
-      const tripsByDestination = await db.select({
-        destination: trips.destination,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(trips)
-      .groupBy(trips.destination)
-      .orderBy(sql`count(*) desc`)
-      .limit(20);
+      const { expertsByCountry, providersByCountry, tripsByDestination } = await getAnalyticsByCountry();
 
       // Get bookings summary
       const allBookings = await storage.getServiceBookings({});
@@ -3059,45 +2941,7 @@ router.get("/api/admin/analytics/experts", isAuthenticated, async (req, res) => 
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      // Experts by country
-      const byCountry = await db.select({
-        country: localExpertForms.country,
-        count: sql<number>`count(*)::int`,
-        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
-      })
-      .from(localExpertForms)
-      .groupBy(localExpertForms.country)
-      .orderBy(sql`count(*) desc`);
-
-      // Experts by city
-      const byCity = await db.select({
-        city: localExpertForms.city,
-        country: localExpertForms.country,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(localExpertForms)
-      .where(eq(localExpertForms.status, "approved"))
-      .groupBy(localExpertForms.city, localExpertForms.country)
-      .orderBy(sql`count(*) desc`)
-      .limit(15);
-
-      // Expert application status summary
-      const statusSummary = await db.select({
-        status: localExpertForms.status,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(localExpertForms)
-      .groupBy(localExpertForms.status);
-
-      // Experts by experience level
-      const byExperience = await db.select({
-        years: localExpertForms.yearsOfExperience,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(localExpertForms)
-      .where(eq(localExpertForms.status, "approved"))
-      .groupBy(localExpertForms.yearsOfExperience)
-      .orderBy(sql`count(*) desc`);
+      const { byCountry, byCity, statusSummary, byExperience } = await getExpertAnalytics();
 
       res.json({
         byCountry: byCountry.map(c => ({
@@ -3137,54 +2981,7 @@ router.get("/api/admin/analytics/providers", isAuthenticated, async (req, res) =
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { serviceProviderForms, providerServices, serviceBookings } = await import("@shared/schema");
-
-      // Providers by business type
-      const byBusinessType = await db.select({
-        businessType: serviceProviderForms.businessType,
-        count: sql<number>`count(*)::int`,
-        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
-      })
-      .from(serviceProviderForms)
-      .groupBy(serviceProviderForms.businessType)
-      .orderBy(sql`count(*) desc`);
-
-      // Providers by country
-      const byCountry = await db.select({
-        country: serviceProviderForms.country,
-        count: sql<number>`count(*)::int`,
-        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
-      })
-      .from(serviceProviderForms)
-      .groupBy(serviceProviderForms.country)
-      .orderBy(sql`count(*) desc`);
-
-      // Provider application status summary
-      const statusSummary = await db.select({
-        status: serviceProviderForms.status,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(serviceProviderForms)
-      .groupBy(serviceProviderForms.status);
-
-      // Active services count
-      const activeServices = await db.select({
-        count: sql<number>`count(*)::int`,
-      })
-      .from(providerServices)
-      .where(eq(providerServices.status, "active"));
-
-      // Top providers by bookings
-      const topProviders = await db.select({
-        userId: providerServices.userId,
-        serviceName: providerServices.serviceName,
-        bookingsCount: providerServices.bookingsCount,
-        totalRevenue: providerServices.totalRevenue,
-        averageRating: providerServices.averageRating,
-      })
-      .from(providerServices)
-      .orderBy(desc(providerServices.bookingsCount))
-      .limit(10);
+      const { byBusinessType, byCountry, statusSummary, activeServices, topProviders } = await getProviderAnalytics();
 
       res.json({
         byBusinessType: byBusinessType.map(b => ({
@@ -3227,72 +3024,10 @@ router.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => 
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { serviceBookings, providerServices, localExpertForms, serviceProviderForms } = await import("@shared/schema");
-
-      // 1. Destination Demand - Most searched/booked destinations
-      const destinationDemand = await db.select({
-        destination: trips.destination,
-        searchCount: sql<number>`count(*)::int`,
-        totalBudget: sql<number>`sum(COALESCE(budget::numeric, 0))::numeric`,
-        avgBudget: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
-      })
-      .from(trips)
-      .groupBy(trips.destination)
-      .orderBy(sql`count(*) desc`)
-      .limit(15);
-
-      // 2. Booking Trends Over Time (last 12 months)
-      const bookingTrends = await db.select({
-        month: sql<string>`to_char(created_at, 'YYYY-MM')`,
-        count: sql<number>`count(*)::int`,
-        revenue: sql<number>`sum(COALESCE(total_amount::numeric, 0))::numeric`,
-      })
-      .from(serviceBookings)
-      .where(sql`created_at >= now() - interval '12 months'`)
-      .groupBy(sql`to_char(created_at, 'YYYY-MM')`)
-      .orderBy(sql`to_char(created_at, 'YYYY-MM')`);
-
-      // 3. Source Markets - Where travelers come from (experts/providers by country as proxy)
-      const sourceMarkets = await db.select({
-        country: localExpertForms.country,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(localExpertForms)
-      .where(isNotNull(localExpertForms.country))
-      .groupBy(localExpertForms.country)
-      .orderBy(sql`count(*) desc`)
-      .limit(10);
-
-      // Also get user sign-up trends by month as additional source market data
-      const usersByMonth = await db.select({
-        month: sql<string>`to_char(created_at, 'YYYY-MM')`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(users)
-      .where(sql`created_at >= now() - interval '12 months'`)
-      .groupBy(sql`to_char(created_at, 'YYYY-MM')`)
-      .orderBy(sql`to_char(created_at, 'YYYY-MM')`);
-
-      // 4. Spending Patterns by Destination
-      const spendingPatterns = await db.select({
-        destination: trips.destination,
-        avgSpend: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
-        minSpend: sql<number>`min(COALESCE(budget::numeric, 0))::numeric`,
-        maxSpend: sql<number>`max(COALESCE(budget::numeric, 0))::numeric`,
-        tripCount: sql<number>`count(*)::int`,
-      })
-      .from(trips)
-      .where(sql`budget > 0`)
-      .groupBy(trips.destination)
-      .orderBy(sql`avg(COALESCE(budget::numeric, 0)) desc`)
-      .limit(10);
-
-      // 5. Party Composition (based on adults, kids, numberOfTravelers)
-      const allTrips = await db.select({
-        adults: trips.adults,
-        kids: trips.kids,
-        numberOfTravelers: trips.numberOfTravelers,
-      }).from(trips);
+      const {
+        destinationDemand, bookingTrends, sourceMarkets, usersByMonth,
+        spendingPatterns, allTrips,
+      } = await getTourismAnalytics();
 
       const partyComposition = {
         solo: 0,
@@ -3319,41 +3054,8 @@ router.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => 
         }
       });
 
-      // 6. Seasonality - Bookings by month (using trip start dates)
-      const seasonality = await db.select({
-        month: sql<number>`EXTRACT(MONTH FROM start_date)::int`,
-        count: sql<number>`count(*)::int`,
-        avgBudget: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
-      })
-      .from(trips)
-      .where(isNotNull(trips.startDate))
-      .groupBy(sql`EXTRACT(MONTH FROM start_date)`)
-      .orderBy(sql`EXTRACT(MONTH FROM start_date)`);
-
-      // 7. Event Types breakdown
-      const eventTypes = await db.select({
-        eventType: trips.eventType,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(trips)
-      .groupBy(trips.eventType)
-      .orderBy(sql`count(*) desc`);
-
-      // 8. Summary metrics
+      const { seasonality, eventTypes, totalBookings, completedBookings, avgTripDuration } = await getTourismSummaryMetrics();
       const totalTrips = allTrips.length;
-      const totalBookings = await db.select({ count: sql<number>`count(*)::int` }).from(serviceBookings);
-      const completedBookings = await db.select({ 
-        count: sql<number>`count(*)::int`,
-        revenue: sql<number>`sum(COALESCE(total_amount::numeric, 0))::numeric` 
-      })
-      .from(serviceBookings)
-      .where(eq(serviceBookings.status, "completed"));
-
-      const avgTripDuration = await db.select({
-        avgDays: sql<number>`avg(EXTRACT(DAY FROM (end_date - start_date)))::numeric`,
-      })
-      .from(trips)
-      .where(sql`start_date IS NOT NULL AND end_date IS NOT NULL`);
 
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -3433,7 +3135,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       const dbStart = Date.now();
       let dbStatus = "operational";
       try {
-        await db.select({ count: count() }).from(users);
+        await pingDb();
       } catch {
         dbStatus = "degraded";
       }
@@ -3493,27 +3195,7 @@ router.get("/api/admin/search", isAuthenticated, async (req, res) => {
 
       const searchPattern = `%${q}%`;
 
-      const matchedUsers = await db.select().from(users)
-        .where(or(
-          like(users.email, searchPattern),
-          like(users.firstName, searchPattern),
-          like(users.lastName, searchPattern)
-        ))
-        .limit(10);
-
-      const matchedTrips = await db.select().from(trips)
-        .where(or(
-          like(trips.title, searchPattern),
-          like(trips.destination, searchPattern)
-        ))
-        .limit(10);
-
-      const matchedServices = await db.select().from(providerServices)
-        .where(or(
-          like(providerServices.serviceName, searchPattern),
-          like(providerServices.location, searchPattern)
-        ))
-        .limit(10);
+      const { matchedUsers, matchedTrips, matchedServices } = await adminGlobalSearch(searchPattern);
 
       const results = [
         ...matchedUsers.map(u => ({
@@ -3539,10 +3221,7 @@ router.get("/api/admin/search", isAuthenticated, async (req, res) => {
         })),
       ];
 
-      const [userCount] = await db.select({ count: count() }).from(users);
-      const [expertCount] = await db.select({ count: count() }).from(users).where(eq(users.role, "expert"));
-      const [tripCount] = await db.select({ count: count() }).from(trips);
-      const [serviceCount] = await db.select({ count: count() }).from(providerServices);
+      const { userCount, expertCount, tripCount, serviceCount } = await getAdminSearchCounts();
 
       res.json({
         results,
@@ -3569,10 +3248,7 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
       }
 
       const userId = user.claims.sub;
-      const adminNotifications = await db.select().from(notifications)
-        .where(eq(notifications.userId, userId))
-        .orderBy(desc(notifications.createdAt))
-        .limit(50);
+      const adminNotifications = await getAdminNotifications(userId);
 
       const enriched = adminNotifications.map(n => ({
         id: n.id,
@@ -3621,21 +3297,7 @@ router.get("/api/admin/reports/destination-demand", isAuthenticated, async (req,
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { searchAnalytics, demandSignals } = await import("@shared/schema");
-      
-      // Aggregate search data by destination
-      const destinationDemand = await db.select({
-        destination: searchAnalytics.destination,
-        searchCount: sql<number>`count(*)::int`,
-        uniqueUsers: sql<number>`count(distinct ${searchAnalytics.userId})::int`,
-        avgTravelers: sql<number>`avg(${searchAnalytics.travelers})::numeric(10,1)`,
-        topOriginCountries: sql<string>`array_agg(distinct ${searchAnalytics.ipCountry}) filter (where ${searchAnalytics.ipCountry} is not null)`,
-      })
-      .from(searchAnalytics)
-      .where(isNotNull(searchAnalytics.destination))
-      .groupBy(searchAnalytics.destination)
-      .orderBy(sql`count(*) desc`)
-      .limit(50);
+      const destinationDemand = await getDestinationDemandReport();
 
       res.json({
         reportType: "destination_demand",
@@ -3661,30 +3323,7 @@ router.get("/api/admin/reports/provider-market", isAuthenticated, async (req, re
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { serviceProviderForms, providerServices } = await import("@shared/schema");
-      
-      // Market overview by business type
-      const marketByType = await db.select({
-        businessType: serviceProviderForms.businessType,
-        providerCount: sql<number>`count(*)::int`,
-        countries: sql<number>`count(distinct ${serviceProviderForms.country})::int`,
-      })
-      .from(serviceProviderForms)
-      .where(eq(serviceProviderForms.status, "approved"))
-      .groupBy(serviceProviderForms.businessType)
-      .orderBy(sql`count(*) desc`);
-
-      // Top performing services
-      const topServices = await db.select({
-        serviceName: providerServices.serviceName,
-        bookings: providerServices.bookingsCount,
-        revenue: providerServices.totalRevenue,
-        rating: providerServices.averageRating,
-      })
-      .from(providerServices)
-      .where(eq(providerServices.status, "active"))
-      .orderBy(desc(providerServices.bookingsCount))
-      .limit(20);
+      const { marketByType, topServices } = await getProviderMarketReport();
 
       res.json({
         reportType: "provider_market",
@@ -3707,29 +3346,7 @@ router.get("/api/admin/reports/geographic-insights", isAuthenticated, async (req
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      // Travelers by origin
-      const travelerOrigins = await db.select({
-        country: trips.destination,
-        tripCount: sql<number>`count(*)::int`,
-        avgBudget: sql<number>`avg(cast(${trips.budget} as numeric))::numeric(10,2)`,
-        avgTravelers: sql<number>`avg(${trips.numberOfTravelers})::numeric(10,1)`,
-      })
-      .from(trips)
-      .groupBy(trips.destination)
-      .orderBy(sql`count(*) desc`)
-      .limit(30);
-
-      // Expert coverage by region
-      const expertCoverage = await db.select({
-        country: localExpertForms.country,
-        city: localExpertForms.city,
-        expertCount: sql<number>`count(*)::int`,
-      })
-      .from(localExpertForms)
-      .where(eq(localExpertForms.status, "approved"))
-      .groupBy(localExpertForms.country, localExpertForms.city)
-      .orderBy(sql`count(*) desc`)
-      .limit(30);
+      const { travelerOrigins, expertCoverage } = await getGeographicInsightsReport();
 
       res.json({
         reportType: "geographic_insights",
@@ -3756,16 +3373,7 @@ router.get("/api/admin/reports/conversion-funnel", isAuthenticated, async (req, 
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { bookingFunnelAnalytics } = await import("@shared/schema");
-      
-      const funnelData = await db.select({
-        stage: bookingFunnelAnalytics.funnelStage,
-        count: sql<number>`count(*)::int`,
-        uniqueUsers: sql<number>`count(distinct ${bookingFunnelAnalytics.userId})::int`,
-        avgPrice: sql<number>`avg(${bookingFunnelAnalytics.price})::numeric(10,2)`,
-      })
-      .from(bookingFunnelAnalytics)
-      .groupBy(bookingFunnelAnalytics.funnelStage);
+      const funnelData = await getConversionFunnelReport();
 
       const stages = ["search", "view", "cart", "checkout", "payment", "complete"];
       const orderedFunnel = stages.map(stage => {
@@ -3804,58 +3412,7 @@ router.get("/api/admin/reports/activity-demand", isAuthenticated, async (req, re
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { activityBookingAnalytics } = await import("@shared/schema");
-      
-      // Activity types by popularity
-      const byActivityType = await db.select({
-        activityType: activityBookingAnalytics.activityType,
-        views: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'viewed' then 1 else 0 end)::int`,
-        inquiries: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'inquired' then 1 else 0 end)::int`,
-        bookings: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then 1 else 0 end)::int`,
-        revenue: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then ${activityBookingAnalytics.price} else 0 end)::numeric(12,2)`,
-        avgPrice: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
-        avgGroupSize: sql<number>`avg(${activityBookingAnalytics.groupSize})::numeric(5,1)`,
-      })
-      .from(activityBookingAnalytics)
-      .groupBy(activityBookingAnalytics.activityType)
-      .orderBy(sql`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then 1 else 0 end) desc`);
-
-      // Activities by destination
-      const byDestination = await db.select({
-        destination: activityBookingAnalytics.destination,
-        activityType: activityBookingAnalytics.activityType,
-        bookings: sql<number>`count(*)::int`,
-      })
-      .from(activityBookingAnalytics)
-      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
-      .groupBy(activityBookingAnalytics.destination, activityBookingAnalytics.activityType)
-      .orderBy(sql`count(*) desc`)
-      .limit(30);
-
-      // Activities by trip type
-      const byTripType = await db.select({
-        tripType: activityBookingAnalytics.tripType,
-        activityType: activityBookingAnalytics.activityType,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(activityBookingAnalytics)
-      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
-      .groupBy(activityBookingAnalytics.tripType, activityBookingAnalytics.activityType)
-      .orderBy(sql`count(*) desc`)
-      .limit(30);
-
-      // Top origin countries for activities
-      const byOriginCountry = await db.select({
-        originCountry: activityBookingAnalytics.travelerOriginCountry,
-        activityType: activityBookingAnalytics.activityType,
-        bookings: sql<number>`count(*)::int`,
-        avgSpend: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
-      })
-      .from(activityBookingAnalytics)
-      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
-      .groupBy(activityBookingAnalytics.travelerOriginCountry, activityBookingAnalytics.activityType)
-      .orderBy(sql`count(*) desc`)
-      .limit(30);
+      const { byActivityType, byDestination, byTripType, byOriginCountry } = await getActivityDemandReport();
 
       res.json({
         reportType: "activity_demand",
@@ -3900,40 +3457,7 @@ router.get("/api/admin/reports/activity-trends/:activityType", isAuthenticated, 
       }
 
       const activityType = req.params.activityType;
-      const { activityBookingAnalytics } = await import("@shared/schema");
-      
-      // Detailed breakdown for specific activity type
-      const destinations = await db.select({
-        destination: activityBookingAnalytics.destination,
-        country: activityBookingAnalytics.country,
-        bookings: sql<number>`count(*)::int`,
-        revenue: sql<number>`sum(${activityBookingAnalytics.price})::numeric(12,2)`,
-        avgPrice: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
-      })
-      .from(activityBookingAnalytics)
-      .where(and(
-        eq(activityBookingAnalytics.activityType, activityType),
-        eq(activityBookingAnalytics.bookingStatus, "booked")
-      ))
-      .groupBy(activityBookingAnalytics.destination, activityBookingAnalytics.country)
-      .orderBy(sql`count(*) desc`)
-      .limit(20);
-
-      const travelerProfiles = await db.select({
-        tripType: activityBookingAnalytics.tripType,
-        originCountry: activityBookingAnalytics.travelerOriginCountry,
-        count: sql<number>`count(*)::int`,
-        avgGroupSize: sql<number>`avg(${activityBookingAnalytics.groupSize})::numeric(5,1)`,
-        avgSpend: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
-      })
-      .from(activityBookingAnalytics)
-      .where(and(
-        eq(activityBookingAnalytics.activityType, activityType),
-        eq(activityBookingAnalytics.bookingStatus, "booked")
-      ))
-      .groupBy(activityBookingAnalytics.tripType, activityBookingAnalytics.travelerOriginCountry)
-      .orderBy(sql`count(*) desc`)
-      .limit(20);
+      const { destinations, travelerProfiles } = await getActivityTrendsReport(activityType);
 
       res.json({
         reportType: `activity_trends_${activityType}`,
@@ -3964,96 +3488,7 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
       }
 
       const destination = decodeURIComponent(req.params.destination);
-      const { tripAnalyticsEnhanced, activityBookingAnalytics } = await import("@shared/schema");
-      
-      // Aggregate destination metrics
-      const metrics = await db.select({
-        totalTrips: sql<number>`count(*)::int`,
-        avgBudget: sql<number>`avg(${tripAnalyticsEnhanced.totalBudget})::numeric(10,2)`,
-        avgLengthOfStay: sql<number>`avg(${tripAnalyticsEnhanced.lengthOfStay})::numeric(5,1)`,
-        avgLeadTime: sql<number>`avg(${tripAnalyticsEnhanced.leadTimeDays})::numeric(5,1)`,
-        avgPartySize: sql<number>`avg(${tripAnalyticsEnhanced.partySize})::numeric(5,1)`,
-      })
-      .from(tripAnalyticsEnhanced)
-      .where(or(
-        eq(tripAnalyticsEnhanced.destinationCity, destination),
-        eq(tripAnalyticsEnhanced.destinationCountry, destination),
-        eq(tripAnalyticsEnhanced.destinationRegion, destination)
-      ));
-
-      // Source markets
-      const sourceMarkets = await db.select({
-        country: tripAnalyticsEnhanced.originCountry,
-        count: sql<number>`count(*)::int`,
-        avgSpend: sql<number>`avg(${tripAnalyticsEnhanced.totalBudget})::numeric(10,2)`,
-      })
-      .from(tripAnalyticsEnhanced)
-      .where(or(
-        eq(tripAnalyticsEnhanced.destinationCity, destination),
-        eq(tripAnalyticsEnhanced.destinationCountry, destination)
-      ))
-      .groupBy(tripAnalyticsEnhanced.originCountry)
-      .orderBy(sql`count(*) desc`)
-      .limit(10);
-
-      // Trip purposes
-      const tripPurposes = await db.select({
-        purpose: tripAnalyticsEnhanced.tripPurpose,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(tripAnalyticsEnhanced)
-      .where(or(
-        eq(tripAnalyticsEnhanced.destinationCity, destination),
-        eq(tripAnalyticsEnhanced.destinationCountry, destination)
-      ))
-      .groupBy(tripAnalyticsEnhanced.tripPurpose)
-      .orderBy(sql`count(*) desc`);
-
-      // Party compositions
-      const partyTypes = await db.select({
-        composition: tripAnalyticsEnhanced.partyComposition,
-        count: sql<number>`count(*)::int`,
-        avgSpend: sql<number>`avg(${tripAnalyticsEnhanced.totalBudget})::numeric(10,2)`,
-      })
-      .from(tripAnalyticsEnhanced)
-      .where(or(
-        eq(tripAnalyticsEnhanced.destinationCity, destination),
-        eq(tripAnalyticsEnhanced.destinationCountry, destination)
-      ))
-      .groupBy(tripAnalyticsEnhanced.partyComposition)
-      .orderBy(sql`count(*) desc`);
-
-      // Top activities
-      const activities = await db.select({
-        activityType: activityBookingAnalytics.activityType,
-        bookings: sql<number>`count(*)::int`,
-        revenue: sql<number>`sum(${activityBookingAnalytics.price})::numeric(12,2)`,
-      })
-      .from(activityBookingAnalytics)
-      .where(and(
-        or(
-          eq(activityBookingAnalytics.destination, destination),
-          eq(activityBookingAnalytics.country, destination),
-          eq(activityBookingAnalytics.city, destination)
-        ),
-        eq(activityBookingAnalytics.bookingStatus, "booked")
-      ))
-      .groupBy(activityBookingAnalytics.activityType)
-      .orderBy(sql`count(*) desc`)
-      .limit(10);
-
-      // Seasonality (by month)
-      const seasonality = await db.select({
-        month: sql<string>`to_char(${tripAnalyticsEnhanced.tripStartDate}, 'Month')`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(tripAnalyticsEnhanced)
-      .where(or(
-        eq(tripAnalyticsEnhanced.destinationCity, destination),
-        eq(tripAnalyticsEnhanced.destinationCountry, destination)
-      ))
-      .groupBy(sql`to_char(${tripAnalyticsEnhanced.tripStartDate}, 'Month')`)
-      .orderBy(sql`count(*) desc`);
+      const { metrics, sourceMarkets, tripPurposes, partyTypes, activities, seasonality } = await getDestinationBenchmarkReport(destination);
 
       res.json({
         reportType: "destination_benchmark",
@@ -4110,7 +3545,7 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
       if (!trip) return;
 
       // Get itinerary items for this trip
-      const itineraryData = await db.select().from(generatedItineraries).where(eq(generatedItineraries.tripId, tripId)).then(r => r[0]);
+      const itineraryData = await getGeneratedItinerary(tripId);
       const items = itineraryData?.itineraryData as any;
 
       // Infer party composition from travelers + event type
@@ -4177,7 +3612,7 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
       }
 
       // Upsert analytics record
-      await db.insert(tripAnalyticsEnhanced).values({
+      await upsertTripAnalyticsEnhanced({
         tripId,
         userId,
         destinationCity,
@@ -4193,16 +3628,6 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
         totalBudget: trip.budget,
         priceSegment,
         primaryActivity,
-      }).onConflictDoUpdate({
-        target: [tripAnalyticsEnhanced.tripId],
-        set: {
-          partyComposition,
-          hasChildren,
-          lengthOfStay,
-          season,
-          priceSegment,
-          primaryActivity,
-        }
       });
 
       return true;
@@ -4216,19 +3641,16 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
 
 router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
     try {
-      const admin = await db.select({ role: users.role }).from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
-      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const actorId0 = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminUser = await getAdminRole(actorId0);
+      if (!adminUser || adminUser.role !== "admin") return res.status(403).json({ message: "Admin access required" });
       const status = req.query.status as string | undefined;
-      const rows = status
-        ? await db.select().from(serviceReviews).where(eq(serviceReviews.status, status)).orderBy(desc(serviceReviews.createdAt))
-        : await db.select().from(serviceReviews).where(
-            sql`status IN ('pending', 'flagged')`
-          ).orderBy(desc(serviceReviews.createdAt));
+      const rows = await getAdminReviews(status);
       // Enrich with traveler + service names
       const enriched = await Promise.all(rows.map(async r => {
         const traveler = await storage.getUser(r.travelerId);
         const service = await storage.getProviderServiceById(r.serviceId);
-        const logs = await db.select().from(reviewModerationLogs).where(eq(reviewModerationLogs.reviewId, r.id)).orderBy(desc(reviewModerationLogs.createdAt));
+        const logs = await getReviewModerationLogs(r.id);
         return {
           ...r,
           travelerName: traveler ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email : "Unknown",
@@ -4246,33 +3668,20 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
 router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) => {
     try {
       const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const admin = await db.select({ role: users.role }).from(users).where(eq(users.id, actorId)).then(r => r[0]);
-      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const adminCheck = await getAdminRole(actorId);
+      if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
       const { status, reason } = req.body;
       if (!["approved", "flagged", "removed", "pending"].includes(status)) {
         return res.status(400).json({ message: "Invalid status. Must be approved, flagged, removed, or pending." });
       }
-      const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, req.params.id)).limit(1);
+      const review = await getReviewById(req.params.id);
       if (!review) return res.status(404).json({ message: "Review not found" });
-      const [updated] = await db.update(serviceReviews).set({
-        status,
-        moderatedBy: actorId,
-        moderatedAt: new Date(),
-        ...(status === "flagged" && reason ? { flagReason: reason } : {}),
-      }).where(eq(serviceReviews.id, req.params.id)).returning();
-      await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: status, actorId, reason: reason || null });
+      const updated = await moderateReview(req.params.id, status, actorId, reason);
+      await insertReviewModerationLog({ reviewId: req.params.id, action: status, actorId, reason: reason ?? null });
 
       // Recalculate service rating/count from approved reviews only
       const serviceId = review.serviceId;
-      const allSvcReviews = await db.select({ id: serviceReviews.id, rating: serviceReviews.rating, status: serviceReviews.status })
-        .from(serviceReviews).where(eq(serviceReviews.serviceId, serviceId));
-      const approvedSvcReviews = allSvcReviews.filter(r => r.status === "approved");
-      const newAvg = approvedSvcReviews.length > 0
-        ? approvedSvcReviews.reduce((sum, r) => sum + r.rating, 0) / approvedSvcReviews.length
-        : 0;
-      await db.update(providerServices)
-        .set({ averageRating: newAvg.toFixed(2), reviewCount: approvedSvcReviews.length, updatedAt: new Date() })
-        .where(eq(providerServices.id, serviceId));
+      await recalcServiceRating(serviceId);
 
       res.json(updated);
     } catch (err) {
@@ -4379,7 +3788,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   router.get("/api/admin/fee-bands", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
       const result = await db.execute(sql`
@@ -4405,7 +3814,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   router.patch("/api/admin/fee-bands/:bandKey", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
       const bandKey = String(req.params.bandKey || "").trim();
@@ -4450,7 +3859,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
       `);
 
       // Audit-log every fee_bands edit. Critical: these rows drive live billing.
-      await db.insert(accessAuditLogs).values({
+      await insertAccessAuditLog({
         actorId: userId,
         actorRole: user.role,
         action: "fee_band_update",
@@ -4482,7 +3891,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   /** Resolve the caller and ensure admin; on failure sends the response and returns null. */
   const requireAdmin = async (req: any, res: any): Promise<{ userId: string; role: string } | null> => {
     const userId = req.user?.claims?.sub ?? req.user?.id;
-    const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+    const user = await getAdminRole(userId);
     if (!user || user.role !== "admin") {
       res.status(403).json({ error: "Admin access required" });
       return null;
@@ -4491,7 +3900,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   };
 
   const auditOfferingWrite = (admin: { userId: string; role: string }, req: any, action: string, resourceType: string, resourceId: string, metadata: any) =>
-    db.insert(accessAuditLogs).values({
+    insertAccessAuditLog({
       actorId: admin.userId,
       actorRole: admin.role,
       action,
@@ -4515,8 +3924,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   router.get("/api/admin/service-offering-types", isAuthenticated, async (req, res) => {
     try {
       if (!(await requireAdmin(req, res))) return;
-      const rows = await db.select().from(serviceOfferingTypes)
-        .orderBy(asc(serviceOfferingTypes.sortOrder), asc(serviceOfferingTypes.offeringTypeKey));
+      const rows = await getAllServiceOfferingTypes();
       res.json(rows);
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
@@ -4525,7 +3933,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const parsed = insertServiceOfferingTypeSchema.parse(req.body);
-      const [created] = await db.insert(serviceOfferingTypes).values(parsed).returning();
+      const [created] = await createServiceOfferingType(parsed);
       auditOfferingWrite(admin, req, "service_offering_type_create", "service_offering_type", created.offeringTypeKey, { after: created });
       res.status(201).json(created);
     } catch (error: any) { offeringWriteError(error, res); }
@@ -4547,8 +3955,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
       if (b.sortOrder !== undefined) updates.sortOrder = b.sortOrder;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No editable fields supplied" });
       updates.updatedAt = new Date();
-      const [updated] = await db.update(serviceOfferingTypes).set(updates)
-        .where(eq(serviceOfferingTypes.offeringTypeKey, key)).returning();
+      const [updated] = await updateServiceOfferingType(key, updates);
       if (!updated) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "service_offering_type_update", "service_offering_type", key, { after: updated });
       res.json(updated);
@@ -4559,8 +3966,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const key = String(req.params.key || "").trim();
-      const [deleted] = await db.delete(serviceOfferingTypes)
-        .where(eq(serviceOfferingTypes.offeringTypeKey, key)).returning();
+      const [deleted] = await deleteServiceOfferingType(key);
       if (!deleted) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "service_offering_type_delete", "service_offering_type", key, { before: deleted });
       res.json({ ok: true, key });
@@ -4571,8 +3977,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   router.get("/api/admin/expert-offering-types", isAuthenticated, async (req, res) => {
     try {
       if (!(await requireAdmin(req, res))) return;
-      const rows = await db.select().from(expertOfferingTypes)
-        .orderBy(asc(expertOfferingTypes.sortOrder), asc(expertOfferingTypes.offeringTypeKey));
+      const rows = await getAllExpertOfferingTypeRows();
       res.json(rows);
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
@@ -4581,7 +3986,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const parsed = insertExpertOfferingTypeSchema.parse(req.body);
-      const [created] = await db.insert(expertOfferingTypes).values(parsed).returning();
+      const [created] = await createExpertOfferingTypeRow(parsed);
       auditOfferingWrite(admin, req, "expert_offering_type_create", "expert_offering_type", created.offeringTypeKey, { after: created });
       res.status(201).json(created);
     } catch (error: any) { offeringWriteError(error, res); }
@@ -4602,8 +4007,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
       if (b.sortOrder !== undefined) updates.sortOrder = b.sortOrder;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No editable fields supplied" });
       updates.updatedAt = new Date();
-      const [updated] = await db.update(expertOfferingTypes).set(updates)
-        .where(eq(expertOfferingTypes.offeringTypeKey, key)).returning();
+      const [updated] = await updateExpertOfferingTypeRow(key, updates);
       if (!updated) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "expert_offering_type_update", "expert_offering_type", key, { after: updated });
       res.json(updated);
@@ -4614,8 +4018,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const key = String(req.params.key || "").trim();
-      const [deleted] = await db.delete(expertOfferingTypes)
-        .where(eq(expertOfferingTypes.offeringTypeKey, key)).returning();
+      const [deleted] = await deleteExpertOfferingTypeRow(key);
       if (!deleted) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "expert_offering_type_delete", "expert_offering_type", key, { before: deleted });
       res.json({ ok: true, key });
@@ -4626,7 +4029,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   router.get("/api/admin/platform-settings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
       const result = await db.execute(sql`
@@ -4645,7 +4048,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
   router.patch("/api/admin/platform-settings/:settingKey", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
       const settingKey = String(req.params.settingKey || "").trim();
@@ -4685,7 +4088,7 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
           updated_at    = NOW()
       `);
 
-      await db.insert(accessAuditLogs).values({
+      await insertAccessAuditLog({
         actorId: userId,
         actorRole: user.role,
         action: "platform_setting_update",
@@ -4746,7 +4149,7 @@ router.patch("/api/admin/lead-routing-logs/:id/override", isAuthenticated, async
 
 router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+      const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4790,7 +4193,7 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
 
   // Shared handler: confirm lead → workspace bridge (used by both route aliases below)
   async function confirmLeadAssignmentHandler(requestId: string, req: any, res: any) {
-    const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+    const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -4872,7 +4275,7 @@ router.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, asyn
 
 router.post("/api/admin/routing-queue/:requestId/reassign", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+      const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4980,11 +4383,7 @@ router.delete("/api/admin/content-placement-rules/:id", requireAdminLocal, async
 router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, async (req, res) => {
     try {
       // 1. Load all TravelPulse cities
-      const cities = await db.select({
-        cityName: travelPulseCities.cityName,
-        country: travelPulseCities.country,
-        pulseScore: travelPulseCities.pulseScore,
-      }).from(travelPulseCities).limit(200);
+      const cities = await getTravelPulseCitiesList();
 
       if (!cities.length) {
         return res.json({ created: 0, message: "No TravelPulse cities found. Seed city data first." });
@@ -4996,15 +4395,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       const rulesToUpsert: InsertContentPlacementRule[] = [];
 
       // 2. Scan affiliate_products
-      const products = await db.select({
-        id: affiliateProducts.id,
-        name: affiliateProducts.name,
-        city: affiliateProducts.city,
-        country: affiliateProducts.country,
-        category: affiliateProducts.category,
-      }).from(affiliateProducts)
-        .where(eq(affiliateProducts.isActive, true))
-        .limit(2000);
+      const products = await getActiveAffiliateProducts();
 
       for (const p of products) {
         const cityKey = (p.city ?? "").toLowerCase();
@@ -5039,14 +4430,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       }
 
       // 3. Scan content_registry (published only, with location metadata)
-      const registryItems = await db.select({
-        id: contentRegistry.id,
-        title: contentRegistry.title,
-        contentType: contentRegistry.contentType,
-        metadata: contentRegistry.metadata,
-      }).from(contentRegistry)
-        .where(eq(contentRegistry.status, "published"))
-        .limit(2000);
+      const registryItems = await getPublishedContentRegistry();
 
       for (const r of registryItems) {
         const meta = (r.metadata ?? {}) as Record<string, any>;
@@ -5265,7 +4649,7 @@ router.delete("/api/admin/event-packages/:id", requireAdminLocal, async (req, re
 async function isAdmin(req: any): Promise<{ ok: true; userId: string } | { ok: false }> {
   const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) return { ok: false };
-  const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  const user = await getAdminRole(userId);
   if (!user || user.role !== "admin") return { ok: false };
   return { ok: true, userId };
 }
@@ -5300,7 +4684,7 @@ router.get("/api/admin/neighborhoods/:id", isAuthenticated, async (req, res) => 
   if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
   try {
     const id = req.params.id;
-    const [neighborhood] = await db.select().from(cityNeighborhoods).where(eq(cityNeighborhoods.id, id)).limit(1);
+    const neighborhood = await getNeighborhoodById(id);
     if (!neighborhood) return res.status(404).json({ error: "Neighborhood not found" });
 
     const experts = await db.execute(sql`
@@ -5312,10 +4696,7 @@ router.get("/api/admin/neighborhoods/:id", isAuthenticated, async (req, res) => 
       ORDER BY en.is_lead DESC, en.sort_order ASC
     `);
 
-    const coverage = await db
-      .select()
-      .from(neighborhoodCoverageTarget)
-      .where(eq(neighborhoodCoverageTarget.neighborhoodId, id));
+    const coverage = await getNeighborhoodCoverageTargets(id);
 
     res.json({ neighborhood, experts: experts.rows ?? [], coverage });
   } catch (error: any) {
@@ -5339,11 +4720,7 @@ router.post("/api/admin/neighborhoods/:id/coverage-targets", isAuthenticated, as
     }
 
     // Footgun: categoryKey must resolve in service_categories.
-    const [cat] = await db
-      .select({ id: serviceCategories.id })
-      .from(serviceCategories)
-      .where(eq(serviceCategories.categoryKey, categoryKey))
-      .limit(1);
+    const cat = await getServiceCategoryByKey(categoryKey);
     if (!cat) {
       return res.status(400).json({
         error: "category_key_not_found",
@@ -5359,7 +4736,7 @@ router.post("/api/admin/neighborhoods/:id/coverage-targets", isAuthenticated, as
         updated_at = NOW()
     `);
 
-    await db.insert(accessAuditLogs).values({
+    await insertAccessAuditLog({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_coverage_target_upsert",
@@ -5382,13 +4759,8 @@ router.delete("/api/admin/neighborhoods/:id/coverage-targets/:categoryKey", isAu
   if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
   try {
     const { id, categoryKey } = req.params;
-    await db
-      .delete(neighborhoodCoverageTarget)
-      .where(and(
-        eq(neighborhoodCoverageTarget.neighborhoodId, id),
-        eq(neighborhoodCoverageTarget.categoryKey, categoryKey),
-      ));
-    await db.insert(accessAuditLogs).values({
+    await deleteNeighborhoodCoverageTarget(id, categoryKey);
+    await insertAccessAuditLog({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_coverage_target_delete",
@@ -5414,7 +4786,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
     const id = req.params.id;
     const { expertId, clear } = req.body;
 
-    const [neighborhood] = await db.select().from(cityNeighborhoods).where(eq(cityNeighborhoods.id, id)).limit(1);
+    const neighborhood = await getNeighborhoodById(id);
     if (!neighborhood) return res.status(404).json({ error: "Neighborhood not found" });
 
     if (clear === true) {
@@ -5424,7 +4796,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
           .set({ isLead: false, updatedAt: new Date() })
           .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)));
       });
-      await db.insert(accessAuditLogs).values({
+      await insertAccessAuditLog({
         actorId: auth.userId,
         actorRole: "admin",
         action: "neighborhood_lead_clear",
@@ -5444,11 +4816,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
     // Footgun: lead must serve the neighborhood's market. Check localExpertForms.
     // Concrete-evidence rejection: if the form exists AND its city + destinations
     // both disagree with the neighborhood's city. Missing-data soft-pass (with audit).
-    const [form] = await db
-      .select({ city: localExpertForms.city, destinations: localExpertForms.destinations })
-      .from(localExpertForms)
-      .where(eq(localExpertForms.userId, expertId))
-      .limit(1);
+    const form = await getExpertFormCityInfo(expertId);
 
     let marketCheck: "match" | "missing" | "mismatch" = "missing";
     if (form && (form.city || (Array.isArray(form.destinations) && form.destinations.length > 0))) {
@@ -5470,11 +4838,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
     }
 
     // Get current lead (for "Reassign from A to B?" UI surfacing — server still does it).
-    const [currentLead] = await db
-      .select({ expertId: expertNeighborhoods.expertId })
-      .from(expertNeighborhoods)
-      .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)))
-      .limit(1);
+    const currentLead = await getNeighborhoodCurrentLead(id);
 
     // Atomic swap: demote any existing lead, upsert the new one with is_lead=true.
     await db.transaction(async (tx) => {
@@ -5493,7 +4857,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
       `);
     });
 
-    await db.insert(accessAuditLogs).values({
+    await insertAccessAuditLog({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_lead_assigned",
@@ -5536,7 +4900,7 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
     }
     const newKeys: string[] = Array.from(new Set(adjacentKeys.map(s => s.trim()).filter(Boolean)));
 
-    const [self] = await db.select().from(cityNeighborhoods).where(eq(cityNeighborhoods.id, id)).limit(1);
+    const self = await getNeighborhoodById(id);
     if (!self) return res.status(404).json({ error: "Neighborhood not found" });
     if (newKeys.includes(self.slug)) {
       return res.status(400).json({ error: "adjacency_self_loop", message: "A neighborhood cannot be adjacent to itself." });
@@ -5589,7 +4953,7 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
       }
     });
 
-    await db.insert(accessAuditLogs).values({
+    await insertAccessAuditLog({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_adjacency_update",

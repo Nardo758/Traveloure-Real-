@@ -98,10 +98,24 @@ import {
   dmoRawContent,
   dmoScrapeJobs,
   crossSellEvents,
+  itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
+  sharedItineraries, mapsExportCache,
+  transportLegs, transportBookingOptions, affiliateClicks,
+  expertUpdatedItineraries,
+  aiGeneratedItineraries,
+  tripAnalyticsEnhanced,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
+import {
+  eventInvites,
+  guestTravelPlans,
+  inviteTemplates,
+  type EventInvite,
+  type GuestTravelPlan,
+  type InviteTemplate,
+} from "../shared/guest-invites-schema";
 
 export interface IStorage {
   // Trips
@@ -280,6 +294,7 @@ export interface IStorage {
   
   // User Experiences
   getUserExperiences(userId: string): Promise<UserExperience[]>;
+  getUserExperienceById(experienceId: string): Promise<UserExperience | null>;
   getUserExperience(id: string): Promise<UserExperience | undefined>;
   createUserExperience(experience: InsertUserExperience & { userId: string }): Promise<UserExperience>;
   updateUserExperience(id: string, updates: Partial<InsertUserExperience>): Promise<UserExperience | undefined>;
@@ -590,6 +605,87 @@ export interface IStorage {
   getServiceCategorySlugsByIds(ids: string[]): Promise<{ id: string; slug: string | null }[]>;
   getExpertOfferingTypeKeysByIds(ids: string[]): Promise<{ id: string; key: string }[]>;
   getFeeBandByKey(bandKey: string): Promise<any | null>;
+  // === Trip-level mutations ===
+  setTripShareToken(tripId: string, token: string): Promise<Trip | undefined>;
+  claimTrip(tripId: string, userId: string): Promise<Trip | undefined>;
+  getTripEventType(tripId: string): Promise<string | null>;
+  getTripExpertNotes(tripId: string): Promise<string>;
+  // === Generated itinerary ===
+  updateGeneratedItineraryData(id: string, itineraryData: any, status: string): Promise<GeneratedItinerary | undefined>;
+  replaceItineraryItems(tripId: string, items: any[]): Promise<void>;
+  // === Itinerary comparison & variants ===
+  getItineraryComparison(id: string): Promise<any | null>;
+  getComparisonByTripAndUser(tripId: string, userId: string): Promise<any | null>;
+  createItineraryComparison(data: any): Promise<any>;
+  getAiVariantByComparison(comparisonId: string): Promise<any | null>;
+  createItineraryVariant(data: { comparisonId: string; name: string; source: string; status: string }): Promise<any>;
+  getItineraryVariantById(id: string): Promise<any | null>;
+  getItineraryVariantItemsByVariantId(variantId: string): Promise<any[]>;
+  getComparisonTripId(comparisonId: string): Promise<string | null>;
+  // === Cart ===
+  replaceUserCartWithVariantItems(userId: string, variantItems: Array<{ providerServiceId: string | null; dayNumber: number | null; timeSlot: string | null }>): Promise<number>;
+  // === AI-generated itinerary ===
+  saveAiGeneratedItinerary(data: any): Promise<any>;
+  // === Shared itinerary & maps export ===
+  createSharedItinerary(data: any): Promise<void>;
+  getSharedItineraryByToken(token: string): Promise<any | null>;
+  getTransportLegsByVariantId(variantId: string): Promise<any[]>;
+  getMapsExportCacheByVariantId(variantId: string): Promise<any | null>;
+  updateMapsExportCache(variantId: string, updates: { kmlContent?: string; gpxContent?: string }): Promise<void>;
+  // === Expert review ===
+  updateSharedItineraryExpertReview(id: string, status: string, opts?: { notes?: string; diff?: any }): Promise<void>;
+  saveExpertUpdatedItinerary(data: any): Promise<void>;
+  // === Trip analytics ===
+  upsertTripAnalytics(data: any): Promise<void>;
+  // === Itinerary item lookup ===
+  getItineraryItemByIdAndTrip(itemId: string, tripId: string): Promise<any | null>;
+  // === Expert advisor assignment ===
+  getTripExpertAdvisoryAssignment(tripId: string, expertId: string): Promise<any | null>;
+  // === Optimization gate ===
+  getRecentOptimizationRun(userId: string, cutoffDate: Date): Promise<{ id: string } | null>;
+  getComparisonByOptimizationPaymentId(paymentId: string): Promise<{ id: string } | null>;
+  getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null>;
+  getCartItemsWithServices(userId: string): Promise<Array<{ cartItem: any; service: any | null }>>;
+  getActiveProviderServices(limit?: number): Promise<any[]>;
+  getComparisonsByUserId(userId: string): Promise<any[]>;
+  // === Share info ===
+  getComparisonsByTripAndUser(tripId: string, userId: string): Promise<Array<{ id: string; selectedVariantId: string | null }>>;
+  getVariantsByComparisonIds(comparisonIds: string[]): Promise<Array<{ id: string; comparisonId: string }>>;
+  getSharedItinerariesByVariantIds(variantIds: string[], sharedByUserId: string): Promise<any[]>;
+  // === Public share view ===
+  incrementSharedItineraryViewCount(id: string, currentViewCount: number): Promise<void>;
+  getUserPublicProfile(userId: string): Promise<{ id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null } | null>;
+  // === Transport ===
+  getSelectedVariantByTrip(tripId: string): Promise<{ selectedVariantId: string } | null>;
+  getTransportLegById(legId: string): Promise<any | null>;
+  getVariantWithComparisonOwner(variantId: string): Promise<{ comparisonId: string; userId: string } | null>;
+  getSharedItineraryByTokenAndVariant(shareToken: string, variantId: string): Promise<any | null>;
+  updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number }): Promise<void>;
+  getUserTransportLegsWithJoin(userId: string): Promise<any[]>;
+  getTransportLegByDayOrder(variantId: string, dayNumber: number, legOrder: number): Promise<any | null>;
+  // === Optimizer scores ===
+  getLatestComparisonByTripId(tripId: string): Promise<{ id: string } | null>;
+  getLatestVariantByComparisonId(comparisonId: string): Promise<{ id: string } | null>;
+  getVariantMetricsByKeys(variantId: string, keys: string[]): Promise<any[]>;
+  getFirstVariantByComparisonId(comparisonId: string): Promise<any | null>;
+  getOrderedVariantItemsByVariantId(variantId: string): Promise<any[]>;
+  getOrderedTransportLegsByVariantId(variantId: string): Promise<any[]>;
+  getVariantMetricFirstByVariantId(variantId: string): Promise<any | null>;
+  getVariantMetricsAllByVariantId(variantId: string): Promise<any[]>;
+  getFullComparisonByTripId(tripId: string): Promise<any | null>;
+  getBookingOptionsByVariantId(variantId: string): Promise<any[]>;
+  getTransportBookingOptionById(optionId: string): Promise<any | null>;
+  updateTransportBookingOptionStatus(optionId: string, data: Record<string, any>): Promise<void>;
+  createAffiliateClick(data: any): Promise<void>;
+  getBookingOptionsByLegId(legId: string): Promise<any[]>;
+  getTopAiVariantByComparison(comparisonId: string): Promise<any | null>;
+  deleteItineraryItemsByTrip(tripId: string): Promise<void>;
+  bulkInsertItineraryItems(items: any[]): Promise<void>;
+  updateComparisonOptimizedAt(comparisonId: string, variantId: string): Promise<void>;
+  getItineraryComparisonByTripId(tripId: string): Promise<any | null>;
+  getBookingOptionsByLegIds(legIds: string[]): Promise<any[]>;
+  updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void>;
+  updateTransportLegUserSelectedMode(legId: string, mode: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1820,6 +1916,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(userExperiences)
       .where(eq(userExperiences.userId, userId))
       .orderBy(desc(userExperiences.createdAt));
+  }
+
+  async getUserExperienceById(experienceId: string): Promise<UserExperience | null> {
+    const [row] = await db.select().from(userExperiences)
+      .where(eq(userExperiences.id, experienceId)).limit(1);
+    return row ?? null;
   }
 
   async getUserExperience(id: string): Promise<UserExperience | undefined> {
@@ -4187,6 +4289,575 @@ export class DatabaseStorage implements IStorage {
       LIMIT 1
     `);
     return result.rows?.[0] ?? null;
+  }
+
+  // === Trip-level mutations ===
+  async setTripShareToken(tripId: string, token: string): Promise<Trip | undefined> {
+    const [updated] = await db.update(trips).set({ shareToken: token }).where(eq(trips.id, tripId)).returning();
+    return updated;
+  }
+
+  async claimTrip(tripId: string, userId: string): Promise<Trip | undefined> {
+    const [updated] = await db.update(trips).set({ userId }).where(eq(trips.id, tripId)).returning();
+    return updated;
+  }
+
+  async getTripEventType(tripId: string): Promise<string | null> {
+    const [row] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    return row?.eventType ?? null;
+  }
+
+  async getTripExpertNotes(tripId: string): Promise<string> {
+    const [row] = await db.select({ expertNotes: trips.expertNotes }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    return row?.expertNotes ?? "";
+  }
+
+  // === Generated itinerary ===
+  async updateGeneratedItineraryData(id: string, itineraryData: any, status: string): Promise<GeneratedItinerary | undefined> {
+    const [updated] = await db.update(generatedItineraries).set({ itineraryData, status }).where(eq(generatedItineraries.id, id)).returning();
+    return updated;
+  }
+
+  async replaceItineraryItems(tripId: string, items: any[]): Promise<void> {
+    await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    if (items.length > 0) {
+      await db.insert(itineraryItems).values(items);
+    }
+  }
+
+  // === Itinerary comparison & variants ===
+  async getItineraryComparison(id: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async getComparisonByTripAndUser(tripId: string, userId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryComparisons).where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
+    return row ?? null;
+  }
+
+  async createItineraryComparison(data: any): Promise<any> {
+    const [created] = await db.insert(itineraryComparisons).values(data).returning();
+    return created;
+  }
+
+  async getAiVariantByComparison(comparisonId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryVariants).where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai")));
+    return row ?? null;
+  }
+
+  async createItineraryVariant(data: { comparisonId: string; name: string; source: string; status: string }): Promise<any> {
+    const [created] = await db.insert(itineraryVariants).values(data).returning();
+    return created;
+  }
+
+  async getItineraryVariantById(id: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async getItineraryVariantItemsByVariantId(variantId: string): Promise<any[]> {
+    return await db.select().from(itineraryVariantItems).where(eq(itineraryVariantItems.variantId, variantId));
+  }
+
+  async getComparisonTripId(comparisonId: string): Promise<string | null> {
+    const [row] = await db.select({ tripId: itineraryComparisons.tripId }).from(itineraryComparisons).where(eq(itineraryComparisons.id, comparisonId)).limit(1);
+    return row?.tripId ?? null;
+  }
+
+  // === Cart ===
+  async replaceUserCartWithVariantItems(userId: string, variantItems: Array<{ providerServiceId: string | null; dayNumber: number | null; timeSlot: string | null }>): Promise<number> {
+    await db.delete(cartItems).where(eq(cartItems.userId, userId));
+    let inserted = 0;
+    for (const item of variantItems) {
+      if (item.providerServiceId) {
+        await db.insert(cartItems).values({
+          userId,
+          serviceId: item.providerServiceId,
+          quantity: 1,
+          notes: `Day ${item.dayNumber} - ${item.timeSlot}`,
+        });
+        inserted++;
+      }
+    }
+    return inserted;
+  }
+
+  // === AI-generated itinerary ===
+  async saveAiGeneratedItinerary(data: any): Promise<any> {
+    const [saved] = await db.insert(aiGeneratedItineraries).values(data).returning();
+    return saved;
+  }
+
+  // === Shared itinerary & maps export ===
+  async createSharedItinerary(data: any): Promise<void> {
+    await db.insert(sharedItineraries).values(data);
+  }
+
+  async getSharedItineraryByToken(token: string): Promise<any | null> {
+    const [row] = await db.select().from(sharedItineraries).where(eq(sharedItineraries.shareToken, token));
+    return row ?? null;
+  }
+
+  async getTransportLegsByVariantId(variantId: string): Promise<any[]> {
+    return await db.select().from(transportLegs).where(eq(transportLegs.variantId, variantId));
+  }
+
+  async getMapsExportCacheByVariantId(variantId: string): Promise<any | null> {
+    const [row] = await db.select().from(mapsExportCache).where(eq(mapsExportCache.variantId, variantId));
+    return row ?? null;
+  }
+
+  async updateMapsExportCache(variantId: string, updates: { kmlContent?: string; gpxContent?: string }): Promise<void> {
+    await db.update(mapsExportCache).set(updates).where(eq(mapsExportCache.variantId, variantId));
+  }
+
+  // === Expert review ===
+  async updateSharedItineraryExpertReview(id: string, status: string, opts?: { notes?: string; diff?: any }): Promise<void> {
+    if (opts?.notes !== undefined && opts?.diff !== undefined) {
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = ${status}, expert_notes = ${opts.notes}, expert_diff = ${JSON.stringify(opts.diff)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+      );
+    } else if (opts?.diff !== undefined) {
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = ${status}, expert_diff = ${JSON.stringify(opts.diff)}::jsonb, updated_at = NOW() WHERE id = ${id}`
+      );
+    } else {
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = ${status}, updated_at = NOW() WHERE id = ${id}`
+      );
+    }
+  }
+
+  async saveExpertUpdatedItinerary(data: any): Promise<void> {
+    await db.insert(expertUpdatedItineraries).values(data);
+  }
+
+  // === Trip analytics ===
+  async upsertTripAnalytics(data: any): Promise<void> {
+    const { tripId, ...rest } = data;
+    await db.insert(tripAnalyticsEnhanced).values({ tripId, ...rest })
+      .onConflictDoUpdate({
+        target: [tripAnalyticsEnhanced.tripId],
+        set: {
+          partyComposition: rest.partyComposition,
+          hasChildren: rest.hasChildren,
+          lengthOfStay: rest.lengthOfStay,
+          season: rest.season,
+          priceSegment: rest.priceSegment,
+          primaryActivity: rest.primaryActivity,
+        },
+      });
+  }
+
+  // === Itinerary item lookup ===
+  async getItineraryItemByIdAndTrip(itemId: string, tripId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryItems)
+      .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  // === Expert advisor assignment ===
+  async getTripExpertAdvisoryAssignment(tripId: string, expertId: string): Promise<any | null> {
+    const [row] = await db.select().from(tripExpertAdvisors)
+      .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, expertId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  // === Optimization gate ===
+  async getRecentOptimizationRun(userId: string, cutoffDate: Date): Promise<{ id: string } | null> {
+    const [row] = await db.select({ id: itineraryComparisons.id }).from(itineraryComparisons)
+      .where(and(eq(itineraryComparisons.userId, userId), sqlOp`${itineraryComparisons.optimizedAt} >= ${cutoffDate.toISOString()}`))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getComparisonByOptimizationPaymentId(paymentId: string): Promise<{ id: string } | null> {
+    const [row] = await db.select({ id: itineraryComparisons.id }).from(itineraryComparisons)
+      .where(eq(itineraryComparisons.optimizationPaymentId, paymentId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null> {
+    const [row] = await db.select({ slug: experienceTypes.slug })
+      .from(userExperiences)
+      .innerJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+      .where(eq(userExperiences.id, experienceId))
+      .limit(1);
+    return row?.slug ?? null;
+  }
+
+  async getCartItemsWithServices(userId: string): Promise<Array<{ cartItem: any; service: any | null }>> {
+    return await db.select({ cartItem: cartItems, service: providerServices })
+      .from(cartItems)
+      .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
+      .where(eq(cartItems.userId, userId));
+  }
+
+  async getActiveProviderServices(limit = 100): Promise<any[]> {
+    return await db.select().from(providerServices)
+      .where(eq(providerServices.status, "active"))
+      .limit(limit);
+  }
+
+  async getComparisonsByUserId(userId: string): Promise<any[]> {
+    return await db.select().from(itineraryComparisons)
+      .where(eq(itineraryComparisons.userId, userId))
+      .orderBy(itineraryComparisons.createdAt);
+  }
+
+  // === Share info ===
+  async getComparisonsByTripAndUser(tripId: string, userId: string): Promise<Array<{ id: string; selectedVariantId: string | null }>> {
+    return await db.select({ id: itineraryComparisons.id, selectedVariantId: itineraryComparisons.selectedVariantId })
+      .from(itineraryComparisons)
+      .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
+  }
+
+  async getVariantsByComparisonIds(comparisonIds: string[]): Promise<Array<{ id: string; comparisonId: string }>> {
+    if (!comparisonIds.length) return [];
+    return await db.select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
+      .from(itineraryVariants)
+      .where(inArray(itineraryVariants.comparisonId, comparisonIds));
+  }
+
+  async getSharedItinerariesByVariantIds(variantIds: string[], sharedByUserId: string): Promise<any[]> {
+    if (!variantIds.length) return [];
+    return await db.select().from(sharedItineraries)
+      .where(and(inArray(sharedItineraries.variantId, variantIds), eq(sharedItineraries.sharedByUserId, sharedByUserId)))
+      .orderBy(sharedItineraries.createdAt);
+  }
+
+  // === Public share view ===
+  async incrementSharedItineraryViewCount(id: string, currentViewCount: number): Promise<void> {
+    await db.update(sharedItineraries)
+      .set({ viewCount: (currentViewCount || 0) + 1, lastViewedAt: new Date() })
+      .where(eq(sharedItineraries.id, id));
+  }
+
+  async getUserPublicProfile(userId: string): Promise<{ id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null } | null> {
+    const [row] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+      .from(users)
+      .where(eq(users.id, userId));
+    return row ?? null;
+  }
+
+  // === Transport ===
+  async getSelectedVariantByTrip(tripId: string): Promise<{ selectedVariantId: string } | null> {
+    const [row] = await db.select({ selectedVariantId: itineraryComparisons.selectedVariantId })
+      .from(itineraryComparisons)
+      .where(and(eq(itineraryComparisons.tripId, tripId), sqlOp`${itineraryComparisons.selectedVariantId} IS NOT NULL`))
+      .orderBy(desc(itineraryComparisons.createdAt))
+      .limit(1);
+    return row?.selectedVariantId ? { selectedVariantId: row.selectedVariantId } : null;
+  }
+
+  async getTransportLegById(legId: string): Promise<any | null> {
+    const [row] = await db.select().from(transportLegs).where(eq(transportLegs.id, legId));
+    return row ?? null;
+  }
+
+  async getVariantWithComparisonOwner(variantId: string): Promise<{ comparisonId: string; userId: string } | null> {
+    const [row] = await db.select({ comparisonId: itineraryVariants.comparisonId, userId: itineraryComparisons.userId })
+      .from(itineraryVariants)
+      .innerJoin(itineraryComparisons, eq(itineraryComparisons.id, itineraryVariants.comparisonId))
+      .where(eq(itineraryVariants.id, variantId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getSharedItineraryByTokenAndVariant(shareToken: string, variantId: string): Promise<any | null> {
+    const [row] = await db.select()
+      .from(sharedItineraries)
+      .where(and(eq(sharedItineraries.shareToken, shareToken), eq(sharedItineraries.variantId, variantId)));
+    return row ?? null;
+  }
+
+  async updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number }): Promise<void> {
+    await db.update(transportLegs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(transportLegs.id, legId));
+  }
+
+  async getUserTransportLegsWithJoin(userId: string): Promise<any[]> {
+    return await db.select({
+      id: transportLegs.id,
+      variantId: transportLegs.variantId,
+      legOrder: transportLegs.legOrder,
+      fromName: transportLegs.fromName,
+      toName: transportLegs.toName,
+      userSelectedMode: transportLegs.userSelectedMode,
+      recommendedMode: transportLegs.recommendedMode,
+    })
+      .from(transportLegs)
+      .innerJoin(itineraryVariants, eq(itineraryVariants.id, transportLegs.variantId))
+      .innerJoin(itineraryComparisons, eq(itineraryComparisons.id, itineraryVariants.comparisonId))
+      .where(eq(itineraryComparisons.userId, userId));
+  }
+
+  async getTransportLegByDayOrder(variantId: string, dayNumber: number, legOrder: number): Promise<any | null> {
+    const [row] = await db.select().from(transportLegs)
+      .where(and(eq(transportLegs.variantId, variantId), eq(transportLegs.dayNumber, dayNumber), eq(transportLegs.legOrder, legOrder)));
+    return row ?? null;
+  }
+
+  // === Optimizer scores ===
+  async getLatestComparisonByTripId(tripId: string): Promise<{ id: string } | null> {
+    const [row] = await db.select({ id: itineraryComparisons.id }).from(itineraryComparisons)
+      .where(eq(itineraryComparisons.tripId, tripId))
+      .orderBy(desc(itineraryComparisons.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getLatestVariantByComparisonId(comparisonId: string): Promise<{ id: string } | null> {
+    const [row] = await db.select({ id: itineraryVariants.id }).from(itineraryVariants)
+      .where(eq(itineraryVariants.comparisonId, comparisonId))
+      .orderBy(desc(itineraryVariants.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getVariantMetricsByKeys(variantId: string, keys: string[]): Promise<any[]> {
+    if (!keys.length) return [];
+    return await db.select().from(itineraryVariantMetrics)
+      .where(and(eq(itineraryVariantMetrics.variantId, variantId), inArray(itineraryVariantMetrics.metricKey, keys)));
+  }
+
+  async getFirstVariantByComparisonId(comparisonId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryVariants)
+      .where(eq(itineraryVariants.comparisonId, comparisonId))
+      .orderBy(asc(itineraryVariants.sortOrder))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getOrderedVariantItemsByVariantId(variantId: string): Promise<any[]> {
+    return await db.select().from(itineraryVariantItems)
+      .where(eq(itineraryVariantItems.variantId, variantId))
+      .orderBy(asc(itineraryVariantItems.dayNumber), asc(itineraryVariantItems.sortOrder));
+  }
+
+  async getOrderedTransportLegsByVariantId(variantId: string): Promise<any[]> {
+    return await db.select().from(transportLegs)
+      .where(eq(transportLegs.variantId, variantId))
+      .orderBy(asc(transportLegs.dayNumber), asc(transportLegs.legOrder));
+  }
+
+  async getVariantMetricFirstByVariantId(variantId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryVariantMetrics)
+      .where(eq(itineraryVariantMetrics.variantId, variantId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getVariantMetricsAllByVariantId(variantId: string): Promise<any[]> {
+    return await db.select().from(itineraryVariantMetrics)
+      .where(eq(itineraryVariantMetrics.variantId, variantId));
+  }
+
+  async getFullComparisonByTripId(tripId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryComparisons)
+      .where(eq(itineraryComparisons.tripId, tripId))
+      .orderBy(desc(itineraryComparisons.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getBookingOptionsByVariantId(variantId: string): Promise<any[]> {
+    return await db.select().from(transportBookingOptions)
+      .where(eq(transportBookingOptions.variantId, variantId));
+  }
+
+  async getTransportBookingOptionById(optionId: string): Promise<any | null> {
+    const [row] = await db.select().from(transportBookingOptions)
+      .where(eq(transportBookingOptions.id, optionId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async updateTransportBookingOptionStatus(optionId: string, data: Record<string, any>): Promise<void> {
+    await db.update(transportBookingOptions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(transportBookingOptions.id, optionId));
+  }
+
+  async createAffiliateClick(data: any): Promise<void> {
+    await db.insert(affiliateClicks).values(data);
+  }
+
+  async getBookingOptionsByLegId(legId: string): Promise<any[]> {
+    return await db.select().from(transportBookingOptions)
+      .where(eq(transportBookingOptions.transportLegId, legId))
+      .orderBy(asc(transportBookingOptions.sortOrder));
+  }
+
+  async getTopAiVariantByComparison(comparisonId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryVariants)
+      .where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai_optimized")))
+      .orderBy(desc(itineraryVariants.optimizationScore))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async deleteItineraryItemsByTrip(tripId: string): Promise<void> {
+    await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+  }
+
+  async bulkInsertItineraryItems(items: any[]): Promise<void> {
+    if (!items.length) return;
+    for (const item of items) {
+      await db.insert(itineraryItems).values(item);
+    }
+  }
+
+  async updateComparisonOptimizedAt(comparisonId: string, variantId: string): Promise<void> {
+    await db.update(itineraryComparisons)
+      .set({ optimizedAt: new Date(), selectedVariantId: variantId } as any)
+      .where(eq(itineraryComparisons.id, comparisonId));
+  }
+
+  async getItineraryComparisonByTripId(tripId: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryComparisons)
+      .where(eq(itineraryComparisons.tripId, tripId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getBookingOptionsByLegIds(legIds: string[]): Promise<any[]> {
+    if (!legIds.length) return [];
+    return await db.select().from(transportBookingOptions)
+      .where(inArray(transportBookingOptions.transportLegId, legIds));
+  }
+
+  async updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void> {
+    await db.update(itineraryItems)
+      .set({ latitude: lat, longitude: lng })
+      .where(eq(itineraryItems.id, id));
+  }
+
+  async updateTransportLegUserSelectedMode(legId: string, mode: string): Promise<void> {
+    await db.update(transportLegs)
+      .set({ userSelectedMode: mode })
+      .where(eq(transportLegs.id, legId));
+  }
+
+  // ─── Guest Invite System ──────────────────────────────────────────────────
+
+  async getInviteByToken(token: string): Promise<{ invite: EventInvite; experience: any } | null> {
+    const [row] = await db.select({ invite: eventInvites, experience: userExperiences })
+      .from(eventInvites)
+      .leftJoin(userExperiences, eq(eventInvites.experienceId, userExperiences.id))
+      .where(eq(eventInvites.uniqueToken, token))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getInviteById(inviteId: string): Promise<EventInvite | null> {
+    const [row] = await db.select().from(eventInvites).where(eq(eventInvites.id, inviteId)).limit(1);
+    return row ?? null;
+  }
+
+  async getInvitesByExperience(experienceId: string): Promise<EventInvite[]> {
+    return db.select().from(eventInvites)
+      .where(eq(eventInvites.experienceId, experienceId))
+      .orderBy(desc(eventInvites.createdAt));
+  }
+
+  async inviteTokenExists(token: string): Promise<boolean> {
+    const [row] = await db.select({ id: eventInvites.id })
+      .from(eventInvites).where(eq(eventInvites.uniqueToken, token)).limit(1);
+    return !!row;
+  }
+
+  async createEventInvite(values: {
+    experienceId: string;
+    organizerId: string;
+    guestEmail: string;
+    guestName: string;
+    guestPhone?: string;
+    uniqueToken: string;
+    inviteSentAt: Date;
+  }): Promise<EventInvite> {
+    const [row] = await db.insert(eventInvites).values(values).returning();
+    return row;
+  }
+
+  async deleteEventInvite(inviteId: string): Promise<void> {
+    await db.delete(eventInvites).where(eq(eventInvites.id, inviteId));
+  }
+
+  async trackInviteView(token: string, firstViewedAt: Date | null): Promise<void> {
+    await db.update(eventInvites)
+      .set({
+        inviteViewedAt: firstViewedAt ?? new Date(),
+        lastViewedAt: new Date(),
+      })
+      .where(eq(eventInvites.uniqueToken, token));
+  }
+
+  async updateInviteOrigin(token: string, values: {
+    originCity: string;
+    originState?: string;
+    originCountry?: string;
+    originLatitude?: string;
+    originLongitude?: string;
+  }): Promise<EventInvite | null> {
+    const [row] = await db.update(eventInvites).set(values)
+      .where(eq(eventInvites.uniqueToken, token)).returning();
+    return row ?? null;
+  }
+
+  async updateInviteRsvp(token: string, values: {
+    rsvpStatus: string;
+    rsvpDate: Date;
+    numberOfGuests: number;
+    dietaryRestrictions: string[];
+    accommodationPreference: string;
+    transportationNeeded: boolean;
+    specialRequests?: string;
+    message?: string;
+  }): Promise<EventInvite | null> {
+    const [row] = await db.update(eventInvites).set(values)
+      .where(eq(eventInvites.uniqueToken, token)).returning();
+    return row ?? null;
+  }
+
+  async getTravelPlanByInviteId(inviteId: string): Promise<GuestTravelPlan | null> {
+    const [row] = await db.select().from(guestTravelPlans)
+      .where(eq(guestTravelPlans.inviteId, inviteId)).limit(1);
+    return row ?? null;
+  }
+
+  async createTravelPlan(inviteId: string, values?: Partial<GuestTravelPlan>): Promise<GuestTravelPlan> {
+    const [row] = await db.insert(guestTravelPlans)
+      .values({ inviteId, ...values } as any).returning();
+    return row;
+  }
+
+  async updateTravelPlan(travelPlanId: string, values: Partial<GuestTravelPlan>): Promise<GuestTravelPlan | null> {
+    const [row] = await db.update(guestTravelPlans).set(values as any)
+      .where(eq(guestTravelPlans.id, travelPlanId)).returning();
+    return row ?? null;
+  }
+
+  async createInviteTemplate(values: {
+    userId: string;
+    name: string;
+    subject?: string;
+    messageBody: string;
+    eventType?: string;
+  }): Promise<InviteTemplate> {
+    const [row] = await db.insert(inviteTemplates).values(values).returning();
+    return row;
+  }
+
+  async getInviteTemplatesByUser(userId: string): Promise<InviteTemplate[]> {
+    return db.select().from(inviteTemplates)
+      .where(eq(inviteTemplates.userId, userId))
+      .orderBy(desc(inviteTemplates.createdAt));
   }
 }
 

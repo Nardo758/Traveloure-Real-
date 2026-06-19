@@ -6,8 +6,30 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isEA } from "../middleware/ea-rbac";
-import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
+// NOTE: db is intentionally NOT imported here. All raw queries use experts-query.service.ts or storage.
+import {
+  getLocalExpertFormByUserId, getServiceProviderFormByUserId, getProviderVerificationStatus,
+  getExpertServiceOfferingById, getTravelPulseData,
+  getExpertAiTasks, createExpertAiTask, updateExpertAiTask,
+  getExpertAiTaskById, getExpertAiTasksSince, insertAiInteractionForExpert,
+  getAvailableSchedulesByDay, getAllProviderBlackoutDates,
+  getUserByEmail, getEaClientRelationshipByClient, createEaClientRelationship,
+  getEaClientRelationshipById, updateEaClientRelationship, deleteEaClientRelationship,
+  insertNotification,
+  getEaExecutives, createEaExecutive, getEaExecutiveById, updateEaExecutive, deleteEaExecutive,
+  getEaEvents, createEaEvent, getEaEventById, updateEaEvent, deleteEaEvent,
+  getEaTravelArrangements, createEaTravelArrangement, getEaTravelArrangementById,
+  updateEaTravelArrangement, deleteEaTravelArrangement,
+  getEaGifts, createEaGift, getEaGiftById, updateEaGift, deleteEaGift,
+  getEaSavedVenues, createEaSavedVenue, getEaSavedVenueById, updateEaSavedVenue, deleteEaSavedVenue,
+  getEaCommunications, createEaCommunication, deleteEaCommunication,
+  getEaAiTasks, createEaAiTask, getEaAiTaskById, updateEaAiTask, deleteEaAiTask,
+  getLocalKnowledgeNuggets, createLocalKnowledgeNugget, getLocalKnowledgeNuggetById,
+  updateLocalKnowledgeNugget, deleteLocalKnowledgeNugget, getLocalKnowledgeNuggetsByCity,
+  insertVisaRequirementCache, getVisaAssistanceServices, getRecentExpertContracts,
+  getUserRole,
+} from "../services/experts-query.service";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -297,7 +319,7 @@ router.post("/api/provider-forms", isAuthenticated, async (req, res) => {
 router.get("/api/expert/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
+      const form = await getLocalExpertFormByUserId(userId);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
 
       const steps = [
@@ -358,7 +380,7 @@ router.get("/api/expert/application-status", isAuthenticated, async (req, res) =
 router.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
+      const form = await getServiceProviderFormByUserId(userId);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
 
@@ -843,7 +865,7 @@ router.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) 
 router.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const user = await storage.getUser(userId);
 
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
@@ -1561,12 +1583,7 @@ router.get("/api/expert/revenue-optimization", isAuthenticated, async (req, res)
 
 router.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
-      const [form] = await db.select({
-        identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
-        businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
-      }).from(serviceProviderForms)
-        .where(eq(serviceProviderForms.userId, req.params.userId))
-        .limit(1);
+      const form = await getProviderVerificationStatus(req.params.userId);
       if (!form) return res.json({ identityVerified: false, businessVerified: false });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
@@ -1734,9 +1751,7 @@ router.post("/api/expert/services/from-template/:templateId", isAuthenticated, a
 
       // expert_service_offerings is the primary catalog; service_templates is legacy fallback.
       // expertId column was dropped in migration 013 — all ESO rows are platform templates.
-      const esoRow = await db.select().from(expertServiceOfferings)
-        .where(eq(expertServiceOfferings.id, templateId))
-        .then(r => r[0]);
+      const esoRow = await getExpertServiceOfferingById(templateId);
 
       let serviceData: Record<string, any>;
 
@@ -2151,9 +2166,7 @@ router.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) 
       const expertCountry = expertProfile?.country;
       
       // Fetch all trending destinations from TravelPulse
-      const allTrending = await db.select().from(travelPulseTrending).limit(50);
-      const allCities = await db.select().from(travelPulseCities).limit(20);
-      const allHappeningNow = await db.select().from(travelPulseHappeningNow).limit(20);
+      const { trending: allTrending, cities: allCities, happeningNow: allHappeningNow } = await getTravelPulseData();
       
       // Filter trending to match expert's markets
       let filteredTrending = allTrending;
@@ -2668,14 +2681,7 @@ router.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims.sub;
       const status = req.query.status as string | undefined;
       
-      const tasks = await db.select()
-        .from(expertAiTasks)
-        .where(status 
-          ? and(eq(expertAiTasks.expertId, userId), eq(expertAiTasks.status, status))
-          : eq(expertAiTasks.expertId, userId)
-        )
-        .orderBy(sql`${expertAiTasks.createdAt} DESC`)
-        .limit(50);
+      const tasks = await getExpertAiTasks(userId, status);
       
       res.json(tasks);
     } catch (error: any) {
@@ -2704,14 +2710,14 @@ router.post("/api/expert/ai-tasks/delegate", isAuthenticated, async (req, res) =
       const { taskType, taskDescription, clientName, context } = parsed.data;
 
       // Create task in pending status
-      const [task] = await db.insert(expertAiTasks).values({
+      const task = await createExpertAiTask({
         expertId: userId,
         taskType,
         taskDescription,
         clientName,
         context: context || {},
         status: "in_progress",
-      }).returning();
+      });
 
       // Generate AI content based on task type
       const startTime = Date.now();
@@ -2738,21 +2744,17 @@ router.post("/api/expert/ai-tasks/delegate", isAuthenticated, async (req, res) =
         const qualityScore = (8.5 + Math.random() * 1.0).toFixed(1);
 
         // Update task with result
-        const [updatedTask] = await db.update(expertAiTasks)
-          .set({
-            status: "pending",
-            aiResult: result,
-            confidence,
-            qualityScore,
-            tokensUsed: usage.totalTokens,
-            costEstimate: usage.estimatedCost.toFixed(6),
-            updatedAt: new Date(),
-          })
-          .where(eq(expertAiTasks.id, task.id))
-          .returning();
+        const updatedTask = await updateExpertAiTask(task.id, {
+          status: "pending",
+          aiResult: result,
+          confidence,
+          qualityScore,
+          tokensUsed: usage.totalTokens,
+          costEstimate: usage.estimatedCost.toFixed(6),
+        });
 
         // Log AI interaction
-        await db.insert(aiInteractions).values({
+        await insertAiInteractionForExpert({
           taskType: "content_generation",
           provider: "grok",
           promptTokens: usage.promptTokens,
@@ -2768,14 +2770,11 @@ router.post("/api/expert/ai-tasks/delegate", isAuthenticated, async (req, res) =
         res.json(updatedTask);
       } catch (aiError: any) {
         // Update task with error
-        await db.update(expertAiTasks)
-          .set({
-            status: "pending",
-            aiResult: { error: aiError.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
-            confidence: 0,
-            updatedAt: new Date(),
-          })
-          .where(eq(expertAiTasks.id, task.id));
+        await updateExpertAiTask(task.id, {
+          status: "pending",
+          aiResult: { error: aiError.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
+          confidence: 0,
+        });
 
         throw aiError;
       }
@@ -2793,24 +2792,17 @@ router.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req,
       const { taskId } = req.params;
       const { editedContent } = req.body;
 
-      const [task] = await db.select()
-        .from(expertAiTasks)
-        .where(and(eq(expertAiTasks.id, taskId), eq(expertAiTasks.expertId, userId)));
-
+      const task = await getExpertAiTaskById(taskId, userId);
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
 
-      const [updatedTask] = await db.update(expertAiTasks)
-        .set({
-          status: "completed",
-          editedContent: editedContent || null,
-          wasEdited: !!editedContent,
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(expertAiTasks.id, taskId))
-        .returning();
+      const updatedTask = await updateExpertAiTask(taskId, {
+        status: "completed",
+        editedContent: editedContent || null,
+        wasEdited: !!editedContent,
+        completedAt: new Date(),
+      });
 
       res.json(updatedTask);
     } catch (error: any) {
@@ -2826,22 +2818,15 @@ router.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, 
       const userId = (req.user as any).claims.sub;
       const { taskId } = req.params;
 
-      const [task] = await db.select()
-        .from(expertAiTasks)
-        .where(and(eq(expertAiTasks.id, taskId), eq(expertAiTasks.expertId, userId)));
-
+      const task = await getExpertAiTaskById(taskId, userId);
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
 
-      const [updatedTask] = await db.update(expertAiTasks)
-        .set({
-          status: "rejected",
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(expertAiTasks.id, taskId))
-        .returning();
+      const updatedTask = await updateExpertAiTask(taskId, {
+        status: "rejected",
+        completedAt: new Date(),
+      });
 
       res.json(updatedTask);
     } catch (error: any) {
@@ -2857,18 +2842,13 @@ router.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (r
       const userId = (req.user as any).claims.sub;
       const { taskId } = req.params;
 
-      const [task] = await db.select()
-        .from(expertAiTasks)
-        .where(and(eq(expertAiTasks.id, taskId), eq(expertAiTasks.expertId, userId)));
-
+      const task = await getExpertAiTaskById(taskId, userId);
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
 
       // Mark as regenerating
-      await db.update(expertAiTasks)
-        .set({ status: "regenerating", updatedAt: new Date() })
-        .where(eq(expertAiTasks.id, taskId));
+      await updateExpertAiTask(taskId, { status: "regenerating" });
 
       // Generate new content
       const startTime = Date.now();
@@ -2894,21 +2874,17 @@ router.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (r
       const confidence = Math.floor(85 + Math.random() * 10);
       const qualityScore = (8.5 + Math.random() * 1.0).toFixed(1);
 
-      const [updatedTask] = await db.update(expertAiTasks)
-        .set({
-          status: "pending",
-          aiResult: result,
-          confidence,
-          qualityScore,
-          tokensUsed: (task.tokensUsed || 0) + usage.totalTokens,
-          costEstimate: (parseFloat(task.costEstimate?.toString() || "0") + usage.estimatedCost).toFixed(6),
-          updatedAt: new Date(),
-        })
-        .where(eq(expertAiTasks.id, taskId))
-        .returning();
+      const updatedTask = await updateExpertAiTask(taskId, {
+        status: "pending",
+        aiResult: result,
+        confidence,
+        qualityScore,
+        tokensUsed: (task.tokensUsed || 0) + usage.totalTokens,
+        costEstimate: (parseFloat(task.costEstimate?.toString() || "0") + usage.estimatedCost).toFixed(6),
+      });
 
       // Log AI interaction
-      await db.insert(aiInteractions).values({
+      await insertAiInteractionForExpert({
         taskType: "content_generation",
         provider: "grok",
         promptTokens: usage.promptTokens,
@@ -2937,12 +2913,7 @@ router.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const tasks = await db.select()
-        .from(expertAiTasks)
-        .where(and(
-          eq(expertAiTasks.expertId, userId),
-          sql`${expertAiTasks.createdAt} >= ${thirtyDaysAgo.toISOString()}`
-        ));
+      const tasks = await getExpertAiTasksSince(userId, thirtyDaysAgo);
 
       const totalDelegated = tasks.length;
       const completed = tasks.filter(t => t.status === "completed").length;
@@ -3197,25 +3168,13 @@ router.post("/api/expert/find-providers", isAuthenticated, async (req, res) => {
       const { date, startTime, endTime, serviceType } = req.body;
       const dayOfWeek = new Date(date).getDay();
 
-      const { providerAvailabilitySchedule } = await import('@shared/schema');
-      const { eq, and } = await import('drizzle-orm');
-      const { db } = await import('../db');
-
-      const schedules = await db.select()
-        .from(providerAvailabilitySchedule)
-        .where(
-          and(
-            eq(providerAvailabilitySchedule.dayOfWeek, dayOfWeek),
-            eq(providerAvailabilitySchedule.isAvailable, true)
-          )
-        );
+      const schedules = await getAvailableSchedulesByDay(dayOfWeek);
 
       const matching = schedules.filter((s: any) => {
         return s.startTime <= startTime && s.endTime >= endTime;
       });
 
-      const { providerBlackoutDates } = await import('@shared/schema');
-      const blackouts = await db.select().from(providerBlackoutDates);
+      const blackouts = await getAllProviderBlackoutDates();
       const blockedProviders = new Set(
         blackouts
           .filter((b: any) => date >= b.startDate && date <= b.endDate)
@@ -3828,28 +3787,21 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
       }).parse(req.body);
 
       // Look up the user by email
-      const [foundUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      const foundUser = await getUserByEmail(email);
 
       // Check not already added
-      const existing = await db.select().from(eaClientRelationships)
-        .where(and(
-          eq(eaClientRelationships.eaUserId, eaUserId),
-          foundUser
-            ? eq(eaClientRelationships.clientUserId, foundUser.id)
-            : eq(eaClientRelationships.clientEmail, email)
-        )).limit(1);
-
-      if (existing.length > 0) {
+      const existing = await getEaClientRelationshipByClient(eaUserId, foundUser?.id ?? null, email);
+      if (existing) {
         return res.status(409).json({ message: "Client already added" });
       }
 
-      const [created] = await db.insert(eaClientRelationships).values({
+      const created = await createEaClientRelationship({
         eaUserId,
         clientUserId: foundUser?.id ?? null,
         clientEmail: email,
         displayName: displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email),
         notes: notes ?? null,
-      }).returning();
+      });
 
       res.status(201).json(created);
     } catch (err) {
@@ -3874,16 +3826,10 @@ router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
         preferredCurrency: z.string().optional(),
       }).parse(req.body);
 
-      const [row] = await db.select().from(eaClientRelationships)
-        .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.eaUserId, eaUserId)))
-        .limit(1);
+      const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
 
-      const [updated] = await db.update(eaClientRelationships)
-        .set({ ...updates, updatedAt: new Date() })
-        .where(eq(eaClientRelationships.id, id))
-        .returning();
-
+      const updated = await updateEaClientRelationship(id, updates);
       res.json(updated);
     } catch (err) {
       console.error("[EA] updateClient error:", err);
@@ -3897,11 +3843,9 @@ router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id;
       const { id } = req.params;
-      const [row] = await db.select().from(eaClientRelationships)
-        .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.eaUserId, eaUserId)))
-        .limit(1);
+      const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
-      await db.delete(eaClientRelationships).where(eq(eaClientRelationships.id, id));
+      await deleteEaClientRelationship(id);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteClient error:", err);
@@ -3920,13 +3864,11 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
         message: z.string().min(1),
       }).parse(req.body);
 
-      const [row] = await db.select().from(eaClientRelationships)
-        .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.eaUserId, eaUserId)))
-        .limit(1);
+      const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
       if (!row.clientUserId) return res.status(400).json({ message: "Client does not have a platform account" });
 
-      await db.insert(notifications).values({
+      await insertNotification({
         userId: row.clientUserId,
         type: "ea_message",
         title,
@@ -3951,10 +3893,7 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
 router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const rows = await db.select().from(eaExecutives)
-        .where(eq(eaExecutives.eaUserId, eaUserId))
-        .orderBy(asc(eaExecutives.name));
-      res.json(rows);
+      res.json(await getEaExecutives(eaUserId));
     } catch (err) {
       console.error("[EA] getExecutives error:", err);
       res.status(500).json({ message: "Failed to fetch executives" });
@@ -3966,8 +3905,7 @@ router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaExecutiveSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaExecutives).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaExecutive(body));
     } catch (err) {
       console.error("[EA] createExecutive error:", err);
       res.status(400).json({ message: "Failed to create executive" });
@@ -3978,13 +3916,9 @@ router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
 router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaExecutives)
-        .where(and(eq(eaExecutives.id, req.params.id), eq(eaExecutives.eaUserId, eaUserId))).limit(1);
+      const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
-      const [updated] = await db.update(eaExecutives)
-        .set({ ...req.body, updatedAt: new Date() })
-        .where(eq(eaExecutives.id, req.params.id)).returning();
-      res.json(updated);
+      res.json(await updateEaExecutive(req.params.id, req.body));
     } catch (err) {
       console.error("[EA] updateExecutive error:", err);
       res.status(500).json({ message: "Failed to update executive" });
@@ -3995,10 +3929,9 @@ router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaExecutives)
-        .where(and(eq(eaExecutives.id, req.params.id), eq(eaExecutives.eaUserId, eaUserId))).limit(1);
+      const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
-      await db.delete(eaExecutives).where(eq(eaExecutives.id, req.params.id));
+      await deleteEaExecutive(req.params.id);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteExecutive error:", err);
@@ -4014,10 +3947,7 @@ router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
 router.get("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const rows = await db.select().from(eaEvents)
-        .where(eq(eaEvents.eaUserId, eaUserId))
-        .orderBy(desc(eaEvents.date));
-      res.json(rows);
+      res.json(await getEaEvents(eaUserId));
     } catch (err) {
       console.error("[EA] getEvents error:", err);
       res.status(500).json({ message: "Failed to fetch events" });
@@ -4029,8 +3959,7 @@ router.post("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaEventSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaEvents).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaEvent(body));
     } catch (err) {
       console.error("[EA] createEvent error:", err);
       res.status(400).json({ message: "Failed to create event" });
@@ -4041,13 +3970,9 @@ router.post("/api/ea/events", isAuthenticated, async (req, res) => {
 router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaEvents)
-        .where(and(eq(eaEvents.id, req.params.id), eq(eaEvents.eaUserId, eaUserId))).limit(1);
+      const row = await getEaEventById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Event not found" });
-      const [updated] = await db.update(eaEvents)
-        .set({ ...req.body, updatedAt: new Date() })
-        .where(eq(eaEvents.id, req.params.id)).returning();
-      res.json(updated);
+      res.json(await updateEaEvent(req.params.id, req.body));
     } catch (err) {
       console.error("[EA] updateEvent error:", err);
       res.status(500).json({ message: "Failed to update event" });
@@ -4058,8 +3983,7 @@ router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      await db.delete(eaEvents)
-        .where(and(eq(eaEvents.id, req.params.id), eq(eaEvents.eaUserId, eaUserId)));
+      await deleteEaEvent(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteEvent error:", err);
@@ -4075,10 +3999,7 @@ router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
 router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const rows = await db.select().from(eaTravelArrangements)
-        .where(eq(eaTravelArrangements.eaUserId, eaUserId))
-        .orderBy(desc(eaTravelArrangements.createdAt));
-      res.json(rows);
+      res.json(await getEaTravelArrangements(eaUserId));
     } catch (err) {
       console.error("[EA] getTravel error:", err);
       res.status(500).json({ message: "Failed to fetch travel arrangements" });
@@ -4090,8 +4011,7 @@ router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaTravelArrangements).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaTravelArrangement(body));
     } catch (err) {
       console.error("[EA] createTravel error:", err);
       res.status(400).json({ message: "Failed to create travel arrangement" });
@@ -4102,13 +4022,9 @@ router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
 router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaTravelArrangements)
-        .where(and(eq(eaTravelArrangements.id, req.params.id), eq(eaTravelArrangements.eaUserId, eaUserId))).limit(1);
+      const row = await getEaTravelArrangementById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Travel arrangement not found" });
-      const [updated] = await db.update(eaTravelArrangements)
-        .set({ ...req.body, updatedAt: new Date() })
-        .where(eq(eaTravelArrangements.id, req.params.id)).returning();
-      res.json(updated);
+      res.json(await updateEaTravelArrangement(req.params.id, req.body));
     } catch (err) {
       console.error("[EA] updateTravel error:", err);
       res.status(500).json({ message: "Failed to update travel arrangement" });
@@ -4119,8 +4035,7 @@ router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      await db.delete(eaTravelArrangements)
-        .where(and(eq(eaTravelArrangements.id, req.params.id), eq(eaTravelArrangements.eaUserId, eaUserId)));
+      await deleteEaTravelArrangement(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteTravel error:", err);
@@ -4136,10 +4051,7 @@ router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
 router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const rows = await db.select().from(eaGifts)
-        .where(eq(eaGifts.eaUserId, eaUserId))
-        .orderBy(desc(eaGifts.createdAt));
-      res.json(rows);
+      res.json(await getEaGifts(eaUserId));
     } catch (err) {
       console.error("[EA] getGifts error:", err);
       res.status(500).json({ message: "Failed to fetch gifts" });
@@ -4151,8 +4063,7 @@ router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaGiftSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaGifts).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaGift(body));
     } catch (err) {
       console.error("[EA] createGift error:", err);
       res.status(400).json({ message: "Failed to create gift" });
@@ -4163,13 +4074,9 @@ router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
 router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaGifts)
-        .where(and(eq(eaGifts.id, req.params.id), eq(eaGifts.eaUserId, eaUserId))).limit(1);
+      const row = await getEaGiftById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Gift not found" });
-      const [updated] = await db.update(eaGifts)
-        .set(req.body)
-        .where(eq(eaGifts.id, req.params.id)).returning();
-      res.json(updated);
+      res.json(await updateEaGift(req.params.id, req.body));
     } catch (err) {
       console.error("[EA] updateGift error:", err);
       res.status(500).json({ message: "Failed to update gift" });
@@ -4180,8 +4087,7 @@ router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      await db.delete(eaGifts)
-        .where(and(eq(eaGifts.id, req.params.id), eq(eaGifts.eaUserId, eaUserId)));
+      await deleteEaGift(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteGift error:", err);
@@ -4197,10 +4103,7 @@ router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
 router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const rows = await db.select().from(eaSavedVenues)
-        .where(eq(eaSavedVenues.eaUserId, eaUserId))
-        .orderBy(desc(eaSavedVenues.favorite), asc(eaSavedVenues.name));
-      res.json(rows);
+      res.json(await getEaSavedVenues(eaUserId));
     } catch (err) {
       console.error("[EA] getVenues error:", err);
       res.status(500).json({ message: "Failed to fetch venues" });
@@ -4212,8 +4115,7 @@ router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaSavedVenueSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaSavedVenues).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaSavedVenue(body));
     } catch (err) {
       console.error("[EA] createVenue error:", err);
       res.status(400).json({ message: "Failed to save venue" });
@@ -4224,13 +4126,9 @@ router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
 router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaSavedVenues)
-        .where(and(eq(eaSavedVenues.id, req.params.id), eq(eaSavedVenues.eaUserId, eaUserId))).limit(1);
+      const row = await getEaSavedVenueById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Venue not found" });
-      const [updated] = await db.update(eaSavedVenues)
-        .set(req.body)
-        .where(eq(eaSavedVenues.id, req.params.id)).returning();
-      res.json(updated);
+      res.json(await updateEaSavedVenue(req.params.id, req.body));
     } catch (err) {
       console.error("[EA] updateVenue error:", err);
       res.status(500).json({ message: "Failed to update venue" });
@@ -4241,8 +4139,7 @@ router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      await db.delete(eaSavedVenues)
-        .where(and(eq(eaSavedVenues.id, req.params.id), eq(eaSavedVenues.eaUserId, eaUserId)));
+      await deleteEaSavedVenue(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteVenue error:", err);
@@ -4258,10 +4155,7 @@ router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
 router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const rows = await db.select().from(eaCommunications)
-        .where(eq(eaCommunications.eaUserId, eaUserId))
-        .orderBy(desc(eaCommunications.sentAt));
-      res.json(rows);
+      res.json(await getEaCommunications(eaUserId));
     } catch (err) {
       console.error("[EA] getCommunications error:", err);
       res.status(500).json({ message: "Failed to fetch communications" });
@@ -4273,8 +4167,7 @@ router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaCommunicationSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaCommunications).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaCommunication(body));
     } catch (err) {
       console.error("[EA] createCommunication error:", err);
       res.status(400).json({ message: "Failed to log communication" });
@@ -4285,8 +4178,7 @@ router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      await db.delete(eaCommunications)
-        .where(and(eq(eaCommunications.id, req.params.id), eq(eaCommunications.eaUserId, eaUserId)));
+      await deleteEaCommunication(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteCommunication error:", err);
@@ -4303,12 +4195,7 @@ router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const { status } = req.query;
-      const conditions = [eq(eaAiTasks.eaUserId, eaUserId)];
-      if (status) conditions.push(eq(eaAiTasks.status, status as string));
-      const rows = await db.select().from(eaAiTasks)
-        .where(and(...conditions))
-        .orderBy(desc(eaAiTasks.createdAt));
-      res.json(rows);
+      res.json(await getEaAiTasks(eaUserId, status as string | undefined));
     } catch (err) {
       console.error("[EA] getAiTasks error:", err);
       res.status(500).json({ message: "Failed to fetch AI tasks" });
@@ -4320,8 +4207,7 @@ router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
       const body = insertEaAiTaskSchema.parse({ ...req.body, eaUserId });
-      const [created] = await db.insert(eaAiTasks).values(body).returning();
-      res.status(201).json(created);
+      res.status(201).json(await createEaAiTask(body));
     } catch (err) {
       console.error("[EA] createAiTask error:", err);
       res.status(400).json({ message: "Failed to create AI task" });
@@ -4332,16 +4218,12 @@ router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
 router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const [row] = await db.select().from(eaAiTasks)
-        .where(and(eq(eaAiTasks.id, req.params.id), eq(eaAiTasks.eaUserId, eaUserId))).limit(1);
+      const row = await getEaAiTaskById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "AI task not found" });
-      const updates: Record<string, any> = { ...req.body, updatedAt: new Date() };
+      const updates: Record<string, any> = { ...req.body };
       if (req.body.status === "approved") updates.approvedAt = new Date();
       if (req.body.status === "rejected") updates.rejectedAt = new Date();
-      const [updated] = await db.update(eaAiTasks)
-        .set(updates)
-        .where(eq(eaAiTasks.id, req.params.id)).returning();
-      res.json(updated);
+      res.json(await updateEaAiTask(req.params.id, updates));
     } catch (err) {
       console.error("[EA] updateAiTask error:", err);
       res.status(500).json({ message: "Failed to update AI task" });
@@ -4352,8 +4234,7 @@ router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      await db.delete(eaAiTasks)
-        .where(and(eq(eaAiTasks.id, req.params.id), eq(eaAiTasks.eaUserId, eaUserId)));
+      await deleteEaAiTask(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteAiTask error:", err);
@@ -4370,12 +4251,7 @@ router.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
 router.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
     try {
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
-      const nuggets = await db
-        .select()
-        .from(localKnowledgeNuggets)
-        .where(eq(localKnowledgeNuggets.expertUserId, expertId))
-        .orderBy(desc(localKnowledgeNuggets.createdAt));
-      res.json(nuggets);
+      res.json(await getLocalKnowledgeNuggets(expertId));
     } catch (err) {
       console.error("[Knowledge Nuggets] list error:", err);
       res.status(500).json({ message: "Failed to fetch knowledge nuggets" });
@@ -4391,8 +4267,7 @@ router.post("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) =
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
       }
-      const [nugget] = await db.insert(localKnowledgeNuggets).values(parsed.data).returning();
-      res.status(201).json(nugget);
+      res.status(201).json(await createLocalKnowledgeNugget(parsed.data));
     } catch (err) {
       console.error("[Knowledge Nuggets] create error:", err);
       res.status(500).json({ message: "Failed to create knowledge nugget" });
@@ -4405,21 +4280,15 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, r
     try {
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
       const { id } = req.params;
-      const existing = await db.select().from(localKnowledgeNuggets)
-        .where(and(eq(localKnowledgeNuggets.id, id), eq(localKnowledgeNuggets.expertUserId, expertId)))
-        .limit(1);
-      if (!existing.length) return res.status(404).json({ message: "Nugget not found" });
+      const existing = await getLocalKnowledgeNuggetById(id, expertId);
+      if (!existing) return res.status(404).json({ message: "Nugget not found" });
       const allowed = ["nuggetType", "city", "linkedPoi", "linkedNeighbourhood", "insight", "targetAudience", "notFor", "seasonality"] as const;
       const updates: Record<string, any> = {};
       for (const key of allowed) {
         if (key in req.body) updates[key] = req.body[key];
       }
       updates.updatedAt = new Date();
-      const [updated] = await db.update(localKnowledgeNuggets)
-        .set(updates)
-        .where(eq(localKnowledgeNuggets.id, id))
-        .returning();
-      res.json(updated);
+      res.json(await updateLocalKnowledgeNugget(id, updates));
     } catch (err) {
       console.error("[Knowledge Nuggets] update error:", err);
       res.status(500).json({ message: "Failed to update knowledge nugget" });
@@ -4432,11 +4301,9 @@ router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, 
     try {
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
       const { id } = req.params;
-      const existing = await db.select().from(localKnowledgeNuggets)
-        .where(and(eq(localKnowledgeNuggets.id, id), eq(localKnowledgeNuggets.expertUserId, expertId)))
-        .limit(1);
-      if (!existing.length) return res.status(404).json({ message: "Nugget not found" });
-      await db.delete(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.id, id));
+      const existing = await getLocalKnowledgeNuggetById(id, expertId);
+      if (!existing) return res.status(404).json({ message: "Nugget not found" });
+      await deleteLocalKnowledgeNugget(id);
       res.json({ success: true });
     } catch (err) {
       console.error("[Knowledge Nuggets] delete error:", err);
@@ -4450,13 +4317,7 @@ router.get("/api/knowledge-nuggets/city", isAuthenticated, async (req, res) => {
     try {
       const city = (req.query.city as string || "").trim();
       if (!city) return res.status(400).json({ message: "city query param required" });
-      const nuggets = await db
-        .select()
-        .from(localKnowledgeNuggets)
-        .where(like(localKnowledgeNuggets.city, `%${city}%`))
-        .orderBy(desc(localKnowledgeNuggets.createdAt))
-        .limit(50);
-      res.json(nuggets);
+      res.json(await getLocalKnowledgeNuggetsByCity(city));
     } catch (err) {
       console.error("[Knowledge Nuggets] city search error:", err);
       res.status(500).json({ message: "Failed to fetch city nuggets" });
@@ -4571,7 +4432,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
 
       // Store in cache
       const nowTs = new Date();
-      await db.insert(visaRequirementsCache).values({
+      await insertVisaRequirementCache({
         passportCountry: passportCountry.toLowerCase(),
         destinationCountry: destinationCountry.toLowerCase(),
         visaRequired: Boolean(parsed.visa_required),
@@ -4603,39 +4464,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
 router.get("/api/visa/experts", async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string || "6"), 20);
-      const cat = await db
-        .select({ id: serviceCategories.id })
-        .from(serviceCategories)
-        .where(eq(serviceCategories.slug, "visa-assistance"))
-        .limit(1)
-        .then((r) => r[0]);
-      if (!cat) return res.json({ services: [], total: 0 });
-      const rows = await db
-        .select({
-          id: providerServices.id,
-          serviceName: providerServices.serviceName,
-          shortDescription: providerServices.shortDescription,
-          description: providerServices.description,
-          price: providerServices.price,
-          averageRating: providerServices.averageRating,
-          reviewCount: providerServices.reviewCount,
-          location: providerServices.location,
-          deliveryMethod: providerServices.deliveryMethod,
-          serviceImage: providerServices.serviceImage,
-          categoryId: providerServices.categoryId,
-          providerFirstName: users.firstName,
-          providerLastName: users.lastName,
-          providerAvatar: users.profileImageUrl,
-        })
-        .from(providerServices)
-        .leftJoin(users, eq(providerServices.userId, users.id))
-        .where(and(eq(providerServices.categoryId, cat.id), eq(providerServices.status, "active")))
-        .orderBy(desc(providerServices.bookingsCount))
-        .limit(limit);
-      const services = rows.map((r) => ({
-        ...r,
-        providerName: [r.providerFirstName, r.providerLastName].filter(Boolean).join(" ") || "Visa Specialist",
-      }));
+      const services = await getVisaAssistanceServices(limit);
       res.json({ services, total: services.length });
     } catch (err) {
       console.error("[Visa] experts error:", err);
@@ -4648,19 +4477,7 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
     try {
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
       const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
-      const rows = await db.select({
-        id: userAndExpertContracts.id,
-        title: userAndExpertContracts.title,
-        client: userAndExpertContracts.tripTo,
-        value: userAndExpertContracts.amount,
-        status: userAndExpertContracts.status,
-        isPaid: userAndExpertContracts.isPaid,
-        createdAt: userAndExpertContracts.createdAt,
-      })
-        .from(userAndExpertContracts)
-        .orderBy(desc(userAndExpertContracts.createdAt))
-        .limit(limit);
-      res.json(rows);
+      res.json(await getRecentExpertContracts(limit));
     } catch (err) {
       console.error("[Expert] getContracts error:", err);
       res.status(500).json({ message: "Failed to fetch contracts" });
@@ -4672,9 +4489,8 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
   // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
   const requireAdminLocal = async (req: any, res: any, next: any) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-    const user = await db.select({ role: users.role }).from(users)
-      .where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
-    if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    const role = await getUserRole(req.user?.claims?.sub);
+    if (role !== "admin") return res.status(403).json({ message: "Admin access required" });
     next();
   };
 

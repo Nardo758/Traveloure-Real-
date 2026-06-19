@@ -4,9 +4,32 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { db } from "../db";
 import { geocodeAddress } from "../utils/geocode";
+import {
+  dbHealthCheck, getServiceOfferingTypes, getExpertOfferingTypes,
+  getFeedCompositionConfig, insertContactSubmission, getAdminUserIds,
+  getUserById, insertExpertChat, insertChatNotification,
+  insertAiBlueprint, getProviderCountsByCategory, getExperienceTypeById,
+  getDefaultServiceTemplates, getServiceTemplateById, insertAiInteraction,
+  getReviewById, flagReview, getLocalExpertUsers, getApprovedExpertForms,
+  insertExpertMatchScore, getCachedDestinationIntelligence,
+  getCachedDestinationIntelligenceWithDates, insertDestinationIntelligence,
+  insertDestinationIntelligenceStrict, insertAiGeneratedItinerary,
+  getAiItinerariesForUser, getAiItineraryById,
+  insertItineraryComparison, updateItineraryComparisonStatus,
+  getActiveProviderServices, getDestinationEventsByCity,
+  getExpertUserIds, getAiDiscoveredGemById,
+  getAffiliateProductsByIds, getContentRegistryByIds,
+  getAffiliateProductsByLocation, getContentRegistryByLocation,
+  insertAffiliateClick, getPlatformStats,
+  insertSearchAnalytics, insertPageViewAnalytics, insertBookingFunnelAnalytics,
+  insertActivityBookingAnalytics, insertTripAnalyticsEnhanced,
+  getTripAnalyticsEnhancedByTripId, updateTripAnalyticsEnhanced,
+  getAdminUserByEmail, insertUser, getFirstUser,
+  getAllDestinationEvents, insertHelpGuideTrips, insertTouristPlacesSearch,
+} from "../services/content-query.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+// NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, contactSubmissions, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -170,8 +193,12 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
 
 router.get("/api/health", async (_req, res) => {
     try {
-      await db.execute(sql`SELECT 1`);
-      res.json({ status: "ok", db: true, timestamp: new Date().toISOString() });
+      const ok = await dbHealthCheck();
+      if (ok) {
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString() });
+      } else {
+        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString() });
+      }
     } catch {
       res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString() });
     }
@@ -192,27 +219,10 @@ router.get("/api/status", (_req, res) => {
   router.get("/api/offering-types/services", async (req, res) => {
     try {
       const market = typeof req.query.market === "string" ? req.query.market.trim() : null;
-      const result = await db.execute(sql`
-        SELECT
-          offering_type_key,
-          category_key,
-          display_name,
-          tagline,
-          is_surprising,
-          market_scoped,
-          sort_order
-        FROM service_offering_types
-        WHERE is_active = true
-          AND (
-            ${market}::text IS NULL
-            OR market_scoped IS NULL
-            OR ${market}::text = ANY(market_scoped)
-          )
-        ORDER BY sort_order ASC, display_name ASC
-      `);
+      const rows = await getServiceOfferingTypes(market);
       // 5-min cache — catalog data drifts slowly; admin edits show up promptly.
       res.setHeader("Cache-Control", "public, max-age=300");
-      res.json(result.rows ?? []);
+      res.json(rows);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -223,22 +233,9 @@ router.get("/api/status", (_req, res) => {
   router.get("/api/offering-types/experts", async (req, res) => {
     try {
       const tier = typeof req.query.tier === "string" ? req.query.tier.trim() : null;
-      const result = await db.execute(sql`
-        SELECT
-          offering_type_key,
-          service_tier,
-          display_name,
-          tagline,
-          delivery_formats,
-          is_surprising,
-          sort_order
-        FROM expert_offering_types
-        WHERE is_active = true
-          AND (${tier}::text IS NULL OR service_tier = ${tier}::text)
-        ORDER BY sort_order ASC, display_name ASC
-      `);
+      const rows = await getExpertOfferingTypes(tier);
       res.setHeader("Cache-Control", "public, max-age=300");
-      res.json(result.rows ?? []);
+      res.json(rows);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -261,16 +258,9 @@ router.get("/api/status", (_req, res) => {
       affiliateLabel: "Paid partner",
     };
     try {
-      const result = await db.execute(sql`
-        SELECT setting_key, setting_value
-        FROM platform_settings
-        WHERE setting_key IN (
-          'feed_rec_cadence', 'feed_wanted_slot_max', 'feed_wanted_slot_spacing',
-          'feed_rec_label', 'feed_rec_affiliate_label'
-        )
-      `);
+      const configRows = await getFeedCompositionConfig();
       const rows = new Map(
-        (result.rows ?? []).map((r: any) => [String(r.setting_key), String(r.setting_value)]),
+        configRows.map((r: any) => [String(r.setting_key), String(r.setting_value)]),
       );
       const intOr = (key: string, dflt: number, min: number): number => {
         const v = Number(rows.get(key));
@@ -306,7 +296,7 @@ router.post("/api/contact", async (req, res) => {
       const input = contactSchema.parse(req.body);
 
       // Persist the submission
-      const [submission] = await db.insert(contactSubmissions).values({
+      const submission = await insertContactSubmission({
         name: input.name,
         email: input.email,
         phone: input.phone || null,
@@ -317,12 +307,12 @@ router.post("/api/contact", async (req, res) => {
         source: (input as any).source || "contact_page",
         ipAddress: (req.ip || req.socket.remoteAddress || "").toString().slice(0, 45),
         userAgent: (req.headers["user-agent"] || "").toString().slice(0, 500),
-      }).returning();
+      });
 
       // Notify all admins (fire & forget)
       try {
-        const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
-        for (const admin of admins) {
+        const adminIds = await getAdminUserIds();
+        for (const admin of adminIds.map(id => ({ id }))) {
           try {
             await storage.createNotification({
               userId: admin.id,
@@ -376,26 +366,20 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
       }
 
       // Verify expert exists
-      const expert = await db.select().from(users).where(eq(users.id, expertId)).then(r => r[0]);
+      const expert = await getUserById(expertId);
       if (!expert) {
         return res.status(404).json({ message: "Expert not found" });
       }
 
       // Create initial chat message
-      const [chat] = await db.insert(userAndExpertChats).values({
+      const chat = await insertExpertChat({
         senderId: userId,
         receiverId: expertId,
         message: message || "Hello, I would like to connect with you.",
-      }).returning();
+      });
 
       // Create notification for expert
-      await db.insert(notifications).values({
-        userId: expertId,
-        type: "new_chat",
-        title: "New message",
-        message: `You have a new message from a traveler`,
-        data: { chatId: chat.id, senderId: userId, tripId },
-      });
+      await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
 
       res.status(201).json({
         message: "Chat started successfully",
@@ -556,13 +540,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
       const blueprintContent = completion.content[0]?.type === "text" ? completion.content[0].text : null;
       const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
 
-      const [blueprint] = await db.insert(aiBlueprints).values({
-        userId,
-        eventType: eventType || 'vacation',
-        destination,
-        blueprintData,
-        status: 'generated',
-      }).returning();
+      const blueprint = await insertAiBlueprint({ userId, eventType: eventType || 'vacation', destination, blueprintData });
 
       res.status(201).json(blueprint);
     } catch (error) {
@@ -622,7 +600,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
 
 router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await storage.getUser((req.user as any).claims.sub);
       if (!user || (user.role !== "admin" && user.role !== "expert")) {
         return res.status(403).json({ message: "Admin or expert access required" });
       }
@@ -771,7 +749,7 @@ router.get("/api/service-categories/provider-counts", async (_req, res) => {
 
 router.post("/api/service-categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await storage.getUser((req.user as any).claims.sub);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -797,7 +775,7 @@ router.get("/api/service-categories/:categoryId/subcategories", async (req, res)
 
 router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await storage.getUser((req.user as any).claims.sub);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1512,7 +1490,7 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
       let tripId: string | null = experience.tripId ?? null;
       if (!tripId) {
         const expType = experience.experienceTypeId
-          ? await db.select().from(experienceTypes).where(eq(experienceTypes.id, experience.experienceTypeId)).then(r => r[0])
+          ? await getExperienceTypeById(experience.experienceTypeId)
           : null;
         const today = new Date().toISOString().split("T")[0];
         const startDate = experience.eventDate || today;
@@ -1551,7 +1529,7 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
     if (!experience.tripId && !updates.tripId) {
       try {
         const expType = experience.experienceTypeId
-          ? await db.select().from(experienceTypes).where(eq(experienceTypes.id, experience.experienceTypeId)).then(r => r[0])
+          ? await getExperienceTypeById(experience.experienceTypeId)
           : null;
         const today = new Date().toISOString().split("T")[0];
         const startDate = updates.eventDate || experience.eventDate || today;
@@ -1631,7 +1609,7 @@ router.get("/api/faqs", async (req, res) => {
 
 router.post("/api/faqs", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await storage.getUser((req.user as any).claims.sub);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1650,7 +1628,7 @@ router.post("/api/faqs", isAuthenticated, async (req, res) => {
 
 router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await storage.getUser((req.user as any).claims.sub);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1671,7 +1649,7 @@ router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
   // Delete FAQ (admin)
 
 router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await storage.getUser((req.user as any).claims.sub);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1685,20 +1663,7 @@ router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/service-templates", async (_req, res) => {
     try {
-      const rows = await db.select({
-        id:           expertServiceOfferings.id,
-        name:         expertServiceOfferings.name,
-        description:  expertServiceOfferings.description,
-        price:        expertServiceOfferings.price,
-        isDefault:    expertServiceOfferings.isDefault,
-        sortOrder:    expertServiceOfferings.sortOrder,
-        createdAt:    expertServiceOfferings.createdAt,
-        categoryName: expertServiceCategories.name,
-      })
-      .from(expertServiceOfferings)
-      .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
-      .where(eq(expertServiceOfferings.isDefault, true))
-      .orderBy(expertServiceOfferings.sortOrder);
+      const rows = await getDefaultServiceTemplates();
 
       const esoTemplates = rows.map(o => ({
         id:               o.id,
@@ -1733,8 +1698,7 @@ router.get("/api/service-templates", async (_req, res) => {
   // Get single template — tries expert_service_offerings first, falls back to service_templates
 
 router.get("/api/service-templates/:id", async (req, res) => {
-    const esoRow = await db.select().from(expertServiceOfferings)
-      .where(eq(expertServiceOfferings.id, req.params.id)).then(r => r[0]);
+    const esoRow = await getServiceTemplateById(req.params.id);
     if (esoRow) {
       return res.json({
         id: esoRow.id, title: esoRow.name, description: esoRow.description,
@@ -2082,7 +2046,7 @@ router.post("/api/analytics/itinerary-generated", async (req, res) => {
       const userId = (req.user as any)?.claims?.sub;
       
       // Track as AI interaction for analytics
-      await db.insert(aiInteractions).values({
+      await insertAiInteraction({
         userId: userId || null,
         interactionType: "itinerary_generation",
         model: "claude-sonnet",
@@ -2099,8 +2063,8 @@ router.post("/api/analytics/itinerary-generated", async (req, res) => {
           variationType: data.variationType,
           experienceType: data.experienceType,
           activitiesCount: data.activities?.length || 0,
-        } as any,
-      } as any).catch((err: any) => console.error("[Analytics] Failed to track itinerary generation:", err));
+        },
+      });
       
       console.log("[Analytics] Itinerary generated event tracked:", {
         destination: data.destination,
@@ -2347,11 +2311,10 @@ router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { reason } = req.body;
-      const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, req.params.id)).limit(1);
+      const review = await getReviewById(req.params.id);
       if (!review) return res.status(404).json({ message: "Review not found" });
       if (review.status === "removed") return res.status(400).json({ message: "Review already removed" });
-      await db.update(serviceReviews).set({ status: "flagged", flagReason: reason || null }).where(eq(serviceReviews.id, req.params.id));
-      await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: "flag", actorId: userId, reason: reason || null });
+      await flagReview(req.params.id, reason || null, userId);
       res.json({ success: true });
     } catch (err) {
       console.error("Flag review error:", err);
@@ -3771,9 +3734,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
       }
 
       // Get expert profiles from database
-      const expertsQuery = await db.select()
-        .from(users)
-        .where(eq(users.role, "local_expert"));
+      const expertsQuery = await getLocalExpertUsers();
 
       let expertsList = expertIds
         ? expertsQuery.filter(e => expertIds.includes(e.id))
@@ -3784,9 +3745,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
       }
 
       // Get local expert forms for more profile info
-      const expertForms = await db.select()
-        .from(localExpertForms)
-        .where(eq(localExpertForms.status, "approved"));
+      const expertForms = await getApprovedExpertForms();
 
       // Build full expert objects matching the client's MatchedExpert.expert shape
       const expertObjs = expertsList.map(expert => {
@@ -3856,7 +3815,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
 
         // Store match scores (fire-and-forget)
         for (const m of grokMatches) {
-          db.insert(expertMatchScores).values({
+          insertExpertMatchScore({
             expertId: m.expertId,
             travelerId: userId,
             overallScore: m.overallScore,
@@ -3869,7 +3828,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
             reasoning: m.reasoning,
             requestContext: travelerProfile,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          }).catch(err => console.error("Failed to store match score:", err));
+          });
 
           storage.createExpertMatchAnalytics({
             expertId: m.expertId,
@@ -3955,13 +3914,10 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
       const { destination, dates, topics } = parsed.data;
 
       // Check cache first
-      const cached = await db.select()
-        .from(destinationIntelligence)
-        .where(eq(destinationIntelligence.destination, destination.toLowerCase()))
-        .limit(1);
+      const cachedIntel = await getCachedDestinationIntelligence(destination);
 
-      if (cached.length > 0 && new Date(cached[0].expiresAt) > new Date()) {
-        return res.json(cached[0].intelligenceData);
+      if (cachedIntel) {
+        return res.json(cachedIntel.intelligenceData);
       }
 
       const result = await aiOrchestrator.getRealTimeIntelligence(
@@ -3970,7 +3926,7 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
       );
 
       // Cache result
-      await db.insert(destinationIntelligence).values({
+      await insertDestinationIntelligence({
         destination: destination.toLowerCase(),
         intelligenceData: result,
         events: result.events || [],
@@ -3979,7 +3935,7 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
         trendingExperiences: result.trendingExperiences || [],
         deals: result.deals || [],
         expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
-      }).catch(err => console.error("Failed to cache intelligence:", err));
+      });
 
       res.json(result);
     } catch (error: any) {
@@ -4023,7 +3979,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
       });
 
       // Store generated itinerary
-      const [saved] = await db.insert(aiGeneratedItineraries).values({
+      const saved = await insertAiGeneratedItinerary({
         userId,
         tripId,
         destination: itineraryRequest.destination,
@@ -4038,7 +3994,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
         travelTips: result.travelTips || [],
         provider: "grok",
         status: "generated",
-      }).returning();
+      });
 
       res.json({ ...result, id: saved.id });
     } catch (error: any) {
@@ -4122,30 +4078,10 @@ router.get("/api/destination-intelligence", isAuthenticated, async (req, res) =>
       } : undefined;
 
       // Check for cached intelligence (not expired)
-      const now = new Date();
-      
-      // Build cache query conditions
-      const cacheConditions = dates
-        ? and(
-            eq(destinationIntelligence.destination, destination),
-            eq(destinationIntelligence.startDate, dates.start),
-            eq(destinationIntelligence.endDate, dates.end),
-            sql`${destinationIntelligence.expiresAt} > ${now.toISOString()}`
-          )
-        : and(
-            eq(destinationIntelligence.destination, destination),
-            sql`${destinationIntelligence.startDate} IS NULL`,
-            sql`${destinationIntelligence.expiresAt} > ${now.toISOString()}`
-          );
-      
-      const cached = await db.select()
-        .from(destinationIntelligence)
-        .where(cacheConditions)
-        .orderBy(sql`${destinationIntelligence.lastUpdated} DESC`)
-        .limit(1);
+      const cached = await getCachedDestinationIntelligenceWithDates(destination, dates);
 
-      if (cached.length > 0 && cached[0].intelligenceData) {
-        return res.json(cached[0].intelligenceData);
+      if (cached && cached.intelligenceData) {
+        return res.json(cached.intelligenceData);
       }
 
       // Fetch fresh intelligence using Grok
@@ -4157,16 +4093,16 @@ router.get("/api/destination-intelligence", isAuthenticated, async (req, res) =>
       });
 
       // Cache the result with proper destination and date fields
-      await db.insert(destinationIntelligence).values({
+      await insertDestinationIntelligenceStrict({
         destination,
         startDate: dates?.start || null,
         endDate: dates?.end || null,
-        intelligenceData: result as any,
+        intelligenceData: result,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
       });
 
       // Log AI interaction for usage tracking
-      await db.insert(aiInteractions).values({
+      await insertAiInteraction({
         taskType: "real_time_intelligence",
         provider: "grok",
         promptTokens: usage.promptTokens,
@@ -4243,7 +4179,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       });
 
       // Save generated itinerary to database
-      const [savedItinerary] = await db.insert(aiGeneratedItineraries).values({
+      const savedItinerary = await insertAiGeneratedItinerary({
         userId,
         tripId: tripId || null,
         destination,
@@ -4252,16 +4188,16 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         title: result.title,
         summary: result.summary,
         totalEstimatedCost: result.totalEstimatedCost.toString(),
-        itineraryData: result.dailyItinerary as any,
-        accommodationSuggestions: result.accommodationSuggestions as any,
-        packingList: result.packingList as any,
-        travelTips: result.travelTips as any,
+        itineraryData: result.dailyItinerary,
+        accommodationSuggestions: result.accommodationSuggestions,
+        packingList: result.packingList,
+        travelTips: result.travelTips,
         provider: "grok",
-        status: "generated"
-      }).returning();
+        status: "generated",
+      });
 
       // Log AI interaction
-      await db.insert(aiInteractions).values({
+      await insertAiInteraction({
         taskType: "autonomous_itinerary",
         provider: "grok",
         promptTokens: usage.promptTokens,
@@ -4276,7 +4212,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
 
       // NEW: Create comparison and trigger optimization
       const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
-      const [comparison] = await db.insert(itineraryComparisons).values({
+      const comparison = await insertItineraryComparison({
         userId,
         title: `${destination} Trip`,
         destination,
@@ -4285,7 +4221,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         budget: numericBudget,
         travelers: travelers || 1,
         status: 'generating',
-      }).returning();
+      });
 
       // Convert generated itinerary to baseline items (with defensive checks)
       const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
@@ -4308,11 +4244,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       });
 
       // Get available services for optimization (reduced to 30 for faster AI processing)
-      const availableServices = await db
-        .select()
-        .from(providerServices)
-        .where(eq(providerServices.status, 'active'))
-        .limit(30);
+      const availableServices = await getActiveProviderServices(30);
 
       // Import optimizer
       const { generateOptimizedItineraries } = await import('../itinerary-optimizer');
@@ -4339,17 +4271,12 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           // Optimization complete — transport legs already calculated inside optimizer
         }).catch(err => {
           console.error('Optimization error:', err);
-          db.update(itineraryComparisons)
-            .set({ status: 'failed' })
-            .where(eq(itineraryComparisons.id, comparison.id))
-            .catch(console.error);
+          updateItineraryComparisonStatus(comparison.id, 'failed').catch(console.error);
         });
       } else {
         console.log('Skipping optimization for multi-city trip:', destination);
         // Mark comparison as complete (no optimization for multi-city)
-        await db.update(itineraryComparisons)
-          .set({ status: 'complete' })
-          .where(eq(itineraryComparisons.id, comparison.id));
+        await updateItineraryComparisonStatus(comparison.id, 'complete');
       }
 
       // Return comparison ID immediately (include 'id' for backwards compatibility)
@@ -4421,7 +4348,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
       });
 
       for (const variation of result.variations) {
-        await db.insert(aiGeneratedItineraries).values({
+        await insertAiGeneratedItinerary({
           userId,
           tripId: tripId || null,
           destination,
@@ -4430,16 +4357,16 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           title: `${variation.variationLabel}: ${variation.title}`,
           summary: variation.summary,
           totalEstimatedCost: variation.totalEstimatedCost.toString(),
-          itineraryData: variation.dailyItinerary as any,
-          accommodationSuggestions: variation.accommodationSuggestions as any,
-          packingList: variation.packingList as any,
-          travelTips: variation.travelTips as any,
+          itineraryData: variation.dailyItinerary,
+          accommodationSuggestions: variation.accommodationSuggestions,
+          packingList: variation.packingList,
+          travelTips: variation.travelTips,
           provider: "grok",
-          status: "generated"
+          status: "generated",
         });
       }
 
-      await db.insert(aiInteractions).values({
+      await insertAiInteraction({
         taskType: "trip_optimization",
         provider: "grok",
         promptTokens: 0,
@@ -4467,12 +4394,7 @@ router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       
-      const itineraries = await db.select()
-        .from(aiGeneratedItineraries)
-        .where(eq(aiGeneratedItineraries.userId, userId))
-        .orderBy(sql`${aiGeneratedItineraries.createdAt} DESC`)
-        .limit(20);
-
+      const itineraries = await getAiItinerariesForUser(userId);
       res.json(itineraries);
     } catch (error: any) {
       console.error("Error fetching user itineraries:", error);
@@ -4487,18 +4409,10 @@ router.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims.sub;
       const { id } = req.params;
       
-      const [itinerary] = await db.select()
-        .from(aiGeneratedItineraries)
-        .where(and(
-          eq(aiGeneratedItineraries.id, id),
-          eq(aiGeneratedItineraries.userId, userId)
-        ))
-        .limit(1);
-
+      const itinerary = await getAiItineraryById(id, userId);
       if (!itinerary) {
         return res.status(404).json({ message: "Itinerary not found" });
       }
-
       res.json(itinerary);
     } catch (error: any) {
       console.error("Error fetching itinerary:", error);
@@ -4731,7 +4645,7 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
+    const user = await storage.getUser(req.user?.claims?.sub);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -5148,9 +5062,7 @@ router.get("/api/travelpulse/global-events", async (req, res) => {
       const currentMonth = new Date().getMonth() + 1;
       
       // Get events from current month onwards
-      let query = db.select().from(destinationEvents);
-      
-      const events = await query;
+      const events = await getAllDestinationEvents().catch(() => []);
       
       // Filter to approved events starting from current month
       let filteredEvents = events.filter(e => 
@@ -5833,9 +5745,7 @@ router.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
       }
 
       // Get existing TravelPulse destination events for this city
-      const existingEvents = await db.select()
-        .from(destinationEvents)
-        .where(eq(destinationEvents.city, cityName));
+      const existingEvents = await getDestinationEventsByCity(cityName);
 
       // Merge and deduplicate (prefer Fever events for matching titles)
       const mergedEvents = [...feverEvents];
@@ -6340,7 +6250,8 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
         return res.status(400).json({ message: "itemName, partnerName, and affiliateUrl are required" });
       }
       // Auto-assign to an expert based on category (city match optional, fallback any expert)
-      const allExperts: any[] = await db.select({ id: users.id }).from(users).where(eq((users as any).role, "expert")).limit(10);
+      const expertIds2 = await getExpertUserIds(10);
+      const allExperts: any[] = expertIds2.map(id => ({ id }));
       const expertId = allExperts.length > 0 ? allExperts[0].id : null;
       const status = expertId ? "assigned" : "pending";
       const record = await storage.createAffiliateBookingRequest({
@@ -6514,10 +6425,10 @@ async function hashPassword(password: string): Promise<string> {
 
 export async function seedDatabase() {
   // Always ensure the platform admin account exists
-  const adminCheck = await db.select().from(users).where(eq(users.email, "admin@traveloure.test")).limit(1);
-  if (adminCheck.length === 0) {
+  const adminCheck = await getAdminUserByEmail("admin@traveloure.test");
+  if (!adminCheck) {
     const hashedPassword = await hashPassword("AdminPass123!");
-    await db.insert(users).values({
+    await insertUser({
       email: "admin@traveloure.test",
       password: hashedPassword,
       firstName: "Admin",
@@ -6532,20 +6443,20 @@ export async function seedDatabase() {
   const existingTrips = await storage.getHelpGuideTrips();
   if (existingTrips.length === 0) {
     // Check if any user exists
-    const usersList = await db.select().from(users).limit(1);
-    let userId = usersList[0]?.id;
+    let firstUser = await getFirstUser();
+    let userId = firstUser?.id;
 
     if (!userId) {
        // Create a dummy user
-       const [newUser] = await db.insert(users).values({
+       const newUser = await insertUser({
          email: "admin@traveloure.com",
          firstName: "Admin",
-         lastName: "User"
-       }).returning();
+         lastName: "User",
+       });
        userId = newUser.id;
     }
 
-    await db.insert(helpGuideTrips).values([
+    await insertHelpGuideTrips([
       {
         userId: userId,
         country: "Japan",
@@ -6563,27 +6474,25 @@ export async function seedDatabase() {
         exclusive: "Flights, Dinner"
       },
       {
-         userId: userId,
-         country: "France",
-         state: "Île-de-France",
-         city: "Paris",
-         title: "Romantic Paris Getaway",
-         description: "Enjoy 3 days in the city of love.",
-         highlights: "Eiffel Tower, Louvre Museum, Seine Cruise",
-         days: 3,
-         nights: 2,
-         price: "1200.00",
-         startDate: "2024-05-10",
-         endDate: "2024-05-13",
-         inclusive: "Hotel, Breakfast, Cruise ticket",
-         exclusive: "Flights, Lunch, Dinner"
+        userId: userId,
+        country: "France",
+        state: "Île-de-France",
+        city: "Paris",
+        title: "Romantic Paris Getaway",
+        description: "Enjoy 3 days in the city of love.",
+        highlights: "Eiffel Tower, Louvre Museum, Seine Cruise",
+        days: 3,
+        nights: 2,
+        price: "1200.00",
+        startDate: "2024-05-10",
+        endDate: "2024-05-13",
+        inclusive: "Hotel, Breakfast, Cruise ticket",
+        exclusive: "Flights, Lunch, Dinner"
       }
     ]);
 
     // Create a search record first to satisfy foreign key
-    const [search] = await db.insert(touristPlacesSearches).values({
-      search: "Tokyo"
-    }).returning();
+    const search = await insertTouristPlacesSearch({ search: "Tokyo" });
   }
 }
 
@@ -6600,7 +6509,7 @@ export async function registerDiscoveryRoutes() {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then((r: any[]) => r[0]);
+    const user = await storage.getUser(req.user?.claims?.sub);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -6690,10 +6599,7 @@ router.get("/api/discovery/gems/:id", async (req, res) => {
       const { aiDiscoveredGems } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
 
-      const [gem] = await db.select()
-        .from(aiDiscoveredGems)
-        .where(eq(aiDiscoveredGems.id, id))
-        .limit(1);
+      const gem = await getAiDiscoveredGemById(id);
 
       if (!gem) {
         return res.status(404).json({ message: "Gem not found" });
@@ -6979,22 +6885,10 @@ router.get("/api/content/discover", async (req, res) => {
         .map(r => r.sourceId).filter(Boolean) as string[];
 
       // Fetch explicitly-placed affiliate products
-      const placedAffiliate = eligibleAffiliateIds.length
-        ? await db.select().from(affiliateProducts)
-            .where(and(
-              eq(affiliateProducts.isActive, true),
-              inArray(affiliateProducts.id, eligibleAffiliateIds)
-            ))
-        : [];
+      const placedAffiliate = await getAffiliateProductsByIds(eligibleAffiliateIds);
 
       // Fetch explicitly-placed registry items
-      const placedRegistry = eligibleRegistryIds.length
-        ? await db.select().from(contentRegistry)
-            .where(and(
-              eq(contentRegistry.status, "published"),
-              inArray(contentRegistry.id, eligibleRegistryIds)
-            ))
-        : [];
+      const placedRegistry = await getContentRegistryByIds(eligibleRegistryIds);
 
       // ── Step 2: ILIKE fallback (excludes items already covered by rules) ─────
       const affiliateBaseCondition = and(
@@ -7012,37 +6906,21 @@ router.get("/api/content/discover", async (req, res) => {
         : affiliateBaseCondition;
 
       // Use notInArray to safely exclude IDs already covered by placement rules
-      const affiliateItems = await db
-        .select()
-        .from(affiliateProducts)
-        .where(
-          eligibleAffiliateIds.length
-            ? and(affiliateCategoryCondition, sql`${affiliateProducts.id}::text != ALL(ARRAY[${sql.raw(eligibleAffiliateIds.map(id => `'${id.replace(/'/g, "''")}'`).join(','))}]::text[])`)
-            : affiliateCategoryCondition
-        )
-        .limit(20);
+      const affiliateItems = await getAffiliateProductsByLocation({
+        city,
+        country,
+        allowedCategories: affiliateCategoryFilter,
+        excludeIds: eligibleAffiliateIds,
+      });
 
       // Query content_registry for published items with location metadata matching destination.
       // Exclude registry items already loaded via placement rules.
-      const registryItems = await db
-        .select()
-        .from(contentRegistry)
-        .where(
-          and(
-            eq(contentRegistry.status, "published"),
-            sql`(
-              ${contentRegistry.metadata}->>'location' ILIKE ${'%' + city + '%'}
-              OR ${contentRegistry.metadata}->>'city' ILIKE ${'%' + city + '%'}
-              OR ${contentRegistry.metadata}->>'country' ILIKE ${'%' + country + '%'}
-              OR ${contentRegistry.metadata}->>'destination' ILIKE ${'%' + city + '%'}
-            )`,
-            inArray(contentRegistry.contentType, allowedContentTypes as any),
-            ...(eligibleRegistryIds.length
-              ? [sql`${contentRegistry.id}::text != ALL(ARRAY[${sql.raw(eligibleRegistryIds.map(id => `'${id.replace(/'/g, "''")}'`).join(','))}]::text[])`]
-              : [])
-          )
-        )
-        .limit(20);
+      const registryItems = await getContentRegistryByLocation({
+        city,
+        country,
+        allowedContentTypes: allowedContentTypes as string[],
+        excludeIds: eligibleRegistryIds,
+      });
 
       // ── Normalizer helpers ────────────────────────────────────────────────────
       const normalizeAffiliate = (p: any, isPinned = false) => ({
@@ -7347,7 +7225,7 @@ router.post("/api/affiliates/track", async (req, res) => {
         return res.status(400).json({ message: "partner is required" });
       }
       const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
-      await db.insert(affiliateClicks).values({
+      await insertAffiliateClick({
         productId: null,
         partnerId: null,
         userId: userId || null,
@@ -7422,30 +7300,8 @@ router.post("/api/content/:trackingNumber/flag", isAuthenticated, async (req, re
 
 router.get("/api/platform/stats", async (_req, res) => {
     try {
-      const [userCount] = await db.select({ count: count() }).from(users);
-      const [tripCount] = await db.select({ count: count() }).from(trips);
-      const [expertCount] = await db.select({ count: count() }).from(localExpertForms).where(eq(localExpertForms.status, "approved"));
-      const [reviewCount] = await db.select({ count: count() }).from(serviceReviews);
-      const [bookingCount] = await db.select({ count: count() }).from(serviceBookings);
-      const allReviews = await db.select({ rating: serviceReviews.rating }).from(serviceReviews);
-      const avgRating = allReviews.length > 0
-        ? (allReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviews.length).toFixed(1)
-        : "4.9";
-
-      const allTrips = await db.select({ destination: trips.destination }).from(trips);
-      const uniqueCountries = new Set(
-        allTrips.map(t => t.destination?.split(",").pop()?.trim()).filter(Boolean)
-      );
-
-      res.json({
-        totalTrips: tripCount?.count || 0,
-        totalUsers: userCount?.count || 0,
-        totalExperts: expertCount?.count || 0,
-        totalReviews: reviewCount?.count || 0,
-        totalBookings: bookingCount?.count || 0,
-        totalCountries: uniqueCountries.size || 0,
-        avgRating,
-      });
+      const stats = await getPlatformStats();
+      res.json(stats);
     } catch (err) {
       console.error("Platform stats error:", err);
       res.status(500).json({ message: "Failed to fetch platform stats" });
@@ -7459,7 +7315,7 @@ router.post("/api/track/search", async (req, res) => {
       const { searchAnalytics } = await import("@shared/schema");
       const userId = (req.user as any)?.claims?.sub;
       
-      await db.insert(searchAnalytics).values({
+      await insertSearchAnalytics({
         sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
         userId,
         searchType: req.body.searchType,
@@ -7499,7 +7355,7 @@ router.post("/api/track/pageview", async (req, res) => {
       const { pageViewAnalytics } = await import("@shared/schema");
       const userId = (req.user as any)?.claims?.sub;
       
-      await db.insert(pageViewAnalytics).values({
+      await insertPageViewAnalytics({
         sessionId: req.body.sessionId,
         userId,
         pagePath: req.body.pagePath,
@@ -7525,7 +7381,7 @@ router.post("/api/track/funnel", async (req, res) => {
       const { bookingFunnelAnalytics } = await import("@shared/schema");
       const userId = (req.user as any)?.claims?.sub;
       
-      await db.insert(bookingFunnelAnalytics).values({
+      await insertBookingFunnelAnalytics({
         sessionId: req.body.sessionId,
         userId,
         funnelStage: req.body.stage,
@@ -7565,7 +7421,7 @@ router.post("/api/track/activity", async (req, res) => {
       const { activityBookingAnalytics } = await import("@shared/schema");
       const userId = (req.user as any)?.claims?.sub;
       
-      await db.insert(activityBookingAnalytics).values({
+      await insertActivityBookingAnalytics({
         sessionId: req.body.sessionId,
         userId,
         activityType: req.body.activityType,
@@ -7576,7 +7432,7 @@ router.post("/api/track/activity", async (req, res) => {
         destination: req.body.destination,
         country: req.body.country,
         city: req.body.city,
-        bookingStatus: req.body.status, // viewed, inquired, booked
+        bookingStatus: req.body.status,
         price: req.body.price,
         groupSize: req.body.groupSize,
         tripType: req.body.tripType,
@@ -7600,7 +7456,7 @@ router.post("/api/track/trip-enhanced", async (req, res) => {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
       const userId = (req.user as any)?.claims?.sub;
       
-      await db.insert(tripAnalyticsEnhanced).values({
+      await insertTripAnalyticsEnhanced({
         tripId: req.body.tripId,
         userId,
         destinationCountry: req.body.destinationCountry,
@@ -7646,7 +7502,7 @@ router.post("/api/track/destination-search", async (req, res) => {
       const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
       
       // Track this search
-      await db.insert(searchAnalytics).values({
+      await insertSearchAnalytics({
         sessionId,
         userId,
         searchType: "destination",
@@ -7658,16 +7514,13 @@ router.post("/api/track/destination-search", async (req, res) => {
 
       // If user has a draft trip, track this as a "considered" destination
       if (userId && req.body.tripId) {
-        const { tripAnalyticsEnhanced } = await import("@shared/schema");
-        const existing = await db.select().from(tripAnalyticsEnhanced).where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId)).then(r => r[0]);
+        const existing = await getTripAnalyticsEnhancedByTripId(req.body.tripId);
         
         if (existing) {
           const considered = (existing.otherDestinationsConsidered as string[] || []);
           if (!considered.includes(req.body.destination) && req.body.destination !== existing.destinationCity) {
             considered.push(req.body.destination);
-            await db.update(tripAnalyticsEnhanced)
-              .set({ otherDestinationsConsidered: considered.slice(-10) }) // Keep last 10
-              .where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId));
+            await updateTripAnalyticsEnhanced(req.body.tripId, { otherDestinationsConsidered: considered.slice(-10) });
           }
         }
       }
@@ -7686,12 +7539,10 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
       const userId = (req.user as any)?.claims?.sub;
       
       if (userId && req.body.tripId) {
-        await db.update(tripAnalyticsEnhanced)
-          .set({ 
-            accommodationType: req.body.accommodationType,
-            starRating: req.body.starRating,
-          })
-          .where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId));
+        await updateTripAnalyticsEnhanced(req.body.tripId, {
+          accommodationType: req.body.accommodationType,
+          starRating: req.body.starRating,
+        });
       }
 
       res.json({ success: true });

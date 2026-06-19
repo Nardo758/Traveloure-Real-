@@ -7,7 +7,6 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -218,10 +217,7 @@ router.post(api.trips.create.path, async (req, res) => {
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
         const token = crypto.randomBytes(32).toString("hex");
-        const [updated] = await db.update(trips)
-          .set({ shareToken: token })
-          .where(eq(trips.id, trip.id))
-          .returning();
+        const updated = await storage.setTripShareToken(trip.id, token);
         return res.status(201).json(updated);
       }
 
@@ -282,11 +278,7 @@ router.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
       }
 
       const userId = (req.user as any).claims.sub;
-      const [updated] = await db.update(trips)
-        .set({ userId })
-        .where(eq(trips.id, req.params.id))
-        .returning();
-
+      const updated = await storage.claimTrip(req.params.id, userId);
       res.json(updated);
     } catch (err) {
       console.error("[trips] claim error:", err);
@@ -404,21 +396,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const existing = await storage.getGeneratedItineraryByTripId(trip.id);
       let itinerary;
       if (existing) {
-        [itinerary] = await db
-          .update(generatedItineraries)
-          .set({ itineraryData, status: "generated" })
-          .where(eq(generatedItineraries.id, existing.id))
-          .returning();
+        itinerary = await storage.updateGeneratedItineraryData(existing.id, itineraryData, "generated");
       } else {
         itinerary = await storage.createGeneratedItinerary({ tripId: trip.id, itineraryData, status: "generated" });
       }
 
       // Rebuild itinerary_items — delete old, insert new
-      await db.delete(itineraryItems).where(eq(itineraryItems.tripId, trip.id));
-
+      const newItems: any[] = [];
       for (const day of itineraryData.days || []) {
         for (const activity of day.activities || []) {
-          await db.insert(itineraryItems).values({
+          newItems.push({
             tripId: trip.id,
             title: activity.title || "Activity",
             description: activity.description || "",
@@ -433,6 +420,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           });
         }
       }
+      await storage.replaceItineraryItems(trip.id, newItems);
 
       res.status(201).json(itinerary);
     } catch (err) {
@@ -541,27 +529,14 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
       // Check free 24h rerun eligibility first (no Stripe call needed)
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const [recentRun] = await db
-        .select({ id: itineraryComparisons.id })
-        .from(itineraryComparisons)
-        .where(
-          and(
-            eq(itineraryComparisons.userId, userId),
-            sql`${itineraryComparisons.optimizedAt} >= ${cutoff.toISOString()}`
-          )
-        )
-        .limit(1);
+      const recentRun = await storage.getRecentOptimizationRun(userId, cutoff);
 
       if (recentRun) {
         canRunOptimizer = true;
       } else if (optimizationPaymentId) {
         // Paid run path — verify payment before allowing optimizer
         // Reject reuse: check if this PI is already tied to any existing comparison
-        const [alreadyUsed] = await db
-          .select({ id: itineraryComparisons.id })
-          .from(itineraryComparisons)
-          .where(eq(itineraryComparisons.optimizationPaymentId, optimizationPaymentId))
-          .limit(1);
+        const alreadyUsed = await storage.getComparisonByOptimizationPaymentId(optimizationPaymentId);
         if (alreadyUsed) {
           return res.status(409).json({
             error: "payment_already_used",
@@ -604,16 +579,9 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           // recompute — no hardcoded allow-list of amounts.
           let actualEventType: string | undefined;
           if (tripId) {
-            const [tRow] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
-            actualEventType = tRow?.eventType ?? undefined;
+            actualEventType = (await storage.getTripEventType(tripId)) ?? undefined;
           } else {
-            const [eRow] = await db
-              .select({ slug: experienceTypes.slug })
-              .from(userExperiences)
-              .innerJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
-              .where(eq(userExperiences.id, userExperienceId!))
-              .limit(1);
-            actualEventType = eRow?.slug ?? undefined;
+            actualEventType = (await storage.getExperienceTypeSlugByExperienceId(userExperienceId!)) ?? undefined;
           }
           const actualTier = complexityTier(actualEventType);
           const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
@@ -641,9 +609,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
       // canRunOptimizer=false → comparison created with status "pending_payment"
       // canRunOptimizer=true  → comparison created with status "generating" + optimizer triggered
 
-      const [comparison] = await db
-        .insert(itineraryComparisons)
-        .values({
+      const comparison = await storage.createItineraryComparison({
           userId,
           userExperienceId,
           tripId,
@@ -656,8 +622,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
           experienceTypeSlug: experienceTypeSlug || null,
           status: canRunOptimizer ? "generating" : "pending_payment",
           ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
-        })
-        .returning();
+        });
 
       // Auto-generate AI alternatives immediately
       let baselineItems: any[] = [];
@@ -679,14 +644,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
         }));
       } else {
         // Fall back to cart items
-        const cartItemsData = await db
-          .select({
-            cartItem: cartItems,
-            service: providerServices,
-          })
-          .from(cartItems)
-          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
-          .where(eq(cartItems.userId, userId));
+        const cartItemsData = await storage.getCartItemsWithServices(userId);
 
         baselineItems = cartItemsData.map((item, index) => ({
           id: item.cartItem.id,
@@ -706,11 +664,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
       // Trigger AI optimization in background only when authorized (payment verified or free rerun)
       if (canRunOptimizer && baselineItems.length > 0) {
-        const availableServices = await db
-          .select()
-          .from(providerServices)
-          .where(eq(providerServices.status, "active"))
-          .limit(100);
+        const availableServices = await storage.getActiveProviderServices(100);
 
         // Ensure dates are in YYYY-MM-DD format
         const formatDate = (d: string | undefined | null) => {
@@ -722,11 +676,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
         // Build trip preferences for adaptive variant strategy
         let tripPreferences: TripPreferences | undefined;
         if (tripId) {
-          const [tripRow] = await db
-            .select({ eventType: trips.eventType, budget: trips.budget, preferences: trips.preferences })
-            .from(trips)
-            .where(eq(trips.id, tripId))
-            .limit(1);
+          const tripRow = await storage.getTrip(tripId);
           if (tripRow) {
             const prefs = (tripRow.preferences as Record<string, any>) || {};
             tripPreferences = {
@@ -764,12 +714,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const comparisons = await db
-        .select()
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.userId, userId))
-        .orderBy(itineraryComparisons.createdAt);
-
+      const comparisons = await storage.getComparisonsByUserId(userId);
       res.json(comparisons);
     } catch (error) {
       console.error("Error fetching comparisons:", error);
@@ -805,9 +750,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
       const comparisonId = req.params.id;
       const { baselineItems: inlineBaselineItems } = req.body;
 
-      const comparison = await db.query.itineraryComparisons.findFirst({
-        where: eq(itineraryComparisons.id, comparisonId),
-      });
+      const comparison = await storage.getItineraryComparison(comparisonId);
 
       if (!comparison) {
         return res.status(404).json({ message: "Comparison not found" });
@@ -835,10 +778,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
           provider: item.provider || "Provider"
         }));
       } else if (comparison.userExperienceId) {
-        const items = await db
-          .select()
-          .from(userExperienceItems)
-          .where(eq(userExperienceItems.userExperienceId, comparison.userExperienceId));
+        const items = await storage.getUserExperienceItems(comparison.userExperienceId);
 
         baselineItems = items.map((item) => ({
           id: item.id,
@@ -853,14 +793,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
           timeSlot: item.scheduledTime || "morning",
         }));
       } else {
-        const cartItemsData = await db
-          .select({
-            cartItem: cartItems,
-            service: providerServices,
-          })
-          .from(cartItems)
-          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
-          .where(eq(cartItems.userId, userId));
+        const cartItemsData = await storage.getCartItemsWithServices(userId);
 
         baselineItems = cartItemsData.map((item, index) => ({
           id: item.cartItem.id,
@@ -880,22 +813,14 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
         return res.status(400).json({ message: "No items to optimize. Add services to your cart or experience first." });
       }
 
-      const availableServices = await db
-        .select()
-        .from(providerServices)
-        .where(eq(providerServices.status, "active"))
-        .limit(100);
+      const availableServices = await storage.getActiveProviderServices(100);
 
       res.json({ message: "Optimization started", status: "generating" });
 
       // Build trip preferences for adaptive variant strategy
       let tripPreferencesForGen: TripPreferences | undefined;
       if (comparison.tripId) {
-        const [tripRowForGen] = await db
-          .select({ eventType: trips.eventType, budget: trips.budget, preferences: trips.preferences })
-          .from(trips)
-          .where(eq(trips.id, comparison.tripId))
-          .limit(1);
+        const tripRowForGen = await storage.getTrip(comparison.tripId);
         if (tripRowForGen) {
           const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
           tripPreferencesForGen = {
@@ -933,9 +858,7 @@ router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req
       const userId = (req.user as any).claims.sub;
       const { variantId } = req.body;
 
-      const comparison = await db.query.itineraryComparisons.findFirst({
-        where: eq(itineraryComparisons.id, req.params.id),
-      });
+      const comparison = await storage.getItineraryComparison(req.params.id);
 
       if (!comparison) {
         return res.status(404).json({ message: "Comparison not found" });
@@ -964,9 +887,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
       const userId = (req.user as any).claims.sub;
       const comparisonId = req.params.id;
 
-      const comparison = await db.query.itineraryComparisons.findFirst({
-        where: eq(itineraryComparisons.id, comparisonId),
-      });
+      const comparison = await storage.getItineraryComparison(comparisonId);
 
       if (!comparison || comparison.userId !== userId) {
         return res.status(404).json({ message: "Comparison not found" });
@@ -976,24 +897,8 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
         return res.status(400).json({ message: "No variant selected" });
       }
 
-      const variantItems = await db
-        .select()
-        .from(itineraryVariantItems)
-        .where(eq(itineraryVariantItems.variantId, comparison.selectedVariantId));
-
-      await db.delete(cartItems).where(eq(cartItems.userId, userId));
-
-      for (const item of variantItems) {
-        if (item.providerServiceId) {
-          await db.insert(cartItems).values({
-            userId,
-            serviceId: item.providerServiceId,
-            quantity: 1,
-            notes: `Day ${item.dayNumber} - ${item.timeSlot}`,
-          });
-        }
-      }
-
+      const variantItems = await storage.getItineraryVariantItemsByVariantId(comparison.selectedVariantId);
+      await storage.replaceUserCartWithVariantItems(userId, variantItems);
       res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
     } catch (error) {
       console.error("Error applying to cart:", error);
@@ -1076,7 +981,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
       });
 
       // Store generated itinerary
-      const [saved] = await db.insert(aiGeneratedItineraries).values({
+      const saved = await storage.saveAiGeneratedItinerary({
         userId,
         destination: itineraryRequest.destination,
         startDate: itineraryRequest.dates.start,
@@ -1090,7 +995,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
         travelTips: result.travelTips || [],
         provider: "grok",
         status: "generated",
-      }).returning();
+      });
 
       res.json({
         ...result,
@@ -1578,52 +1483,33 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
       const { tripId } = req.params;
       const userId = (req as any).user?.id;
 
-      const [trip] = await db
-        .select()
-        .from(trips)
-        .where(and(eq(trips.id, tripId), eq(trips.userId, userId)));
-      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      const trip = await storage.getTrip(tripId);
+      if (!trip || trip.userId !== userId) return res.status(404).json({ error: "Trip not found" });
 
-      const [genItinerary] = await db
-        .select()
-        .from(generatedItineraries)
-        .where(eq(generatedItineraries.tripId, tripId));
-      if (!genItinerary?.itineraryData) {
+      const genItinerary = await storage.getGeneratedItineraryByTripId(tripId);
+      if (!(genItinerary as any)?.itineraryData) {
         return res.status(404).json({ error: "No generated itinerary found for this trip" });
       }
 
-      let [comparison] = await db
-        .select()
-        .from(itineraryComparisons)
-        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
-
+      let comparison = await storage.getComparisonByTripAndUser(tripId, userId);
       if (!comparison) {
-        const [created] = await db.insert(itineraryComparisons).values({
+        comparison = await storage.createItineraryComparison({
           userId,
           tripId,
           title: trip.title || trip.destination || "My Trip",
           destination: trip.destination,
           status: "active",
-        }).returning();
-        comparison = created;
+        });
       }
 
-      let [variant] = await db
-        .select()
-        .from(itineraryVariants)
-        .where(and(
-          eq(itineraryVariants.comparisonId, comparison.id),
-          eq(itineraryVariants.source, "ai")
-        ));
-
+      let variant = await storage.getAiVariantByComparison(comparison.id);
       if (!variant) {
-        const [created] = await db.insert(itineraryVariants).values({
+        variant = await storage.createItineraryVariant({
           comparisonId: comparison.id,
           name: "AI Generated",
           source: "ai",
           status: "active",
-        }).returning();
-        variant = created;
+        });
       }
 
       const data: any = genItinerary.itineraryData;
@@ -1654,10 +1540,7 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
 
       await calculateTransportLegs(variant.id, activities, trip.destination || "", {});
 
-      const savedLegs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, variant.id));
+      const savedLegs = await storage.getTransportLegsByVariantId(variant.id);
 
       return res.json({
         variantId: variant.id,
@@ -1988,7 +1871,7 @@ router.post("/api/trips/:tripId/calculate-energy", isAuthenticated, async (req, 
       }
 
       // Get all itinerary items for the trip grouped by day
-      const items = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, req.params.tripId));
+      const items = await storage.getItineraryItems(req.params.tripId);
 
       const dayMap = new Map<number, typeof items>();
       for (const item of items) {
@@ -2137,31 +2020,11 @@ router.get("/api/trips/:tripId/workspace-constraints", isAuthenticated, async (r
 
       // Fetch optimizer scores from the most recent variant for this trip
       let optimizerScores: Record<string, number> | null = null;
-      const comparisons = await db
-        .select({ id: itineraryComparisons.id })
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.tripId, tripId))
-        .orderBy(desc(itineraryComparisons.createdAt))
-        .limit(1);
-
-      if (comparisons.length > 0) {
-        const variants = await db
-          .select({ id: itineraryVariants.id })
-          .from(itineraryVariants)
-          .where(eq(itineraryVariants.comparisonId, comparisons[0].id))
-          .orderBy(desc(itineraryVariants.createdAt))
-          .limit(1);
-
-        if (variants.length > 0) {
-          const scoreMetrics = await db
-            .select()
-            .from(itineraryVariantMetrics)
-            .where(
-              and(
-                eq(itineraryVariantMetrics.variantId, variants[0].id),
-                inArray(itineraryVariantMetrics.metricKey, ['balance_score', 'wellness_score', 'pace_score', 'diversity_score'])
-              )
-            );
+      const latestComparison = await storage.getLatestComparisonByTripId(tripId);
+      if (latestComparison) {
+        const latestVariant = await storage.getLatestVariantByComparisonId(latestComparison.id);
+        if (latestVariant) {
+          const scoreMetrics = await storage.getVariantMetricsByKeys(latestVariant.id, ['balance_score', 'wellness_score', 'pace_score', 'diversity_score']);
           if (scoreMetrics.length > 0) {
             optimizerScores = {};
             for (const m of scoreMetrics) {
@@ -2324,18 +2187,10 @@ router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (
       const userId = (req as any).user?.id;
       const { sharedWithUserId, permissions = "view", transportPreferences } = req.body;
 
-      const [variant] = await db
-        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, variantId));
-
+      const variant = await storage.getItineraryVariantById(variantId);
       if (!variant) return res.status(404).json({ error: "Variant not found" });
 
-      const [comparison] = await db
-        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination })
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.id, variant.comparisonId));
-
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
       if (!comparison || comparison.userId !== userId) {
         return res.status(403).json({ error: "Not authorized" });
       }
@@ -2348,7 +2203,7 @@ router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (
           ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
           : `https://traveloure.com`);
 
-      await db.insert(sharedItineraries).values({
+      await storage.createSharedItinerary({
         shareToken,
         variantId,
         sharedByUserId: userId,
@@ -2358,7 +2213,7 @@ router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (
       });
 
       if (sharedWithUserId) {
-        await db.insert(notifications).values({
+        await storage.createNotification({
           userId: sharedWithUserId,
           type: "itinerary_shared",
           title: "Itinerary shared with you",
@@ -2385,27 +2240,13 @@ router.get("/api/trips/:id/share-info", isAuthenticated, async (req, res) => {
       const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
       const tripId = req.params.id;
 
-      const comparisons = await db
-        .select({ id: itineraryComparisons.id, selectedVariantId: itineraryComparisons.selectedVariantId })
-        .from(itineraryComparisons)
-        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
-
+      const comparisons = await storage.getComparisonsByTripAndUser(tripId, userId);
       if (comparisons.length === 0) return res.json({});
 
-      const variantIds = comparisons.map(c => c.id);
-      const variantRows = await db
-        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
-        .from(itineraryVariants)
-        .where(inArray(itineraryVariants.comparisonId, variantIds));
-
+      const variantRows = await storage.getVariantsByComparisonIds(comparisons.map(c => c.id));
       if (variantRows.length === 0) return res.json({});
 
-      const vids = variantRows.map(v => v.id);
-      const shares = await db
-        .select()
-        .from(sharedItineraries)
-        .where(and(inArray(sharedItineraries.variantId, vids), eq(sharedItineraries.sharedByUserId, userId)))
-        .orderBy(sharedItineraries.createdAt);
+      const shares = await storage.getSharedItinerariesByVariantIds(variantRows.map(v => v.id), userId);
 
       if (shares.length === 0) return res.json({});
 
@@ -2429,52 +2270,24 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
     try {
       const { token } = req.params;
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Shared itinerary not found" });
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "This share link has expired" });
       }
 
-      await db
-        .update(sharedItineraries)
-        .set({ viewCount: (shared.viewCount || 0) + 1, lastViewedAt: new Date() })
-        .where(eq(sharedItineraries.id, shared.id));
+      await storage.incrementSharedItineraryViewCount(shared.id, shared.viewCount);
 
-      const [variant] = await db
-        .select()
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, shared.variantId));
+      const [variant, items, legs, exportCache, sharer] = await Promise.all([
+        storage.getItineraryVariantById(shared.variantId),
+        storage.getItineraryVariantItemsByVariantId(shared.variantId),
+        storage.getTransportLegsByVariantId(shared.variantId),
+        storage.getMapsExportCacheByVariantId(shared.variantId),
+        storage.getUserPublicProfile(shared.sharedByUserId),
+      ]);
 
       if (!variant) return res.status(404).json({ error: "Variant not found" });
-
-      const [comparison] = await db
-        .select()
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.id, variant.comparisonId));
-
-      const items = await db
-        .select()
-        .from(itineraryVariantItems)
-        .where(eq(itineraryVariantItems.variantId, shared.variantId));
-
-      const legs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, shared.variantId));
-
-      const [exportCache] = await db
-        .select()
-        .from(mapsExportCache)
-        .where(eq(mapsExportCache.variantId, shared.variantId));
-
-      const [sharer] = await db
-        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
-        .from(users)
-        .where(eq(users.id, shared.sharedByUserId));
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
 
       const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
       const days = dayNumbers.map(dayNum => {
@@ -2590,29 +2403,15 @@ router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res
         return res.status(404).json({ error: "Trip not found" });
       }
 
-      const [comparison] = await db
-        .select({ selectedVariantId: itineraryComparisons.selectedVariantId })
-        .from(itineraryComparisons)
-        .where(
-          and(
-            eq(itineraryComparisons.tripId, tripId),
-            isNotNull(itineraryComparisons.selectedVariantId)
-          )
-        )
-        .orderBy(desc(itineraryComparisons.createdAt))
-        .limit(1);
-
-      if (!comparison?.selectedVariantId) {
+      const selectedVariant = await storage.getSelectedVariantByTrip(tripId);
+      if (!selectedVariant?.selectedVariantId) {
         return res.json({ legs: [], variantId: null });
       }
 
-      const legs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, comparison.selectedVariantId))
-        .orderBy(asc(transportLegs.legOrder));
+      const legs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
+        .sort((a: any, b: any) => a.legOrder - b.legOrder);
 
-      res.json({ legs, variantId: comparison.selectedVariantId });
+      res.json({ legs, variantId: selectedVariant.selectedVariantId });
     } catch (err: any) {
       console.error("Get trip transport legs error:", err);
       res.status(500).json({ error: "Failed to load transport legs" });
@@ -2631,34 +2430,17 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
       if (!userId && !shareToken) return res.status(401).json({ error: "Authentication or share token required" });
 
-      const [leg] = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.id, legId));
-
+      const leg = await storage.getTransportLegById(legId);
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
 
       // Ownership check: verify via the variant's comparison owner OR valid suggest share token
-      const [variant] = await db
-        .select({ comparisonId: itineraryVariants.comparisonId })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, leg.variantId));
-
-      if (variant) {
-        const [comparison] = await db
-          .select({ userId: itineraryComparisons.userId })
-          .from(itineraryComparisons)
-          .where(eq(itineraryComparisons.id, variant.comparisonId));
-
-        const isOwner = userId && comparison?.userId === userId;
+      const variantOwner = await storage.getVariantWithComparisonOwner(leg.variantId);
+      if (variantOwner) {
+        const isOwner = userId && variantOwner.userId === userId;
 
         if (!isOwner) {
           if (shareToken) {
-            const [shared] = await db
-              .select({ permissions: sharedItineraries.permissions, variantId: sharedItineraries.variantId, expiresAt: sharedItineraries.expiresAt })
-              .from(sharedItineraries)
-              .where(and(eq(sharedItineraries.shareToken, shareToken), eq(sharedItineraries.variantId, leg.variantId)));
-
+            const shared = await storage.getSharedItineraryByTokenAndVariant(shareToken, leg.variantId);
             if (!shared) return res.status(403).json({ error: "Not authorized to update this transport leg" });
             if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
               return res.status(410).json({ error: "Share link has expired" });
@@ -2688,16 +2470,12 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       const prevDuration = leg.estimatedDurationMinutes;
       const timeDiff = newDuration - prevDuration;
 
-      await db
-        .update(transportLegs)
-        .set({
-          userSelectedMode: selectedMode,
-          estimatedDurationMinutes: newDuration,
-          estimatedCostUsd: newCost ?? null,
-          energyCost: newEnergy ?? 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(transportLegs.id, legId));
+      await storage.updateTransportLegMode(legId, {
+        userSelectedMode: selectedMode,
+        estimatedDurationMinutes: newDuration,
+        estimatedCostUsd: newCost ?? null,
+        energyCost: newEnergy ?? 0,
+      });
 
       // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
       let updatedMapsUrls: { googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> } | null = null;
@@ -2716,11 +2494,11 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
         downstreamMessage = `Transport mode updated to ${selectedMode}.`;
       }
 
-      if (variant) {
-        const [comp] = await db.select({ tripId: itineraryComparisons.tripId }).from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
-        if (comp?.tripId) {
+      if (variantOwner) {
+        const compTripId = await storage.getComparisonTripId(variantOwner.comparisonId);
+        if (compTripId) {
           const who = userId ? ((req.user as any)?.claims?.name || "User") : "Guest";
-          logItineraryChange(comp.tripId, who, `Changed transport mode to ${selectedMode} (${leg.fromName} → ${leg.toName})`, "transport", shareToken ? "friend" : "owner", undefined, { legId, selectedMode, previousMode: leg.userSelectedMode || leg.recommendedMode });
+          logItineraryChange(compTripId, who, `Changed transport mode to ${selectedMode} (${leg.fromName} → ${leg.toName})`, "transport", shareToken ? "friend" : "owner", undefined, { legId, selectedMode, previousMode: leg.userSelectedMode || leg.recommendedMode });
         }
       }
 
@@ -2750,19 +2528,14 @@ router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
     try {
       const { token } = req.params;
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const [variant] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, shared.variantId));
-      const [comparison] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
-      const items = await db.select().from(itineraryVariantItems).where(eq(itineraryVariantItems.variantId, shared.variantId));
-      const legs = await db.select().from(transportLegs).where(eq(transportLegs.variantId, shared.variantId));
-
-      const [cached] = await db.select().from(mapsExportCache).where(eq(mapsExportCache.variantId, shared.variantId));
+      const variant = await storage.getItineraryVariantById(shared.variantId);
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
+      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
+      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
 
       let kmlContent = cached?.kmlContent;
 
@@ -2806,7 +2579,7 @@ router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
           days,
         });
 
-        await db.update(mapsExportCache).set({ kmlContent }).where(eq(mapsExportCache.variantId, shared.variantId));
+        await storage.updateMapsExportCache(shared.variantId, { kmlContent });
       }
 
       res.setHeader("Content-Type", "application/vnd.google-earth.kml+xml");
@@ -2824,19 +2597,14 @@ router.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
     try {
       const { token } = req.params;
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const [variant] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, shared.variantId));
-      const [comparison] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
-      const items = await db.select().from(itineraryVariantItems).where(eq(itineraryVariantItems.variantId, shared.variantId));
-      const legs = await db.select().from(transportLegs).where(eq(transportLegs.variantId, shared.variantId));
-
-      const [cached] = await db.select().from(mapsExportCache).where(eq(mapsExportCache.variantId, shared.variantId));
+      const variant = await storage.getItineraryVariantById(shared.variantId);
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
+      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
+      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
 
       let gpxContent = cached?.gpxContent;
 
@@ -2880,7 +2648,7 @@ router.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
           days,
         });
 
-        await db.update(mapsExportCache).set({ gpxContent }).where(eq(mapsExportCache.variantId, shared.variantId));
+        await storage.updateMapsExportCache(shared.variantId, { gpxContent });
       }
 
       res.setHeader("Content-Type", "application/gpx+xml");
@@ -2899,23 +2667,10 @@ router.get("/api/itinerary-share/:token/navigate/:dayNumber/:legOrder", async (r
       const { token, dayNumber, legOrder } = req.params;
       const { platform = "google", currentLat, currentLng } = req.query as Record<string, string>;
 
-      const [shared] = await db
-        .select({ variantId: sharedItineraries.variantId })
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const [leg] = await db
-        .select()
-        .from(transportLegs)
-        .where(
-          and(
-            eq(transportLegs.variantId, shared.variantId),
-            eq(transportLegs.dayNumber, parseInt(dayNumber)),
-            eq(transportLegs.legOrder, parseInt(legOrder))
-          )
-        );
+      const leg = await storage.getTransportLegByDayOrder(shared.variantId, parseInt(dayNumber), parseInt(legOrder));
 
       if (!leg) return res.status(404).json({ error: "Leg not found" });
 
@@ -2944,21 +2699,7 @@ router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
       const userId = (req as any).user?.id;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const userLegs = await db
-        .select({
-          id: transportLegs.id,
-          variantId: transportLegs.variantId,
-          legOrder: transportLegs.legOrder,
-          fromName: transportLegs.fromName,
-          toName: transportLegs.toName,
-          userSelectedMode: transportLegs.userSelectedMode,
-          recommendedMode: transportLegs.recommendedMode,
-        })
-        .from(transportLegs)
-        .innerJoin(itineraryVariants, eq(itineraryVariants.id, transportLegs.variantId))
-        .innerJoin(itineraryComparisons, eq(itineraryComparisons.id, itineraryVariants.comparisonId))
-        .where(eq(itineraryComparisons.userId, userId));
-
+      const userLegs = await storage.getUserTransportLegsWithJoin(userId);
       res.json(userLegs);
     } catch (err: any) {
       console.error("Get user transport legs error:", err);
@@ -2974,26 +2715,11 @@ router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated,
       const userId = (req as any).user?.id;
 
       // Verify ownership: the variant must belong to a comparison owned by the requesting user
-      const [variant] = await db
-        .select({ comparisonId: itineraryVariants.comparisonId })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, variantId));
+      const variantOwner = await storage.getVariantWithComparisonOwner(variantId);
+      if (!variantOwner) return res.status(404).json({ error: "Variant not found" });
+      if (variantOwner.userId !== userId) return res.status(403).json({ error: "Not authorized" });
 
-      if (!variant) return res.status(404).json({ error: "Variant not found" });
-
-      const [comparison] = await db
-        .select({ userId: itineraryComparisons.userId })
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.id, variant.comparisonId));
-
-      if (!comparison || comparison.userId !== userId) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
-
-      const legs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, variantId));
+      const legs = await storage.getTransportLegsByVariantId(variantId);
       res.json(legs);
     } catch (err: any) {
       console.error("Get transport legs error:", err);
@@ -3009,26 +2735,15 @@ router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenti
       const userId = (req as any).user?.id;
       const { userPrefs } = req.body;
 
-      const [variant] = await db
-        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, variantId));
-
+      const variant = await storage.getItineraryVariantById(variantId);
       if (!variant) return res.status(404).json({ error: "Variant not found" });
 
-      const [comparison] = await db
-        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination })
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.id, variant.comparisonId));
-
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
       if (!comparison || comparison.userId !== userId) {
         return res.status(403).json({ error: "Not authorized" });
       }
 
-      const items = await db
-        .select()
-        .from(itineraryVariantItems)
-        .where(eq(itineraryVariantItems.variantId, variantId));
+      const items = await storage.getItineraryVariantItemsByVariantId(variantId);
 
       const activities = items
         .filter(item => item.latitude && item.longitude)
@@ -3068,11 +2783,7 @@ router.post("/api/itinerary-share/:token/suggest", async (req, res) => {
       if (!userId) return res.status(401).json({ error: "Authentication required to submit suggestions" });
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Share not found" });
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "Share link has expired" });
@@ -3081,17 +2792,9 @@ router.post("/api/itinerary-share/:token/suggest", async (req, res) => {
         return res.status(403).json({ error: "This share link does not allow suggestions" });
       }
 
-      const [variant] = await db
-        .select({ comparisonId: itineraryVariants.comparisonId, name: itineraryVariants.name })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, shared.variantId));
-
+      const variant = await storage.getItineraryVariantById(shared.variantId);
       if (!variant) return res.status(404).json({ error: "Variant not found" });
-
-      const [comparison] = await db
-        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination })
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.id, variant.comparisonId));
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
 
       // Build diff payload
       const expertDiff = {
@@ -3101,9 +2804,7 @@ router.post("/api/itinerary-share/:token/suggest", async (req, res) => {
       };
 
       // Save diff + notes + update status on shared_itineraries
-      await db.execute(
-        sql`UPDATE shared_itineraries SET expert_status = 'review_sent', expert_notes = ${notes}, expert_diff = ${JSON.stringify(expertDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
-      );
+      await storage.updateSharedItineraryExpertReview(shared.id, "review_sent", { notes, diff: expertDiff });
 
       // Send notification to the owner
       if (comparison?.userId) {
@@ -3111,7 +2812,7 @@ router.post("/api/itinerary-share/:token/suggest", async (req, res) => {
         const diffSummary = hasDiffs
           ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
           : "";
-        await db.insert(notifications).values({
+        await storage.createNotification({
           userId: comparison.userId,
           type: "expert_suggestion",
           title: "Expert sent itinerary edits",
@@ -3140,11 +2841,7 @@ router.patch("/api/itinerary-share/:token/acknowledge", async (req, res) => {
         return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
       }
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Share not found" });
 
       // Only the original sharer (owner) can acknowledge
@@ -3156,9 +2853,7 @@ router.patch("/api/itinerary-share/:token/acknowledge", async (req, res) => {
       }
 
       const newStatus = action === "accept" ? "acknowledged" : "rejected";
-      await db.execute(
-        sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
-      );
+      await storage.updateSharedItineraryExpertReview(shared.id, newStatus);
 
       res.json({ success: true, status: newStatus });
     } catch (err: any) {
@@ -3178,11 +2873,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
       if (!userId) return res.status(401).json({ error: "Authentication required to submit expert edits" });
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, shareToken));
-
+      const shared = await storage.getSharedItineraryByToken(shareToken);
       if (!shared) return res.status(404).json({ error: "Share not found" });
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "Share link has expired" });
@@ -3191,28 +2882,15 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
         return res.status(403).json({ error: "This share link does not allow expert edits" });
       }
 
-      const [variant] = await db
-        .select({ comparisonId: itineraryVariants.comparisonId, name: itineraryVariants.name })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, shared.variantId));
-
+      const variant = await storage.getItineraryVariantById(shared.variantId);
       if (!variant) return res.status(404).json({ error: "Variant not found" });
-
-      const [comparison] = await db
-        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination, tripId: itineraryComparisons.tripId })
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.id, variant.comparisonId));
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
 
       // Build full itinerary snapshot: original items with expert diffs applied
-      const originalItems = await db
-        .select()
-        .from(itineraryVariantItems)
-        .where(eq(itineraryVariantItems.variantId, shared.variantId));
-
-      const originalLegs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, shared.variantId));
+      const [originalItems, originalLegs] = await Promise.all([
+        storage.getItineraryVariantItemsByVariantId(shared.variantId),
+        storage.getTransportLegsByVariantId(shared.variantId),
+      ]);
 
       const resolvedActivityDiffs = activityDiffs || {};
       const resolvedTransportDiffs = transportDiffs || {};
@@ -3273,7 +2951,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
       };
 
       // Save full edited snapshot + message to expert_updated_itineraries
-      await db.insert(expertUpdatedItineraries).values({
+      await storage.saveExpertUpdatedItinerary({
         tripId: comparison?.tripId || null,
         shareToken,
         itineraryData: itinerarySnapshot,
@@ -3283,9 +2961,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
       });
 
       // Update shared_itineraries with status + diff for traveler review
-      await db.execute(
-        sql`UPDATE shared_itineraries SET expert_status = 'review_sent', expert_notes = ${notes}, expert_diff = ${JSON.stringify(expertDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
-      );
+      await storage.updateSharedItineraryExpertReview(shared.id, "review_sent", { notes, diff: expertDiff });
 
       // Notify the itinerary owner
       if (comparison?.userId) {
@@ -3293,7 +2969,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
         const diffSummary = hasDiffs
           ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
           : "";
-        await db.insert(notifications).values({
+        await storage.createNotification({
           userId: comparison.userId,
           type: "expert_suggestion",
           title: "Expert sent itinerary edits",
@@ -3322,11 +2998,7 @@ router.patch("/api/expert-review/:shareToken/acknowledge", async (req, res) => {
         return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
       }
 
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, shareToken));
-
+      const shared = await storage.getSharedItineraryByToken(shareToken);
       if (!shared) return res.status(404).json({ error: "Share not found" });
 
       if (!userId) {
@@ -3349,18 +3021,12 @@ router.patch("/api/expert-review/:shareToken/acknowledge", async (req, res) => {
             delete updatedTransportDiffs[id];
           }
           const updatedDiff = { ...currentDiff, activityDiffs: updatedActivityDiffs, transportDiffs: updatedTransportDiffs };
-          await db.execute(
-            sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, expert_diff = ${JSON.stringify(updatedDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
-          );
+          await storage.updateSharedItineraryExpertReview(shared.id, newStatus, { diff: updatedDiff });
         } else {
-          await db.execute(
-            sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
-          );
+          await storage.updateSharedItineraryExpertReview(shared.id, newStatus);
         }
       } else {
-        await db.execute(
-          sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
-        );
+        await storage.updateSharedItineraryExpertReview(shared.id, newStatus);
       }
 
       res.json({ success: true, status: newStatus });
@@ -3379,24 +3045,11 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
       const { token } = req.params;
 
       // Fetch share metadata from DB
-      const [shared] = await db
-        .select()
-        .from(sharedItineraries)
-        .where(eq(sharedItineraries.shareToken, token));
-
+      const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return next(); // Let SPA handle 404
 
-      const [variant] = await db
-        .select()
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.id, shared.variantId));
-
-      const [comparison] = variant
-        ? await db
-            .select()
-            .from(itineraryComparisons)
-            .where(eq(itineraryComparisons.id, variant.comparisonId))
-        : [null];
+      const variant = await storage.getItineraryVariantById(shared.variantId);
+      const comparison = variant ? await storage.getItineraryComparison(variant.comparisonId) : null;
 
       const destination = comparison?.destination || "an amazing destination";
       const variantName = variant?.name || "Travel Itinerary";
@@ -3447,10 +3100,9 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
 
   async function inferTripAnalytics(tripId: string, userId: string) {
     try {
-      const { tripAnalyticsEnhanced } = await import("@shared/schema");
       const trip = await storage.getTrip(tripId);
       if (!trip) return;
-      const itineraryData = await db.select().from(generatedItineraries).where(eq(generatedItineraries.tripId, tripId)).then((r: any[]) => r[0]);
+      const itineraryData = await storage.getGeneratedItineraryByTripId(tripId);
       const items = itineraryData?.itineraryData as any;
       let partyComposition = "group";
       const travelers = trip.numberOfTravelers || 1;
@@ -3482,7 +3134,7 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
         for (const day of items.dailyItinerary) { for (const activity of day.activities || []) { const type = activity.type || activity.category || "sightseeing"; activityCounts[type] = (activityCounts[type] || 0) + 1; } }
         primaryActivity = Object.entries(activityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
       }
-      await db.insert(tripAnalyticsEnhanced).values({ tripId, userId, destinationCity, destinationCountry, tripStartDate: startDate, tripEndDate: endDate, lengthOfStay, season, partySize: travelers, partyComposition, hasChildren, tripPurpose: eventType, totalBudget: trip.budget, priceSegment, primaryActivity }).onConflictDoUpdate({ target: [tripAnalyticsEnhanced.tripId], set: { partyComposition, hasChildren, lengthOfStay, season, priceSegment, primaryActivity } });
+      await storage.upsertTripAnalytics({ tripId, userId, destinationCity, destinationCountry, tripStartDate: startDate, tripEndDate: endDate, lengthOfStay, season, partySize: travelers, partyComposition, hasChildren, tripPurpose: eventType, totalBudget: trip.budget, priceSegment, primaryActivity });
     } catch (err) { console.error("Error inferring trip analytics:", err); }
   }
 
@@ -3523,10 +3175,8 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       if (!canMutateTrip(tripRole)) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
       }
-      const existing = await db.select().from(itineraryItems)
-        .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
-        .limit(1);
-      if (!existing.length) return res.status(404).json({ message: "Item not found in this trip" });
+      const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
+      if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
       // Strip immutable/ownership fields to prevent mass-assignment
       const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, ...safeBody } = req.body as any;
       const updated = await storage.updateItineraryItem(itemId, safeBody);
@@ -3547,10 +3197,8 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       if (!canMutateTrip(tripRole)) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
       }
-      const existing = await db.select({ id: itineraryItems.id }).from(itineraryItems)
-        .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
-        .limit(1);
-      if (!existing.length) return res.status(404).json({ message: "Item not found in this trip" });
+      const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
+      if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
       await storage.deleteItineraryItem(itemId);
       res.json({ success: true });
     } catch (err) {
@@ -3565,11 +3213,8 @@ router.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) =>
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId } = req.params;
-      const assignment = await db.select()
-        .from(tripExpertAdvisors)
-        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
-        .limit(1);
-      if (!assignment.length) return res.status(403).json({ message: "Not assigned to this trip" });
+      const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+      if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
 
       const allItems = await storage.getItineraryItems(tripId);
       // Confirmed items only: exclude terminal/cancelled states
@@ -3643,9 +3288,7 @@ router.get("/api/trips/:tripId/my-assignment", isAuthenticated, async (req, res)
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId } = req.params;
-      const [assignment] = await db.select().from(tripExpertAdvisors)
-        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
-        .limit(1);
+      const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
       if (!assignment) return res.status(404).json({ message: "Not assigned to this trip" });
       res.json(assignment);
     } catch (err) {
@@ -3664,13 +3307,11 @@ router.get("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res) 
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       if (!owned) {
-        const [assignment] = await db.select().from(tripExpertAdvisors)
-          .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
-          .limit(1);
+        const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
         if (!assignment) return res.status(403).json({ message: "Not authorized to view notes for this trip" });
       }
-      const [trip] = await db.select({ expertNotes: trips.expertNotes }).from(trips).where(eq(trips.id, tripId)).limit(1);
-      res.json({ expertNotes: trip?.expertNotes ?? "" });
+      const expertNotes = await storage.getTripExpertNotes(tripId);
+      res.json({ expertNotes });
     } catch (err) {
       console.error("[Expert] getExpertNotes error:", err);
       res.status(500).json({ message: "Failed to get expert notes" });
@@ -3685,9 +3326,7 @@ router.patch("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res
       const { tripId } = req.params;
       const { expertNotes } = req.body;
       if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
-      const [assignment] = await db.select().from(tripExpertAdvisors)
-        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
-        .limit(1);
+      const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
       if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
       await storage.updateTrip(tripId, { expertNotes });
       res.json({ ok: true });
