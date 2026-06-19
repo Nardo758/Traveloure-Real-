@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
+import { storage } from "../storage";
 import {
   dmoSources,
   dmoRawContent,
@@ -9,7 +10,6 @@ import {
   expertDmoEdits,
   contentGapAlerts,
   dmoScrapeJobs,
-  users,
 } from "@shared/schema";
 import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
@@ -177,7 +177,7 @@ router.get(
   requireExpert,
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params.id;
-    const [item] = await db.select().from(dmoRawContent).where(eq(dmoRawContent.id, id)).limit(1);
+    const item = await storage.getDmoRawContentById(id);
 
     if (!item) {
       throw new NotFoundError("Content not found");
@@ -603,7 +603,7 @@ router.get(
   "/scrape-jobs/:id",
   requireExpert,
   asyncHandler(async (req: Request, res: Response) => {
-    const [job] = await db.select().from(dmoScrapeJobs).where(eq(dmoScrapeJobs.id, req.params.id)).limit(1);
+    const job = await storage.getDmoScrapeJobById(req.params.id);
     if (!job) throw new NotFoundError("Job not found");
     res.json(job);
   }),
@@ -614,7 +614,7 @@ router.get(
 // ============================================================
 
 async function executeScrapeJob(jobId: string) {
-  const [job] = await db.select().from(dmoScrapeJobs).where(eq(dmoScrapeJobs.id, jobId)).limit(1);
+  const job = await storage.getDmoScrapeJobById(jobId);
   if (!job) return;
 
   await db
