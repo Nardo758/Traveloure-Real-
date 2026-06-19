@@ -1,3 +1,5 @@
+import { verifyTripOwnership } from '../utils/trip-ownership';
+import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -116,10 +118,6 @@ function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   return result;
 }
 
-async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
-  const trip = await storage.getTrip(tripId);
-  return trip?.userId === userId;
-}
 
 function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
   return storage.createItineraryChange({
@@ -476,29 +474,11 @@ router.post("/api/provider/services", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims.sub;
       const input = insertProviderServiceSchema.parse(req.body);
 
-      // Verification publish-gate: block status:"active" on gated categories
+      // Verification publish-gate — rule lives in provider-publish.service.ts
       if (input.status === "active") {
-        const categoryId = (input as any).categoryId as string | undefined;
-        if (categoryId) {
-          const [cat] = await db.select({
-            requiresBackgroundCheck: serviceCategories.requiresBackgroundCheck,
-            insuranceBand: serviceCategories.insuranceBand,
-          }).from(serviceCategories).where(eq(serviceCategories.id, categoryId));
-          const needsGate = cat?.requiresBackgroundCheck || ((cat?.insuranceBand ?? 0) >= 2);
-          if (needsGate) {
-            const [userRow] = await db.select({
-              providerVerificationStatus: users.providerVerificationStatus,
-              backgroundCheckConfirmed: users.backgroundCheckConfirmed,
-            }).from(users).where(eq(users.id, userId));
-            const verified = userRow?.providerVerificationStatus === "verified";
-            const bgOk = !cat?.requiresBackgroundCheck || userRow?.backgroundCheckConfirmed;
-            if (!verified || !bgOk) {
-              return res.status(422).json({
-                message: "This category requires background verification before publishing. Save as draft and complete your provider verification first.",
-                code: "VERIFICATION_REQUIRED",
-              });
-            }
-          }
+        const gate = await checkProviderPublishGate(userId, (input as any).categoryId);
+        if (!gate.allowed) {
+          return res.status(422).json({ message: gate.message, code: gate.code });
         }
       }
 
@@ -525,29 +505,12 @@ router.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => 
       }
       const input = insertProviderServiceSchema.partial().parse(req.body);
 
-      // Verification publish-gate: block activating on gated categories
+      // Verification publish-gate — rule lives in provider-publish.service.ts
       if (input.status === "active") {
         const categoryId = ((input as any).categoryId ?? ownedService.categoryId) as string | undefined;
-        if (categoryId) {
-          const [cat] = await db.select({
-            requiresBackgroundCheck: serviceCategories.requiresBackgroundCheck,
-            insuranceBand: serviceCategories.insuranceBand,
-          }).from(serviceCategories).where(eq(serviceCategories.id, categoryId));
-          const needsGate = cat?.requiresBackgroundCheck || ((cat?.insuranceBand ?? 0) >= 2);
-          if (needsGate) {
-            const [userRow] = await db.select({
-              providerVerificationStatus: users.providerVerificationStatus,
-              backgroundCheckConfirmed: users.backgroundCheckConfirmed,
-            }).from(users).where(eq(users.id, userId));
-            const verified = userRow?.providerVerificationStatus === "verified";
-            const bgOk = !cat?.requiresBackgroundCheck || userRow?.backgroundCheckConfirmed;
-            if (!verified || !bgOk) {
-              return res.status(422).json({
-                message: "This category requires background verification before publishing. Save as draft and complete your provider verification first.",
-                code: "VERIFICATION_REQUIRED",
-              });
-            }
-          }
+        const gate = await checkProviderPublishGate(userId, categoryId);
+        if (!gate.allowed) {
+          return res.status(422).json({ message: gate.message, code: gate.code });
         }
       }
 

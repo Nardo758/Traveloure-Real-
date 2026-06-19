@@ -1,3 +1,4 @@
+import { verifyTripOwnership } from '../utils/trip-ownership';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -117,10 +118,6 @@ function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   return result;
 }
 
-async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
-  const trip = await storage.getTrip(tripId);
-  return trip?.userId === userId;
-}
 
 function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
   return storage.createItineraryChange({
