@@ -9,15 +9,7 @@
  */
 
 import { Router } from "express";
-import { db } from "../db";
-import {
-  transportBookingOptions,
-  transportLegs,
-  itineraryVariants,
-  itineraryComparisons,
-  affiliateClicks,
-} from "@shared/schema";
-import { eq, and, desc, isNotNull } from "drizzle-orm";
+import { storage } from "../storage";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg } from "../services/transport-booking-options.service";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -49,19 +41,11 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     };
 
     // First try: look up as an itineraryComparisons ID directly
-    let comparison = await db.query.itineraryComparisons.findFirst({
-      where: eq(itineraryComparisons.id, tripId),
-    });
+    let comparison = await storage.getItineraryComparison(tripId);
 
     // Fallback: treat as a trips.id and find the latest comparison for it
     if (!comparison) {
-      const [byTrip] = await db
-        .select()
-        .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.tripId, tripId))
-        .orderBy(desc(itineraryComparisons.createdAt))
-        .limit(1);
-      comparison = byTrip ?? null;
+      comparison = await storage.getFullComparisonByTripId(tripId);
     }
 
     // No comparison at all — return empty hub (not an error)
@@ -72,15 +56,9 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     // Get selected variant or first variant
     let variant;
     if (comparison.selectedVariantId) {
-      variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, comparison.selectedVariantId),
-      });
+      variant = await storage.getItineraryVariantById(comparison.selectedVariantId);
     } else {
-      const variants = await db.query.itineraryVariants.findMany({
-        where: eq(itineraryVariants.comparisonId, comparison.id),
-        limit: 1,
-      });
-      variant = variants[0];
+      variant = await storage.getFirstVariantByComparisonId(comparison.id);
     }
 
     // No variant yet — return empty hub (not an error)
@@ -89,9 +67,7 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     }
 
     // Fetch all transport legs for the variant
-    const legs = await db.query.transportLegs.findMany({
-      where: eq(transportLegs.variantId, variant.id),
-    });
+    const legs = await storage.getTransportLegsByVariantId(variant.id);
 
     // If variant exists but no legs yet → legs are being calculated
     if (legs.length === 0) {
@@ -106,10 +82,7 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     }
 
     // Fetch all booking options for the variant
-    const allOptions = await db
-      .select()
-      .from(transportBookingOptions)
-      .where(eq(transportBookingOptions.variantId, variant.id));
+    const allOptions = await storage.getBookingOptionsByVariantId(variant.id);
 
     // Organize by day
     const dayMap = new Map<number, any>();
@@ -224,26 +197,16 @@ router.get(
     try {
       const { legId } = req.params;
 
-      const leg = await db.query.transportLegs.findFirst({
-        where: eq(transportLegs.id, legId),
-      });
+      const leg = await storage.getTransportLegById(legId);
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
 
-      let options = await db
-        .select()
-        .from(transportBookingOptions)
-        .where(eq(transportBookingOptions.transportLegId, legId))
-        .orderBy(transportBookingOptions.sortOrder);
+      let options = await storage.getBookingOptionsByLegId(legId);
 
       // If no options exist, populate them now (lazy / on-demand)
       if (options.length === 0) {
         const destination = (leg.destinationProfile as string | null) || leg.toName.split(",")[0];
         await populateBookingOptionsForLeg(legId, destination, 1);
-        options = await db
-          .select()
-          .from(transportBookingOptions)
-          .where(eq(transportBookingOptions.transportLegId, legId))
-          .orderBy(transportBookingOptions.sortOrder);
+        options = await storage.getBookingOptionsByLegId(legId);
       }
 
       res.json({ legId, options });
@@ -274,9 +237,7 @@ router.post(
       }
 
       // Fetch the booking option
-      const option = await db.query.transportBookingOptions.findFirst({
-        where: eq(transportBookingOptions.id, optionId),
-      });
+      const option = await storage.getTransportBookingOptionById(optionId);
 
       if (!option) {
         return res.status(404).json({ error: "Booking option not found" });
@@ -290,9 +251,7 @@ router.post(
       // Resolve the variant via the leg when the option has no direct variantId.
       let variantId = option.variantId;
       if (!variantId && option.transportLegId) {
-        const leg = await db.query.transportLegs.findFirst({
-          where: eq(transportLegs.id, option.transportLegId),
-        });
+        const leg = await storage.getTransportLegById(option.transportLegId);
         variantId = leg?.variantId ?? null;
       }
 
@@ -301,18 +260,14 @@ router.post(
       }
 
       // Fetch the variant to get tripId
-      const variant = await db.query.itineraryVariants.findFirst({
-        where: eq(itineraryVariants.id, variantId),
-      });
+      const variant = await storage.getItineraryVariantById(variantId);
 
       if (!variant) {
         return res.status(404).json({ error: "Variant not found" });
       }
 
       // Fetch the comparison (trip) to get tripId
-      const comparison = await db.query.itineraryComparisons.findFirst({
-        where: eq(itineraryComparisons.id, variant.comparisonId),
-      });
+      const comparison = await storage.getItineraryComparison(variant.comparisonId);
 
       if (!comparison) {
         return res.status(404).json({ error: "Trip not found" });
@@ -328,10 +283,7 @@ router.post(
       );
 
       // Mark the option as "confirmed" so the UI shows the green Confirmed badge immediately
-      await db
-        .update(transportBookingOptions)
-        .set({ bookingStatus: "confirmed", updatedAt: new Date() })
-        .where(eq(transportBookingOptions.id, optionId));
+      await storage.updateTransportBookingOptionStatus(optionId, { bookingStatus: "confirmed" });
 
       res.json({
         success: true,
@@ -364,9 +316,7 @@ router.post(
       const referrer = req.get("referrer") || "";
 
       // Fetch the booking option
-      const option = await db.query.transportBookingOptions.findFirst({
-        where: eq(transportBookingOptions.id, optionId),
-      });
+      const option = await storage.getTransportBookingOptionById(optionId);
 
       if (!option) {
         return res.status(404).json({ error: "Booking option not found" });
@@ -377,14 +327,9 @@ router.post(
       }
 
       // Log click event for affiliate tracking.
-      // Attribution is derived from how the option was generated:
-      //   "affiliate" options are produced by the AI transport planner (system agent) →
-      //     initiatedBy = "ai_agent", agentType = "system"
-      //   All other types (platform / deep_link / info_only) are user-chosen →
-      //     initiatedBy = "user"
       try {
         const isAiGeneratedAffiliate = option.bookingType === "affiliate";
-        await db.insert(affiliateClicks).values({
+        await storage.createAffiliateClick({
           partnerId: option.source,
           userId: userId || undefined,
           referrer: referrer || undefined,
@@ -433,18 +378,12 @@ router.patch(
       const { bookingStatus, confirmationRef } = req.body;
 
       // Update booking option status (and persist confirmationRef if provided)
-      const updateData: Record<string, any> = {
-        bookingStatus,
-        updatedAt: new Date(),
-      };
+      const updateData: Record<string, any> = { bookingStatus };
       if (confirmationRef !== undefined && confirmationRef !== null) {
         updateData.confirmationRef = confirmationRef;
       }
 
-      await db
-        .update(transportBookingOptions)
-        .set(updateData)
-        .where(eq(transportBookingOptions.id, optionId));
+      await storage.updateTransportBookingOptionStatus(optionId, updateData);
 
       res.json({
         success: true,
@@ -467,15 +406,11 @@ router.patch(
 router.post("/api/transport-booking-options/seed/:variantId", isAuthenticated, async (req, res) => {
   try {
     const { variantId } = req.params;
-    const variant = await db.query.itineraryVariants.findFirst({
-      where: eq(itineraryVariants.id, variantId),
-    });
+    const variant = await storage.getItineraryVariantById(variantId);
     if (!variant) {
       return res.status(404).json({ error: "Variant not found" });
     }
-    const comparison = await db.query.itineraryComparisons.findFirst({
-      where: eq(itineraryComparisons.id, variant.comparisonId),
-    });
+    const comparison = await storage.getItineraryComparison(variant.comparisonId);
     const destination = comparison?.destination || "Unknown";
     await populateBookingOptionsForVariant(variantId, destination);
     res.json({ success: true, message: `Booking options seeded for variant ${variantId}` });
@@ -494,9 +429,7 @@ router.get("/api/transport-booking-options/:optionId", isAuthenticated, async (r
   try {
     const { optionId } = req.params;
 
-    const option = await db.query.transportBookingOptions.findFirst({
-      where: eq(transportBookingOptions.id, optionId),
-    });
+    const option = await storage.getTransportBookingOptionById(optionId);
 
     if (!option) {
       return res.status(404).json({ error: "Booking option not found" });
