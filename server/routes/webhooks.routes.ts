@@ -10,9 +10,6 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import crypto from "crypto";
-import { db } from "../db";
-import { localExpertForms, serviceProviderForms, expertPayouts, providerPayouts, platformRevenue } from "@shared/schema";
-import { eq, and, sql as drizzleSql } from "drizzle-orm";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
@@ -63,19 +60,11 @@ router.post("/stripe-identity", async (req: any, res) => {
 
   try {
     if (event.type === "identity.verification_session.verified") {
-      const updates = { identityVerificationStatus: "verified", identityVerifiedAt: new Date() };
-      if (formType === "expert") {
-        await db.update(localExpertForms).set(updates as any).where(eq(localExpertForms.userId, userId));
-      } else {
-        await db.update(serviceProviderForms).set(updates as any).where(eq(serviceProviderForms.userId, userId));
-      }
+      const ft = formType === "expert" ? "expert" : "provider";
+      await storage.updateFormIdentityVerification(ft, userId, "verified", new Date());
     } else if (event.type === "identity.verification_session.requires_input") {
-      const updates = { identityVerificationStatus: "failed" };
-      if (formType === "expert") {
-        await db.update(localExpertForms).set(updates as any).where(eq(localExpertForms.userId, userId));
-      } else {
-        await db.update(serviceProviderForms).set(updates as any).where(eq(serviceProviderForms.userId, userId));
-      }
+      const ft = formType === "expert" ? "expert" : "provider";
+      await storage.updateFormIdentityVerification(ft, userId, "failed");
     }
   } catch (err) {
     console.error("Stripe Identity webhook DB update error:", err);
@@ -132,10 +121,7 @@ router.post("/persona", async (req: any, res) => {
       status === "declined" ? "failed" :
       "submitted";
 
-    await db
-      .update(serviceProviderForms)
-      .set({ businessVerificationStatus: newStatus } as any)
-      .where(eq((serviceProviderForms as any).personaInquiryId, inquiryId));
+    await storage.updateProviderBusinessVerificationByInquiry(inquiryId, newStatus);
   } catch (err) {
     console.error("Persona webhook processing error:", err);
   }
@@ -233,12 +219,8 @@ router.post("/stripe", async (req: any, res) => {
         // Only record if we have enough metadata and it hasn't been recorded already
         if (sourceId && sourceType) {
           // Idempotency check: skip if this payment intent has already been recorded
-          const existing = await db.select({ id: platformRevenue.id })
-            .from(platformRevenue)
-            .where(drizzleSql`${platformRevenue.metadata}->>'paymentIntentId' = ${paymentIntent.id}`)
-            .limit(1);
-
-          if (existing.length > 0) {
+          const alreadyRecorded = await storage.hasPaymentIntentRevenue(paymentIntent.id);
+          if (alreadyRecorded) {
             console.log(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
             break;
           }

@@ -95,6 +95,9 @@ import {
   type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
   providerNeighborhoodCoverage,
   cityNeighborhoods,
+  dmoRawContent,
+  dmoScrapeJobs,
+  crossSellEvents,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -565,6 +568,28 @@ export interface IStorage {
     limit?: number;
     offset?: number;
   }): Promise<ContentRegistry[]>;
+
+  // ── Identity verification (webhook callbacks) ─────────────────────────────
+  updateFormIdentityVerification(formType: 'expert' | 'provider', userId: string, status: string, verifiedAt?: Date): Promise<void>;
+  updateProviderBusinessVerificationByInquiry(inquiryId: string, status: string): Promise<void>;
+  hasPaymentIntentRevenue(paymentIntentId: string): Promise<boolean>;
+
+  // ── Booking status queries ─────────────────────────────────────────────────
+  getBookingStatusForUser(bookingId: string, userId: string): Promise<{ status: string } | null>;
+  getBulkBookingStatuses(bookingIds: string[], userId: string): Promise<Record<string, { status: string; confirmationCode: string | null }>>;
+
+  // ── DMO Workspace ──────────────────────────────────────────────────────────
+  getDmoRawContentById(id: string): Promise<any | null>;
+  getDmoScrapeJobById(id: string): Promise<any | null>;
+
+  // ── Cross-sell ─────────────────────────────────────────────────────────────
+  recordCrossSellEvents(events: any[]): Promise<number>;
+  getProviderServiceIdsForUser(userId: string): Promise<string[]>;
+
+  // ── Payments / fee resolution ──────────────────────────────────────────────
+  getServiceCategorySlugsByIds(ids: string[]): Promise<{ id: string; slug: string | null }[]>;
+  getExpertOfferingTypeKeysByIds(ids: string[]): Promise<{ id: string; key: string }[]>;
+  getFeeBandByKey(bandKey: string): Promise<any | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4040,6 +4065,128 @@ export class DatabaseStorage implements IStorage {
       .where(eq(affiliateBookingRequests.id, id))
       .returning();
     return updated;
+  }
+
+  // ── Identity verification ─────────────────────────────────────────────────
+
+  async updateFormIdentityVerification(
+    formType: 'expert' | 'provider',
+    userId: string,
+    status: string,
+    verifiedAt?: Date,
+  ): Promise<void> {
+    const updates: any = { identityVerificationStatus: status };
+    if (verifiedAt) updates.identityVerifiedAt = verifiedAt;
+    if (formType === 'expert') {
+      await db.update(localExpertForms).set(updates).where(eq(localExpertForms.userId, userId));
+    } else {
+      await db.update(serviceProviderForms).set(updates).where(eq(serviceProviderForms.userId, userId));
+    }
+  }
+
+  async updateProviderBusinessVerificationByInquiry(inquiryId: string, status: string): Promise<void> {
+    await db
+      .update(serviceProviderForms)
+      .set({ businessVerificationStatus: status } as any)
+      .where(eq((serviceProviderForms as any).personaInquiryId, inquiryId));
+  }
+
+  async hasPaymentIntentRevenue(paymentIntentId: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: platformRevenue.id })
+      .from(platformRevenue)
+      .where(sql`${platformRevenue.metadata}->>'paymentIntentId' = ${paymentIntentId}`)
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  // ── Booking status queries ─────────────────────────────────────────────────
+
+  async getBookingStatusForUser(bookingId: string, userId: string): Promise<{ status: string } | null> {
+    const result = await db.execute(
+      sql`SELECT status FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1`
+    );
+    const row = result.rows?.[0] as any;
+    return row ? { status: row.status } : null;
+  }
+
+  async getBulkBookingStatuses(
+    bookingIds: string[],
+    userId: string,
+  ): Promise<Record<string, { status: string; confirmationCode: string | null }>> {
+    const statuses: Record<string, { status: string; confirmationCode: string | null }> = {};
+    for (const bookingId of bookingIds) {
+      const result = await db.execute(
+        sql`SELECT id, status, confirmation_code FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1`
+      );
+      const row = result.rows?.[0] as any;
+      if (row) {
+        statuses[row.id] = { status: row.status, confirmationCode: row.confirmation_code ?? null };
+      }
+    }
+    return statuses;
+  }
+
+  // ── DMO Workspace ──────────────────────────────────────────────────────────
+
+  async getDmoRawContentById(id: string): Promise<any | null> {
+    const [item] = await db.select().from(dmoRawContent).where(eq(dmoRawContent.id, id)).limit(1);
+    return item ?? null;
+  }
+
+  async getDmoScrapeJobById(id: string): Promise<any | null> {
+    const [job] = await db.select().from(dmoScrapeJobs).where(eq(dmoScrapeJobs.id, id)).limit(1);
+    return job ?? null;
+  }
+
+  // ── Cross-sell ─────────────────────────────────────────────────────────────
+
+  async recordCrossSellEvents(events: any[]): Promise<number> {
+    if (events.length === 0) return 0;
+    await db.insert(crossSellEvents).values(events);
+    return events.length;
+  }
+
+  async getProviderServiceIdsForUser(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ id: providerServices.id })
+      .from(providerServices)
+      .where(eq(providerServices.userId, userId));
+    return rows.map(r => r.id);
+  }
+
+  // ── Payments / fee resolution ──────────────────────────────────────────────
+
+  async getServiceCategorySlugsByIds(ids: string[]): Promise<{ id: string; slug: string | null }[]> {
+    if (ids.length === 0) return [];
+    return db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+      .from(serviceCategories)
+      .where(inArray(serviceCategories.id, ids));
+  }
+
+  async getExpertOfferingTypeKeysByIds(ids: string[]): Promise<{ id: string; key: string }[]> {
+    if (ids.length === 0) return [];
+    const rows = await db.select({ id: expertOfferingTypes.id, key: expertOfferingTypes.offeringTypeKey })
+      .from(expertOfferingTypes)
+      .where(inArray(expertOfferingTypes.id, ids));
+    return rows.map(r => ({ id: r.id, key: r.key }));
+  }
+
+  async getFeeBandByKey(bandKey: string): Promise<any | null> {
+    const result = await db.execute(sql`
+      SELECT
+        band_key,
+        rate_type,
+        CAST(default_rate AS FLOAT) AS default_rate,
+        CAST(min_rate AS FLOAT) AS min_rate,
+        CAST(max_rate AS FLOAT) AS max_rate,
+        display_name,
+        description
+      FROM fee_bands
+      WHERE band_key = ${bandKey} AND is_active = true
+      LIMIT 1
+    `);
+    return result.rows?.[0] ?? null;
   }
 }
 
