@@ -1,3 +1,5 @@
+import { trackQuery } from "./queryCounter";
+
 const THRESHOLD = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || "500");
 
 const slowQueryLog: Array<{
@@ -39,6 +41,7 @@ export async function withQueryTimer<T>(
         slowQueryLog.pop();
       }
     }
+    trackQuery(label, duration);
   }
 }
 

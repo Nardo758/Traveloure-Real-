@@ -35,6 +35,7 @@ import {
   authRateLimiter,
   adminRateLimiter,
 } from "./infrastructure";
+import { queryCounterMiddleware } from "./utils/queryCounter";
 
 const app = express();
 const httpServer = createServer(app);
@@ -79,6 +80,7 @@ app.use(metricsMiddleware() as RequestHandler);
 app.use("/api", generalRateLimiter as RequestHandler);
 app.use("/api/ai", aiRateLimiter as RequestHandler);
 app.use("/api/admin", adminRateLimiter as RequestHandler);
+app.use("/api/admin", queryCounterMiddleware as RequestHandler);
 app.use("/api/search", searchRateLimiter as RequestHandler);
 app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
