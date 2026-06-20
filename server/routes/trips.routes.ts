@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { withQueryTimer } from '../utils/queryTimer';
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -714,7 +715,11 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const comparisons = await storage.getComparisonsByUserId(userId);
+      const comparisons = await withQueryTimer(
+        "itinerary-comparisons-fetch",
+        () => storage.getComparisonsByUserId(userId),
+        (req.user as any)?.role
+      );
       res.json(comparisons);
     } catch (error) {
       console.error("Error fetching comparisons:", error);

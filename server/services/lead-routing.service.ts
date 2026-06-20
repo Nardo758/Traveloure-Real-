@@ -6,6 +6,7 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { withQueryTimer } from '../utils/queryTimer';
 
 export interface ExpertScore {
   expertId: string;
@@ -46,19 +47,22 @@ class LeadRoutingService {
       const dest = ctx.destination?.toLowerCase().trim() || '';
       const topic = ctx.topic?.toLowerCase().trim() || '';
 
-      const experts = await db.execute(sql`
-        SELECT
-          lef.user_id        AS expert_id,
-          u.first_name       AS first_name,
-          u.last_name        AS last_name,
-          lef.specialties    AS specialties,
-          lef.cities_covered AS cities_covered,
-          lef.languages      AS languages,
-          lef.status         AS status
-        FROM local_expert_forms lef
-        JOIN users u ON u.id = lef.user_id
-        WHERE lef.status = 'approved'
-      `);
+      const experts = await withQueryTimer(
+        "lead-routing-score-experts",
+        () => db.execute(sql`
+          SELECT
+            lef.user_id        AS expert_id,
+            u.first_name       AS first_name,
+            u.last_name        AS last_name,
+            lef.specialties    AS specialties,
+            lef.cities_covered AS cities_covered,
+            lef.languages      AS languages,
+            lef.status         AS status
+          FROM local_expert_forms lef
+          JOIN users u ON u.id = lef.user_id
+          WHERE lef.status = 'approved'
+        `)
+      );
 
       if (!experts.rows || experts.rows.length === 0) return [];
 
