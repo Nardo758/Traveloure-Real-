@@ -5,8 +5,12 @@
  */
 
 import { db } from '../db';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { withQueryTimer } from '../utils/queryTimer';
+import { adminNotifications, expertRequests } from '../../shared/schema';
+
+const FALLBACK_MESSAGE =
+  "We are finding the best expert for your destination. You will be notified when one is assigned.";
 
 export interface ExpertScore {
   expertId: string;
@@ -31,6 +35,7 @@ export interface LeadContext {
   requestType?: string;
   userId?: string;
   tripId?: string;
+  expertRequestId?: string;
 }
 
 class LeadRoutingService {
@@ -159,6 +164,7 @@ class LeadRoutingService {
     if (scores.length === 0) {
       const reason = 'No approved experts found';
       void this.logRoutingDecision(ctx, [], null, reason);
+      void this.notifyNullAssign(ctx, 'no_approved_experts');
       return { assignedExpertId: null, scores: [], reason };
     }
 
@@ -167,6 +173,7 @@ class LeadRoutingService {
     if (top.totalScore === 0) {
       const reason = 'No expert matched the destination or specialty';
       void this.logRoutingDecision(ctx, scores, null, reason);
+      void this.notifyNullAssign(ctx, 'zero_score');
       return { assignedExpertId: null, scores, reason };
     }
 
@@ -178,6 +185,56 @@ class LeadRoutingService {
       scores,
       reason,
     };
+  }
+
+  /**
+   * Handle a null-assign event:
+   *  1. Log a structured warning to the console for ops visibility
+   *  2. Create an admin_notifications record so admins get a push signal
+   *  3. Stamp the expert_requests row as "unassigned" with a traveler-facing fallback message
+   *
+   * Fire-and-forget — callers use void; never awaited on critical path.
+   */
+  private async notifyNullAssign(
+    ctx: LeadContext,
+    reason: 'no_approved_experts' | 'zero_score',
+  ) {
+    const timestamp = new Date().toISOString();
+
+    // 1. Structured console warning for log aggregators / ops dashboards
+    console.warn(
+      `[LEAD UNASSIGNED] tripId=${ctx.tripId ?? 'none'} destination=${ctx.destination} ` +
+      `reason="${reason}" timestamp=${timestamp}`
+    );
+
+    // 2. Admin notification record (non-fatal if insert fails)
+    try {
+      await db.insert(adminNotifications).values({
+        type: 'lead_unassigned',
+        message: `Lead for "${ctx.destination}" could not be auto-assigned: ${reason === 'no_approved_experts' ? 'no approved experts exist for this destination' : 'no expert scored above zero for this destination/specialty'}.`,
+        tripId: ctx.tripId ?? null,
+        destination: ctx.destination,
+        reason,
+        isRead: false,
+      });
+    } catch (err: any) {
+      console.warn('[LeadRouting] notifyNullAssign: admin_notifications insert failed (non-fatal):', err?.message);
+    }
+
+    // 3. Stamp expert_requests row if we have an ID to target
+    if (ctx.expertRequestId) {
+      try {
+        await db
+          .update(expertRequests)
+          .set({
+            status: 'unassigned',
+            fallbackMessage: FALLBACK_MESSAGE,
+          })
+          .where(eq(expertRequests.id, ctx.expertRequestId));
+      } catch (err: any) {
+        console.warn('[LeadRouting] notifyNullAssign: expert_requests update failed (non-fatal):', err?.message);
+      }
+    }
   }
 
   /**
