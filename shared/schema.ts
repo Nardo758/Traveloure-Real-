@@ -1527,7 +1527,7 @@ export const destinationSeasons = pgTable("destination_seasons", {
   rating: varchar("rating", { length: 20 }).notNull(),
   
   weatherDescription: text("weather_description"),
-  averageTemp: varchar("average_temp", { length: 60 }),
+  averageTemp: text("average_temp"),
   rainfall: varchar("rainfall", { length: 50 }),
   
   crowdLevel: varchar("crowd_level", { length: 20 }),
