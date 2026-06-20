@@ -241,4 +241,6 @@ export const MIGRATION_FILES = [
   "091_average_temp_to_text.sql",
   // 092: admin_notifications table for dead-end lead alerts + fallback_message on expert_requests.
   "092_admin_notifications.sql",
+  // 093: Add stripe_connect_status to local_expert_forms (not_started|pending|complete).
+  "093_expert_stripe_connect_status.sql",
 ] as const;

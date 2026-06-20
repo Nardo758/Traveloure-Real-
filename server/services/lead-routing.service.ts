@@ -56,13 +56,14 @@ class LeadRoutingService {
         "lead-routing-score-experts",
         () => db.execute(sql`
           SELECT
-            lef.user_id        AS expert_id,
-            u.first_name       AS first_name,
-            u.last_name        AS last_name,
-            lef.specialties    AS specialties,
-            lef.cities_covered AS cities_covered,
-            lef.languages      AS languages,
-            lef.status         AS status
+            lef.user_id             AS expert_id,
+            u.first_name            AS first_name,
+            u.last_name             AS last_name,
+            lef.specialties         AS specialties,
+            lef.cities_covered      AS cities_covered,
+            lef.languages           AS languages,
+            lef.status              AS status,
+            lef.stripe_connect_status AS stripe_connect_status
           FROM local_expert_forms lef
           JOIN users u ON u.id = lef.user_id
           WHERE lef.status = 'approved'
@@ -132,6 +133,14 @@ class LeadRoutingService {
           const responseRateScore = Math.round(rate * 15);
 
           const totalScore = destinationScore + specialtyScore + availabilityScore + responseRateScore;
+
+          if ((e.stripe_connect_status ?? 'not_started') !== 'complete') {
+            console.warn(
+              `[PAYOUT WARNING] Expert ${expertId} is ` +
+              `approved but Stripe Connect incomplete. ` +
+              `Lead assigned but payout will fail.`
+            );
+          }
 
           return {
             expertId,
