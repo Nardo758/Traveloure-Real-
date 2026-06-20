@@ -1,0 +1,70 @@
+Add missing database indexes to Traveloure to fix 
+slow queries before they hit production.
+
+PROBLEM:
+These queries are currently running without indexes 
+and will become very slow as data grows across 
+8 markets:
+
+1. Expert matching query scans local_expert_forms 
+   filtering by status=approved — no index on status
+2. Revenue dashboard aggregates bookings by date — 
+   no index on createdAt  
+3. Lead routing logs filtered by tripId — 
+   no index on tripId
+4. Expert requests filtered by destination city — 
+   no index on destinationCity
+5. Admin user list filtered by role — 
+   no index on role in users table
+
+FIX REQUIRED:
+
+In your Drizzle ORM schema file (shared/schema.ts 
+or wherever tables are defined), add these indexes:
+
+1. local_expert_forms — status index:
+   statusIdx: index("local_expert_forms_status_idx")
+     .on(table.status)
+
+2. bookings — createdAt index:
+   createdAtIdx: index("bookings_created_at_idx")
+     .on(table.createdAt)
+
+3. lead_routing_logs — tripId index:
+   tripIdIdx: index("lead_routing_logs_trip_id_idx")
+     .on(table.tripId)
+
+4. expert_requests — destinationCity index:
+   destinationIdx: index(
+     "expert_requests_destination_idx")
+     .on(table.destinationCity)
+
+5. expert_requests — status index:
+   statusIdx: index("expert_requests_status_idx")
+     .on(table.status)
+
+6. users — role index:
+   roleIdx: index("users_role_idx")
+     .on(table.role)
+
+After adding to schema, generate and run the 
+Drizzle migration:
+   npx drizzle-kit generate
+   npx drizzle-kit push
+
+Verify each index was created by running:
+   SELECT indexname, tablename 
+   FROM pg_indexes 
+   WHERE tablename IN (
+     'local_expert_forms', 
+     'bookings',
+     'lead_routing_logs', 
+     'expert_requests',
+     'users'
+   );
+
+Do NOT change any query logic.
+Do NOT change any table columns.
+Do NOT touch vite.config.ts or frontend files.
+Show me the exact schema additions and confirm 
+migration ran successfully.
