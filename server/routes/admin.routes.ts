@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -2008,7 +2009,11 @@ router.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => 
       }
 
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
-      const dashboard = await revenueTrackingService.getUnifiedDashboard();
+      const dashboard = await withQueryTimer(
+        "admin-revenue-dashboard",
+        () => revenueTrackingService.getUnifiedDashboard(),
+        (req.user as any)?.role
+      );
       res.json(dashboard);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get revenue dashboard", error: error.message });
@@ -4108,17 +4113,21 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
 router.get("/api/admin/lead-routing-logs", isAuthenticated, async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
-      const result = await db.execute(sql`
-        SELECT
-          lrl.*,
-          u.first_name || ' ' || u.last_name AS user_name,
-          eu.first_name || ' ' || eu.last_name AS expert_name
-        FROM lead_routing_logs lrl
-        LEFT JOIN users u ON u.id = lrl.user_id
-        LEFT JOIN users eu ON eu.id = lrl.assigned_expert_id
-        ORDER BY lrl.created_at DESC
-        LIMIT ${limit}
-      `);
+      const result = await withQueryTimer(
+        "admin-routing-logs-fetch",
+        () => db.execute(sql`
+          SELECT
+            lrl.*,
+            u.first_name || ' ' || u.last_name AS user_name,
+            eu.first_name || ' ' || eu.last_name AS expert_name
+          FROM lead_routing_logs lrl
+          LEFT JOIN users u ON u.id = lrl.user_id
+          LEFT JOIN users eu ON eu.id = lrl.assigned_expert_id
+          ORDER BY lrl.created_at DESC
+          LIMIT ${limit}
+        `),
+        (req.user as any)?.role
+      );
       res.json(result.rows);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
