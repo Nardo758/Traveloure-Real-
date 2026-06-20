@@ -4979,41 +4979,4 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
   }
 });
 
-// GET /api/admin/experts/payout-gap
-// Returns approved experts who have not completed Stripe Connect onboarding.
-// These experts can receive routed leads but cannot receive payouts.
-router.get("/api/admin/experts/payout-gap", isAuthenticated, async (req, res) => {
-  try {
-    const rows = await db.execute(sql`
-      SELECT
-        lef.user_id          AS expert_id,
-        u.first_name         AS first_name,
-        u.last_name          AS last_name,
-        u.email              AS email,
-        lef.city             AS destination,
-        lef.created_at       AS approval_date,
-        lef.stripe_connect_status AS stripe_connect_status
-      FROM local_expert_forms lef
-      JOIN users u ON u.id = lef.user_id
-      WHERE lef.status = 'approved'
-        AND (lef.stripe_connect_status IS NULL OR lef.stripe_connect_status != 'complete')
-      ORDER BY lef.created_at DESC
-    `);
-
-    const experts = (rows.rows || []).map((r: any) => ({
-      expertId: r.expert_id,
-      name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.expert_id,
-      email: r.email,
-      destination: r.destination,
-      approvalDate: r.approval_date,
-      stripeConnectStatus: r.stripe_connect_status ?? "not_started",
-    }));
-
-    res.json({ count: experts.length, experts });
-  } catch (err) {
-    console.error("[payout-gap] error:", err);
-    res.status(500).json({ message: "Failed to fetch payout gap report" });
-  }
-});
-
 export default router;
