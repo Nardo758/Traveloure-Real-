@@ -126,3 +126,21 @@ export const strictRateLimiter = createRateLimiter({
   maxRequests: 5,
   keyGenerator: (req) => `strict:${req.ip || "unknown"}`,
 });
+
+export const adminRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  keyGenerator: (req) => `admin:${req.ip || "unknown"}`,
+});
+
+export const heavyReadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 60,
+  keyGenerator: (req) => `heavy:${req.ip || "unknown"}`,
+});
+
+export const leadRoutingRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 20,
+  keyGenerator: (req) => `lead:${req.ip || "unknown"}`,
+});

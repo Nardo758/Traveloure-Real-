@@ -33,6 +33,7 @@ import {
   aiRateLimiter,
   searchRateLimiter,
   authRateLimiter,
+  adminRateLimiter,
 } from "./infrastructure";
 
 const app = express();
@@ -77,6 +78,7 @@ app.use(metricsMiddleware() as RequestHandler);
 
 app.use("/api", generalRateLimiter as RequestHandler);
 app.use("/api/ai", aiRateLimiter as RequestHandler);
+app.use("/api/admin", adminRateLimiter as RequestHandler);
 app.use("/api/search", searchRateLimiter as RequestHandler);
 app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
@@ -607,7 +608,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/trips/generate-itinerary", isAuthenticated, async (req, res) => {
+  app.post("/api/trips/generate-itinerary", aiRateLimit, isAuthenticated, async (req, res) => {
     const { tripId } = req.body;
     if (!tripId) {
       return res.status(400).json({ message: "tripId is required in the request body" });
@@ -7286,7 +7287,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  app.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
+  app.get("/api/itinerary-comparisons", heavyReadRateLimit, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const comparisons = await db
@@ -9966,7 +9967,7 @@ Respond with this exact JSON structure:
   });
 
   // Phase 5: Autonomous AI Itinerary Generation
-  app.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
+  app.post("/api/ai/generate-itinerary", aiRateLimit, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const { 
