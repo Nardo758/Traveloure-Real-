@@ -222,4 +222,7 @@ export const MIGRATION_FILES = [
   // 090: Widen destination_seasons.average_temp from varchar(20) to varchar(60)
   // to accommodate long temperature range strings like "10-20°C (highlands) / 24-28°C (jungle)".
   "090_widen_destination_seasons_average_temp.sql",
+  // 091: Change destination_seasons.average_temp from varchar(60) to text.
+  // Removes the length cap entirely so any future temperature description fits without hitting a limit.
+  "091_average_temp_to_text.sql",
 ] as const;
