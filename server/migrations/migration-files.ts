@@ -243,4 +243,7 @@ export const MIGRATION_FILES = [
   "092_admin_notifications.sql",
   // 093: Add stripe_connect_status to local_expert_forms (not_started|pending|complete).
   "093_expert_stripe_connect_status.sql",
+  // 094: Add missing indexes — local_expert_forms(status), bookings(created_at),
+  //      lead_routing_logs(trip_id), expert_requests(destination_city, status), users(role).
+  "094_missing_indexes.sql",
 ] as const;
