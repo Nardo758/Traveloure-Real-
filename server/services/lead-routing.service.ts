@@ -221,19 +221,24 @@ class LeadRoutingService {
       console.warn('[LeadRouting] notifyNullAssign: admin_notifications insert failed (non-fatal):', err?.message);
     }
 
-    // 3. Stamp expert_requests row if we have an ID to target
-    if (ctx.expertRequestId) {
-      try {
+    // 3. Stamp expert_requests row — prefer explicit row ID, fall back to most-recent row for tripId
+    try {
+      if (ctx.expertRequestId) {
         await db
           .update(expertRequests)
-          .set({
-            status: 'unassigned',
-            fallbackMessage: FALLBACK_MESSAGE,
-          })
+          .set({ status: 'unassigned', fallbackMessage: FALLBACK_MESSAGE })
           .where(eq(expertRequests.id, ctx.expertRequestId));
-      } catch (err: any) {
-        console.warn('[LeadRouting] notifyNullAssign: expert_requests update failed (non-fatal):', err?.message);
+      } else if (ctx.tripId) {
+        await db.execute(sql`
+          UPDATE expert_requests
+          SET status = 'unassigned',
+              fallback_message = ${FALLBACK_MESSAGE}
+          WHERE trip_id = ${ctx.tripId}
+            AND status = 'pending'
+        `);
       }
+    } catch (err: any) {
+      console.warn('[LeadRouting] notifyNullAssign: expert_requests update failed (non-fatal):', err?.message);
     }
   }
 
