@@ -1,0 +1,110 @@
+Add per-request query counting to detect N+1 
+problems in Traveloure.
+
+PROBLEM:
+withQueryTimer measures total time but cannot 
+detect N+1 patterns where the same query fires 
+50 times in one request — each fast, but 
+collectively slow.
+
+FIX REQUIRED:
+
+1. Create server/utils/queryCounter.ts:
+
+import { Request, Response, NextFunction } from 
+  "express";
+
+const N1_THRESHOLD = parseInt(
+  process.env.N1_QUERY_THRESHOLD || "10"
+);
+
+// Per-request query tracking via AsyncLocalStorage
+import { AsyncLocalStorage } from "async_hooks";
+
+interface QueryContext {
+  requestId: string;
+  route: string;
+  queries: Array<{ label: string; duration: number }>;
+  startTime: number;
+}
+
+const storage = new AsyncLocalStorage<QueryContext>();
+
+export function queryCounterMiddleware(
+  req: Request, 
+  res: Response, 
+  next: NextFunction
+) {
+  const context: QueryContext = {
+    requestId: Math.random().toString(36).slice(2),
+    route: `${req.method} ${req.path}`,
+    queries: [],
+    startTime: Date.now()
+  };
+
+  storage.run(context, () => {
+    res.on("finish", () => {
+      const ctx = storage.getStore();
+      if (!ctx) return;
+      
+      // Count duplicate labels (N+1 signal)
+      const labelCounts = ctx.queries.reduce(
+        (acc, q) => {
+          acc[q.label] = (acc[q.label] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>
+      );
+      
+      const n1Suspects = Object.entries(labelCounts)
+        .filter(([, count]) => count >= N1_THRESHOLD);
+      
+      if (n1Suspects.length > 0) {
+        console.warn(
+          `[N+1 DETECTED] ${ctx.route} | ` +
+          `requestId=${ctx.requestId} | ` +
+          `suspects=${JSON.stringify(n1Suspects)} | ` +
+          `totalQueries=${ctx.queries.length} | ` +
+          `FIX: Use eager loading or batch query`
+        );
+      }
+    });
+    next();
+  });
+}
+
+export function trackQuery(
+  label: string, 
+  duration: number
+) {
+  const ctx = storage.getStore();
+  if (ctx) {
+    ctx.queries.push({ label, duration });
+  }
+}
+
+2. Update server/utils/queryTimer.ts:
+   Import and call trackQuery inside withQueryTimer:
+
+import { trackQuery } from "./queryCounter";
+
+// Inside withQueryTimer, in the finally block, 
+// AFTER the existing slow query check, add:
+trackQuery(label, duration);
+
+3. Apply middleware in server/index.ts or app.ts:
+   Apply ONLY to admin routes to start:
+
+import { queryCounterMiddleware } from 
+  "./utils/queryCounter";
+
+app.use("/api/admin", queryCounterMiddleware);
+
+4. Add to .env:
+   N1_QUERY_THRESHOLD=10
+
+5. Do NOT change any query logic or route handlers.
+   Do NOT touch vite.config.ts or frontend files.
+   Do NOT install new packages 
+   (AsyncLocalStorage is built into Node.js).
+
+Show every file created or modified.
