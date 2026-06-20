@@ -1,5 +1,15 @@
 const THRESHOLD = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || "500");
 
+const slowQueryLog: Array<{
+  label: string;
+  duration: number;
+  threshold: number;
+  userRole: string;
+  timestamp: string;
+}> = [];
+
+const MAX_LOG_SIZE = 100;
+
 export async function withQueryTimer<T>(
   label: string,
   fn: () => Promise<T>,
@@ -18,6 +28,24 @@ export async function withQueryTimer<T>(
         `duration=${duration}ms | ` +
         `threshold=${THRESHOLD}ms ⚠️`
       );
+      slowQueryLog.unshift({
+        label,
+        duration,
+        threshold: THRESHOLD,
+        userRole: userRole || "unknown",
+        timestamp: new Date().toISOString(),
+      });
+      if (slowQueryLog.length > MAX_LOG_SIZE) {
+        slowQueryLog.pop();
+      }
     }
   }
+}
+
+export function getSlowQueryLog() {
+  return [...slowQueryLog];
+}
+
+export function clearSlowQueryLog() {
+  slowQueryLog.length = 0;
 }
