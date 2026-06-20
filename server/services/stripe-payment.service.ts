@@ -25,6 +25,7 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
 import { sendBookingConfirmationEmail } from './email.service';
+import { trackFunnelEvent } from '../utils/funnelTracker';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -540,6 +541,22 @@ class StripePaymentService {
       `);
 
       console.log(`Expert service payment completed for user ${userId}`);
+
+      // Fire-and-forget: T5 funnel event (expert requested after payment)
+      try {
+        await trackFunnelEvent({
+          userId,
+          eventType: "expert_requested",
+          funnelStage: "T5",
+          eventData: {
+            variantId,
+            comparisonId,
+            destination,
+            serviceType,
+            stripeSessionId: session.id,
+          },
+        });
+      } catch (_) {}
     } catch (error: any) {
       console.error('Error handling expert service payment:', error);
       throw error;
