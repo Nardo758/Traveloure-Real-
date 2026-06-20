@@ -219,8 +219,9 @@ export const MIGRATION_FILES = [
   // Single source of truth for conversion funnel analytics. Fire-and-forget writes;
   // never block the request path. userId nullable for pre-registration T0 events.
   "089_funnel_events.sql",
-  // 090: Widen destination_seasons.average_temp from varchar(20) to varchar(60)
-  // to accommodate long temperature range strings like "10-20°C (highlands) / 24-28°C (jungle)".
+  // 090: No-op — originally widened destination_seasons.average_temp to varchar(60),
+  // but migration 091 supersedes this by converting the column to TEXT entirely.
+  // Kept in sequence to preserve ledger continuity; SQL body is a harmless SELECT 1.
   "090_widen_destination_seasons_average_temp.sql",
   // 091: Change destination_seasons.average_temp from varchar(60) to text.
   // Removes the length cap entirely so any future temperature description fits without hitting a limit.
