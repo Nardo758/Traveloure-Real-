@@ -463,6 +463,8 @@ export async function registerRoutes(
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
   app.use("/api/webhooks", webhooksRoutes);
+  // Admin routes — role-guarded endpoints for platform administration
+  app.use(adminRoutes);
 
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
@@ -1413,6 +1415,43 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     } catch (err) {
       console.error("Admin revenue error:", err);
       res.status(500).json({ message: "Failed to fetch revenue" });
+    }
+  });
+
+  // Admin: Payout-gap report — approved experts who haven't completed Stripe Connect
+  app.get("/api/admin/expert-payout-gap", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const rows = await db.execute(sql`
+        SELECT
+          lef.user_id               AS expert_id,
+          u.first_name              AS first_name,
+          u.last_name               AS last_name,
+          u.email                   AS email,
+          lef.city                  AS destination,
+          lef.created_at            AS approval_date,
+          lef.stripe_connect_status AS stripe_connect_status
+        FROM local_expert_forms lef
+        JOIN users u ON u.id = lef.user_id
+        WHERE lef.status = 'approved'
+          AND (lef.stripe_connect_status IS NULL OR lef.stripe_connect_status != 'complete')
+        ORDER BY lef.created_at DESC
+      `);
+      const experts = (rows.rows || []).map((r: any) => ({
+        expertId: r.expert_id,
+        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.expert_id,
+        email: r.email,
+        destination: r.destination,
+        approvalDate: r.approval_date,
+        stripeConnectStatus: r.stripe_connect_status ?? "not_started",
+      }));
+      res.json({ count: experts.length, experts });
+    } catch (err) {
+      console.error("[payout-gap] error:", err);
+      res.status(500).json({ message: "Failed to fetch payout gap report" });
     }
   });
 
