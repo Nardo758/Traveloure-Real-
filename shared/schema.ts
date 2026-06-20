@@ -402,6 +402,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
   identityVerificationSessionId: varchar("identity_verification_session_id", { length: 255 }),
   identityVerificationStatus: varchar("identity_verification_status", { length: 20 }).default("pending"),
   identityVerifiedAt: timestamp("identity_verified_at"),
+  stripeConnectStatus: varchar("stripe_connect_status", { length: 20 }).default("not_started"),
   status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),
   createdAt: timestamp("created_at").defaultNow(),

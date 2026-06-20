@@ -13,6 +13,9 @@ import crypto from "crypto";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
+import { db } from "../db";
+import { localExpertForms } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -176,7 +179,21 @@ router.post("/stripe", async (req: any, res) => {
         }
 
         await storage.updateUserStripeAccount(userId, account.id, status);
-        console.log(`Stripe account.updated: userId=${userId} status=${status}`);
+
+        // Keep local_expert_forms.stripe_connect_status in sync
+        const stripeConnectStatus =
+          account.details_submitted && account.charges_enabled && account.payouts_enabled
+            ? "complete"
+            : account.details_submitted
+            ? "pending"
+            : "not_started";
+
+        await db
+          .update(localExpertForms)
+          .set({ stripeConnectStatus } as any)
+          .where(eq(localExpertForms.userId, userId));
+
+        console.log(`Stripe account.updated: userId=${userId} status=${status} stripeConnectStatus=${stripeConnectStatus}`);
         break;
       }
 

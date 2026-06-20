@@ -1983,17 +1983,26 @@ router.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
 router.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const services = await storage.getProviderServicesByStatus(userId);
-      const bookings = await storage.getServiceBookings({ providerId: userId });
-      const earnings = await storage.getExpertEarnings(userId);
+      const [services, bookings, earnings, form] = await Promise.all([
+        storage.getProviderServicesByStatus(userId),
+        storage.getServiceBookings({ providerId: userId }),
+        storage.getExpertEarnings(userId),
+        storage.getLocalExpertForm(userId),
+      ]);
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
       const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
       const completedBookings = bookings.filter(b => b.status === "completed");
       const pendingBookings = bookings.filter(b => b.status === "pending");
+      const approvalStatus = form?.status ?? null;
+      const stripeConnectStatus = (form as any)?.stripeConnectStatus ?? "not_started";
       res.json({
         summary: { totalRevenue, totalBookings, completedBookings: completedBookings.length, pendingBookings: pendingBookings.length },
         services: services.map(s => ({ id: s.id, serviceName: s.serviceName, status: s.status, bookingsCount: s.bookingsCount, totalRevenue: s.totalRevenue })),
         recentEarnings: earnings.slice(0, 10),
+        approvalStatus,
+        stripeConnectStatus,
+        isRoutingEligible: approvalStatus === "approved",
+        isPayable: stripeConnectStatus === "complete",
       });
     } catch (err) {
       console.error("Expert dashboard error:", err);
