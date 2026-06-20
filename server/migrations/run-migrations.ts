@@ -43,6 +43,23 @@ const __dirname_local = (() => {
   return join(process.cwd(), "server", "migrations");
 })()
 
+/**
+ * Returns true when a SQL file's effective body is only a `SELECT 1` statement —
+ * i.e. it is a no-op placeholder kept for ledger sequence continuity.
+ * SQL line comments (-- …) and blank lines are stripped before the check.
+ * See server/migrations/AUTHORING.md — "Superseded migrations" section.
+ */
+function isNoOpMigration(sqlContent: string): boolean {
+  const stripped = sqlContent
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--") && line.trim() !== "")
+    .join(" ")
+    .trim()
+    .replace(/;$/, "")
+    .trim();
+  return stripped.toUpperCase() === "SELECT 1";
+}
+
 export type MigrationResult =
   | { dryRun: false; bootstrapOnly: false; applied: string[]; skipped: string[] }
   | { dryRun: true; bootstrapOnly: false; wouldApply: string[]; skipped: string[] }
@@ -143,6 +160,18 @@ export async function runMigrations(): Promise<MigrationResult> {
     }
     const filePath = join(__dirname_local, file);
     const content = readFileSync(filePath, "utf-8");
+
+    // Warn when a migration is a no-op placeholder (body is only SELECT 1 after
+    // stripping SQL comments and whitespace). No-ops exist to preserve ledger
+    // sequence continuity when a migration is superseded within the same release.
+    // See server/migrations/AUTHORING.md — "Superseded migrations" section.
+    if (isNoOpMigration(content)) {
+      console.warn(
+        `[Migrations][WARN] ${file} is a no-op (SELECT 1 only). ` +
+        `It was superseded before reaching production — see the file header for details.`
+      );
+    }
+
     try {
       await db.execute(sql.raw(content));
       // Record only after the file applied cleanly. If the process dies between
