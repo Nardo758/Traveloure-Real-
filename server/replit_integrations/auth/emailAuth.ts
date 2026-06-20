@@ -5,6 +5,7 @@ import { db } from "../../db";
 import { users, passwordResetTokens, emailVerificationTokens } from "@shared/models/auth";
 import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
 import { sendPasswordResetEmail, sendEmailVerificationEmail, getAppBaseUrl } from "../../services/email.service";
+import { trackFunnelEvent } from "../../utils/funnelTracker";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -102,6 +103,14 @@ export function setupEmailAuth(app: Express): void {
           privacyVersion: "1.0",
         })
         .returning();
+
+      // Fire-and-forget: T1 funnel event
+      trackFunnelEvent({
+        userId: newUser.id,
+        eventType: "account_created",
+        funnelStage: "T1",
+        source: (req.body.source as string) || "direct",
+      }).catch(() => {});
 
       // Fire-and-forget verification email. Failure here MUST NOT block signup —
       // the user can request a resend later. RESEND_API_KEY absence is logged

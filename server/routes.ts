@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
+import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
@@ -38,6 +39,7 @@ import {
   type InsertContentPlacementRule,
   adminNotifications,
   expertRequests,
+  funnelEvents,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -520,6 +522,14 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub ?? null;
       const trip = await storage.createTrip({ ...sanitizedInput, userId });
 
+      // Fire-and-forget: T2 funnel event
+      trackFunnelEvent({
+        userId: userId || undefined,
+        tripId: trip.id,
+        eventType: "trip_created",
+        funnelStage: "T2",
+      }).catch(() => {});
+
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
         const token = crypto.randomBytes(32).toString("hex");
@@ -632,6 +642,13 @@ export async function registerRoutes(
       },
       status: "generated"
     });
+    // Fire-and-forget: T3 funnel event
+    trackFunnelEvent({
+      userId: (req.user as any)?.claims?.sub,
+      tripId: tripId,
+      eventType: "itinerary_generated",
+      funnelStage: "T3",
+    }).catch(() => {});
     res.status(201).json(itinerary);
   });
 
@@ -712,6 +729,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       } else {
         itinerary = await storage.createGeneratedItinerary({ tripId: trip.id, itineraryData, status: "generated" });
       }
+
+      // Fire-and-forget: T3 funnel event (AI itinerary generated)
+      trackFunnelEvent({
+        userId: (req.user as any).claims.sub,
+        tripId: trip.id,
+        eventType: "itinerary_generated",
+        funnelStage: "T3",
+      }).catch(() => {});
 
       // Rebuild itinerary_items — delete old, insert new
       await db.delete(itineraryItems).where(eq(itineraryItems.tripId, trip.id));
@@ -834,6 +859,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           ...(bookingMetadata ? { bookingMetadata } : {}),
         } as any);
         bookingId = booking.id;
+
+        // Fire-and-forget: T6 funnel event
+        trackFunnelEvent({
+          userId,
+          tripId: tripId || undefined,
+          bookingId,
+          eventType: "revenue",
+          funnelStage: "T6",
+          eventData: { amount: totalAmount },
+        }).catch(() => {});
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -7496,6 +7531,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         }
       }
 
+      // Fire-and-forget: T4 funnel event
+      trackFunnelEvent({
+        userId,
+        eventType: "cart_populated",
+        funnelStage: "T4",
+      }).catch(() => {});
+
       res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
     } catch (error) {
       console.error("Error applying to cart:", error);
@@ -10534,6 +10576,19 @@ Respond with this exact JSON structure:
   app.delete("/api/admin/slow-queries", requireAdmin, (req, res) => {
     clearSlowQueryLog();
     res.json({ message: "Slow query log cleared" });
+  });
+
+  // GET /api/admin/funnel-stats — event counts per stage for the last 30 days
+  app.get("/api/admin/funnel-stats", requireAdmin, async (req, res) => {
+    try {
+      const result = await db.execute(
+        sql`SELECT stage, COUNT(*)::int AS count FROM funnel_events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY stage ORDER BY stage`
+      );
+      res.json({ windowDays: 30, stages: result.rows });
+    } catch (err) {
+      console.error("Funnel stats error:", err);
+      res.status(500).json({ message: "Failed to fetch funnel stats" });
+    }
   });
 
   // Get AI scheduler status (admin only)
