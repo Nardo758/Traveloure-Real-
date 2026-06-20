@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
+import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
@@ -10515,6 +10516,25 @@ Respond with this exact JSON structure:
     aiRefreshCount++;
     next();
   };
+
+  // FRONTEND TODO: Add a small widget on the admin dashboard that calls GET
+  // /api/admin/slow-queries every 60 seconds and shows count + last 5 slow
+  // queries in a collapsible panel.
+
+  // GET slow queries — admin only
+  app.get("/api/admin/slow-queries", requireAdmin, (req, res) => {
+    res.json({
+      count: getSlowQueryLog().length,
+      threshold: process.env.SLOW_QUERY_THRESHOLD_MS || 500,
+      queries: getSlowQueryLog(),
+    });
+  });
+
+  // DELETE to clear log — admin only
+  app.delete("/api/admin/slow-queries", requireAdmin, (req, res) => {
+    clearSlowQueryLog();
+    res.json({ message: "Slow query log cleared" });
+  });
 
   // Get AI scheduler status (admin only)
   app.get("/api/travelpulse/ai/status", requireAdmin, async (req, res) => {
