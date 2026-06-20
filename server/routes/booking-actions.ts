@@ -7,6 +7,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
+import { trackFunnelEvent } from '../utils/funnelTracker';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from '../utils/auth';
@@ -313,6 +314,17 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
 
     await upsertTripShareToken(id, userId, shareToken, expiresAt);
     const canonical = await getCanonicalTripShareToken(id);
+
+    // Fire-and-forget: T7 funnel event (viral share token created)
+    try {
+      await trackFunnelEvent({
+        userId,
+        tripId: id,
+        eventType: "viral_share",
+        funnelStage: "T7",
+        refToken: shareToken,
+      });
+    } catch (_) {}
 
     res.json({ success: true, shareToken: canonical });
   } catch (error: any) {
