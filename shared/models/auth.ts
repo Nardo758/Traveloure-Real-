@@ -66,7 +66,9 @@ export const users = pgTable("users", {
   preferredCurrency: varchar("preferred_currency", { length: 3 }).default("USD"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("users_role_idx").on(table.role),
+]);
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;

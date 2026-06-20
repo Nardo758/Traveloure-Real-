@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, doublePrecision, uuid, serial, time, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, time, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -406,7 +406,9 @@ export const localExpertForms = pgTable("local_expert_forms", {
   status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  statusIdx: index("local_expert_forms_status_idx").on(table.status),
+}));
 
 export const serviceProviderForms = pgTable("service_provider_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -5342,7 +5344,9 @@ export const bookings = pgTable("bookings", {
   bookingMetadata: jsonb("booking_metadata").default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  createdAtIdx: index("bookings_created_at_idx").on(table.createdAt),
+}));
 
 export const platformFees = pgTable("platform_fees", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -5399,7 +5403,10 @@ export const expertRequests = pgTable("expert_requests", {
   assignedAt: timestamp("assigned_at"),
   completedAt: timestamp("completed_at"),
   fallbackMessage: text("fallback_message"),
-});
+}, (table) => ({
+  destinationIdx: index("expert_requests_destination_idx").on(table.destinationCity),
+  statusIdx: index("expert_requests_status_idx").on(table.status),
+}));
 
 // === Concierge Requests (CON-A.P3 / N5) ===
 // Intent log for the pay-per-use Concierge layer. Persists every concierge request
@@ -5662,7 +5669,9 @@ export const leadRoutingLogs = pgTable("lead_routing_logs", {
   scoresJson: jsonb("scores_json"),
   overriddenBy: varchar("overridden_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  tripIdIdx: index("lead_routing_logs_trip_id_idx").on(table.tripId),
+}));
 
 export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
