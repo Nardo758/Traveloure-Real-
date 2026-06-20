@@ -5397,6 +5397,7 @@ export const expertRequests = pgTable("expert_requests", {
   createdAt: timestamp("created_at").defaultNow(),
   assignedAt: timestamp("assigned_at"),
   completedAt: timestamp("completed_at"),
+  fallbackMessage: text("fallback_message"),
 });
 
 // === Concierge Requests (CON-A.P3 / N5) ===
@@ -6528,3 +6529,21 @@ export const funnelEvents = pgTable("funnel_events", {
 export const insertFunnelEventSchema = createInsertSchema(funnelEvents).omit({ id: true, createdAt: true });
 export type InsertFunnelEvent = z.infer<typeof insertFunnelEventSchema>;
 export type FunnelEvent = typeof funnelEvents.$inferSelect;
+
+// === Admin Notifications ===
+// Created whenever a lead cannot be routed (no approved experts or zero score).
+// Gives admins a push-style signal to handle dead-end leads manually.
+export const adminNotifications = pgTable("admin_notifications", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  tripId: text("trip_id"),
+  destination: text("destination"),
+  reason: text("reason"),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
+export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;
+export type AdminNotification = typeof adminNotifications.$inferSelect;

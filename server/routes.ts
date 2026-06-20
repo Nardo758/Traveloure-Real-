@@ -34,6 +34,8 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
+  adminNotifications,
+  expertRequests,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -12759,6 +12761,54 @@ Respond with this exact JSON structure:
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch opportunities" });
+    }
+  });
+
+  // GET /api/admin/notifications — unread dead-end lead alerts for admins
+  app.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const rows = await db
+        .select()
+        .from(adminNotifications)
+        .where(eq(adminNotifications.isRead, false))
+        .orderBy(desc(adminNotifications.createdAt));
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch admin notifications", error: error.message });
+    }
+  });
+
+  // GET /api/trips/:tripId/expert-request-status — traveler polls this to show
+  // fallback message when their lead could not be auto-assigned
+  app.get("/api/trips/:tripId/expert-request-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { tripId } = req.params;
+      const rows = await db
+        .select({
+          id: expertRequests.id,
+          status: expertRequests.status,
+          assignedExpertId: expertRequests.assignedExpertId,
+          fallbackMessage: expertRequests.fallbackMessage,
+          createdAt: expertRequests.createdAt,
+          assignedAt: expertRequests.assignedAt,
+        })
+        .from(expertRequests)
+        .where(eq(expertRequests.tripId, tripId))
+        .orderBy(desc(expertRequests.createdAt))
+        .limit(1);
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "No expert request found for this trip" });
+      }
+      res.json(rows[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch expert request status", error: error.message });
     }
   });
 

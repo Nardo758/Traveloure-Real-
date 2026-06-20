@@ -4,6 +4,19 @@
  * Keep runtime and tests on this single list. Importing from here avoids
  * pulling in the DB client during chain-integrity checks.
  *
+ * ─── Authoring conventions ───────────────────────────────────────────────────
+ *
+ * See server/migrations/AUTHORING.md for the full authoring guide, including:
+ *  • Idempotency requirements (IF NOT EXISTS, ON CONFLICT DO NOTHING)
+ *  • How to handle superseded migrations (no-op SELECT 1 convention)
+ *  • How to register, exclude, or delete a migration
+ *
+ * TL;DR on superseded migrations: if a migration is made redundant by a later
+ * one shipping in the same release (before either has reached production),
+ * replace its SQL body with `SELECT 1` and add a header comment explaining why.
+ * This preserves ledger sequence continuity without running harmful DDL.
+ * The runner emits a [Migrations][WARN] line for every no-op file it encounters.
+ *
  * ─── Intentional gaps / exclusions ──────────────────────────────────────────
  *
  * 052  `052_phase5_expert_endorsements.sql` is excluded. It is a superseded
@@ -226,4 +239,6 @@ export const MIGRATION_FILES = [
   // 091: Change destination_seasons.average_temp from varchar(60) to text.
   // Removes the length cap entirely so any future temperature description fits without hitting a limit.
   "091_average_temp_to_text.sql",
+  // 092: admin_notifications table for dead-end lead alerts + fallback_message on expert_requests.
+  "092_admin_notifications.sql",
 ] as const;
