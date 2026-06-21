@@ -21,6 +21,7 @@ import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
+import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import {
   logger,
   httpLogger,
@@ -368,6 +369,10 @@ async function runDatabaseSeeding() {
       // Start booking expiry scheduler (auto-cancels stale pending_payment bookings)
       bookingExpiryScheduler.start();
       logger.info("Booking expiry scheduler started");
+
+      // Start daily admin digest scheduler (payout-gap report + unresolved lead alerts)
+      adminDigestScheduler.start();
+      logger.info("Admin digest scheduler started");
       
       // One-time admin promotion
       import("./db").then(({ pool }) => {

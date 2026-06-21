@@ -341,3 +341,109 @@ export async function sendEmailVerificationEmail(params: EmailVerificationParams
 
   console.log(`[email] Verification link sent to ${params.toEmail}`);
 }
+
+// ─── Admin Daily Digest ────────────────────────────────────────────────────
+
+interface DigestNotification {
+  id: number;
+  message: string;
+  destination?: string | null;
+}
+
+interface DigestExpert {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+interface AdminDigestParams {
+  toEmail: string;
+  unresolvedNotifications: DigestNotification[];
+  expertsWithoutPayout: DigestExpert[];
+}
+
+export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping admin digest email");
+    return;
+  }
+
+  const baseUrl = getAppBaseUrl();
+  const date = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  const notifRows = params.unresolvedNotifications
+    .map(
+      (n) =>
+        `<tr style="background:#FFF7F0">
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${n.message}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${n.destination ?? "—"}</td>
+        </tr>`
+    )
+    .join("");
+
+  const expertRows = params.expertsWithoutPayout
+    .map(
+      (e) => {
+        const name = [e.firstName, e.lastName].filter(Boolean).join(" ") || e.email || e.id;
+        return `<tr style="background:#FFF5F5">
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${name}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${e.email ?? "—"}</td>
+        </tr>`;
+      }
+    )
+    .join("");
+
+  const html = `
+<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px">
+  <h2 style="color:#FF385C;margin-bottom:4px">Traveloure — Daily Admin Digest</h2>
+  <p style="color:#6B7280;font-size:13px;margin-top:0">${date}</p>
+
+  ${params.unresolvedNotifications.length > 0 ? `
+  <h3 style="color:#92400E;margin-top:24px">⚠ Unresolved Lead Alerts (${params.unresolvedNotifications.length})</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#FEF3C7">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#92400E">Message</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#92400E">Destination</th>
+      </tr>
+    </thead>
+    <tbody>${notifRows}</tbody>
+  </table>
+  <a href="${baseUrl}/admin/dashboard" style="display:inline-block;background:#FF385C;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:20px">
+    Review Alerts →
+  </a>
+  ` : ""}
+
+  ${params.expertsWithoutPayout.length > 0 ? `
+  <h3 style="color:#991B1B;margin-top:24px">💳 Experts Without Payout Setup (${params.expertsWithoutPayout.length})</h3>
+  <p style="color:#6B7280;font-size:13px">These experts cannot receive payments until their Stripe Connect account is verified.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#FEE2E2">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#991B1B">Name</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#991B1B">Email</th>
+      </tr>
+    </thead>
+    <tbody>${expertRows}</tbody>
+  </table>
+  <a href="${baseUrl}/admin/experts" style="display:inline-block;background:#DC2626;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600">
+    Manage Experts →
+  </a>
+  ` : ""}
+
+  <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
+    Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>
+  </p>
+</div>`;
+
+  await client.emails.send({
+    from: getFromAddress(),
+    to: params.toEmail,
+    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps`,
+    html,
+  });
+
+  console.log(`[email] Admin digest sent to ${params.toEmail}`);
+}
