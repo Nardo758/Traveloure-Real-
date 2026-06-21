@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,18 +14,14 @@ import {
   Server,
   Activity,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   AlertTriangle,
-  Database,
-  RefreshCw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { LocalExpertForm, ServiceProviderForm } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
 import { FunnelChart } from "@/components/admin/FunnelChart";
+import { SlowQueryWidget } from "@/components/admin/SlowQueryWidget";
 
 interface AdminStats {
   totalUsers: number;
@@ -52,23 +47,7 @@ interface StaleBooking {
   user_last_name: string;
 }
 
-interface SlowQuery {
-  url: string;
-  method?: string;
-  duration: number;
-  timestamp: string;
-  queryCount?: number;
-}
-
-interface SlowQueryData {
-  count: number;
-  threshold: number | string;
-  queries: SlowQuery[];
-}
-
 export default function AdminDashboard() {
-  const [slowOpen, setSlowOpen] = useState(false);
-
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
   });
@@ -87,11 +66,6 @@ export default function AdminDashboard() {
 
   const { data: stalePendingData } = useQuery<{ bookings: StaleBooking[]; count: number }>({
     queryKey: ["/api/admin/bookings/stale-pending"],
-  });
-
-  const { data: slowData, refetch: refetchSlow } = useQuery<SlowQueryData>({
-    queryKey: ["/api/admin/slow-queries"],
-    refetchInterval: 60 * 1000,
   });
 
   const systemHealth = healthData?.services?.slice(0, 4).map(s => ({
@@ -125,8 +99,11 @@ export default function AdminDashboard() {
     <AdminLayout title="Dashboard">
       <div className="p-6 space-y-6">
 
-        {/* ── Funnel drop-off visualizer — first widget ── */}
+        {/* Funnel drop-off visualizer */}
         <FunnelChart />
+
+        {/* Slow query monitor */}
+        <SlowQueryWidget />
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -336,78 +313,6 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Slow Query Monitor */}
-        <Card data-testid="card-slow-queries">
-          <CardHeader
-            className="flex flex-row items-center justify-between gap-2 cursor-pointer select-none"
-            onClick={() => setSlowOpen((o) => !o)}
-          >
-            <CardTitle className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-orange-500" />
-              Slow Queries
-              {slowData && slowData.count > 0 && (
-                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs ml-1">
-                  {slowData.count}
-                </Badge>
-              )}
-            </CardTitle>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400 hidden sm:inline">
-                ≥{slowData?.threshold ?? 500}ms · refreshes every 60s
-              </span>
-              {slowOpen
-                ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                : <ChevronDown className="w-4 h-4 text-gray-400" />}
-            </div>
-          </CardHeader>
-
-          {slowOpen && (
-            <CardContent>
-              {slowData && slowData.queries.length > 0 ? (
-                <div className="space-y-1">
-                  {[...slowData.queries].reverse().slice(0, 5).map((q: SlowQuery, i: number) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
-                      data-testid={`row-slow-query-${i}`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate">{q.url}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(q.timestamp).toLocaleTimeString()}
-                          {q.queryCount !== undefined && ` · ${q.queryCount} DB queries`}
-                        </p>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="ml-3 text-xs text-orange-600 border-orange-300 whitespace-nowrap flex-shrink-0"
-                      >
-                        {q.duration}ms
-                      </Badge>
-                    </div>
-                  ))}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-xs text-gray-500 mt-2"
-                    data-testid="button-clear-slow-queries"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      apiRequest("DELETE", "/api/admin/slow-queries").then(() => refetchSlow());
-                    }}
-                  >
-                    <RefreshCw className="w-3 h-3 mr-1" /> Clear log
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">
-                  No slow queries recorded. Threshold: {slowData?.threshold ?? 500}ms.
-                </p>
-              )}
-            </CardContent>
-          )}
-        </Card>
 
       </div>
     </AdminLayout>
