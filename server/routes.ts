@@ -12919,6 +12919,20 @@ Respond with this exact JSON structure:
     }
   });
 
+  // PATCH /api/admin/notifications/read-all — mark all unread lead alerts as resolved
+  app.patch("/api/admin/notifications/read-all", requireAdmin, async (req, res) => {
+    try {
+      const result = await db
+        .update(adminNotifications)
+        .set({ isRead: true })
+        .where(eq(adminNotifications.isRead, false))
+        .returning();
+      res.json({ success: true, updated: result.length });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to mark all notifications as read", error: err.message });
+    }
+  });
+
   // GET /api/trips/:tripId/expert-request-status — traveler polls this to show
   // fallback message when their lead could not be auto-assigned
   app.get("/api/trips/:tripId/expert-request-status", isAuthenticated, async (req, res) => {
