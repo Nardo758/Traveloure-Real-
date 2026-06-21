@@ -169,7 +169,11 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 router.get(api.trips.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const status = req.query.status as string | undefined;
-    const trips = await storage.getTrips(userId, status);
+    const trips = await withQueryTimer(
+      "trips-dashboard-list",
+      () => storage.getTrips(userId, status),
+      (req.user as any)?.claims?.role
+    );
     res.json(trips);
   });
 

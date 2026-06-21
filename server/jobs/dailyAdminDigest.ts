@@ -1,13 +1,7 @@
-import { Resend } from "resend";
 import { db } from "../db";
 import { localExpertForms, users, adminNotifications } from "../../shared/schema";
 import { eq, and, ne } from "drizzle-orm";
-
-function getResendClient(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
-  return new Resend(key);
-}
+import { sendEmail } from "../services/email.service";
 
 async function getPayoutGapExperts() {
   return await db
@@ -60,7 +54,9 @@ export async function runDailyAdminDigest() {
 
     const dashboardUrl =
       process.env.ADMIN_DASHBOARD_URL ||
-      "https://traveloure-platform.replit.app/admin";
+      process.env.REPLIT_DOMAINS?.split(",")[0]?.trim()
+        ? `https://${process.env.REPLIT_DOMAINS?.split(",")[0]?.trim()}/admin`
+        : "https://traveloure.replit.app/admin";
 
     // Build plain-text body
     let textBody = "TRAVELOURE — Daily Admin Digest\n";
@@ -141,27 +137,18 @@ export async function runDailyAdminDigest() {
   </p>
 </div>`;
 
-    const resend = getResendClient();
-    if (!resend) {
-      console.warn("[DIGEST] RESEND_API_KEY not set — logging digest to console only");
-      console.log("[DIGEST] Body:\n", textBody);
-      return;
-    }
-
-    const from = process.env.EMAIL_FROM || "Traveloure <no-reply@traveloure.com>";
-    const { error } = await resend.emails.send({
-      from,
+    const result = await sendEmail({
       to: adminEmail,
       subject: `Traveloure Daily Digest — ${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`,
-      text: textBody,
       html: htmlBody,
+      text: textBody,
     });
 
-    if (error) {
-      console.error("[DIGEST] Resend error:", error);
+    if (!result.ok) {
+      console.error("[DIGEST] Send failed:", result.error);
     } else {
       console.log(
-        `[DIGEST] Sent to ${adminEmail} — ${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`
+        `[DIGEST] Sent to ${adminEmail} — id=${result.id} — ${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`
       );
     }
   } catch (err) {
