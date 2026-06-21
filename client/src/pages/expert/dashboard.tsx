@@ -141,7 +141,7 @@ export default function ExpertDashboard() {
           <p className="text-console-mid mt-1">{analytics?.summary?.pendingBookings || 0} active clients • Top Destination Expert</p>
         </div>
 
-        {/* Stripe Connect Setup Banner */}
+        {/* Stripe Connect Setup Banner — not yet connected */}
         {stripeStatus && !stripeStatus.connected && (
           <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-center justify-between gap-4" data-testid="banner-stripe-connect">
             <div className="flex items-center gap-3">
@@ -155,6 +155,30 @@ export default function ExpertDashboard() {
             </div>
             <a href="/expert/earnings" className="flex-shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors" data-testid="link-setup-payouts">
               Set Up Payouts →
+            </a>
+          </div>
+        )}
+
+        {/* Payout not available — connected but verification not complete */}
+        {stripeStatus?.connected && stripeStatus?.status !== "complete" && (
+          <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 flex items-center justify-between gap-4" data-testid="banner-payout-unavailable">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-rose-100 rounded-full flex-shrink-0">
+                <AlertCircle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-rose-900">Payouts not yet available</p>
+                <p className="text-sm text-rose-700">
+                  Your Stripe account is under review. Earnings will be held until verification is complete.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/expert/earnings"
+              className="flex-shrink-0 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium rounded-lg transition-colors"
+              data-testid="link-complete-stripe-verification"
+            >
+              Complete Verification →
             </a>
           </div>
         )}

@@ -12898,6 +12898,27 @@ Respond with this exact JSON structure:
     }
   });
 
+  // PATCH /api/admin/notifications/:id/read — mark a single lead alert as resolved
+  app.patch("/api/admin/notifications/:id/read", requireAdmin, async (req, res) => {
+    try {
+      const notifId = parseInt(req.params.id, 10);
+      if (isNaN(notifId)) {
+        return res.status(400).json({ message: "Invalid notification id" });
+      }
+      const [updated] = await db
+        .update(adminNotifications)
+        .set({ isRead: true })
+        .where(eq(adminNotifications.id, notifId))
+        .returning();
+      if (!updated) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      res.json({ ok: true, id: updated.id });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to mark notification as read", error: err.message });
+    }
+  });
+
   // GET /api/trips/:tripId/expert-request-status — traveler polls this to show
   // fallback message when their lead could not be auto-assigned
   app.get("/api/trips/:tripId/expert-request-status", isAuthenticated, async (req, res) => {
