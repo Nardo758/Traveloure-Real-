@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { ProviderAvailabilityManager, ProviderBookingContextPanel } from "@/components/logistics";
+import { PayoutBanner } from "@/components/expert/PayoutBanner";
 
 interface ProviderAnalytics {
   summary: {
@@ -86,6 +87,11 @@ export default function ProviderDashboard() {
   return (
     <ProviderLayout title="Dashboard">
       <div className="p-6 space-y-6">
+        <PayoutBanner
+          stripeConnectStatus={stripeStatus?.status ?? "not_started"}
+          isPayable={stripeStatus?.connected ?? false}
+        />
+
         {/* Welcome Section */}
         <div>
           <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-welcome">
@@ -93,24 +99,6 @@ export default function ProviderDashboard() {
           </h2>
           <p className="text-console-dark mt-1">3 bookings today • {analytics?.summary?.totalBookings || 0} this month</p>
         </div>
-
-        {/* Stripe Connect Setup Banner */}
-        {stripeStatus && !stripeStatus.connected && (
-          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-center justify-between gap-4" data-testid="banner-stripe-connect">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-full flex-shrink-0">
-                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-              </div>
-              <div>
-                <p className="font-semibold text-amber-900">Complete your payout setup</p>
-                <p className="text-sm text-amber-700">Connect a Stripe account to receive service payments and earn on bookings.</p>
-              </div>
-            </div>
-            <a href="/provider/earnings" className="flex-shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors" data-testid="link-setup-payouts">
-              Set Up Payouts →
-            </a>
-          </div>
-        )}
 
         {/* Travel Pulse Ticker */}
         <TravelPulseTicker items={[

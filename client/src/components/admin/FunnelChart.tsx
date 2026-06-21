@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 interface FunnelStage {
@@ -18,30 +19,31 @@ const STAGE_LABELS: Record<string, string> = {
   T7_VIRAL_SHARE:          "T7 — Viral share"
 };
 
+const WINDOW_OPTIONS = [7, 30, 90] as const;
+type WindowDays = typeof WINDOW_OPTIONS[number];
+
 export function FunnelChart() {
+  const [days, setDays] = useState<WindowDays>(30);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["funnel-stats"],
+    queryKey: ["funnel-stats", days],
     queryFn: async () => {
       const res = await fetch(
-        "/api/admin/funnel-stats",
+        `/api/admin/funnel-stats?days=${days}`,
         { credentials: "include" }
       );
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
-    refetchInterval: 60_000
+    refetchInterval: 60_000,
   });
 
   if (isLoading) return (
-    <div className="p-4 text-sm text-gray-400">
-      Loading funnel data...
-    </div>
+    <div className="p-4 text-sm text-gray-400">Loading funnel data...</div>
   );
 
   if (error) return (
-    <div className="p-4 text-sm text-red-400">
-      Failed to load funnel stats
-    </div>
+    <div className="p-4 text-sm text-red-400">Failed to load funnel stats</div>
   );
 
   const stages = data?.stages || [];
@@ -51,11 +53,26 @@ export function FunnelChart() {
     <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-semibold text-gray-900">
-          Funnel drop-off — last {data?.windowDays} days
+          Funnel drop-off — last {days} days
         </h2>
-        <span className="text-xs text-gray-400">
-          Auto-refreshes every 60s
-        </span>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
+            {WINDOW_OPTIONS.map((w) => (
+              <button
+                key={w}
+                onClick={() => setDays(w)}
+                className={`px-3 py-1 transition-colors ${
+                  days === w
+                    ? "bg-gray-900 text-white font-semibold"
+                    : "bg-white text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                {w}d
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-gray-400">Auto-refreshes every 60s</span>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -78,9 +95,7 @@ export function FunnelChart() {
                 </span>
                 <div className="flex items-center gap-3 text-xs text-gray-500">
                   {i > 0 && (
-                    <span className="text-red-400">
-                      −{dropoff} dropped
-                    </span>
+                    <span className="text-red-400">−{dropoff} dropped</span>
                   )}
                   <span className="font-semibold text-gray-800 w-8 text-right">
                     {s.count}
