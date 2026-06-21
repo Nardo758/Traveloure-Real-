@@ -31,6 +31,7 @@ import {
 import { Link } from "wouter";
 import { ExpertConstraintDashboard, ExpertCoordinationHub } from "@/components/logistics";
 import { TravelPulseTicker } from "@/components/shared/travel-pulse-ticker";
+import { PayoutBanner } from "@/components/expert/PayoutBanner";
 
 interface AnalyticsDashboard {
   summary: {
@@ -75,6 +76,15 @@ interface AssignedTrip {
 
 export default function ExpertDashboard() {
   const [selectedTripId, setSelectedTripId] = useState("");
+
+  const { data: dashboardData } = useQuery<{
+    approvalStatus: string;
+    stripeConnectStatus: string;
+    isRoutingEligible: boolean;
+    isPayable: boolean;
+  }>({
+    queryKey: ["/api/expert/dashboard"],
+  });
 
   const { data: stripeStatus } = useQuery<{ connected: boolean; status: string }>({
     queryKey: ["/api/stripe/connect/status"],
@@ -133,6 +143,11 @@ export default function ExpertDashboard() {
   return (
     <ExpertLayout>
       <div className="p-6 space-y-6">
+        <PayoutBanner
+          stripeConnectStatus={dashboardData?.stripeConnectStatus ?? "not_started"}
+          isPayable={dashboardData?.isPayable ?? false}
+        />
+
         {/* Welcome Section */}
         <div>
           <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-expert-welcome">
