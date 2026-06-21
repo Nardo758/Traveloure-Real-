@@ -1,6 +1,13 @@
+import { Resend } from "resend";
 import { db } from "../db";
 import { localExpertForms, users, adminNotifications } from "../../shared/schema";
 import { eq, and, ne } from "drizzle-orm";
+
+function getResendClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  return new Resend(key);
+}
 
 async function getPayoutGapExperts() {
   return await db
@@ -51,48 +58,112 @@ export async function runDailyAdminDigest() {
       return;
     }
 
-    // Build plain text digest
-    let body = "TRAVELOURE — Daily Admin Digest\n";
-    body += new Date().toUTCString() + "\n";
-    body += "================================\n\n";
-
-    if (payoutGap.length > 0) {
-      body += `PAYOUT GAP — ${payoutGap.length} `;
-      body += `expert(s) approved but not payable:\n`;
-      payoutGap.forEach((e) => {
-        body += `  • ${e.name} (${e.email}) `;
-        body += `— Connect: ${e.stripeConnectStatus}\n`;
-      });
-      body += "\n";
-    }
-
-    if (unreadNotifs.length > 0) {
-      body += `UNASSIGNED LEADS — `;
-      body += `${unreadNotifs.length} unread alert(s):\n`;
-      unreadNotifs.forEach((n) => {
-        body += `  • ${n.destination} `;
-        body += `— ${n.reason} `;
-        body += `(${new Date(n.createdAt!).toLocaleDateString()})\n`;
-      });
-      body += "\n";
-    }
-
-    body += "================================\n";
-    body += "View dashboard: ";
-    body +=
+    const dashboardUrl =
       process.env.ADMIN_DASHBOARD_URL ||
       "https://traveloure-platform.replit.app/admin";
 
-    console.log("[DIGEST] Sending to:", adminEmail);
-    console.log("[DIGEST] Body:\n", body);
+    // Build plain-text body
+    let textBody = "TRAVELOURE — Daily Admin Digest\n";
+    textBody += new Date().toUTCString() + "\n";
+    textBody += "================================\n\n";
 
-    // TODO: Replace console.log with your email provider when ready:
-    // SendGrid: @sendgrid/mail
-    // Resend: resend
-    // Nodemailer: nodemailer
-    // For now logs the digest to server console
+    if (payoutGap.length > 0) {
+      textBody += `PAYOUT GAP — ${payoutGap.length} expert(s) approved but not payable:\n`;
+      payoutGap.forEach((e) => {
+        textBody += `  • ${e.name} (${e.email}) — Connect: ${e.stripeConnectStatus}\n`;
+      });
+      textBody += "\n";
+    }
 
-    console.log("[DIGEST] Done.");
+    if (unreadNotifs.length > 0) {
+      textBody += `UNASSIGNED LEADS — ${unreadNotifs.length} unread alert(s):\n`;
+      unreadNotifs.forEach((n) => {
+        textBody += `  • ${n.destination} — ${n.reason} (${new Date(n.createdAt!).toLocaleDateString()})\n`;
+      });
+      textBody += "\n";
+    }
+
+    textBody += "================================\n";
+    textBody += `View dashboard: ${dashboardUrl}`;
+
+    // Build HTML body
+    const payoutRows = payoutGap
+      .map(
+        (e) =>
+          `<tr><td style="padding:4px 8px">${e.name}</td><td style="padding:4px 8px">${e.email}</td><td style="padding:4px 8px">${e.stripeConnectStatus}</td></tr>`
+      )
+      .join("");
+
+    const notifRows = unreadNotifs
+      .map(
+        (n) =>
+          `<tr><td style="padding:4px 8px">${n.destination ?? "—"}</td><td style="padding:4px 8px">${n.reason ?? "—"}</td><td style="padding:4px 8px">${new Date(n.createdAt!).toLocaleDateString()}</td></tr>`
+      )
+      .join("");
+
+    const htmlBody = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+  <h2 style="color:#1A1A18">Traveloure — Daily Admin Digest</h2>
+  <p style="color:#7A7A72;font-size:13px">${new Date().toUTCString()}</p>
+
+  ${
+    payoutGap.length > 0
+      ? `<h3 style="color:#E85D55">⚠️ Payout Gap — ${payoutGap.length} expert(s) not yet payable</h3>
+         <table style="border-collapse:collapse;width:100%;font-size:13px">
+           <thead><tr style="background:#F3F3EE">
+             <th style="padding:4px 8px;text-align:left">Name</th>
+             <th style="padding:4px 8px;text-align:left">Email</th>
+             <th style="padding:4px 8px;text-align:left">Connect status</th>
+           </tr></thead>
+           <tbody>${payoutRows}</tbody>
+         </table>`
+      : ""
+  }
+
+  ${
+    unreadNotifs.length > 0
+      ? `<h3 style="color:#E85D55">🔔 Unassigned Leads — ${unreadNotifs.length} unread alert(s)</h3>
+         <table style="border-collapse:collapse;width:100%;font-size:13px">
+           <thead><tr style="background:#F3F3EE">
+             <th style="padding:4px 8px;text-align:left">Destination</th>
+             <th style="padding:4px 8px;text-align:left">Reason</th>
+             <th style="padding:4px 8px;text-align:left">Date</th>
+           </tr></thead>
+           <tbody>${notifRows}</tbody>
+         </table>`
+      : ""
+  }
+
+  <p style="margin-top:24px">
+    <a href="${dashboardUrl}" style="background:#E85D55;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">
+      Open Dashboard →
+    </a>
+  </p>
+</div>`;
+
+    const resend = getResendClient();
+    if (!resend) {
+      console.warn("[DIGEST] RESEND_API_KEY not set — logging digest to console only");
+      console.log("[DIGEST] Body:\n", textBody);
+      return;
+    }
+
+    const from = process.env.EMAIL_FROM || "Traveloure <no-reply@traveloure.com>";
+    const { error } = await resend.emails.send({
+      from,
+      to: adminEmail,
+      subject: `Traveloure Daily Digest — ${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    if (error) {
+      console.error("[DIGEST] Resend error:", error);
+    } else {
+      console.log(
+        `[DIGEST] Sent to ${adminEmail} — ${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`
+      );
+    }
   } catch (err) {
     console.error("[DIGEST ERROR]", err);
   }
