@@ -2726,7 +2726,11 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      const { allUsers, totalResult } = await getAdminUsersPage(whereClause, limit, offset);
+      const { allUsers, totalResult } = await withQueryTimer(
+        "admin-users-paginated",
+        () => getAdminUsersPage(whereClause, limit, offset),
+        (req.user as any)?.claims?.role
+      );
 
       const enrichedUsers = await Promise.all(allUsers.map(async (u: any) => {
         const userTrips = await getUserTripCount(u.id);
