@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,12 +15,23 @@ import {
   Server,
   Activity,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   AlertTriangle,
+  TrendingDown,
+  Database,
+  RefreshCw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { LocalExpertForm, ServiceProviderForm } from "@shared/schema";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { apiRequest } from "@/lib/queryClient";
+
+const FUNNEL_COLORS = [
+  "#3B82F6", "#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#FF385C", "#EC4899",
+];
 
 interface AdminStats {
   totalUsers: number;
@@ -45,7 +57,33 @@ interface StaleBooking {
   user_last_name: string;
 }
 
+interface FunnelStage {
+  stage: string;
+  count: number;
+}
+
+interface FunnelData {
+  windowDays: number;
+  stages: FunnelStage[];
+}
+
+interface SlowQuery {
+  url: string;
+  method?: string;
+  duration: number;
+  timestamp: string;
+  queryCount?: number;
+}
+
+interface SlowQueryData {
+  count: number;
+  threshold: number | string;
+  queries: SlowQuery[];
+}
+
 export default function AdminDashboard() {
+  const [slowOpen, setSlowOpen] = useState(false);
+
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
   });
@@ -64,6 +102,16 @@ export default function AdminDashboard() {
 
   const { data: stalePendingData } = useQuery<{ bookings: StaleBooking[]; count: number }>({
     queryKey: ["/api/admin/bookings/stale-pending"],
+  });
+
+  const { data: funnelData } = useQuery<FunnelData>({
+    queryKey: ["/api/admin/funnel-stats"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  const { data: slowData, refetch: refetchSlow } = useQuery<SlowQueryData>({
+    queryKey: ["/api/admin/slow-queries"],
+    refetchInterval: 60 * 1000,
   });
 
   const systemHealth = healthData?.services?.slice(0, 4).map(s => ({
@@ -96,6 +144,8 @@ export default function AdminDashboard() {
   return (
     <AdminLayout title="Dashboard">
       <div className="p-6 space-y-6">
+
+        {/* Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {statsData.map((stat) => (
             <Card key={stat.label} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
@@ -112,7 +162,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Stale Pending Bookings alert — only shown when there are any */}
+        {/* Stale Pending Bookings alert */}
         {staleBookings.length > 0 && (
           <Card className="border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20" data-testid="card-stale-bookings">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -126,13 +176,12 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                These bookings have been stuck in <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">pending_payment</code> for over 24 hours.
-                This usually means the user closed their browser before payment completed and no Stripe webhook was received.
-                Investigate each booking and check the associated PaymentIntent in the Stripe dashboard.
+                These bookings have been stuck in{" "}
+                <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">pending_payment</code> for over 24 hours.
+                Check the associated PaymentIntent in the Stripe dashboard.
               </p>
               {staleBookings.slice(0, 5).map((booking, index) => {
-                const createdAt = new Date(booking.created_at);
-                const hoursAgo = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60));
+                const hoursAgo = Math.floor((Date.now() - new Date(booking.created_at).getTime()) / 3_600_000);
                 const userName = [booking.user_first_name, booking.user_last_name].filter(Boolean).join(" ") || booking.user_email || booking.user_id;
                 return (
                   <div
@@ -141,8 +190,12 @@ export default function AdminDashboard() {
                     data-testid={`row-stale-booking-${index}`}
                   >
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{booking.title || `Booking #${booking.id.slice(0, 8)}`}</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{userName} · ${parseFloat(booking.total_amount || "0").toFixed(2)}</p>
+                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {booking.title || `Booking #${booking.id.slice(0, 8)}`}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {userName} · ${parseFloat(booking.total_amount || "0").toFixed(2)}
+                      </p>
                     </div>
                     <Badge variant="outline" className="ml-2 text-xs text-amber-700 border-amber-400 whitespace-nowrap flex-shrink-0">
                       {hoursAgo}h ago
@@ -159,6 +212,7 @@ export default function AdminDashboard() {
           </Card>
         )}
 
+        {/* Applications */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -227,6 +281,7 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
+        {/* Platform health + quick stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -245,10 +300,7 @@ export default function AdminDashboard() {
                   <p className="text-gray-600 dark:text-gray-400">{item.metric}</p>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-gray-900 dark:text-gray-100">{item.value}</span>
-                    <CheckCircle className={`w-4 h-4 ${
-                      item.status === "excellent" ? "text-green-500" :
-                      item.status === "good" ? "text-blue-500" : "text-gray-400"
-                    }`} />
+                    <CheckCircle className={`w-4 h-4 ${item.status === "good" ? "text-blue-500" : "text-gray-400"}`} />
                   </div>
                 </div>
               ))}
@@ -301,6 +353,141 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* ─── TASK 1: Conversion Funnel Drop-off Chart ─── */}
+        <Card data-testid="card-funnel-chart">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingDown className="w-5 h-5 text-rose-600" />
+              Conversion Funnel
+            </CardTitle>
+            <Badge variant="outline" className="text-xs text-gray-500">
+              Last {funnelData?.windowDays ?? 30} days
+            </Badge>
+          </CardHeader>
+          <CardContent>
+            {funnelData?.stages && funnelData.stages.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={funnelData.stages} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="stage" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(val: number) => [val.toLocaleString(), "Events"]}
+                      contentStyle={{ fontSize: 12, borderRadius: 6 }}
+                    />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {funnelData.stages.map((_: FunnelStage, i: number) => (
+                        <Cell key={i} fill={FUNNEL_COLORS[i % FUNNEL_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {funnelData.stages.map((s: FunnelStage, i: number) => {
+                    const prev = funnelData.stages[i - 1];
+                    const dropPct =
+                      prev && prev.count > 0
+                        ? Math.round((1 - s.count / prev.count) * 100)
+                        : null;
+                    return (
+                      <div
+                        key={s.stage}
+                        className="text-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40"
+                        data-testid={`cell-funnel-${s.stage}`}
+                      >
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{s.stage}</p>
+                        <p className="font-bold text-gray-900 dark:text-gray-100 text-lg">
+                          {s.count.toLocaleString()}
+                        </p>
+                        {dropPct !== null && (
+                          <p className="text-xs text-rose-500 font-medium">−{dropPct}% drop</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8 text-sm">
+                No funnel events recorded yet. Events appear as users register, create trips, and book experiences.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ─── TASK 2: Slow Query Monitor ─── */}
+        <Card data-testid="card-slow-queries">
+          <CardHeader
+            className="flex flex-row items-center justify-between gap-2 cursor-pointer select-none"
+            onClick={() => setSlowOpen((o) => !o)}
+          >
+            <CardTitle className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-orange-500" />
+              Slow Queries
+              {slowData && slowData.count > 0 && (
+                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs ml-1">
+                  {slowData.count}
+                </Badge>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400 hidden sm:inline">
+                ≥{slowData?.threshold ?? 500}ms · refreshes every 60s
+              </span>
+              {slowOpen
+                ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </div>
+          </CardHeader>
+
+          {slowOpen && (
+            <CardContent>
+              {slowData && slowData.queries.length > 0 ? (
+                <div className="space-y-1">
+                  {[...slowData.queries].reverse().slice(0, 5).map((q: SlowQuery, i: number) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
+                      data-testid={`row-slow-query-${i}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate">{q.url}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {new Date(q.timestamp).toLocaleTimeString()}
+                          {q.queryCount !== undefined && ` · ${q.queryCount} DB queries`}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="ml-3 text-xs text-orange-600 border-orange-300 whitespace-nowrap flex-shrink-0"
+                      >
+                        {q.duration}ms
+                      </Badge>
+                    </div>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-gray-500 mt-2"
+                    data-testid="button-clear-slow-queries"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      apiRequest("DELETE", "/api/admin/slow-queries").then(() => refetchSlow());
+                    }}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" /> Clear log
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-gray-500 dark:text-gray-400 text-center py-4 text-sm">
+                  No slow queries recorded. Threshold: {slowData?.threshold ?? 500}ms.
+                </p>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
       </div>
     </AdminLayout>
   );
