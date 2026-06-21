@@ -4,11 +4,15 @@
  * Nodemailer/SMTP to Resend per launch-owner decision).
  *
  * Required env:
- *   RESEND_API_KEY    Resend project API key
- *   EMAIL_FROM        e.g. "Traveloure <no-reply@traveloure.com>"
- *                     (sending domain MUST be verified in Resend dashboard
- *                      for real-user delivery — staging tests "succeed"
- *                      without verification but messages silently bounce.)
+ *   RESEND_API_KEY       Resend project API key
+ *   EMAIL_FROM_NOREPLY   e.g. "Traveloure <no-reply@traveloure.com>"
+ *                        (sending domain MUST be verified in Resend dashboard
+ *                         for real-user delivery — staging tests "succeed"
+ *                         without verification but messages silently bounce.)
+ *   EMAIL_REPLY_TO       Human reply-to address, e.g. "admin@traveloure.com"
+ *
+ * Legacy alias: EMAIL_FROM is still read as a fallback for EMAIL_FROM_NOREPLY
+ * so existing deployments that predate the rename continue to work.
  *
  * APP_BASE_URL is derived from REPLIT_DOMAINS at runtime; override with
  * APP_BASE_URL env var if running outside Replit.
@@ -25,8 +29,14 @@ function getClient(): Resend | null {
   return cachedClient;
 }
 
+/** Reads EMAIL_FROM_NOREPLY (preferred) or EMAIL_FROM (legacy alias). */
 function getFromAddress(): string {
-  return process.env.EMAIL_FROM || "Traveloure <no-reply@traveloure.com>";
+  return process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM ?? "";
+}
+
+/** Reads EMAIL_REPLY_TO — the human-facing reply address. */
+function getReplyToAddress(): string {
+  return process.env.EMAIL_REPLY_TO ?? "";
 }
 
 export function getAppBaseUrl(): string {
@@ -37,6 +47,79 @@ export function getAppBaseUrl(): string {
     return `https://${primary}`;
   }
   return "http://localhost:5000";
+}
+
+// ─── Generic sendEmail ──────────────────────────────────────────────────────
+
+export interface SendEmailParams {
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
+  /** Override per-call; falls back to EMAIL_REPLY_TO env var. */
+  replyTo?: string;
+}
+
+export interface SendEmailResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
+}
+
+/**
+ * Low-level email sender. Validates all three required env vars and wraps
+ * Resend in a try/catch so callers never receive an unhandled rejection.
+ *
+ * Returns { ok: true, id } on success or { ok: false, error } on failure —
+ * it never throws into the caller.
+ */
+export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
+  const defaultReplyTo = process.env.EMAIL_REPLY_TO;
+  const replyTo = params.replyTo ?? defaultReplyTo;
+
+  if (!apiKey) {
+    console.error("[email] sendEmail: RESEND_API_KEY is not set");
+    return { ok: false, error: "RESEND_API_KEY is not set" };
+  }
+  if (!from) {
+    console.error("[email] sendEmail: EMAIL_FROM_NOREPLY is not set");
+    return { ok: false, error: "EMAIL_FROM_NOREPLY is not set" };
+  }
+  if (!replyTo) {
+    console.error("[email] sendEmail: EMAIL_REPLY_TO is not set and no replyTo provided");
+    return { ok: false, error: "EMAIL_REPLY_TO is not set and no replyTo provided" };
+  }
+
+  try {
+    const client = new Resend(apiKey);
+    const { data, error } = await client.emails.send({
+      from,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      ...(params.text ? { text: params.text } : {}),
+      reply_to: replyTo,
+    });
+
+    if (error) {
+      console.error("[email] sendEmail Resend error:", {
+        to: params.to,
+        subject: params.subject,
+        error,
+      });
+      return { ok: false, error: String((error as { message?: string }).message ?? error) };
+    }
+
+    const id = (data as { id?: string } | null)?.id;
+    console.log(`[email] sendEmail ok — id=${id} subject="${params.subject}" to=${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
+    return { ok: true, id };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[email] sendEmail threw:", { to: params.to, subject: params.subject, error: message });
+    return { ok: false, error: message };
+  }
 }
 
 interface BookingConfirmationParams {
