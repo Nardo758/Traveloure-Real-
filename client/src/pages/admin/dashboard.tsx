@@ -19,19 +19,14 @@ import {
   ChevronUp,
   Loader2,
   AlertTriangle,
-  TrendingDown,
   Database,
   RefreshCw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { LocalExpertForm, ServiceProviderForm } from "@shared/schema";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { apiRequest } from "@/lib/queryClient";
-
-const FUNNEL_COLORS = [
-  "#3B82F6", "#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#FF385C", "#EC4899",
-];
+import { FunnelChart } from "@/components/admin/FunnelChart";
 
 interface AdminStats {
   totalUsers: number;
@@ -55,16 +50,6 @@ interface StaleBooking {
   user_email: string;
   user_first_name: string;
   user_last_name: string;
-}
-
-interface FunnelStage {
-  stage: string;
-  count: number;
-}
-
-interface FunnelData {
-  windowDays: number;
-  stages: FunnelStage[];
 }
 
 interface SlowQuery {
@@ -104,11 +89,6 @@ export default function AdminDashboard() {
     queryKey: ["/api/admin/bookings/stale-pending"],
   });
 
-  const { data: funnelData } = useQuery<FunnelData>({
-    queryKey: ["/api/admin/funnel-stats"],
-    refetchInterval: 5 * 60 * 1000,
-  });
-
   const { data: slowData, refetch: refetchSlow } = useQuery<SlowQueryData>({
     queryKey: ["/api/admin/slow-queries"],
     refetchInterval: 60 * 1000,
@@ -144,6 +124,9 @@ export default function AdminDashboard() {
   return (
     <AdminLayout title="Dashboard">
       <div className="p-6 space-y-6">
+
+        {/* ── Funnel drop-off visualizer — first widget ── */}
+        <FunnelChart />
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -354,69 +337,7 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* ─── TASK 1: Conversion Funnel Drop-off Chart ─── */}
-        <Card data-testid="card-funnel-chart">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2">
-              <TrendingDown className="w-5 h-5 text-rose-600" />
-              Conversion Funnel
-            </CardTitle>
-            <Badge variant="outline" className="text-xs text-gray-500">
-              Last {funnelData?.windowDays ?? 30} days
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            {funnelData?.stages && funnelData.stages.length > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={funnelData.stages} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="stage" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={(val: number) => [val.toLocaleString(), "Events"]}
-                      contentStyle={{ fontSize: 12, borderRadius: 6 }}
-                    />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                      {funnelData.stages.map((_: FunnelStage, i: number) => (
-                        <Cell key={i} fill={FUNNEL_COLORS[i % FUNNEL_COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {funnelData.stages.map((s: FunnelStage, i: number) => {
-                    const prev = funnelData.stages[i - 1];
-                    const dropPct =
-                      prev && prev.count > 0
-                        ? Math.round((1 - s.count / prev.count) * 100)
-                        : null;
-                    return (
-                      <div
-                        key={s.stage}
-                        className="text-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40"
-                        data-testid={`cell-funnel-${s.stage}`}
-                      >
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{s.stage}</p>
-                        <p className="font-bold text-gray-900 dark:text-gray-100 text-lg">
-                          {s.count.toLocaleString()}
-                        </p>
-                        {dropPct !== null && (
-                          <p className="text-xs text-rose-500 font-medium">−{dropPct}% drop</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8 text-sm">
-                No funnel events recorded yet. Events appear as users register, create trips, and book experiences.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ─── TASK 2: Slow Query Monitor ─── */}
+        {/* Slow Query Monitor */}
         <Card data-testid="card-slow-queries">
           <CardHeader
             className="flex flex-row items-center justify-between gap-2 cursor-pointer select-none"
