@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -6568,22 +6569,30 @@ router.get("/api/discovery/gems", async (req, res) => {
       const { destination, category, limit, offset } = req.query;
 
       if (destination) {
-        const result = await grokDiscoveryService.getGemsForDestination(
-          destination as string,
-          {
-            category: category as any,
-            limit: limit ? parseInt(limit as string) : undefined,
-            offset: offset ? parseInt(offset as string) : undefined
-          }
+        const result = await withQueryTimer(
+          "hidden-gems-by-destination",
+          () => grokDiscoveryService.getGemsForDestination(
+            destination as string,
+            {
+              category: category as any,
+              limit: limit ? parseInt(limit as string) : undefined,
+              offset: offset ? parseInt(offset as string) : undefined
+            }
+          ),
+          (req.user as any)?.claims?.role
         );
         return res.json(result);
       }
 
-      const result = await grokDiscoveryService.getAllGems({
-        category: category as any,
-        limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined
-      });
+      const result = await withQueryTimer(
+        "hidden-gems-all",
+        () => grokDiscoveryService.getAllGems({
+          category: category as any,
+          limit: limit ? parseInt(limit as string) : undefined,
+          offset: offset ? parseInt(offset as string) : undefined
+        }),
+        (req.user as any)?.claims?.role
+      );
       res.json(result);
     } catch (error: any) {
       console.error("Get gems error:", error);

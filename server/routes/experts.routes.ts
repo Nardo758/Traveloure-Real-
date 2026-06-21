@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
+import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -588,7 +589,11 @@ router.get("/api/experts", async (req, res) => {
     const location = req.query.location as string | undefined;
     const experienceType = req.query.experienceType as string | undefined;
     const neighbourhood = req.query.neighbourhood as string | undefined;
-    const experts = await storage.getExpertsWithProfiles(experienceTypeId);
+    const experts = await withQueryTimer(
+      "expert-matching-list",
+      () => storage.getExpertsWithProfiles(experienceTypeId),
+      (req.user as any)?.claims?.role
+    );
 
     let filtered = experts;
 
