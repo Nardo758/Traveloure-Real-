@@ -22,6 +22,7 @@ import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
+import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import {
   logger,
   httpLogger,
@@ -373,6 +374,11 @@ async function runDatabaseSeeding() {
       // Start daily admin digest scheduler (payout-gap report + unresolved lead alerts)
       adminDigestScheduler.start();
       logger.info("Admin digest scheduler started");
+
+      // Run console-log digest job once on startup to verify it works
+      runDailyAdminDigest();
+      // Then repeat every 24 hours
+      setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
       
       // One-time admin promotion
       import("./db").then(({ pool }) => {
