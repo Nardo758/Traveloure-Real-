@@ -90,6 +90,7 @@ import {
   requireConciergeBookingRate,
   type CommissionRates,
 } from "../services/commission";
+import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 
 const router = Router();
 
@@ -507,6 +508,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         false
       );
       
+      // Canonical commission summary for the cart surface
+      const cartCommission = calculateCommission(subtotal, BookingType.EXPERIENCE_CART);
+
       res.status(201).json({
         success: true,
         bookings,
@@ -515,6 +519,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         conciergeFee: conciergeFee.toFixed(2),
         total: total.toFixed(2),
         paymentIntent,
+        bookingType: BookingType.EXPERIENCE_CART,
+        commissionRate: cartCommission.commissionRate,
         message: "Booking created successfully. Complete payment.",
       });
     } catch (err: any) {
