@@ -111,6 +111,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
@@ -1096,11 +1097,13 @@ router.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, r
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Resolve commission rates from booking_fee_configs using template category (fallback: PLATFORM_FEE_RATE)
-      const templateRates = await resolveCommissionRates(template.category ?? null);
+      // Commission split for expert template purchases — always EXPERT_SESSION surface.
+      // calculateCommission is the typed, pure path; resolveCommissionRates (DB-backed)
+      // is kept as the ground-truth for the actual stored rates.
       const price = parseFloat(template.price as string);
-      const platformFee = price * templateRates.platformFeeRate;
-      const expertEarnings = price * templateRates.expertShareRate;
+      const commission = calculateCommission(price, BookingType.EXPERT_SESSION);
+      const platformFee = commission.platformFee;
+      const expertEarnings = commission.expertPayout ?? 0;
 
       // Create purchase record
       const purchase = await storage.createTemplatePurchase({
@@ -1127,7 +1130,16 @@ router.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, r
         availableAt: new Date(),
       });
 
-      res.json({ purchase, template });
+      res.json({
+        purchase,
+        template,
+        // Commission breakdown (step 5)
+        subtotal: price,
+        platformFee,
+        expertPayout: expertEarnings,
+        bookingType: BookingType.EXPERT_SESSION,
+        commissionRate: commission.commissionRate,
+      });
     } catch (err) {
       console.error("Error purchasing template:", err);
       res.status(500).json({ message: "Failed to purchase template" });

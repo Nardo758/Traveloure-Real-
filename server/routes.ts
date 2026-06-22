@@ -128,6 +128,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "./services/commission";
+import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -832,19 +833,70 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       let bookingId: string | undefined;
 
-      // If a specific service is requested, create a service_bookings row
-      // All financial and attribution values are derived server-side from the service record
+      // If a specific service is requested, create a service_bookings row.
+      // All financial and attribution values are derived server-side from the service record.
       if (serviceId) {
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
           return res.status(404).json({ message: "Service not found" });
         }
-        // Derive provider and pricing server-side — never trust client input
+
+        // Derive provider and pricing server-side — never trust client input.
         const providerId = service.userId;
         const totalAmount = Number(service.price ?? 0);
-        const shareRate = Number(service.revenueShareRate ?? EXPERT_SHARE_RATE);
-        const platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
-        const providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
+
+        // Determine booking type from the service owner's role so each surface
+        // gets the correct commission split (expert 75/25, provider tier-based).
+        let platformFeeAmt: string;
+        let providerEarningsAmt: string;
+        let bookingType: BookingType;
+
+        if (providerId) {
+          const [ownerRow] = await db
+            .select({ role: users.role, createdAt: users.createdAt })
+            .from(users)
+            .where(eq(users.id, providerId))
+            .limit(1);
+          const ownerRole = ownerRow?.role ?? null;
+
+          // isNewExpert: registered within the last 90 days
+          const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+          const isNewExpert = ownerRow?.createdAt
+            ? Date.now() - new Date(ownerRow.createdAt).getTime() < NINETY_DAYS_MS
+            : false;
+
+          const commission =
+            ownerRole === "provider"
+              ? calculateCommission(totalAmount, BookingType.PROVIDER_BOOKING, { providerTier: 1 })
+              : calculateCommission(totalAmount, BookingType.EXPERT_SESSION, { isNewExpert });
+
+          bookingType =
+            ownerRole === "provider" ? BookingType.PROVIDER_BOOKING : BookingType.EXPERT_SESSION;
+
+          // Per-service revenueShareRate is the final override when explicitly set
+          // (consistent with checkout logic in payments.routes.ts).
+          const hasPerServiceRate =
+            service.revenueShareRate !== null && service.revenueShareRate !== undefined;
+
+          if (hasPerServiceRate) {
+            const shareRate = Number(service.revenueShareRate);
+            platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
+            providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
+          } else {
+            platformFeeAmt = commission.platformFee.toFixed(2);
+            providerEarningsAmt = (
+              ownerRole === "provider"
+                ? (commission.providerPayout ?? 0)
+                : (commission.expertPayout ?? 0)
+            ).toFixed(2);
+          }
+        } else {
+          // No owner on record — fall back to expert standard split
+          const commission = calculateCommission(totalAmount, BookingType.EXPERT_SESSION);
+          platformFeeAmt = commission.platformFee.toFixed(2);
+          providerEarningsAmt = (commission.expertPayout ?? 0).toFixed(2);
+          bookingType = BookingType.EXPERT_SESSION;
+        }
 
         const booking = await storage.createServiceBooking({
           serviceId,
@@ -909,6 +961,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           // Non-fatal: log but don't fail the booking creation
           console.error("Failed to create booking notification:", notifErr);
         }
+
+        // Expose commission breakdown on the booking confirmation response.
+        // Stored as local vars so the res.json() below can include them.
+        (req as any).__bookingCommission = {
+          subtotal: totalAmount,
+          platformFee: Number(platformFeeAmt),
+          ...(bookingType === BookingType.EXPERT_SESSION
+            ? { expertPayout: Number(providerEarningsAmt) }
+            : { providerPayout: Number(providerEarningsAmt) }),
+          bookingType,
+          commissionRate:
+            totalAmount > 0 ? Number(platformFeeAmt) / totalAmount : 0,
+        };
       } else if (tripId) {
         // No specific service — route inquiry to relevant experts for the trip destination
         try {
@@ -966,7 +1031,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId,
         bookingId: bookingId || null,
         bookingCreated: !!bookingId,
-        requestedAt: new Date().toISOString()
+        requestedAt: new Date().toISOString(),
+        // Commission breakdown — present only when a booking record was created
+        ...((req as any).__bookingCommission ?? {}),
       });
     } catch (err) {
       console.error("Error creating expert booking request:", err);
