@@ -4983,4 +4983,16 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
   }
 });
 
+// Admin-only trigger for the daily digest — useful for ops verification without
+// waiting for the 24-hour cron. Protected by requireAdminLocal (role=admin check).
+router.post("/api/admin/trigger-digest", requireAdminLocal, async (_req, res) => {
+  try {
+    const { runDailyAdminDigest } = await import("../jobs/dailyAdminDigest");
+    await runDailyAdminDigest();
+    res.json({ ok: true, message: "Digest run complete — check server log for result" });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 export default router;
