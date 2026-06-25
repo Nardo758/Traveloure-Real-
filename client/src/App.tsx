@@ -33,6 +33,7 @@ import Pricing from "@/pages/pricing";
 import About from "@/pages/about";
 import EarnPage from "@/pages/earn";
 import NotFound from "@/pages/not-found";
+import { SignupPage } from "@/pages/Signup";
 import ExpertDashboard from "@/pages/expert/dashboard";
 import ExpertClients from "@/pages/expert/clients";
 import ExpertEarnings from "@/pages/expert/earnings";
@@ -763,6 +764,9 @@ function Router() {
       <Route path="/executive-assistant">
         {() => <Layout><ProtectedRoute component={ExecutiveAssistant} /></Layout>}
       </Route>
+
+      {/* Dedicated signup page for paid acquisition attribution */}
+      <Route path="/signup" component={SignupPage} />
 
       {/* 404 */}
       <Route>
