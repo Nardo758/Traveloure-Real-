@@ -7,7 +7,8 @@ async function getPayoutGapExperts() {
   return await db
     .select({
       expertId: localExpertForms.id,
-      name: users.name,
+      firstName: users.firstName,
+      lastName: users.lastName,
       email: users.email,
       destination: localExpertForms.destination,
       approvalDate: localExpertForms.updatedAt,
@@ -66,7 +67,7 @@ export async function runDailyAdminDigest() {
     if (payoutGap.length > 0) {
       textBody += `PAYOUT GAP — ${payoutGap.length} expert(s) approved but not payable:\n`;
       payoutGap.forEach((e) => {
-        textBody += `  • ${e.name} (${e.email}) — Connect: ${e.stripeConnectStatus}\n`;
+        textBody += `  • ${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email} (${e.email}) — Connect: ${e.stripeConnectStatus}\n`;
       });
       textBody += "\n";
     }
@@ -86,7 +87,7 @@ export async function runDailyAdminDigest() {
     const payoutRows = payoutGap
       .map(
         (e) =>
-          `<tr><td style="padding:4px 8px">${e.name}</td><td style="padding:4px 8px">${e.email}</td><td style="padding:4px 8px">${e.stripeConnectStatus}</td></tr>`
+          `<tr><td style="padding:4px 8px">${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email}</td><td style="padding:4px 8px">${e.email}</td><td style="padding:4px 8px">${e.stripeConnectStatus}</td></tr>`
       )
       .join("");
 
