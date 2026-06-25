@@ -104,12 +104,13 @@ export function setupEmailAuth(app: Express): void {
         })
         .returning();
 
-      // Fire-and-forget: T1 funnel event
+      // Fire-and-forget: T1 funnel event (includes paid-acquisition attribution)
       trackFunnelEvent({
         userId: newUser.id,
         eventType: "account_created",
         funnelStage: "T1",
         source: (req.body.source as string) || "direct",
+        refToken: (req.body.refToken as string) || undefined,
       }).catch(() => {});
 
       // Fire-and-forget verification email. Failure here MUST NOT block signup —
