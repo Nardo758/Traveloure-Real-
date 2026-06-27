@@ -938,7 +938,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse

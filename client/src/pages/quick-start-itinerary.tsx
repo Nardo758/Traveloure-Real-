@@ -718,7 +718,14 @@ export default function QuickStartItinerary() {
                 <AlertTriangle className="h-12 w-12 text-destructive" />
                 <h3 className="text-lg font-semibold">Failed to Generate Itinerary</h3>
                 <p className="text-muted-foreground">
-                  {(error as Error).message || "Something went wrong. Please try again."}
+                  {(() => {
+                    const raw = (error as Error).message || "";
+                    const match = raw.match(/^\d+:\s*(.+)$/s);
+                    if (match) {
+                      try { return JSON.parse(match[1]).message || match[1]; } catch { return match[1]; }
+                    }
+                    return raw || "Something went wrong. Please try again.";
+                  })()}
                 </p>
                 <Button onClick={() => setShowCustomization(true)} data-testid="button-try-again">
                   <RefreshCw className="h-4 w-4 mr-2" />
