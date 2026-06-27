@@ -108,7 +108,7 @@ export function setupEmailAuth(app: Express): void {
       trackFunnelEvent({
         userId: newUser.id,
         eventType: "account_created",
-        funnelStage: "T1",
+        funnelStage: "T1_ACCOUNT_CREATED",
         source: (req.body.source as string) || "direct",
         refToken: (req.body.refToken as string) || undefined,
       }).catch(() => {});
