@@ -90,6 +90,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -212,6 +213,22 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
   next();
 };
+
+router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
+  const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(userId);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  res.json({
+    expertNew:          calculateCommission(100, BookingType.EXPERT_SESSION,   { isNewExpert: true }),
+    expertEstablished:  calculateCommission(100, BookingType.EXPERT_SESSION,   { isNewExpert: false }),
+    providerTier1:      calculateCommission(100, BookingType.PROVIDER_BOOKING, { providerTier: 1 }),
+    providerTier4:      calculateCommission(100, BookingType.PROVIDER_BOOKING, { providerTier: 4 }),
+    experienceCart:     calculateCommission(100, BookingType.EXPERIENCE_CART),
+    creditPurchase:     calculateCommission(100, BookingType.CREDIT_PURCHASE),
+  });
+});
 
 router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
     const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
