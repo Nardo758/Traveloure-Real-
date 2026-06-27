@@ -372,7 +372,7 @@ Return ONLY valid JSON in this exact structure:
 Include 4-6 activities per day. Make it realistic, specific to ${destination}, and culturally accurate.`;
 
         const completion = await anthropic.messages.create({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-5",
           max_tokens: 4000,
           messages: [{ role: "user", content: prompt }],
         });

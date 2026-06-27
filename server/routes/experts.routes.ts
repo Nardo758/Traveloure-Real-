@@ -4443,7 +4443,7 @@ Return ONLY valid JSON in this exact structure (no additional text):
 If no visa is required (visa-free or visa-on-arrival), set visa_required to false and explain in the disclaimer. Be specific and accurate based on commonly known visa policies.`;
 
       const completion = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }],
       });

@@ -167,7 +167,7 @@ When relevant, encourage users to use these features to get the most out of thei
 Always respond in the same language the user writes in.`;
 
       const stream = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 2048,
         system: SYSTEM_PROMPT,
         messages: chatMessages,
@@ -190,7 +190,7 @@ Always respond in the same language the user writes in.`;
       if (inputTokens > 0 || outputTokens > 0) {
         trackAICost({
           sourceType: "ai_chat",
-          modelUsed: "claude-sonnet-4-20250514",
+          modelUsed: "claude-sonnet-4-5",
           costUsd: calculateAnthropicCost(inputTokens, outputTokens),
           tokensIn: inputTokens,
           tokensOut: outputTokens,

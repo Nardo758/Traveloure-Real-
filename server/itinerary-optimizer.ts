@@ -39,7 +39,7 @@ import {
 import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
 
 const GROK_MODEL = "grok-2-1212";
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const CLAUDE_MODEL = "claude-sonnet-4-5";
 
 // Anthropic pricing per token (as of 2026-06)
 const ANTHROPIC_PRICING = {

@@ -529,7 +529,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
 }`;
 
       const completion = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 4000,
         system: "You are a professional travel planning assistant. Always respond with valid JSON.",
         messages: [
@@ -580,7 +580,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       }
 
       const completion = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 1500,
         system: systemPrompt,
         messages: anthropicMessages,
@@ -652,7 +652,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 }`;
 
       const completion = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 2000,
         system: systemPrompt,
         messages: [
@@ -2212,7 +2212,7 @@ Please provide recommendations in this JSON format:
 Provide 2-4 category recommendations and up to 5 specific service recommendations if relevant services are available.`;
 
       const completion = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 1024,
         system: "You are a helpful travel planning assistant. Always respond with valid JSON.",
         messages: [
@@ -3411,7 +3411,7 @@ Respond with this exact JSON structure:
 }`;
 
       const aiResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
