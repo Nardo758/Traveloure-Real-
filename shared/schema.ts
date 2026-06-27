@@ -5377,6 +5377,10 @@ export const paymentIntents = pgTable("payment_intents", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// DEPRECATED: Replaced by scoring-based lead routing (lead-routing.service.ts)
+// DB table renamed to _deprecated_expert_city_queues on 2026-06-27
+// Zero active reads confirmed: 2026-06-27 (migrated to expert_requests count)
+// Safe to drop after: 2026-09-01
 export const expertCityQueues = pgTable("expert_city_queues", {
   id: uuid("id").primaryKey().defaultRandom(),
   city: text("city"),

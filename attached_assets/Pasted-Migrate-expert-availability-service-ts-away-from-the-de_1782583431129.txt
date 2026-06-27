@@ -1,0 +1,87 @@
+Migrate expert-availability.service.ts away 
+from the deprecated expert_city_queues table.
+
+CONTEXT:
+Lines 72-74 of expert-availability.service.ts
+query expert_city_queues for a saturation check.
+This table is being replaced by the scoring-based
+lead routing service (lead-routing.service.ts).
+
+TASK:
+
+STEP 1 — Show me the current code:
+Show me lines 60-90 of 
+expert-availability.service.ts so I can see 
+exactly what the saturation check is doing.
+
+STEP 2 — Replace the queue saturation check:
+The old logic reads from expert_city_queues
+to check if a city queue is saturated.
+
+Replace it with a query against expert_requests
+which is the current source of truth:
+
+// OLD: query expert_city_queues
+// NEW: count active expert_requests per city
+
+const activeRequestCount = await db
+  .select({ count: count() })
+  .from(expertRequests)
+  .where(
+    and(
+      eq(expertRequests.destinationCity, city),
+      inArray(expertRequests.status, [
+        "pending",
+        "queued", 
+        "assigned",
+        "in_progress"
+      ])
+    )
+  );
+
+const queueDepth = activeRequestCount[0]
+  ?.count || 0;
+
+// Saturation threshold: same as scoring engine
+// 20 - (activeQueueDepth × 4) floored at 0
+const availabilityScore = Math.max(
+  0, 
+  20 - (queueDepth * 4)
+);
+
+const isSaturated = availabilityScore === 0;
+
+STEP 3 — Remove expert_city_queues import:
+Find the import of expertCityQueues in 
+expert-availability.service.ts and remove it.
+
+STEP 4 — Verify no other references remain:
+Search entire codebase again for:
+- "expert_city_queues"
+- "expertCityQueues"
+- "city_queues"
+
+Confirm zero references remain.
+
+STEP 5 — Now proceed with Arch Prompt 3:
+Once zero references confirmed, run:
+
+ALTER TABLE expert_city_queues 
+RENAME TO _deprecated_expert_city_queues;
+
+Add deprecation comment in schema.
+Add startup log.
+
+STEP 6 — Verify availability service still works:
+The saturation check should now use 
+expert_requests table correctly.
+Test by calling the availability endpoint
+and confirm it returns a valid response.
+
+Do NOT change any other logic in 
+expert-availability.service.ts.
+Do NOT touch frontend files.
+Do NOT modify vite.config.ts.
+Show every line changed in every file.
+Show me the zero-references confirmation
+before proceeding with the rename.
