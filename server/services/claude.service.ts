@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { trackAnthropicResponse } from './ai-cost-tracker';
 
-// claude-sonnet-4-20250514 is the latest model
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+// claude-sonnet-4-5 is the latest model
+const DEFAULT_MODEL = "claude-sonnet-4-5";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
