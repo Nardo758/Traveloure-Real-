@@ -9,8 +9,10 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, CheckCircle, Gem } from 'lucide-react';
+import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, CheckCircle, Gem, LogIn } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { getQueryFn } from '@/lib/queryClient';
 
 const EXPERIENCE_TYPES = [
   { value: 'travel', label: 'Travel', emoji: '✈️', description: 'Leisure vacation' },
@@ -82,6 +84,11 @@ export default function EnhancedPlanningModal({
   userId,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
+  const { data: authUser } = useQuery<{ id: string } | null>({
+    queryKey: ["/api/auth/user"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+  });
+  const isAuthenticated = !!authUser?.id;
 
   // Basic form state
   const [destinations, setDestinations] = useState<Destination[]>(
@@ -301,6 +308,39 @@ export default function EnhancedPlanningModal({
   };
 
   if (!isOpen) return null;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 text-center">
+          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <LogIn className="w-8 h-8 text-purple-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Sign in to Plan Your Trip</h2>
+          <p className="text-gray-600 mb-6">
+            Create a free account or sign in to generate your personalized AI travel itinerary.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+              data-testid="button-cancel-signin-prompt"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { onClose(); window.location.href = "/api/login"; }}
+              className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold flex items-center gap-2"
+              data-testid="button-signin-from-modal"
+            >
+              <LogIn className="w-4 h-4" />
+              Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">

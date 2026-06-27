@@ -583,7 +583,7 @@ export async function registerRoutes(
     const trip = await storage.getTrip(req.params.id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
 
     await storage.deleteTrip(req.params.id);
@@ -607,7 +607,7 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Trip already claimed" });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const [updated] = await db.update(trips)
         .set({ userId })
         .where(eq(trips.id, req.params.id))
@@ -733,7 +733,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Fire-and-forget: T3 funnel event (AI itinerary generated)
       trackFunnelEvent({
-        userId: (req.user as any).claims.sub,
+        userId: (req.user as any)?.claims?.sub ?? (req.user as any)?.id,
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
@@ -785,7 +785,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Trip not found" });
       }
       
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -821,7 +821,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       
       const { tripId, notes, serviceId, bookingMetadata } = validation.data;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Only validate trip ownership when a tripId is provided
       if (tripId) {
@@ -1049,7 +1049,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Trip not found" });
       }
       
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -1076,7 +1076,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Chats Routes
   // SECURITY: User data is sanitized and contact info in messages is redacted
   app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
     
@@ -1150,7 +1150,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
     try {
       const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
       
@@ -1373,7 +1373,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get current user's expert application
   app.get("/api/expert-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const form = await storage.getLocalExpertForm(userId);
     res.json(form || null);
   });
@@ -1381,7 +1381,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
@@ -1403,7 +1403,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Alias: /api/expert-forms -> /api/expert-application (for API compatibility)
   app.post("/api/expert-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -1421,7 +1421,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get platform stats
   app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1475,7 +1475,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   app.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1501,7 +1501,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   app.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1524,7 +1524,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Payout-gap report — approved experts who haven't completed Stripe Connect
   app.get("/api/admin/expert-payout-gap", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1561,7 +1561,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get all expert applications
   app.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1572,7 +1572,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Update expert application status
   app.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1630,7 +1630,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get current user's provider application
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const form = await storage.getServiceProviderForm(userId);
     res.json(form || null);
   });
@@ -1638,7 +1638,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Submit provider application
   app.post("/api/provider-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
@@ -1660,7 +1660,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Alias: /api/provider-forms -> /api/provider-application (for API compatibility)
   app.post("/api/provider-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -1678,7 +1678,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get all provider applications
   app.get("/api/admin/provider-applications", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1689,7 +1689,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get active platform service providers with their services
   app.get("/api/admin/platform-service-providers", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1763,7 +1763,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Update provider application status
   app.patch("/api/admin/provider-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1792,7 +1792,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // GET /api/expert/application-status — user-facing live step status for expert applicants
   app.get("/api/expert/application-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
 
@@ -1852,7 +1852,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // GET /api/provider/application-status — user-facing live step status for provider applicants
   app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
@@ -1935,7 +1935,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get provider's services
   app.get("/api/provider/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { destination, category, activeOnly } = req.query as Record<string, string>;
     const services = await storage.getProviderServices(userId, {
       destination: destination || undefined,
@@ -1948,7 +1948,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get a single provider service by ID (ownership required)
   app.get("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found" });
@@ -1981,7 +1981,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create a new service
   app.post("/api/provider/services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       // Extract neighborhoods before schema parse (not a DB column)
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       const input = insertProviderServiceSchema.parse(bodyWithoutNeighborhoods);
@@ -2064,7 +2064,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update a service
   app.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServices(userId);
       const ownedService = services.find(s => s.id === req.params.id);
       if (!ownedService) {
@@ -2158,7 +2158,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete a service
   app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getProviderServices(userId);
     const ownedService = services.find(s => s.id === req.params.id);
     if (!ownedService) {
@@ -2354,7 +2354,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create category (admin)
   app.post("/api/service-categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -2388,7 +2388,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create subcategory (admin)
   app.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -2443,7 +2443,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update custom venue
   app.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const venue = await storage.getCustomVenue(req.params.id);
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -2465,7 +2465,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Delete custom venue
   app.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const venue = await storage.getCustomVenue(req.params.id);
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -3253,7 +3253,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Get user's experiences
   app.get("/api/user-experiences", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const experiences = await storage.getUserExperiences(userId);
     res.json(experiences);
   });
@@ -3271,7 +3271,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create new experience
   app.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const experience = await storage.createUserExperience({ ...req.body, userId });
       res.status(201).json(experience);
     } catch (err) {
@@ -3281,7 +3281,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Update experience
   app.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -3292,7 +3292,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete experience
   app.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -3303,7 +3303,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Add item to experience
   app.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -3339,7 +3339,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create FAQ (admin)
   app.post("/api/faqs", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3357,7 +3357,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update FAQ (admin)
   app.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3377,7 +3377,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete FAQ (admin)
   app.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3389,14 +3389,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get current user's wallet
   app.get("/api/wallet", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const wallet = await storage.getOrCreateWallet(userId);
     res.json(wallet);
   });
 
   // Get wallet transactions
   app.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const wallet = await storage.getWallet(userId);
     if (!wallet) {
       return res.json([]);
@@ -3408,7 +3408,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Add credits (admin only - for production, integrate with payment provider)
   app.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3434,7 +3434,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   app.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { packageId } = req.body;
 
       const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
@@ -3573,7 +3573,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create template (admin only)
   app.post("/api/admin/service-templates", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3591,7 +3591,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update template (admin only)
   app.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3611,7 +3611,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete template (admin only - soft delete)
   app.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3623,7 +3623,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Get all categories with subcategories
   app.get("/api/admin/categories", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3641,7 +3641,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Get single category
   app.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3656,7 +3656,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create category (admin only)
   app.post("/api/admin/categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3674,7 +3674,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update category (admin only)
   app.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3694,7 +3694,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete category (admin only)
   app.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3705,7 +3705,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create subcategory (admin only)
   app.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3727,7 +3727,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update subcategory (admin only)
   app.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -3747,7 +3747,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Delete subcategory (admin only)
   app.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3757,7 +3757,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Seed 15 core categories (admin only - run once)
   app.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -3961,7 +3961,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // GET /api/expert/neighborhoods — Return current expert's neighborhoods + locality proof
   app.get("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const form = await storage.getLocalExpertForm(userId);
       res.json({
         neighborhoods: (form?.neighborhoods as string[]) || [],
@@ -3976,7 +3976,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // PATCH /api/expert/neighborhoods — Save expert's neighbourhood coverage
   app.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { neighborhoods, localityProof } = req.body;
       if (!Array.isArray(neighborhoods)) {
         return res.status(400).json({ message: "neighborhoods must be an array" });
@@ -4018,7 +4018,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // PATCH /api/expert/profile-notes — Save expert's notes style description
   app.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { notesStyle } = req.body;
       if (typeof notesStyle !== "string") {
         return res.status(400).json({ message: "notesStyle must be a string" });
@@ -4033,14 +4033,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Get current expert's selected services (authenticated)
   app.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getExpertSelectedServices(userId);
     res.json(services);
   });
 
   // Add service offering to expert's profile (authenticated)
   app.post("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { serviceOfferingId, customPrice } = req.body;
     const service = await storage.addExpertSelectedService(userId, serviceOfferingId, customPrice);
     res.json(service);
@@ -4048,21 +4048,21 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Remove service offering from expert's profile (authenticated)
   app.delete("/api/expert/selected-services/:serviceOfferingId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     await storage.removeExpertSelectedService(userId, req.params.serviceOfferingId);
     res.json({ success: true });
   });
 
   // Get current expert's specializations (authenticated)
   app.get("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const specializations = await storage.getExpertSpecializations(userId);
     res.json(specializations);
   });
 
   // Add specialization to expert's profile (authenticated)
   app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { specialization } = req.body;
     const spec = await storage.addExpertSpecialization(userId, specialization);
     res.json(spec);
@@ -4070,7 +4070,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Remove specialization from expert's profile (authenticated)
   app.delete("/api/expert/specializations/:specialization", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     await storage.removeExpertSpecialization(userId, req.params.specialization);
     res.json({ success: true });
   });
@@ -4079,14 +4079,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get current expert's custom services (authenticated)
   app.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getExpertCustomServices(userId);
     res.json(services);
   });
 
   // Get single custom service by ID (authenticated - owner only)
   app.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const service = await storage.getExpertCustomServiceById(req.params.id);
     if (!service) {
       return res.status(404).json({ message: "Custom service not found" });
@@ -4100,7 +4100,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create new custom service (authenticated - experts only)
   app.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
       
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -4138,7 +4138,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update custom service (authenticated - owner only, draft status only)
   app.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -4162,7 +4162,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Submit custom service for approval (authenticated - owner only)
   app.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -4186,7 +4186,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Delete custom service (authenticated - owner only, draft/rejected status only)
   app.delete("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -4209,7 +4209,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get all custom services pending approval
   app.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -4220,7 +4220,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Admin: Approve custom service
   app.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -4245,7 +4245,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Admin: Reject custom service
   app.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -4310,7 +4310,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get expert's own templates (authenticated)
   app.get("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const templates = await storage.getExpertTemplates({ expertId: userId });
       res.json(templates);
     } catch (err) {
@@ -4322,7 +4322,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create new template (authenticated)
   app.post("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.createExpertTemplate({
         ...req.body,
         expertId: userId,
@@ -4337,7 +4337,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update template (authenticated - owner only)
   app.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -4358,7 +4358,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Delete template (authenticated - owner only)
   app.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -4379,7 +4379,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Purchase template (authenticated)
   app.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -4439,7 +4439,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get user's purchased templates
   app.get("/api/my-purchased-templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
       
       // Get full template data for each purchase
@@ -4471,7 +4471,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create template review (authenticated - must have purchased)
   app.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Get user's purchase of this template
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
@@ -4499,7 +4499,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get expert earnings (authenticated)
   app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
       const [bookings, payouts, ledgerSummary] = await Promise.all([
@@ -4574,7 +4574,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get expert template sales (authenticated)
   app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const sales = await storage.getTemplatePurchases({ expertId: userId });
       
       // Get template details for each sale
@@ -4608,7 +4608,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Expert Tips - Create a tip for an expert
   app.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
     try {
-      const travelerId = (req.user as any).claims.sub;
+      const travelerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { expertId } = req.params;
       
       // Validate request body
@@ -4646,7 +4646,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get tips received by expert
   app.get("/api/expert/tips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const result = await storage.getTipsForExpert(userId);
       res.json(result);
     } catch (err) {
@@ -4658,7 +4658,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Expert Referrals - Get referral code and stats
   app.get("/api/expert/referrals", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const referrals = await storage.getExpertReferrals(userId);
       
       // Get the expert's referral code from their profile
@@ -4682,7 +4682,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Affiliate earnings for expert
   app.get("/api/expert/affiliate-earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const earnings = await storage.getAffiliateEarnings(userId);
       const summary = await storage.getAffiliateEarningsSummary(userId);
       res.json({ earnings, summary });
@@ -4695,7 +4695,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Comprehensive Revenue Optimization endpoint
   app.get("/api/expert/revenue-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Get all earnings data
       const [
@@ -4937,7 +4937,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get contributor's own destination events (authenticated)
   app.get("/api/destination-calendar/my-events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const events = await storage.getContributorDestinationEvents(userId);
       res.json(events);
     } catch (err) {
@@ -4949,7 +4949,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Create a new destination event (authenticated - contributor)
   app.post("/api/destination-calendar/events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const event = await storage.createDestinationEvent({
         ...req.body,
         contributorId: userId,
@@ -4966,7 +4966,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Update destination event (authenticated - contributor only)
   app.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -4990,7 +4990,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Submit destination event for approval (authenticated - contributor only)
   app.post("/api/destination-calendar/events/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -5014,7 +5014,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Delete destination event (authenticated - contributor only)
   app.delete("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -5037,7 +5037,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get pending destination events
   app.get("/api/admin/destination-events/pending", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -5048,7 +5048,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Admin: Approve destination event
   app.post("/api/admin/destination-events/:id/approve", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -5073,7 +5073,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Admin: Reject destination event
   app.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -5498,7 +5498,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Get expert's services by status
   app.get("/api/expert/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const status = req.query.status as string | undefined;
     const services = await storage.getProviderServicesByStatus(userId, status);
     res.json(services);
@@ -5507,7 +5507,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Toggle service status (pause/activate)
   app.patch("/api/expert/services/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -5526,7 +5526,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Duplicate a service
   app.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -5541,7 +5541,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Create service from template
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const templateId = req.params.templateId;
 
       // expert_service_offerings is the primary catalog; service_templates is legacy fallback
@@ -5605,7 +5605,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get bookings for provider (their services)
   // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
   app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
@@ -5630,7 +5630,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Provider bookings (for calendar)
   // NOTE: User data is sanitized - providers cannot see full traveler info
   app.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
@@ -5654,7 +5654,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ travelerId: userId, status });
     
@@ -5669,7 +5669,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/service-bookings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
@@ -5690,7 +5690,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/bookings/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
@@ -5706,7 +5706,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/cart/items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
@@ -5746,7 +5746,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get single booking
   // NOTE: If requester is provider, traveler info is sanitized
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'user';
     const booking = await storage.getServiceBooking(req.params.id);
     if (!booking) {
@@ -5778,7 +5778,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get client profile (for experts/providers) - sanitized view
   // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'user';
     const { clientId } = req.params;
     
@@ -5836,7 +5836,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Create a booking
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const input = insertServiceBookingSchema.parse(req.body);
       
       // Verify service exists and is active
@@ -5867,7 +5867,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Update booking status (provider actions)
   app.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -5883,7 +5883,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -5948,7 +5948,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Update traveler's document checklist checked state
   app.patch("/api/service-bookings/:id/document-checklist", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -5972,7 +5972,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Cancel booking (traveler action)
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -5992,7 +5992,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Get user notifications
   app.get("/api/notifications", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const unreadOnly = req.query.unread === "true";
     const notifications = await storage.getNotifications(userId, unreadOnly);
     res.json(notifications);
@@ -6000,14 +6000,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Get unread count
   app.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const count = await storage.getUnreadCount(userId);
     res.json({ count });
   });
 
   // Mark notification as read
   app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const notification = await storage.markAsRead(req.params.id);
     if (notification && notification.userId !== userId) {
       return res.status(403).json({ message: "Not your notification" });
@@ -6017,7 +6017,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Mark all as read
   app.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     await storage.markAllAsRead(userId);
     res.json({ success: true });
   });
@@ -6039,7 +6039,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Create a review (only after completed booking)
   app.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Verify user has a completed booking for this service
       const bookings = await storage.getServiceBookings({ 
@@ -6077,7 +6077,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Provider responds to a review
   app.post("/api/expert/reviews/:id/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const review = await storage.getServiceReview(req.params.id);
       if (!review || review.providerId !== userId) {
         return res.status(404).json({ message: "Review not found or not for your service" });
@@ -6095,7 +6095,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Get expert's analytics/stats
   app.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getProviderServicesByStatus(userId);
     const bookings = await storage.getServiceBookings({ providerId: userId });
     
@@ -6123,7 +6123,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -6144,7 +6144,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
@@ -6164,7 +6164,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get comprehensive expert analytics dashboard data
   app.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -6295,7 +6295,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get market intelligence for experts - filtered by their markets
   app.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Get expert's profile to find their markets/destinations
       const expertProfile = await storage.getLocalExpertForm(userId);
@@ -6418,7 +6418,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get service recommendations for experts based on TravelPulse trends
   app.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get expert's profile to find their markets/destinations
@@ -6451,7 +6451,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get service recommendations for providers
   app.get("/api/recommendations/provider", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get provider's service locations
@@ -6559,7 +6559,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/recommendations/:id/convert", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Validate request body
       const conversionSchema = z.object({
@@ -6603,7 +6603,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get provider analytics dashboard
   app.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       
@@ -6672,7 +6672,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get cart items
   app.get("/api/cart", isAuthenticated, async (req, res) => {
     try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
@@ -6723,7 +6723,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Resolve cart items into a trip (creates draft trip + backfills tripId on cart items)
   app.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { experienceSlug, userExperienceId } = req.body;
 
       // 1. Get all cart items for this user (optionally filtered by experience slug)
@@ -6856,7 +6856,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Add to cart
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       
       console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug });
@@ -6908,7 +6908,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Update cart item
   app.patch("/api/cart/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getCartItemById(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Cart item not found" });
@@ -6931,7 +6931,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Remove from cart
   app.delete("/api/cart/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getCartItemById(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Cart item not found" });
@@ -6949,7 +6949,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Clear cart
   app.delete("/api/cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const experienceSlug = req.query.experience as string | undefined;
       await storage.clearCart(userId, experienceSlug);
       res.status(204).send();
@@ -6961,7 +6961,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Migrate guest cart after login/signup
   app.post("/api/cart/migrate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { guestSessionId } = req.body;
       if (!guestSessionId || typeof guestSessionId !== "string") {
         return res.status(400).json({ message: "guestSessionId is required" });
@@ -6977,7 +6977,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Convert content cart items into itinerary items
   app.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, newTripName, destination, cartItemIds } = req.body;
 
       if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
@@ -7051,7 +7051,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Create booking with auto-contract
   app.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, notes, currency: clientCurrency } = req.body;
       // Resolve currency: client override → user preference → USD fallback
       const chargeCurrency = clientCurrency || 'usd';
@@ -7232,7 +7232,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
 
       const [comparison] = await db
@@ -7334,7 +7334,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const allComps = await db
         .select({
@@ -7392,7 +7392,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/itinerary-comparisons", heavyReadRateLimit, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisons = await db
         .select()
         .from(itineraryComparisons)
@@ -7408,7 +7408,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const result = await getComparisonWithVariants(req.params.id);
 
       if (!result) {
@@ -7428,7 +7428,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
       const { baselineItems: inlineBaselineItems } = req.body;
 
@@ -7535,7 +7535,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { variantId } = req.body;
 
       const comparison = await db.query.itineraryComparisons.findFirst({
@@ -7565,7 +7565,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
 
       const comparison = await db.query.itineraryComparisons.findFirst({
@@ -7629,7 +7629,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const slots = await storage.getProviderAvailabilitySlots(userId);
       res.json(slots);
     } catch (error) {
@@ -7640,7 +7640,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const availabilityInput = z.object({
         serviceId: z.string().min(1),
         dayOfWeek: z.number().min(0).max(6).optional(),
@@ -7663,7 +7663,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const updateInput = z.object({
         dayOfWeek: z.number().min(0).max(6).optional(),
         startTime: z.string().optional(),
@@ -7688,7 +7688,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
       if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
@@ -7714,7 +7714,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Coordination States
   app.get("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const states = await storage.getCoordinationStates(userId);
       res.json(states);
     } catch (error) {
@@ -7727,7 +7727,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       res.json(state);
     } catch (error) {
@@ -7738,7 +7738,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/coordination-states/active/:experienceType", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const state = await storage.getActiveCoordinationState(userId, req.params.experienceType);
       res.json(state || null);
     } catch (error) {
@@ -7749,7 +7749,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const coordInput = z.object({
         experienceType: z.string().min(1).max(100),
         title: z.string().min(1).max(255).optional(),
@@ -7776,7 +7776,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const updated = await storage.updateCoordinationState(req.params.id, coordUpdateInput);
       res.json(updated);
@@ -7793,7 +7793,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const { status, ...historyEntry } = req.body;
       const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry);
@@ -7808,7 +7808,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       await storage.deleteCoordinationState(req.params.id);
       res.json({ message: "Coordination state deleted" });
@@ -7823,7 +7823,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const bookings = await storage.getCoordinationBookings(req.params.coordinationId);
       res.json(bookings);
@@ -7848,7 +7848,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const booking = await storage.createCoordinationBooking({ 
         ...bookingInput, 
@@ -7874,7 +7874,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         scheduledDate: z.string().optional(),
         notes: z.string().max(1000).optional(),
       }).parse(req.body);
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -7892,7 +7892,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/coordination-bookings/:id/confirm", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -7908,7 +7908,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/coordination-bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -7929,7 +7929,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const eventType = state.experienceType;
@@ -7949,7 +7949,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const tripId = state.tripId;
@@ -7970,7 +7970,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const tripId = state.tripId;
@@ -7992,7 +7992,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/expert/coordination-states/:tripId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       // Verify the expert is assigned to this trip
       const isAssigned = await storage.isExpertAssignedToTrip(req.params.tripId, userId);
       if (!isAssigned) {
@@ -9313,7 +9313,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { travelerProfile, expertIds, limit } = parsed.data;
 
       // Get expert profiles from database
@@ -9410,7 +9410,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const result = await aiOrchestrator.generateContent(parsed.data, { userId });
       res.json(result);
     } catch (error: any) {
@@ -9436,7 +9436,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { destination, dates, topics } = parsed.data;
 
       // Check cache first
@@ -9498,7 +9498,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, ...itineraryRequest } = parsed.data;
 
       const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
@@ -9551,7 +9551,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
@@ -9653,7 +9653,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { messages, systemContext, preferProvider } = parsed.data;
 
       const { response, provider } = await aiOrchestrator.chat(messages, {
@@ -9684,7 +9684,7 @@ Respond with this exact JSON structure:
   // Get expert's AI tasks
   app.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const status = req.query.status as string | undefined;
       
       const tasks = await db.select()
@@ -9718,7 +9718,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskType, taskDescription, clientName, context } = parsed.data;
 
       // Create task in pending status
@@ -9806,7 +9806,7 @@ Respond with this exact JSON structure:
   // Approve/Send a task
   app.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskId } = req.params;
       const { editedContent } = req.body;
 
@@ -9839,7 +9839,7 @@ Respond with this exact JSON structure:
   // Reject a task
   app.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskId } = req.params;
 
       const [task] = await db.select()
@@ -9869,7 +9869,7 @@ Respond with this exact JSON structure:
   // Regenerate a task
   app.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskId } = req.params;
 
       const [task] = await db.select()
@@ -9946,7 +9946,7 @@ Respond with this exact JSON structure:
   // Get expert AI stats
   app.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -9992,7 +9992,7 @@ Respond with this exact JSON structure:
   app.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
     try {
       const { destination, startDate, endDate } = req.query;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       if (!destination || typeof destination !== "string") {
         return res.status(400).json({ message: "Destination is required" });
@@ -10079,7 +10079,7 @@ Respond with this exact JSON structure:
   // Phase 5: Autonomous AI Itinerary Generation
   app.post("/api/ai/generate-itinerary", aiRateLimit, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { 
         destination, 
         dates, 
@@ -10132,7 +10132,7 @@ Respond with this exact JSON structure:
         endDate: dates.end,
         title: result.title,
         summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost.toString(),
+        totalEstimatedCost: result.totalEstimatedCost?.toString() ?? "0",
         itineraryData: result.dailyItinerary as any,
         accommodationSuggestions: result.accommodationSuggestions as any,
         packingList: result.packingList as any,
@@ -10255,7 +10255,7 @@ Respond with this exact JSON structure:
   // Trip Optimization Framework: Generate 3 itinerary variations with real-time intelligence
   app.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { 
         destination, 
         dates, 
@@ -10344,7 +10344,7 @@ Respond with this exact JSON structure:
   // Get user's AI-generated itineraries
   app.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const itineraries = await db.select()
         .from(aiGeneratedItineraries)
@@ -10362,7 +10362,7 @@ Respond with this exact JSON structure:
   // Get single AI-generated itinerary
   app.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { id } = req.params;
       
       const [itinerary] = await db.select()
@@ -11932,7 +11932,7 @@ Respond with this exact JSON structure:
 
   // --- Coordination / Participants Routes (using asyncHandler for consistent error handling) ---
   app.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -11941,7 +11941,7 @@ Respond with this exact JSON structure:
   }));
 
   app.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -11950,7 +11950,7 @@ Respond with this exact JSON structure:
   }));
 
   app.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -11959,7 +11959,7 @@ Respond with this exact JSON structure:
   }));
 
   app.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -11969,7 +11969,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -11989,7 +11989,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -12006,7 +12006,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -12024,7 +12024,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -12042,7 +12042,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -12119,7 +12119,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -12136,7 +12136,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/contracts/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -12154,7 +12154,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/contracts/:id/milestone", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -12171,7 +12171,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/contracts/:id/communication", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -12188,7 +12188,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -12302,7 +12302,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -12319,7 +12319,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -12338,7 +12338,7 @@ Respond with this exact JSON structure:
   // Authoritative GET: requires trip ownership or expert assignment; returns items grouped by day
   app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
@@ -12391,7 +12391,7 @@ Respond with this exact JSON structure:
   // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
   app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
@@ -12444,7 +12444,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
@@ -12464,7 +12464,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -12629,7 +12629,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
@@ -12679,7 +12679,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -12696,7 +12696,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -12753,7 +12753,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -12770,7 +12770,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -12859,7 +12859,7 @@ Respond with this exact JSON structure:
   // GET /api/spontaneous/preferences - Get user spontaneity preferences
   app.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const preferences = await opportunityEngineService.getUserPreferences(userId);
       res.json(preferences || {});
     } catch (error) {
@@ -12870,7 +12870,7 @@ Respond with this exact JSON structure:
   // POST /api/spontaneous/preferences - Save user spontaneity preferences
   app.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const schema = z.object({
         spontaneityLevel: z.number().min(0).max(100).optional(),
@@ -12903,7 +12903,7 @@ Respond with this exact JSON structure:
   // POST /api/spontaneous/:id/book - Book a spontaneous opportunity
   app.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const opportunityId = req.params.id;
       
       const result = await opportunityEngineService.bookOpportunity(userId, opportunityId);
