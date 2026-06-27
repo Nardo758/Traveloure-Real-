@@ -135,12 +135,18 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  const user = req.user as any;
-
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated()) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
+  const user = req.user as any;
+
+  // Email/password auth sessions have no expires_at — let them through directly
+  if (!user.expires_at) {
+    return next();
+  }
+
+  // Replit OIDC sessions: check token expiry and refresh if needed
   const now = Math.floor(Date.now() / 1000);
   if (now <= user.expires_at) {
     return next();
