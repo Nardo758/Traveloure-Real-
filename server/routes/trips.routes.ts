@@ -167,7 +167,7 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 
 router.get(api.trips.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const status = req.query.status as string | undefined;
     const trips = await withQueryTimer(
       "trips-dashboard-list",
@@ -282,7 +282,7 @@ router.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
         return res.status(409).json({ message: "Trip already claimed" });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const updated = await storage.claimTrip(req.params.id, userId);
       res.json(updated);
     } catch (err) {
@@ -296,7 +296,7 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
     const trip = await storage.getTrip(req.params.id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
 
     await storage.deleteTrip(req.params.id);
@@ -447,7 +447,7 @@ router.get(api.touristPlaces.search.path, async (req, res) => {
   // SECURITY: User data is sanitized and contact info in messages is redacted
 
 router.get(api.chats.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
     
@@ -524,7 +524,7 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 
 router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
 
       // ── Optimization authorization gate ──────────────────────────────────────
@@ -718,7 +718,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
 router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisons = await withQueryTimer(
         "itinerary-comparisons-fetch",
         () => storage.getComparisonsByUserId(userId),
@@ -734,7 +734,7 @@ router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
 router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const result = await getComparisonWithVariants(req.params.id);
 
       if (!result) {
@@ -755,7 +755,7 @@ router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) =
 
 router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
       const { baselineItems: inlineBaselineItems } = req.body;
 
@@ -864,7 +864,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
 
 router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { variantId } = req.body;
 
       const comparison = await storage.getItineraryComparison(req.params.id);
@@ -893,7 +893,7 @@ router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req
 
 router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
 
       const comparison = await storage.getItineraryComparison(comparisonId);
@@ -1035,7 +1035,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
 
 
 router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1045,7 +1045,7 @@ router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(asyn
 
 
 router.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1055,7 +1055,7 @@ router.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandle
 
 
 router.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1065,7 +1065,7 @@ router.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asy
 
 
 router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1076,7 +1076,7 @@ router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHand
 
 router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1326,7 +1326,7 @@ router.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async 
 
 router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
@@ -1383,7 +1383,7 @@ router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, asyn
 
 router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
@@ -1403,7 +1403,7 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
 
 router.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
@@ -1425,7 +1425,7 @@ router.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -1445,7 +1445,7 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
 
 router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
@@ -1580,7 +1580,7 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
 
 router.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
@@ -2405,7 +2405,7 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
 router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const tripOwned = await verifyTripOwnership(tripId, userId);
       if (!tripOwned) {
@@ -3157,7 +3157,7 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
 
 router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const tripId = req.params.tripId;
       
       // Verify ownership
@@ -3178,7 +3178,7 @@ router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, r
 
 router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, itemId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
       if (!canMutateTrip(tripRole)) {
@@ -3200,7 +3200,7 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
 
 router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, itemId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
       if (!canMutateTrip(tripRole)) {
@@ -3220,7 +3220,7 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
 
 router.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId } = req.params;
       const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
       if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
@@ -3295,7 +3295,7 @@ router.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) =>
 
 router.get("/api/trips/:tripId/my-assignment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId } = req.params;
       const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
       if (!assignment) return res.status(404).json({ message: "Not assigned to this trip" });
@@ -3312,7 +3312,7 @@ router.get("/api/trips/:tripId/my-assignment", isAuthenticated, async (req, res)
 
 router.get("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       if (!owned) {
@@ -3331,7 +3331,7 @@ router.get("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res) 
 
 router.patch("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId } = req.params;
       const { expertNotes } = req.body;
       if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });

@@ -3256,7 +3256,7 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const userId = user.claims.sub;
+      const userId = user?.claims?.sub ?? user?.id;
       const adminNotifications = await getAdminNotifications(userId);
 
       const enriched = adminNotifications.map(n => ({

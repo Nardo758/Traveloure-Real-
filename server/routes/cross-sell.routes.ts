@@ -70,7 +70,7 @@ router.post("/api/cross-sell-events", async (req, res) => {
 // Auth required. Returns cross-sell performance for the authenticated provider's services.
 router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user.claims.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
     // providerServices uses userId (not providerId) as the owner FK
     const serviceIds = await storage.getProviderServiceIdsForUser(userId);
