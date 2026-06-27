@@ -458,6 +458,30 @@ export default function AIAssistant() {
                       ))}
                     </AnimatePresence>
 
+                    {isStreaming && !streamingMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="flex gap-3 justify-start"
+                        data-testid="typing-indicator"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="p-4 rounded-2xl bg-muted flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground mr-1">Thinking</span>
+                          {[0, 1, 2].map((i) => (
+                            <span
+                              key={i}
+                              className="w-2 h-2 rounded-full bg-primary/60 animate-bounce"
+                              style={{ animationDelay: `${i * 0.15}s` }}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+
                     {streamingMessage && (
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
