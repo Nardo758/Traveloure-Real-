@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -441,13 +442,19 @@ export default function AIAssistant() {
                           )}
                           <div
                             className={cn(
-                              "max-w-[80%] p-4 rounded-2xl",
+                              "max-w-[80%] p-4 rounded-2xl text-sm",
                               message.role === "user"
                                 ? "bg-primary text-primary-foreground"
                                 : "bg-muted"
                             )}
                           >
-                            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                            {message.role === "user" ? (
+                              <p className="whitespace-pre-wrap">{message.content}</p>
+                            ) : (
+                              <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:font-semibold">
+                                <ReactMarkdown>{message.content}</ReactMarkdown>
+                              </div>
+                            )}
                           </div>
                           {message.role === "user" && (
                             <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center flex-shrink-0">
@@ -491,8 +498,10 @@ export default function AIAssistant() {
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
                           <Bot className="w-4 h-4 text-white" />
                         </div>
-                        <div className="max-w-[80%] p-4 rounded-2xl bg-muted">
-                          <p className="text-sm whitespace-pre-wrap">{streamingMessage}</p>
+                        <div className="max-w-[80%] p-4 rounded-2xl bg-muted text-sm">
+                          <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:font-semibold">
+                            <ReactMarkdown>{streamingMessage}</ReactMarkdown>
+                          </div>
                           <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
                         </div>
                       </motion.div>
