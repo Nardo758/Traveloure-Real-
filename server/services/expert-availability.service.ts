@@ -8,15 +8,15 @@
  *   1. Find active+approved provider_services in the city owned by expert-class users.
  *   2. If none: bookableNow=false, no estimates.
  *   3. Otherwise: estPriceCents = median service price; min leadTimeHours = ETA baseline.
- *   4. Cross-check expert_city_queues — if the cohort is saturated (activeRequests
- *      meets/exceeds the cohort size), mark queued rather than bookable-now.
+ *   4. Saturation check via expert_requests count per city — scoring formula
+ *      max(0, 20 - queueDepth×4); isSaturated when score===0.
  *
  * eventType is accepted but not yet used as a filter (provider_services has no direct
  * event-type tag — Phase 5 can layer in category/affinity-tag heuristics if needed).
  */
-import { and, eq, ilike, inArray } from "drizzle-orm";
+import { and, count, eq, ilike, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { providerServices, users, expertCityQueues } from "@shared/schema";
+import { providerServices, users, expertRequests } from "@shared/schema";
 
 const EXPERT_ROLES = ["travel_expert", "local_expert", "event_planner", "expert"] as const;
 
@@ -67,21 +67,24 @@ export async function getExpertAvailability(input: {
     .filter(l => l > 0);
   const minLeadHours = leadTimes.length > 0 ? Math.min(...leadTimes) : 24;
 
-  // Queue depth check — saturated cohort = queued, otherwise bookable-now.
-  const [queueRow] = await db
-    .select({ activeRequests: expertCityQueues.activeRequests, expertIds: expertCityQueues.expertIds })
-    .from(expertCityQueues)
-    .where(ilike(expertCityQueues.city, city))
-    .limit(1);
+  // Queue depth check — use expert_requests (current source of truth) instead of
+  // the deprecated expert_city_queues table.
+  // Saturation formula: availabilityScore = max(0, 20 - queueDepth×4); isSaturated = score===0
+  const activeRequestCount = await db
+    .select({ count: count() })
+    .from(expertRequests)
+    .where(
+      and(
+        ilike(expertRequests.destinationCity, `%${city}%`),
+        inArray(expertRequests.status, ["pending", "queued", "assigned", "in_progress"]),
+      )
+    );
 
-  let bookableNow = true;
-  if (queueRow) {
-    const activeRequests = queueRow.activeRequests ?? 0;
-    const expertIdsArr = Array.isArray(queueRow.expertIds) ? queueRow.expertIds : [];
-    if (expertIdsArr.length > 0 && activeRequests >= expertIdsArr.length) {
-      bookableNow = false;
-    }
-  }
+  const queueDepth = Number(activeRequestCount[0]?.count ?? 0);
+  const availabilityScore = Math.max(0, 20 - queueDepth * 4);
+  const isSaturated = availabilityScore === 0;
+
+  const bookableNow = !isSaturated;
 
   return bookableNow
     ? { bookableNow: true, estPriceCents, etaHours: 0 }
