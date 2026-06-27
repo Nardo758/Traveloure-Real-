@@ -58,6 +58,7 @@ import {
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 
 function formatStat(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
@@ -411,7 +412,7 @@ export default function LandingPage() {
   const { openSignInModal } = useSignInModal();
   const [planningOpen, setPlanningOpen] = useState(false);
 
-  const { data: currentUser } = useQuery<{ id: string } | null>({ queryKey: ["/api/auth/user"] });
+  const { data: currentUser } = useQuery<{ id: string } | null>({ queryKey: ["/api/auth/user"], queryFn: getQueryFn({ on401: "returnNull" }) });
 
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;

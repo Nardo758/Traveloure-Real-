@@ -217,7 +217,7 @@ router.post("/api/vendors", isAuthenticated, async (req, res) => {
   // Get current user's expert application
 
 router.get("/api/expert-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const form = await storage.getLocalExpertForm(userId);
     res.json(form || null);
   });
@@ -226,7 +226,7 @@ router.get("/api/expert-application", isAuthenticated, async (req, res) => {
 
 router.post("/api/expert-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
@@ -249,7 +249,7 @@ router.post("/api/expert-application", isAuthenticated, async (req, res) => {
 
 router.post("/api/expert-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -268,7 +268,7 @@ router.post("/api/expert-forms", isAuthenticated, async (req, res) => {
   // Admin: Get platform stats
 
 router.get("/api/provider-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const form = await storage.getServiceProviderForm(userId);
     res.json(form || null);
   });
@@ -277,7 +277,7 @@ router.get("/api/provider-application", isAuthenticated, async (req, res) => {
 
 router.post("/api/provider-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
@@ -300,7 +300,7 @@ router.post("/api/provider-application", isAuthenticated, async (req, res) => {
 
 router.post("/api/provider-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -320,7 +320,7 @@ router.post("/api/provider-forms", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/application-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const form = await getLocalExpertFormByUserId(userId);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
 
@@ -381,7 +381,7 @@ router.get("/api/expert/application-status", isAuthenticated, async (req, res) =
 
 router.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const form = await getServiceProviderFormByUserId(userId);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
@@ -466,7 +466,7 @@ router.get("/api/provider-services", async (req, res) => {
   // Get provider's services
 
 router.get("/api/provider/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { destination, category, activeOnly } = req.query as Record<string, string>;
     const services = await storage.getProviderServices(userId, {
       destination: destination || undefined,
@@ -480,7 +480,7 @@ router.get("/api/provider/services", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found" });
@@ -495,7 +495,7 @@ router.get("/api/provider/services/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/provider/services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const input = insertProviderServiceSchema.parse(req.body);
 
       // Verification publish-gate — rule lives in provider-publish.service.ts
@@ -521,7 +521,7 @@ router.post("/api/provider/services", isAuthenticated, async (req, res) => {
 
 router.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServices(userId);
       const ownedService = services.find(s => s.id === req.params.id);
       if (!ownedService) {
@@ -553,7 +553,7 @@ router.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => 
   // Delete a service
 
 router.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getProviderServices(userId);
     const ownedService = services.find(s => s.id === req.params.id);
     if (!ownedService) {
@@ -679,7 +679,7 @@ router.get("/api/experts/:id/reviews", async (req, res) => {
 
 router.get("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const form = await storage.getLocalExpertForm(userId);
       res.json({
         neighborhoods: (form?.neighborhoods as string[]) || [],
@@ -695,7 +695,7 @@ router.get("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
 
 router.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { neighborhoods, localityProof } = req.body;
       if (!Array.isArray(neighborhoods)) {
         return res.status(400).json({ message: "neighborhoods must be an array" });
@@ -737,7 +737,7 @@ router.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
   // PATCH /api/expert/role — Self-service role change for approved experts only
 router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       // Verify caller is an approved expert — non-experts cannot self-promote
       const form = await storage.getLocalExpertForm(userId);
@@ -775,7 +775,7 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
 
 router.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { notesStyle } = req.body;
       if (typeof notesStyle !== "string") {
         return res.status(400).json({ message: "notesStyle must be a string" });
@@ -791,7 +791,7 @@ router.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
   // Get current expert's selected services (authenticated)
 
 router.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getExpertSelectedServices(userId);
     res.json(services);
   });
@@ -799,7 +799,7 @@ router.get("/api/expert/selected-services", isAuthenticated, async (req, res) =>
   // Add service offering to expert's profile (authenticated)
 
 router.post("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { serviceOfferingId, customPrice } = req.body;
     const service = await storage.addExpertSelectedService(userId, serviceOfferingId, customPrice);
     res.json(service);
@@ -808,7 +808,7 @@ router.post("/api/expert/selected-services", isAuthenticated, async (req, res) =
   // Remove service offering from expert's profile (authenticated)
 
 router.delete("/api/expert/selected-services/:serviceOfferingId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     await storage.removeExpertSelectedService(userId, req.params.serviceOfferingId);
     res.json({ success: true });
   });
@@ -816,7 +816,7 @@ router.delete("/api/expert/selected-services/:serviceOfferingId", isAuthenticate
   // Get current expert's specializations (authenticated)
 
 router.get("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const specializations = await storage.getExpertSpecializations(userId);
     res.json(specializations);
   });
@@ -824,7 +824,7 @@ router.get("/api/expert/specializations", isAuthenticated, async (req, res) => {
   // Add specialization to expert's profile (authenticated)
 
 router.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const { specialization } = req.body;
     const spec = await storage.addExpertSpecialization(userId, specialization);
     res.json(spec);
@@ -833,7 +833,7 @@ router.post("/api/expert/specializations", isAuthenticated, async (req, res) => 
   // Remove specialization from expert's profile (authenticated)
 
 router.delete("/api/expert/specializations/:specialization", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     await storage.removeExpertSpecialization(userId, req.params.specialization);
     res.json({ success: true });
   });
@@ -843,7 +843,7 @@ router.delete("/api/expert/specializations/:specialization", isAuthenticated, as
   // Get current expert's custom services (authenticated)
 
 router.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
     // expert_id / external_id columns were dropped in migration 013.
     // Expert-owned services now live in provider_services (not ESO).
@@ -855,7 +855,7 @@ router.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
   // Get single custom service by ID (authenticated - owner only)
 
 router.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const service = await storage.getExpertCustomServiceById(req.params.id);
     if (!service) {
       return res.status(404).json({ message: "Custom service not found" });
@@ -870,7 +870,7 @@ router.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) 
 
 router.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await storage.getUser(userId);
 
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -894,7 +894,7 @@ router.post("/api/expert/custom-services", isAuthenticated, async (req, res) => 
 
 router.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -920,7 +920,7 @@ router.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res
 
 router.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -945,7 +945,7 @@ router.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (re
 
 router.delete("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -1005,7 +1005,7 @@ router.get("/api/expert-templates/:id", async (req, res) => {
 
 router.get("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const templates = await storage.getExpertTemplates({ expertId: userId });
       res.json(templates);
     } catch (err) {
@@ -1018,7 +1018,7 @@ router.get("/api/expert/templates", isAuthenticated, async (req, res) => {
 
 router.post("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.createExpertTemplate({
         ...req.body,
         expertId: userId,
@@ -1034,7 +1034,7 @@ router.post("/api/expert/templates", isAuthenticated, async (req, res) => {
 
 router.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -1056,7 +1056,7 @@ router.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -1078,7 +1078,7 @@ router.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => 
 
 router.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -1150,7 +1150,7 @@ router.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, r
 
 router.get("/api/my-purchased-templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
       
       // Get full template data for each purchase
@@ -1184,7 +1184,7 @@ router.get("/api/expert-templates/:id/reviews", async (req, res) => {
 
 router.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Get user's purchase of this template
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
@@ -1213,7 +1213,7 @@ router.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, re
 
 router.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
       const [bookings, payouts, ledgerSummary] = await Promise.all([
@@ -1289,7 +1289,7 @@ router.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const sales = await storage.getTemplatePurchases({ expertId: userId });
       
       // Get template details for each sale
@@ -1313,7 +1313,7 @@ router.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
 
 router.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
     try {
-      const travelerId = (req.user as any).claims.sub;
+      const travelerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { expertId } = req.params;
       
       // Validate request body
@@ -1352,7 +1352,7 @@ router.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/tips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const result = await storage.getTipsForExpert(userId);
       res.json(result);
     } catch (err) {
@@ -1365,7 +1365,7 @@ router.get("/api/expert/tips", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/referrals", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const referrals = await storage.getExpertReferrals(userId);
       
       // Get the expert's referral code from their profile
@@ -1390,7 +1390,7 @@ router.get("/api/expert/referrals", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/affiliate-earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const earnings = await storage.getAffiliateEarnings(userId);
       const summary = await storage.getAffiliateEarningsSummary(userId);
       res.json({ earnings, summary });
@@ -1404,7 +1404,7 @@ router.get("/api/expert/affiliate-earnings", isAuthenticated, async (req, res) =
 
 router.get("/api/expert/revenue-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Get all earnings data
       const [
@@ -1614,7 +1614,7 @@ router.get("/api/providers/:userId/public-verification", async (req, res) => {
   // Browse all active services (public marketplace)
 
 router.get("/api/expert/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const status = req.query.status as string | undefined;
     const services = await storage.getProviderServicesByStatus(userId, status);
     res.json(services);
@@ -1624,7 +1624,7 @@ router.get("/api/expert/services", isAuthenticated, async (req, res) => {
 
 router.patch("/api/expert/services/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -1644,7 +1644,7 @@ router.patch("/api/expert/services/:id/status", isAuthenticated, async (req, res
 
 router.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -1663,7 +1663,7 @@ router.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, r
 
 router.get("/api/expert/service-templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       // Resolve the expert's role from their application form
       const formRow = await db
@@ -1732,7 +1732,7 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
 
 router.get("/api/expert/role", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const formRow = await db
         .select({ expertType: localExpertForms.expertType })
@@ -1763,7 +1763,7 @@ router.get("/api/expert/role", isAuthenticated, async (req, res) => {
 
 router.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const templateId = req.params.templateId;
 
       // expert_service_offerings is the primary catalog; service_templates is legacy fallback.
@@ -1824,7 +1824,7 @@ router.post("/api/expert/services/from-template/:templateId", isAuthenticated, a
   // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
 
 router.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
@@ -1850,7 +1850,7 @@ router.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
   // NOTE: User data is sanitized - providers cannot see full traveler info
 
 router.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
@@ -1875,7 +1875,7 @@ router.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
 
 
 router.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userRole = (req.user as any).claims.role || 'user';
     const { clientId } = req.params;
     
@@ -1934,7 +1934,7 @@ router.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
 
 router.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -1951,7 +1951,7 @@ router.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res
 
 router.post("/api/expert/reviews/:id/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const review = await storage.getServiceReview(req.params.id);
       if (!review || review.providerId !== userId) {
         return res.status(404).json({ message: "Review not found or not for your service" });
@@ -1970,7 +1970,7 @@ router.post("/api/expert/reviews/:id/respond", isAuthenticated, async (req, res)
   // Get expert's analytics/stats
 
 router.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const services = await storage.getProviderServicesByStatus(userId);
     const bookings = await storage.getServiceBookings({ providerId: userId });
     
@@ -1999,7 +1999,7 @@ router.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const [services, bookings, earnings, form] = await Promise.all([
         storage.getProviderServicesByStatus(userId),
         storage.getServiceBookings({ providerId: userId }),
@@ -2030,7 +2030,7 @@ router.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
@@ -2051,7 +2051,7 @@ router.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -2183,7 +2183,7 @@ router.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) 
 
 router.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Get expert's profile to find their markets/destinations
       const expertProfile = await storage.getLocalExpertForm(userId);
@@ -2305,7 +2305,7 @@ router.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) 
 
 router.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get expert's profile to find their markets/destinations
@@ -2339,7 +2339,7 @@ router.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
 
 router.get("/api/recommendations/provider", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get provider's service locations
@@ -2452,7 +2452,7 @@ router.post("/api/recommendations/refresh/:city", isAuthenticated, async (req, r
 router.post("/api/recommendations/:id/convert", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Validate request body
       const conversionSchema = z.object({
@@ -2498,7 +2498,7 @@ router.post("/api/recommendations/:id/dismiss", isAuthenticated, async (req, res
 
 router.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       
@@ -2568,7 +2568,7 @@ router.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res
 
 router.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const allComps = await db
         .select({
@@ -2627,7 +2627,7 @@ router.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const slots = await storage.getProviderAvailabilitySlots(userId);
       res.json(slots);
     } catch (error) {
@@ -2639,7 +2639,7 @@ router.get("/api/provider/availability", isAuthenticated, async (req, res) => {
 
 router.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const availabilityInput = z.object({
         serviceId: z.string().min(1),
         dayOfWeek: z.number().min(0).max(6).optional(),
@@ -2663,7 +2663,7 @@ router.post("/api/provider/availability", isAuthenticated, async (req, res) => {
 
 router.patch("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const updateInput = z.object({
         dayOfWeek: z.number().min(0).max(6).optional(),
         startTime: z.string().optional(),
@@ -2689,7 +2689,7 @@ router.patch("/api/provider/availability/:id", isAuthenticated, async (req, res)
 
 router.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
       if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
@@ -2704,7 +2704,7 @@ router.delete("/api/provider/availability/:id", isAuthenticated, async (req, res
 
 router.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const status = req.query.status as string | undefined;
       
       const tasks = await getExpertAiTasks(userId, status);
@@ -2732,7 +2732,7 @@ router.post("/api/expert/ai-tasks/delegate", isAuthenticated, async (req, res) =
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskType, taskDescription, clientName, context } = parsed.data;
 
       // Create task in pending status
@@ -2814,7 +2814,7 @@ router.post("/api/expert/ai-tasks/delegate", isAuthenticated, async (req, res) =
 
 router.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskId } = req.params;
       const { editedContent } = req.body;
 
@@ -2841,7 +2841,7 @@ router.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req,
 
 router.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskId } = req.params;
 
       const task = await getExpertAiTaskById(taskId, userId);
@@ -2865,7 +2865,7 @@ router.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, 
 
 router.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { taskId } = req.params;
 
       const task = await getExpertAiTaskById(taskId, userId);
@@ -2934,7 +2934,7 @@ router.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (r
 
 router.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -2975,7 +2975,7 @@ router.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
@@ -2987,7 +2987,7 @@ router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const summary = await storage.getProviderEarningsSummary(userId);
       // Return both legacy field names and the names the payouts UI expects
       res.json({
@@ -3006,7 +3006,7 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
 
 router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
@@ -3020,7 +3020,7 @@ router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) =
 
 router.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const payouts = await storage.getProviderPayouts(userId);
       res.json(payouts);
     } catch (error: any) {
@@ -3033,7 +3033,7 @@ router.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
 router.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
     const MINIMUM_PAYOUT = 25;
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { payoutMethod } = req.body;
       const amount = Number(req.body.amount);
       if (!isFinite(amount) || amount <= 0) {
@@ -3071,7 +3071,7 @@ router.post("/api/provider/payouts/request", isAuthenticated, async (req, res) =
 router.post("/api/expert/payouts/request", isAuthenticated, async (req, res) => {
     const MINIMUM_PAYOUT = 25;
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { payoutMethod } = req.body;
       const amount = Number(req.body.amount);
       if (!isFinite(amount) || amount <= 0) {
@@ -3108,7 +3108,7 @@ router.post("/api/expert/payouts/request", isAuthenticated, async (req, res) => 
 
 router.get("/api/expert/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const payouts = await storage.getExpertPayouts(userId);
       res.json(payouts);
     } catch (error: any) {
@@ -3121,7 +3121,7 @@ router.get("/api/expert/payouts", isAuthenticated, async (req, res) => {
 
 router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
@@ -3693,7 +3693,7 @@ router.patch("/api/provider/settings", isAuthenticated, async (req, res) => {
 
 router.patch("/api/expert/assignments/:assignmentId/workspace-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { assignmentId } = req.params;
       const { workspaceStatus } = req.body;
       const validTransitions: Record<string, string[]> = {
@@ -3723,7 +3723,7 @@ router.patch("/api/expert/assignments/:assignmentId/workspace-status", isAuthent
 
 router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const rows = await db
         .select({
           trip_id: tripExpertAdvisors.tripId,

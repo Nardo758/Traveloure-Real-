@@ -156,7 +156,7 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 
 router.get("/api/wallet", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const wallet = await storage.getOrCreateWallet(userId);
     res.json(wallet);
   });
@@ -164,7 +164,7 @@ router.get("/api/wallet", isAuthenticated, async (req, res) => {
   // Get wallet transactions
 
 router.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const wallet = await storage.getWallet(userId);
     if (!wallet) {
       return res.json([]);
@@ -177,7 +177,7 @@ router.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
 
 router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await storage.getUser((req.user as any).claims.sub);
+      const adminUser = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -199,7 +199,7 @@ router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
 
 router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { packageId, currency: clientCurrency } = req.body;
       const chargeCurrency = clientCurrency || 'usd';
 
@@ -281,7 +281,7 @@ router.get("/api/revenue-splits", async (req, res) => {
 
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, notes } = req.body;
       
       // Get cart items
@@ -611,7 +611,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const invoices = await storage.getInvoicesByCustomer(user.claims.sub);
+      const invoices = await storage.getInvoicesByCustomer(user?.claims?.sub ?? user?.id);
       res.json(invoices);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get invoices", error: error.message });
