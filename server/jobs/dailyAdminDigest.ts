@@ -10,8 +10,8 @@ async function getPayoutGapExperts() {
       firstName: users.firstName,
       lastName: users.lastName,
       email: users.email,
-      destination: localExpertForms.destination,
-      approvalDate: localExpertForms.updatedAt,
+      city: localExpertForms.city,
+      approvalDate: localExpertForms.createdAt,
       stripeConnectStatus: localExpertForms.stripeConnectStatus,
     })
     .from(localExpertForms)
@@ -67,7 +67,7 @@ export async function runDailyAdminDigest() {
     if (payoutGap.length > 0) {
       textBody += `PAYOUT GAP — ${payoutGap.length} expert(s) approved but not payable:\n`;
       payoutGap.forEach((e) => {
-        textBody += `  • ${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email} (${e.email}) — Connect: ${e.stripeConnectStatus}\n`;
+        textBody += `  • ${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email} (${e.email}) — City: ${e.city ?? "—"} — Connect: ${e.stripeConnectStatus}\n`;
       });
       textBody += "\n";
     }
@@ -87,7 +87,7 @@ export async function runDailyAdminDigest() {
     const payoutRows = payoutGap
       .map(
         (e) =>
-          `<tr><td style="padding:4px 8px">${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email}</td><td style="padding:4px 8px">${e.email}</td><td style="padding:4px 8px">${e.stripeConnectStatus}</td></tr>`
+          `<tr><td style="padding:4px 8px">${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email}</td><td style="padding:4px 8px">${e.email}</td><td style="padding:4px 8px">${e.city ?? "—"}</td><td style="padding:4px 8px">${e.stripeConnectStatus}</td></tr>`
       )
       .join("");
 
@@ -110,6 +110,7 @@ export async function runDailyAdminDigest() {
            <thead><tr style="background:#F3F3EE">
              <th style="padding:4px 8px;text-align:left">Name</th>
              <th style="padding:4px 8px;text-align:left">Email</th>
+             <th style="padding:4px 8px;text-align:left">City</th>
              <th style="padding:4px 8px;text-align:left">Connect status</th>
            </tr></thead>
            <tbody>${payoutRows}</tbody>
