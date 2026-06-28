@@ -362,6 +362,13 @@ async function runDatabaseSeeding() {
     },
     () => {
       console.log("[STARTUP] expert_city_queues deprecated → _deprecated_expert_city_queues | Safe to drop after 2026-09-01");
+      console.warn(
+        "[CLEANUP REMINDER] " +
+        "_deprecated_expert_city_queues scheduled " +
+        "for DROP after 2026-09-01. " +
+        "See: server/migrations/" +
+        "scheduled_drop_deprecated_city_queues.sql"
+      );
       logger.info({ port }, "Server started");
       
       // Start cache scheduler
