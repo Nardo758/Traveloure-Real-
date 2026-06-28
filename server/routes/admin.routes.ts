@@ -5012,4 +5012,24 @@ router.post("/api/admin/trigger-digest", requireAdminLocal, async (_req, res) =>
   }
 });
 
+// Canonical on-demand digest endpoint (matches user-facing API contract).
+// Alias of /api/admin/trigger-digest with a standardised response envelope.
+router.post("/api/admin/digest/send-now", requireAdminLocal, async (_req, res) => {
+  try {
+    const { runDailyAdminDigest } = await import("../jobs/dailyAdminDigest");
+    await runDailyAdminDigest();
+    res.json({
+      success: true,
+      message: "Digest triggered successfully",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Digest failed",
+      error: String(err),
+    });
+  }
+});
+
 export default router;
