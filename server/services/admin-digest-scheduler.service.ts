@@ -11,7 +11,7 @@
 
 import { db } from "../db";
 import { adminNotifications, users } from "@shared/schema";
-import { eq, and, isNull, or, ne } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
@@ -58,10 +58,7 @@ class AdminDigestSchedulerService {
         .where(
           and(
             eq(users.role, "local_expert"),
-            or(
-              isNull(users.stripeAccountId),
-              ne(users.stripeAccountStatus, "complete")
-            )
+            sql`(${users.stripeAccountId} is null or ${users.stripeAccountStatus} <> 'complete')`
           )
         )
         .limit(50);

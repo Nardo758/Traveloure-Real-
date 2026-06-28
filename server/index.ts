@@ -383,9 +383,8 @@ async function runDatabaseSeeding() {
       adminDigestScheduler.start();
       logger.info("Admin digest scheduler started");
 
-      // Run console-log digest job once on startup to verify it works
+      // Run digest job once on startup, then on interval
       runDailyAdminDigest();
-      // Then repeat every 24 hours
       setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
       
       // One-time admin promotion
