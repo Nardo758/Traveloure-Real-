@@ -17,7 +17,8 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { LocalExpertForm, ServiceProviderForm } from "@shared/schema";
 import { FunnelChart } from "@/components/admin/FunnelChart";
@@ -46,6 +47,49 @@ interface StaleBooking {
   user_email: string;
   user_first_name: string;
   user_last_name: string;
+}
+
+function DigestTriggerButton() {
+  const [lastSent, setLastSent] = useState<string | null>(null);
+
+  const trigger = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/digest/send-now", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to trigger digest");
+      return res.json();
+    },
+    onSuccess: () => {
+      setLastSent(new Date().toLocaleTimeString());
+    },
+  });
+
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        data-testid="button-send-digest"
+        onClick={() => trigger.mutate()}
+        disabled={trigger.isPending}
+        className="text-xs px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+      >
+        {trigger.isPending ? "Sending..." : "📧 Send digest now"}
+      </button>
+
+      {trigger.isSuccess && lastSent && (
+        <span data-testid="text-digest-sent" className="text-xs text-emerald-600 font-medium">
+          ✓ Sent at {lastSent}
+        </span>
+      )}
+
+      {trigger.isError && (
+        <span data-testid="text-digest-error" className="text-xs text-red-500">
+          ✗ Failed — check server logs
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function AdminDashboard() {
@@ -99,6 +143,12 @@ export default function AdminDashboard() {
   return (
     <AdminLayout title="Dashboard">
       <div className="p-6 space-y-6">
+
+        {/* Dashboard header row */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Dashboard</h1>
+          <DigestTriggerButton />
+        </div>
 
         {/* Funnel drop-off visualizer */}
         <FunnelChart />
