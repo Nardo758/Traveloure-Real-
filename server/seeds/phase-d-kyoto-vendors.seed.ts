@@ -19,23 +19,59 @@
  */
 
 import { db } from "../db";
-import { users, serviceProviderForms, providerServices } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { users, serviceProviderForms, providerServices, serviceCategories } from "@shared/schema";
+import { eq, inArray } from "drizzle-orm";
 import * as crypto from "crypto";
 
-// ─── Category IDs (from service_categories table) ─────────────────────────
+// ─── Category placeholders (vendor arrays reference these at module load time) ─
+// Values are key names — the seed function resolves real IDs from the DB at runtime.
 const CAT = {
-  ATTIRE_FASHION:       "8b8adcb3-51ff-4a59-a59d-41fef405bb1a",
-  BEAUTY_STYLING:       "9b155880-329b-4102-aade-6b95919090d4",
-  EVENTS_CELEBRATIONS:  "1d8377db-6fa5-4d2a-acf8-b0cad9891a4a",
-  FLORAL_DECORATION:    "de9026cf-53d5-4475-9b61-dc55680e871d",
-  PHOTOGRAPHY_VIDEO:    "2e6864ff-b273-4afa-8fbf-992938e27e4e",
-  MUSIC_PERFORMANCE:    "74328b7b-e71b-43c0-8b6a-5763a72252e5",
-  CORPORATE_SERVICES:   "66dd739d-bcd5-45aa-912c-7dae06f2961c",
-  CULTURAL_EDUCATIONAL: "cf13b91d-7279-4a6a-8cce-4718ca13f87c",
-  LANGUAGE_TRANSLATION: "7efc092b-68e4-497f-b032-2b282f5c55ea",
-  RENTAL_SERVICES:      "5531924e-cfeb-45ac-93f2-cd19464b0939",
+  ATTIRE_FASHION:       "ATTIRE_FASHION",
+  BEAUTY_STYLING:       "BEAUTY_STYLING",
+  EVENTS_CELEBRATIONS:  "EVENTS_CELEBRATIONS",
+  FLORAL_DECORATION:    "FLORAL_DECORATION",
+  PHOTOGRAPHY_VIDEO:    "PHOTOGRAPHY_VIDEO",
+  MUSIC_PERFORMANCE:    "MUSIC_PERFORMANCE",
+  CORPORATE_SERVICES:   "CORPORATE_SERVICES",
+  CULTURAL_EDUCATIONAL: "CULTURAL_EDUCATIONAL",
+  LANGUAGE_TRANSLATION: "LANGUAGE_TRANSLATION",
+  RENTAL_SERVICES:      "RENTAL_SERVICES",
+} as const;
+
+// ─── Map from key name → slug in service_categories ─────────────────────────
+// Slugs are guaranteed to exist after seedCategories() runs before this seed.
+const CAT_KEY_TO_SLUG: Record<string, string> = {
+  ATTIRE_FASHION:       "services-wedding",
+  BEAUTY_STYLING:       "beauty-styling",
+  EVENTS_CELEBRATIONS:  "events-celebrations",
+  FLORAL_DECORATION:    "events-celebrations",
+  PHOTOGRAPHY_VIDEO:    "photography-videography",
+  MUSIC_PERFORMANCE:    "events-celebrations",
+  CORPORATE_SERVICES:   "services-corporate",
+  CULTURAL_EDUCATIONAL: "tours-experiences",
+  LANGUAGE_TRANSLATION: "language-translation",
+  RENTAL_SERVICES:      "specialty-services",
 };
+
+async function resolveCategoryIds(): Promise<Record<string, string>> {
+  const slugs = [...new Set(Object.values(CAT_KEY_TO_SLUG))];
+  const rows = await db
+    .select({ id: serviceCategories.id, slug: serviceCategories.slug })
+    .from(serviceCategories)
+    .where(inArray(serviceCategories.slug, slugs));
+
+  const slugToId = Object.fromEntries(rows.map((r) => [r.slug, r.id]));
+
+  const keyToId: Record<string, string> = {};
+  for (const [key, slug] of Object.entries(CAT_KEY_TO_SLUG)) {
+    if (slugToId[slug]) {
+      keyToId[key] = slugToId[slug];
+    } else {
+      console.warn(`[Phase D] Category slug "${slug}" not found in DB — services using key "${key}" will be skipped.`);
+    }
+  }
+  return keyToId;
+}
 
 // ─── Unsplash photos (free, retina-ready) ────────────────────────────────
 const IMG = {
@@ -661,6 +697,8 @@ export async function seedPhaseDKyotoVendors(): Promise<{
   let vendorsSkipped = 0;
   let servicesInserted = 0;
 
+  const catKeyToId = await resolveCategoryIds();
+
   const ALL_VENDORS = [...WEDDING_VENDORS, ...CORPORATE_VENDORS];
 
   for (const vendor of ALL_VENDORS) {
@@ -710,6 +748,12 @@ export async function seedPhaseDKyotoVendors(): Promise<{
     }
 
     for (const svc of vendor.services) {
+      const resolvedCategoryId = catKeyToId[svc.categoryId];
+      if (!resolvedCategoryId) {
+        console.warn(`[Phase D] Skipping service "${svc.serviceName}" — category key "${svc.categoryId}" could not be resolved.`);
+        continue;
+      }
+
       const existingSvc = await db
         .select({ id: providerServices.id })
         .from(providerServices)
@@ -724,7 +768,7 @@ export async function seedPhaseDKyotoVendors(): Promise<{
         shortDescription: svc.shortDescription,
         description: svc.description,
         serviceType: svc.serviceType as any,
-        categoryId: svc.categoryId,
+        categoryId: resolvedCategoryId,
         price: svc.price,
         priceType: svc.priceType as any,
         deliveryMethod: svc.deliveryMethod as any,
