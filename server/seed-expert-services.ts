@@ -585,6 +585,7 @@ const mockProviderServicesData = [
 ];
 
 import { providerServices } from "@shared/schema";
+import { sql } from "drizzle-orm";
 
 export async function seedProviderServices() {
   console.log("Seeding mock provider services for Services tab...");
@@ -599,19 +600,33 @@ export async function seedProviderServices() {
 
   const providerId = existingUsers[0].id;
 
-  // Check if we already have provider services
-  const existingServices = await db
-    .select()
-    .from(providerServices)
-    .limit(1);
+  // Count all existing provider services — only skip if there are already
+  // enough curated services (threshold = number of mock entries).
+  // A single stale row in prod must not prevent the full seed from running.
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(providerServices);
 
-  if (existingServices.length > 0) {
-    console.log(`Provider services already exist (${existingServices.length} found). Skipping seed.`);
+  const MOCK_COUNT = mockProviderServicesData.length;
+  if (count >= MOCK_COUNT) {
+    console.log(`Provider services already seeded (${count} found, threshold ${MOCK_COUNT}). Skipping seed.`);
     return;
   }
 
   let created = 0;
   for (const service of mockProviderServicesData) {
+    // Idempotent per service name — safe to re-run without duplicates
+    const existing = await db
+      .select({ id: providerServices.id })
+      .from(providerServices)
+      .where(eq(providerServices.serviceName, service.serviceName))
+      .limit(1);
+
+    if (existing.length > 0) {
+      console.log(`  → Already exists: ${service.serviceName}`);
+      continue;
+    }
+
     await db.insert(providerServices).values({
       userId: providerId,
       serviceName: service.serviceName,
@@ -625,7 +640,7 @@ export async function seedProviderServices() {
       whatIncluded: service.whatIncluded,
       averageRating: service.averageRating,
       status: "active",
-      isFeatured: created < 3, // Feature first 3 services
+      isFeatured: created < 3,
     });
     console.log(`  → Created provider service: ${service.serviceName}`);
     created++;
