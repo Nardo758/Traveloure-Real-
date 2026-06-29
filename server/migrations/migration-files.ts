@@ -246,4 +246,9 @@ export const MIGRATION_FILES = [
   // 094: Add missing indexes — local_expert_forms(status), bookings(created_at),
   //      lead_routing_logs(trip_id), expert_requests(destination_city, status), users(role).
   "094_missing_indexes.sql",
+  // 095: Restore service_provider category rows in service_offering_types that were
+  // deleted/deactivated by a prior task. Uses ON CONFLICT DO UPDATE SET is_active = true
+  // so deactivated rows are re-activated and missing rows are inserted fresh. Covers all
+  // ten service_provider categories from migration 038 plus the 12 market-scoped variants.
+  "095_restore_service_provider_offering_types.sql",
 ] as const;
