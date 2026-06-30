@@ -1,0 +1,95 @@
+Fix the gap where a Stripe payment can succeed 
+but the booking is never saved if the server 
+crashes mid-request.
+
+PROBLEM:
+Current flow: charge Stripe → THEN save booking.
+If server crashes between those two steps,
+the customer is charged but has no booking,
+and there's no record to recover it.
+
+TASK:
+
+1. Flip the order — create a PENDING booking 
+   row BEFORE charging Stripe, not after:
+
+   Step A: Create booking with status="payment_pending"
+   Step B: Charge Stripe using that booking's ID 
+           as metadata
+   Step C: On Stripe success, update status="confirmed"
+   Step D: On Stripe failure, update status="failed"
+
+   This way, even if the server crashes after 
+   Step B, there's already a row that can be 
+   reconciled later.
+
+2. In the checkout route:
+
+   // Step A — create pending booking first
+   const [pendingBooking] = await db
+     .insert(bookings)
+     .values({
+       ...bookingData,
+       status: "payment_pending",
+       idempotencyKey
+     })
+     .returning();
+
+   // Step B — charge with booking ID in metadata
+   const paymentIntent = 
+     await stripe.paymentIntents.create({
+       amount: ...,
+       currency: ...,
+       metadata: { 
+         bookingId: pendingBooking.id.toString() 
+       }
+     }, { idempotencyKey });
+
+   // Step C — update on success
+   await db.update(bookings)
+     .set({ status: "confirmed" })
+     .where(eq(bookings.id, pendingBooking.id));
+
+3. Add a Stripe webhook handler for 
+   payment_intent.succeeded that ALSO checks 
+   for orphaned pending bookings — this catches 
+   the case where Step C never ran due to crash:
+
+   POST /api/stripe/webhook (payment_intent.succeeded):
+   
+   const bookingId = 
+     event.data.object.metadata.bookingId;
+   
+   if (bookingId) {
+     const booking = await db.select()
+       .from(bookings)
+       .where(eq(bookings.id, parseInt(bookingId)));
+     
+     if (booking[0]?.status === "payment_pending") {
+       await db.update(bookings)
+         .set({ status: "confirmed" })
+         .where(eq(bookings.id, parseInt(bookingId)));
+       console.log(
+         `[RECOVERY] Booking ${bookingId} ` +
+         `confirmed via webhook after crash recovery`
+       );
+     }
+   }
+
+4. Add an admin endpoint to find stuck bookings:
+
+   GET /api/admin/bookings/stuck-pending
+   Returns bookings where status="payment_pending"
+   AND createdAt is older than 10 minutes
+   (these need manual investigation)
+
+5. Test:
+   - Create a booking, simulate crash by NOT
+     calling Step C
+   - Send a test Stripe webhook event manually
+   - Confirm the webhook handler catches it and
+     updates status to "confirmed"
+
+Do NOT change the Stripe Connect commission split.
+Do NOT touch vite.config.ts.
+Show every file changed.

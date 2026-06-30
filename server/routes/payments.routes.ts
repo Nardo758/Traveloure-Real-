@@ -452,7 +452,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           amount: price.toFixed(2),
         });
         
-        // Create booking
+        // ── Step A: Create booking as payment_pending BEFORE charging Stripe ──
+        // If the server crashes after the Stripe charge but before this line,
+        // the PaymentIntent webhook will recover it via stripe_payment_intent_id.
         const booking = await storage.createServiceBooking({
           serviceId: item.serviceId,
           travelerId: userId,
@@ -468,7 +470,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           platformFee: totalPlatformFeeAmt.toFixed(2),
           insuranceFee: insuranceFeeAmt.toFixed(2),
           providerEarnings: netExpertEarningsAmt.toFixed(2),
-          status: "pending",
+          status: "payment_pending",
           ...(idempotencyKey ? { idempotencyKey } : {}),
         } as any);
         
@@ -517,10 +519,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         bookings.push({ booking, contract });
       }
       
-      // Clear cart after successful checkout
+      // Clear cart after creating bookings (before Stripe — recoverable if crash)
       await storage.clearCart(userId);
 
-      // Create Stripe payment intent for the total
+      // ── Step B: Charge Stripe AFTER booking rows exist ──────────────────────
+      // Bookings are already at payment_pending; even if the server crashes here
+      // the webhook (payment_intent.succeeded) will flip them to confirmed.
       const { stripePaymentService } = await import("../services/stripe-payment.service");
       const paymentIntent = await stripePaymentService.createPaymentIntent(
         userId,
@@ -530,6 +534,18 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         'usd',
         idempotencyKey
       );
+
+      // ── Step C: Stamp the PI ID on every service_booking so the webhook can ──
+      // find and confirm them even after a mid-flight crash.
+      if (paymentIntent?.paymentIntentId) {
+        for (const { booking: b } of bookings as any[]) {
+          await db.execute(sql`
+            UPDATE service_bookings
+            SET stripe_payment_intent_id = ${paymentIntent.paymentIntentId}
+            WHERE id = ${b.id}
+          `);
+        }
+      }
       
       // Canonical commission summary for the cart surface
       const cartCommission = calculateCommission(subtotal, BookingType.EXPERIENCE_CART);
