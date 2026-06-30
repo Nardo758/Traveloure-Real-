@@ -251,4 +251,9 @@ export const MIGRATION_FILES = [
   // so deactivated rows are re-activated and missing rows are inserted fresh. Covers all
   // ten service_provider categories from migration 038 plus the 12 market-scoped variants.
   "095_restore_service_provider_offering_types.sql",
+  // 096: Add idempotency_key column (nullable, unique partial index) to service_bookings
+  // and bookings. Prevents double-charges when the same checkout fires twice (double-click,
+  // network retry). Backend checks for an existing row before inserting; Stripe receives the
+  // same key so it deduplicates the PaymentIntent on its side too.
+  "096_idempotency_key_bookings.sql",
 ] as const;

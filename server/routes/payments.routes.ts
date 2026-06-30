@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { Router } from "express";
+import { db } from "../db";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
@@ -282,8 +283,27 @@ router.get("/api/revenue-splits", async (req, res) => {
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { tripId, notes } = req.body;
-      
+      const { tripId, notes, idempotencyKey } = req.body;
+
+      // ── Idempotency guard (DB level) ────────────────────────────────────────
+      // If this exact checkout request was already processed, return the original
+      // result without creating duplicate bookings or Stripe charges.
+      if (idempotencyKey) {
+        const existing = await db.execute(sql`
+          SELECT id FROM service_bookings
+          WHERE idempotency_key = ${idempotencyKey}
+          LIMIT 1
+        `);
+        if (existing.rows.length > 0) {
+          console.log(`[checkout] duplicate request detected, idempotencyKey=${idempotencyKey} — returning early`);
+          return res.status(200).json({
+            success: true,
+            duplicate: true,
+            note: "Booking already exists for this request",
+          });
+        }
+      }
+
       // Get cart items
       const cartData = await storage.getCartItems(userId);
       
@@ -449,6 +469,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           insuranceFee: insuranceFeeAmt.toFixed(2),
           providerEarnings: netExpertEarningsAmt.toFixed(2),
           status: "pending",
+          ...(idempotencyKey ? { idempotencyKey } : {}),
         } as any);
         
         // Increment bookings count for the service
@@ -505,7 +526,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         userId,
         bookings.map((b: any) => b.booking),
         total,
-        false
+        false,
+        'usd',
+        idempotencyKey
       );
       
       // Canonical commission summary for the cart surface

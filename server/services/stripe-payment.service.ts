@@ -48,7 +48,8 @@ class StripePaymentService {
     bookings: any[],
     amount: number,
     isDeposit: boolean = false,
-    currency: string = 'usd'
+    currency: string = 'usd',
+    idempotencyKey?: string
   ) {
     try {
       // Get user details
@@ -76,6 +77,10 @@ class StripePaymentService {
         ? allBookingIds.substring(0, 490) + '...' 
         : allBookingIds;
       
+      const stripeRequestOptions = idempotencyKey
+        ? { idempotencyKey: `pi-${idempotencyKey}` }
+        : undefined;
+
       const paymentIntent = await stripe.paymentIntents.create({
         amount: stripeAmount,
         currency: effectiveCurrency,
@@ -90,7 +95,7 @@ class StripePaymentService {
         automatic_payment_methods: {
           enabled: true,
         },
-      });
+      }, stripeRequestOptions);
 
       // Store payment intent in database
       const metadataJson = JSON.stringify(paymentIntent.metadata);
