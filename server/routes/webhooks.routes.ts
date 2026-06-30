@@ -14,8 +14,8 @@ import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { db } from "../db";
-import { localExpertForms } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { localExpertForms, serviceBookings } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -225,6 +225,29 @@ router.post("/stripe", async (req: any, res) => {
         } catch (bookingErr: any) {
           console.error("payment_intent.succeeded: booking confirmation error:", bookingErr.message);
           // Non-fatal: continue to revenue tracking even if booking confirmation fails
+        }
+
+        // ── Step 2: Crash-recovery for service_bookings ─────────────────────
+        // If the checkout server crashed after the Stripe charge but before Step C
+        // (stamping stripe_payment_intent_id) or before the client received the
+        // response, these rows remain at status="payment_pending".
+        // The webhook is the authoritative recovery path: find any service_bookings
+        // linked to this PaymentIntent that are still payment_pending and confirm them.
+        try {
+          const recovered = await db.execute(sql`
+            UPDATE service_bookings
+            SET status       = 'confirmed',
+                confirmed_at = NOW()
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+              AND status = 'payment_pending'
+            RETURNING id
+          `);
+          if (recovered.rows.length > 0) {
+            const ids = (recovered.rows as any[]).map((r: any) => r.id).join(', ');
+            console.log(`[RECOVERY] payment_intent.succeeded: confirmed ${recovered.rows.length} payment_pending service_booking(s) [${ids}] via webhook for PI ${paymentIntent.id}`);
+          }
+        } catch (recoveryErr: any) {
+          console.error("payment_intent.succeeded: service_booking crash-recovery error:", recoveryErr.message);
         }
 
         // ── Step 2: Revenue tracking ────────────────────────────────────────
