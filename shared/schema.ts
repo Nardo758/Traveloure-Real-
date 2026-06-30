@@ -715,6 +715,10 @@ export const serviceBookings = pgTable("service_bookings", {
   source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
   crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
 
+  // Idempotency: set by the client on checkout; checked server-side before insert.
+  // Unique partial index (WHERE NOT NULL) prevents duplicate bookings on retries.
+  idempotencyKey: text("idempotency_key"),
+
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
   completedAt: timestamp("completed_at"),
@@ -5331,6 +5335,8 @@ export const bookings = pgTable("bookings", {
   stripeDepositIntentId: varchar("stripe_deposit_intent_id", { length: 255 }),
   stripeBalanceIntentId: varchar("stripe_balance_intent_id", { length: 255 }),
   paymentStatus: varchar("payment_status", { length: 50 }),
+  // Idempotency: set by the client on checkout; checked server-side before insert.
+  idempotencyKey: text("idempotency_key"),
   confirmationCode: varchar("confirmation_code", { length: 50 }),
   confirmedAt: timestamp("confirmed_at"),
   cancelledAt: timestamp("cancelled_at"),

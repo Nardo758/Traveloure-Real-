@@ -201,6 +201,9 @@ export default function CartPage() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const [flowStep, setFlowStep] = useState<FlowStep>("cart");
+  // Generated once per page mount — stays stable across multiple "Pay Now" clicks
+  // so duplicate submissions carry the same key and are de-duped server-side + by Stripe.
+  const [checkoutIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   const [generating, setGenerating] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
@@ -460,7 +463,10 @@ export default function CartPage() {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
       }
-      const res = await apiRequest("POST", "/api/checkout", { currency: displayCurrency });
+      const res = await apiRequest("POST", "/api/checkout", {
+        currency: displayCurrency,
+        idempotencyKey: checkoutIdempotencyKey,
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
