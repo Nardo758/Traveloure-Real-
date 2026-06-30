@@ -353,6 +353,53 @@ router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res
 });
 
 /**
+ * GET /api/admin/bookings/stuck-pending
+ * Returns service_bookings stuck in payment_pending status for more than 10 minutes.
+ * These are bookings where Stripe was (or may have been) charged but the server
+ * crashed before the PI ID was stamped or before the webhook arrived.
+ * Ops should cross-check each against Stripe dashboard before manually reconciling.
+ */
+router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        sb.id,
+        sb.traveler_id,
+        sb.provider_id,
+        sb.service_id,
+        sb.status,
+        sb.total_amount,
+        sb.stripe_payment_intent_id,
+        sb.idempotency_key,
+        sb.created_at,
+        u.email   AS traveler_email,
+        u.first_name AS traveler_first_name,
+        u.last_name  AS traveler_last_name,
+        ps.service_name
+      FROM service_bookings sb
+      LEFT JOIN users  u  ON u.id  = sb.traveler_id
+      LEFT JOIN provider_services ps ON ps.id = sb.service_id
+      WHERE sb.status = 'payment_pending'
+        AND sb.created_at < NOW() - INTERVAL '10 minutes'
+      ORDER BY sb.created_at ASC
+      LIMIT 200
+    `);
+    res.json({
+      bookings: result.rows,
+      count: result.rows.length,
+      note: "These bookings may have been charged. Cross-check each stripe_payment_intent_id in the Stripe dashboard before manually reconciling.",
+    });
+  } catch (err) {
+    console.error("Stuck pending bookings error:", err);
+    res.status(500).json({ message: "Failed to fetch stuck pending bookings" });
+  }
+});
+
+/**
  * GET /api/admin/bookings/auto-cancel/config
  * Returns the current auto-cancel scheduler configuration.
  */
