@@ -6569,3 +6569,22 @@ export const adminNotifications = pgTable("admin_notifications", {
 export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
 export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;
 export type AdminNotification = typeof adminNotifications.$inferSelect;
+
+// === Webhook Events ===
+// Durable log of every Stripe webhook received.
+// Used for deduplication (stripe_event_id UNIQUE), manual reconciliation,
+// and the daily admin gap-check comparing local log vs Stripe's event API.
+export const webhookEvents = pgTable("webhook_events", {
+  id:            uuid("id").primaryKey().defaultRandom(),
+  stripeEventId: text("stripe_event_id").notNull().unique(),
+  eventType:     text("event_type").notNull(),
+  processed:     boolean("processed").notNull().default(false),
+  processedAt:   timestamp("processed_at"),
+  rawPayload:    jsonb("raw_payload").notNull(),
+  error:         text("error"),
+  createdAt:     timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({ id: true, createdAt: true });
+export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;

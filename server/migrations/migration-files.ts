@@ -256,4 +256,8 @@ export const MIGRATION_FILES = [
   // network retry). Backend checks for an existing row before inserting; Stripe receives the
   // same key so it deduplicates the PaymentIntent on its side too.
   "096_idempotency_key_bookings.sql",
+  // 097: webhook_events table — durable log of every Stripe webhook received.
+  // Enables deduplication (stripe_event_id UNIQUE), manual reconciliation via
+  // GET /api/admin/webhooks/unprocessed, and daily gap-check vs Stripe's event API.
+  "097_webhook_events.sql",
 ] as const;
