@@ -42,6 +42,7 @@ import {
   LayoutTemplate,
   ImageIcon,
   ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 
 const menuGroups = [
@@ -90,6 +91,7 @@ const menuGroups = [
     label: "System",
     items: [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
+      { title: "Reconciliation", href: "/admin/reconciliation", icon: ShieldAlert },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
       { title: "Neighborhoods", href: "/admin/neighborhood-backfill", icon: MapPin },
       { title: "Gem Photos", href: "/admin/gem-photo-backfill", icon: ImageIcon },
