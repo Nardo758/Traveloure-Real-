@@ -14,7 +14,7 @@ import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { db } from "../db";
-import { localExpertForms, serviceBookings } from "@shared/schema";
+import { localExpertForms, serviceBookings, webhookEvents } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
 const router = Router();
@@ -132,39 +132,48 @@ router.post("/persona", async (req: any, res) => {
   res.json({ received: true });
 });
 
-// POST /api/webhooks/stripe
-// Handles Stripe Connect account events, transfer confirmations, and payment intents.
-// No auth middleware — verified via Stripe-Signature header using raw body.
-router.post("/stripe", async (req: any, res) => {
-  const sig = req.headers["stripe-signature"] as string | undefined;
-  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
-  let event: Stripe.Event;
+// ─── Core Stripe event processor ────────────────────────────────────────────
+// Runs AFTER res.json({ received: true }) so Stripe never times out waiting.
+//
+// Responsibilities:
+//   1. Deduplication  — check webhook_events for already-processed event IDs
+//   2. Event logging  — INSERT into webhook_events before any business logic
+//   3. Business logic — switch on event.type (account, transfer, payment)
+//   4. Mark complete  — UPDATE webhook_events.processed=true or record error
+//
+// Any unhandled error is surfaced via the error column on webhook_events and
+// will appear in GET /api/admin/webhooks/unprocessed for manual review.
+async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
+  // ── 1. Deduplication ──────────────────────────────────────────────────────
+  // Stripe guarantees at-least-once delivery; the same event ID can arrive twice.
+  const existing = await db
+    .select({ processed: webhookEvents.processed })
+    .from(webhookEvents)
+    .where(eq(webhookEvents.stripeEventId, event.id))
+    .limit(1);
 
-  if (webhookSecret) {
-    if (!sig) {
-      return res.status(400).json({ message: "Missing Stripe-Signature header" });
-    }
-    if (!req.rawBody) {
-      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
-    }
-    try {
-      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
-    } catch (err: any) {
-      console.error("Stripe Connect webhook signature verification failed:", err.message);
-      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
-    }
-  } else {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(400).json({ message: "STRIPE_CONNECT_WEBHOOK_SECRET must be set in production" });
-    }
-    try {
-      event = typeof req.body === "object" ? req.body : JSON.parse(req.rawBody?.toString() ?? "{}");
-    } catch (err: any) {
-      return res.status(400).json({ message: "Invalid JSON body" });
-    }
+  if (existing.length > 0 && existing[0].processed) {
+    console.log(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already processed — skipping`);
+    return;
   }
 
+  // ── 2. Event log insert ───────────────────────────────────────────────────
+  // ON CONFLICT DO NOTHING handles any concurrent delivery of the same event.
+  await db.execute(sql`
+    INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
+    VALUES (
+      ${event.id},
+      ${event.type},
+      FALSE,
+      ${JSON.stringify(event)}::jsonb
+    )
+    ON CONFLICT (stripe_event_id) DO NOTHING
+  `);
+
+  let processingError: string | null = null;
+
   try {
+    // ── 3. Business logic ─────────────────────────────────────────────────
     switch (event.type) {
       case "account.updated": {
         const account = event.data.object as Stripe.Account;
@@ -231,8 +240,7 @@ router.post("/stripe", async (req: any, res) => {
         // If the checkout server crashed after the Stripe charge but before Step C
         // (stamping stripe_payment_intent_id) or before the client received the
         // response, these rows remain at status="payment_pending".
-        // The webhook is the authoritative recovery path: find any service_bookings
-        // linked to this PaymentIntent that are still payment_pending and confirm them.
+        // The webhook is the authoritative recovery path.
         try {
           const recovered = await db.execute(sql`
             UPDATE service_bookings
@@ -250,15 +258,13 @@ router.post("/stripe", async (req: any, res) => {
           console.error("payment_intent.succeeded: service_booking crash-recovery error:", recoveryErr.message);
         }
 
-        // ── Step 2: Revenue tracking ────────────────────────────────────────
+        // ── Step 3: Revenue tracking ────────────────────────────────────────
         const sourceType = paymentIntent.metadata?.sourceType as any;
         const sourceId = paymentIntent.metadata?.sourceId;
         const expertId = paymentIntent.metadata?.expertId;
         const providerId = paymentIntent.metadata?.providerId;
 
-        // Only record if we have enough metadata and it hasn't been recorded already
         if (sourceId && sourceType) {
-          // Idempotency check: skip if this payment intent has already been recorded
           const alreadyRecorded = await storage.hasPaymentIntentRevenue(paymentIntent.id);
           if (alreadyRecorded) {
             console.log(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
@@ -335,11 +341,70 @@ router.post("/stripe", async (req: any, res) => {
         // Acknowledge unhandled event types without error
         break;
     }
-  } catch (err) {
-    console.error("Stripe Connect webhook processing error:", err);
+  } catch (err: any) {
+    processingError = err.message ?? String(err);
+    console.error(`[WEBHOOK] Processing error for ${event.type} (${event.id}):`, err);
   }
 
+  // ── 4. Mark processed / record error ──────────────────────────────────────
+  // processed=false + error text → shows in GET /api/admin/webhooks/unprocessed
+  if (processingError === null) {
+    await db.execute(sql`
+      UPDATE webhook_events
+      SET processed    = TRUE,
+          processed_at = NOW()
+      WHERE stripe_event_id = ${event.id}
+    `);
+  } else {
+    await db.execute(sql`
+      UPDATE webhook_events
+      SET error = ${processingError}
+      WHERE stripe_event_id = ${event.id}
+    `);
+  }
+}
+
+// POST /api/webhooks/stripe
+// Handles Stripe Connect account events, transfer confirmations, and payment intents.
+// No auth middleware — verified via Stripe-Signature header using raw body.
+router.post("/stripe", async (req: any, res) => {
+  const sig = req.headers["stripe-signature"] as string | undefined;
+  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+  let event: Stripe.Event;
+
+  if (webhookSecret) {
+    if (!sig) {
+      return res.status(400).json({ message: "Missing Stripe-Signature header" });
+    }
+    if (!req.rawBody) {
+      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
+    }
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Stripe Connect webhook signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
+    }
+  } else {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(400).json({ message: "STRIPE_CONNECT_WEBHOOK_SECRET must be set in production" });
+    }
+    try {
+      event = typeof req.body === "object" ? req.body : JSON.parse(req.rawBody?.toString() ?? "{}");
+    } catch (err: any) {
+      return res.status(400).json({ message: "Invalid JSON body" });
+    }
+  }
+
+  // Acknowledge receipt IMMEDIATELY — Stripe's 30-second timeout starts from
+  // the HTTP request. Blocking on DB writes risks a timeout that triggers Stripe
+  // to re-queue the event, creating duplicate deliveries.
   res.json({ received: true });
+
+  // Process AFTER responding — fire-and-forget with full error logging
+  processStripeWebhookEvent(event).catch(err => {
+    console.error("[WEBHOOK PROCESSING ERROR]", event.type, err);
+  });
 });
 
 export default router;

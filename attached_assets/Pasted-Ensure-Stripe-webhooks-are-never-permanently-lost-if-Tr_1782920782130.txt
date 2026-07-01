@@ -1,0 +1,99 @@
+Ensure Stripe webhooks are never permanently lost 
+if Traveloure's server is down when they fire.
+
+CONTEXT:
+Stripe automatically retries failed webhooks for 
+up to 3 days, BUT only if your endpoint returns 
+a non-200 status or times out. If your server is 
+completely down (not just erroring), Stripe still 
+queues retries — but you need to verify this is 
+configured correctly and add a manual reconciliation 
+fallback in case retries are exhausted.
+
+TASK:
+
+1. Confirm the webhook endpoint always returns 
+   200 quickly, even if processing takes time:
+
+   POST /api/stripe/webhook
+
+   app.post("/api/stripe/webhook", 
+     express.raw({type: "application/json"}),
+     async (req, res) => {
+       // Verify signature first
+       let event;
+       try {
+         event = stripe.webhooks.constructEvent(
+           req.body,
+           req.headers["stripe-signature"],
+           process.env.STRIPE_WEBHOOK_SECRET
+         );
+       } catch (err) {
+         console.error(
+           "[WEBHOOK] Signature verification failed", 
+           err
+         );
+         return res.status(400).send(
+           `Webhook Error: ${err.message}`
+         );
+       }
+
+       // Acknowledge receipt IMMEDIATELY
+       res.json({ received: true });
+
+       // Process AFTER responding (don't block Stripe)
+       processWebhookEvent(event).catch(err => {
+         console.error(
+           "[WEBHOOK PROCESSING ERROR]", 
+           event.type, 
+           err
+         );
+         // Log to admin_notifications so it's 
+         // not silently lost
+       });
+     }
+   );
+
+2. Create a webhook event log table to track 
+   every event received (for manual reconciliation):
+
+   webhookEvents table:
+   id, stripeEventId (unique), eventType, 
+   processed (boolean), processedAt, 
+   rawPayload (jsonb), createdAt
+
+3. Before processing any event, check if 
+   stripeEventId was already processed 
+   (Stripe can send duplicates):
+
+   const existing = await db.select()
+     .from(webhookEvents)
+     .where(eq(webhookEvents.stripeEventId, 
+       event.id));
+   
+   if (existing.length > 0 && 
+       existing[0].processed) {
+     console.log(
+       `[WEBHOOK] Duplicate event ${event.id} ` +
+       `already processed, skipping`
+     );
+     return;
+   }
+
+4. Add admin endpoint to see unprocessed events:
+   GET /api/admin/webhooks/unprocessed
+   Returns events where processed=false
+
+5. Add a daily check that compares Stripe's 
+   event log (via Stripe API) against your 
+   webhookEvents table to catch any gaps:
+   
+   Add this to dailyAdminDigest.ts:
+   - Fetch last 100 events from Stripe API
+   - Compare against webhookEvents table
+   - Flag any Stripe events NOT in your table
+   - Include in digest email
+
+Do NOT change the commission calculation logic.
+Do NOT touch vite.config.ts.
+Show every file changed.
