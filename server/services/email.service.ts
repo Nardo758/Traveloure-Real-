@@ -446,11 +446,20 @@ interface MissedWebhook {
   stripeCreatedAt: number;
 }
 
+export interface ReconciliationMismatch {
+  type: "stripe_charge_no_booking" | "booking_no_stripe_charge";
+  chargeId?: string;
+  bookingId?: string;
+  paymentIntentId?: string;
+  amount?: number;
+}
+
 interface AdminDigestParams {
   toEmail: string;
   unresolvedNotifications: DigestNotification[];
   expertsWithoutPayout: DigestExpert[];
   missedWebhooks?: MissedWebhook[];
+  reconciliationMismatches?: ReconciliationMismatch[];
 }
 
 export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<void> {
@@ -496,6 +505,23 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
         </tr>`;
       }
     )
+    .join("");
+
+  const reconRows = (params.reconciliationMismatches ?? [])
+    .map((m) => {
+      const label =
+        m.type === "stripe_charge_no_booking"
+          ? "Stripe charge — no booking"
+          : "Booking confirmed — no charge";
+      const ref =
+        m.type === "stripe_charge_no_booking"
+          ? `Charge: ${m.chargeId ?? "—"} · $${m.amount ?? "?"}`
+          : `Booking: ${m.bookingId ?? "—"} · PI: ${m.paymentIntentId ?? "—"}`;
+      return `<tr style="background:#FFF7ED">
+        <td style="padding:8px 12px;color:#92400E;font-size:13px;font-weight:600">${label}</td>
+        <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${ref}</td>
+      </tr>`;
+    })
     .join("");
 
   const html = `
@@ -554,16 +580,34 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   </a>
   ` : ""}
 
+  ${(params.reconciliationMismatches ?? []).length > 0 ? `
+  <h3 style="color:#B45309;margin-top:24px">🔴 Payment Reconciliation Mismatches (${params.reconciliationMismatches!.length})</h3>
+  <p style="color:#6B7280;font-size:13px">Daily Stripe ↔ database comparison found drift. Each row requires manual investigation in the Stripe dashboard before taking action.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#FEF3C7">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B45309">Type</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B45309">Reference</th>
+      </tr>
+    </thead>
+    <tbody>${reconRows}</tbody>
+  </table>
+  <a href="https://dashboard.stripe.com/payments" style="display:inline-block;background:#B45309;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600">
+    Check Stripe Payments →
+  </a>
+  ` : ""}
+
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>
   </p>
 </div>`;
 
   const missedCount = (params.missedWebhooks ?? []).length;
+  const reconCount = (params.reconciliationMismatches ?? []).length;
   await client.emails.send({
     from: getFromAddress(),
     to: params.toEmail,
-    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}`,
+    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}`,
     html,
   });
 

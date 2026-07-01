@@ -1,0 +1,132 @@
+Add a daily reconciliation job that compares 
+Stripe's records against Traveloure's database 
+to catch any drift or missing data.
+
+TASK:
+
+1. Create server/jobs/stripeReconciliation.ts:
+
+import Stripe from "stripe";
+import { db } from "../db";
+import { bookings } from "../../shared/schema";
+import { gte } from "drizzle-orm";
+
+const stripe = new Stripe(
+  process.env.STRIPE_SECRET_KEY!
+);
+
+export async function runStripeReconciliation() {
+  try {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Get all Stripe charges from last 24 hours
+    const charges = await stripe.charges.list({
+      created: { 
+        gte: Math.floor(yesterday.getTime() / 1000) 
+      },
+      limit: 100
+    });
+
+    // Get all bookings from last 24 hours
+    const dbBookings = await db.select()
+      .from(bookings)
+      .where(gte(bookings.createdAt, yesterday));
+
+    const dbBookingIds = new Set(
+      dbBookings.map(b => b.id.toString())
+    );
+
+    const mismatches: any[] = [];
+
+    // Find Stripe charges with no matching booking
+    for (const charge of charges.data) {
+      const bookingId = charge.metadata?.bookingId;
+      if (charge.status === "succeeded" && 
+          (!bookingId || 
+           !dbBookingIds.has(bookingId))) {
+        mismatches.push({
+          type: "stripe_charge_no_booking",
+          chargeId: charge.id,
+          amount: charge.amount / 100,
+          metadata: charge.metadata
+        });
+      }
+    }
+
+    // Find confirmed bookings with no successful charge
+    for (const booking of dbBookings) {
+      if (booking.status === "confirmed" && 
+          booking.paymentIntentId) {
+        const matchingCharge = charges.data.find(
+          c => c.payment_intent === 
+            booking.paymentIntentId
+        );
+        if (!matchingCharge || 
+            matchingCharge.status !== "succeeded") {
+          mismatches.push({
+            type: "booking_no_stripe_charge",
+            bookingId: booking.id,
+            paymentIntentId: booking.paymentIntentId
+          });
+        }
+      }
+    }
+
+    if (mismatches.length > 0) {
+      console.error(
+        `[RECONCILIATION] ${mismatches.length} ` +
+        `mismatches found:`,
+        JSON.stringify(mismatches, null, 2)
+      );
+      
+      // Insert into admin_notifications
+      await db.insert(adminNotifications).values({
+        type: "reconciliation_mismatch",
+        message: 
+          `${mismatches.length} payment/booking ` +
+          `mismatches found in daily reconciliation`,
+        reason: JSON.stringify(mismatches)
+      });
+    } else {
+      console.log(
+        "[RECONCILIATION] All Stripe charges " +
+        "and bookings match. No mismatches."
+      );
+    }
+
+    return mismatches;
+  } catch (err) {
+    console.error(
+      "[RECONCILIATION ERROR]", err
+    );
+  }
+}
+
+2. Schedule it to run daily alongside the 
+   admin digest in server/index.ts:
+
+import { runStripeReconciliation } from 
+  "./jobs/stripeReconciliation";
+
+setInterval(
+  runStripeReconciliation, 
+  24 * 60 * 60 * 1000
+);
+
+3. Add admin endpoint:
+   GET /api/admin/reconciliation/run-now
+   Triggers reconciliation immediately for testing
+
+4. Include reconciliation summary in the 
+   daily digest email (dailyAdminDigest.ts)
+
+5. Test:
+   - Create a test booking but manually skip
+     the Stripe charge step (or vice versa)
+   - Run reconciliation
+   - Confirm mismatch is detected and logged
+
+Do NOT modify existing checkout flow logic.
+Do NOT touch vite.config.ts.
+Show every file changed.
