@@ -23,6 +23,7 @@ import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
+import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import {
   logger,
   httpLogger,
@@ -386,6 +387,12 @@ async function runDatabaseSeeding() {
       // Run digest job once on startup, then on interval
       runDailyAdminDigest();
       setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
+
+      // Run Stripe reconciliation daily (offset by 1 hour from digest to spread load)
+      setTimeout(() => {
+        runStripeReconciliation();
+        setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
+      }, 60 * 60 * 1000);
       
       // One-time admin promotion
       import("./db").then(({ pool }) => {
