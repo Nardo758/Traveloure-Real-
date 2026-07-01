@@ -440,10 +440,17 @@ interface DigestExpert {
   lastName?: string | null;
 }
 
+interface MissedWebhook {
+  stripeEventId: string;
+  eventType: string;
+  stripeCreatedAt: number;
+}
+
 interface AdminDigestParams {
   toEmail: string;
   unresolvedNotifications: DigestNotification[];
   expertsWithoutPayout: DigestExpert[];
+  missedWebhooks?: MissedWebhook[];
 }
 
 export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<void> {
@@ -473,6 +480,19 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
         return `<tr style="background:#FFF5F5">
           <td style="padding:8px 12px;color:#111827;font-size:13px">${name}</td>
           <td style="padding:8px 12px;color:#6B7280;font-size:13px">${e.email ?? "—"}</td>
+        </tr>`;
+      }
+    )
+    .join("");
+
+  const missedRows = (params.missedWebhooks ?? [])
+    .map(
+      (w) => {
+        const ts = new Date(w.stripeCreatedAt * 1000).toISOString();
+        return `<tr style="background:#FFF1F2">
+          <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${w.stripeEventId}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${w.eventType}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${ts}</td>
         </tr>`;
       }
     )
@@ -516,15 +536,34 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   </a>
   ` : ""}
 
+  ${(params.missedWebhooks ?? []).length > 0 ? `
+  <h3 style="color:#7C3AED;margin-top:24px">🔔 Missing Stripe Webhooks (${params.missedWebhooks!.length})</h3>
+  <p style="color:#6B7280;font-size:13px">These events appear in Stripe's API but were NOT received by the server in the last 24 hours. Stripe retries for up to 3 days — check the Stripe dashboard to confirm delivery status.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#EDE9FE">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#7C3AED">Event ID</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#7C3AED">Type</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#7C3AED">Stripe Created</th>
+      </tr>
+    </thead>
+    <tbody>${missedRows}</tbody>
+  </table>
+  <a href="https://dashboard.stripe.com/events" style="display:inline-block;background:#7C3AED;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600">
+    Check Stripe Dashboard →
+  </a>
+  ` : ""}
+
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>
   </p>
 </div>`;
 
+  const missedCount = (params.missedWebhooks ?? []).length;
   await client.emails.send({
     from: getFromAddress(),
     to: params.toEmail,
-    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps`,
+    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}`,
     html,
   });
 

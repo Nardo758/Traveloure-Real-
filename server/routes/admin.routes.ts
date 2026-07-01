@@ -400,6 +400,44 @@ router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res
 });
 
 /**
+ * GET /api/admin/webhooks/unprocessed
+ * Returns webhook_events rows where processed=false.
+ * Covers two cases: events that never arrived (gap vs Stripe API)
+ * and events that arrived but failed during processing (error column set).
+ * Each row includes the raw_payload so ops can replay manually if needed.
+ */
+router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        id,
+        stripe_event_id,
+        event_type,
+        processed,
+        processed_at,
+        error,
+        created_at
+      FROM webhook_events
+      WHERE processed = FALSE
+      ORDER BY created_at ASC
+      LIMIT 200
+    `);
+    res.json({
+      events: result.rows,
+      count: result.rows.length,
+      note: "Events with error set failed during processing and need manual review. Events without error may be stuck mid-flight.",
+    });
+  } catch (err) {
+    console.error("Unprocessed webhooks error:", err);
+    res.status(500).json({ message: "Failed to fetch unprocessed webhook events" });
+  }
+});
+
+/**
  * GET /api/admin/bookings/auto-cancel/config
  * Returns the current auto-cancel scheduler configuration.
  */
