@@ -1,0 +1,215 @@
+name: Service Offering Types Gate
+
+# Guards against migrations silently deactivating or deleting the
+# service_provider rows in service_offering_types that power the /earn page.
+#
+# Root cause history: migrations 038 seeded 47 core rows; a later task
+# (fixed by migration 095) deleted/deactivated them, causing /earn to show
+# "No offerings published yet." silently. This gate catches the regression
+# before it ships by:
+#
+#   1. verify-service-offering-types (HTTP count check, no DB access) —
+#      spins up a local server, hits /api/offering-types/services, and
+#      asserts at least 30 active service_provider-category rows exist.
+#      Exits non-zero if the count falls below the threshold.
+#
+#   2. earn-page-smoke (Playwright DOM gate) —
+#      visits /earn with role=service_provider and asserts the offering
+#      catalog has at least one visible card (earn-catalog data-testid).
+#      A missing or empty catalog fails the job.
+#
+# Status contexts (for branch-protection required checks):
+#   * verify-service-offering-types — pure HTTP gate; safe to mark REQUIRED.
+#   * earn-page-smoke              — DOM gate; safe to mark REQUIRED.
+#   * report                       — PR comment; informational only.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verify-service-offering-types:
+    name: verify-service-offering-types (HTTP count gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Apply database migrations
+        run: npx tsx server/migrations/migrate-entry.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Create sessions table (connect-pg-simple workaround)
+        run: npx tsx scripts/create-sessions-table.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+      - name: Assert service_provider offering count ≥ 30
+        # Hits /api/offering-types/services and counts active service_provider
+        # rows. Fails non-zero when count < MIN_ACTIVE_SERVICE_PROVIDER_OFFERINGS.
+        # This is the primary guard against a migration silently breaking /earn.
+        run: npx tsx scripts/verify-service-offering-types.ts
+        env:
+          BASE_URL: http://localhost:5000
+
+  earn-page-smoke:
+    name: earn-page-smoke (Playwright DOM gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+      - name: Apply database migrations
+        run: npx tsx server/migrations/migrate-entry.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Create sessions table (connect-pg-simple workaround)
+        run: npx tsx scripts/create-sessions-table.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+      - name: /earn Service Provider DOM smoke test
+        # Uses the default playwright.config.ts (testDir: ./playwright/tests).
+        # No globalSetup / auth needed — /earn is a public page.
+        run: npx playwright test earn-smoke --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          NODE_ENV: development
+          CI: 'true'
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: earn-smoke-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR comment)
+    runs-on: ubuntu-latest
+    needs: [verify-service-offering-types, earn-page-smoke]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Service Offering Types Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> Guards against migrations silently deactivating service_provider rows in service_offering_types.',
+              '> A red gate means /earn would show "No offerings published yet." for the Service Provider track.',
+              allGreen ? '' : '> Fix: run migration 095_restore_service_provider_offering_types.sql or write a new restore migration.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
