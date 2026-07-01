@@ -293,6 +293,44 @@ router.post("/stripe", async (req: any, res) => {
         break;
       }
 
+      case "payment_intent.payment_failed": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        // Flip any service_bookings still at payment_pending to "failed" so they
+        // stop accumulating in the stuck-pending admin report and the customer
+        // can safely retry without hitting the idempotency guard.
+        try {
+          const failed = await db.execute(sql`
+            UPDATE service_bookings
+            SET status     = 'failed',
+                updated_at = NOW()
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+              AND status = 'payment_pending'
+            RETURNING id
+          `);
+          if (failed.rows.length > 0) {
+            const ids = (failed.rows as any[]).map((r: any) => r.id).join(', ');
+            console.log(`[payment_intent.payment_failed] Marked ${failed.rows.length} service_booking(s) as failed [${ids}] for PI ${paymentIntent.id}`);
+          }
+        } catch (failErr: any) {
+          console.error("payment_intent.payment_failed: service_booking update error:", failErr.message);
+        }
+
+        // Also update the payment_intents ledger row if one exists
+        try {
+          await db.execute(sql`
+            UPDATE payment_intents
+            SET status = 'failed'
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+          `);
+        } catch (_) {
+          // payment_intents row may not exist for all PI flows — non-fatal
+        }
+
+        console.log(`Stripe payment_intent.payment_failed: pi=${paymentIntent.id} last_error=${(paymentIntent as any).last_payment_error?.message ?? 'unknown'}`);
+        break;
+      }
+
       default:
         // Acknowledge unhandled event types without error
         break;
