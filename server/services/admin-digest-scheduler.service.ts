@@ -121,11 +121,35 @@ class AdminDigestSchedulerService {
         console.log("[AdminDigest] STRIPE_SECRET_KEY not set — skipping Stripe gap check");
       }
 
+      // ── Section D: Pull recent reconciliation mismatches from admin_notifications ─
+      let reconciliationMismatches: { type: string; chargeId?: string; bookingId?: string; paymentIntentId?: string; amount?: number }[] = [];
+      try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentReconNotifs = await db
+          .select()
+          .from(adminNotifications)
+          .where(
+            and(
+              eq(adminNotifications.type, "reconciliation_mismatch"),
+              gte(adminNotifications.createdAt, oneDayAgo)
+            )
+          );
+        for (const notif of recentReconNotifs) {
+          try {
+            const parsed = JSON.parse((notif as any).reason ?? "[]");
+            if (Array.isArray(parsed)) reconciliationMismatches.push(...parsed);
+          } catch {}
+        }
+      } catch (err) {
+        console.error("[AdminDigest] Failed to load reconciliation notifications:", err);
+      }
+
       // ── Send digest if anything needs attention ─────────────────────────────
       if (
         unresolvedNotifications.length === 0 &&
         expertsWithoutPayout.length === 0 &&
-        missedWebhooks.length === 0
+        missedWebhooks.length === 0 &&
+        reconciliationMismatches.length === 0
       ) {
         console.log("[AdminDigest] Nothing to report — skipping email");
         return;
@@ -136,10 +160,11 @@ class AdminDigestSchedulerService {
         unresolvedNotifications,
         expertsWithoutPayout,
         missedWebhooks,
+        reconciliationMismatches: reconciliationMismatches as any,
       });
 
       console.log(
-        `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks`
+        `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks, ${reconciliationMismatches.length} reconciliation mismatch(es)`
       );
     } catch (err) {
       console.error("[AdminDigest] Failed to run digest:", err);

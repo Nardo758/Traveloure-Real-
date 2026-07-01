@@ -438,6 +438,31 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
 });
 
 /**
+ * GET /api/admin/reconciliation/run-now
+ * Triggers Stripe reconciliation immediately and returns the result.
+ * Useful for on-demand checks without waiting for the daily schedule.
+ */
+router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { runStripeReconciliation } = await import("../jobs/stripeReconciliation");
+    const result = await runStripeReconciliation();
+    res.json({
+      ...result,
+      note: result.mismatches.length > 0
+        ? "Mismatches logged to admin_notifications. Cross-check each in the Stripe dashboard."
+        : "Clean — all charges and confirmed bookings align.",
+    });
+  } catch (err: any) {
+    console.error("Reconciliation run-now error:", err);
+    res.status(500).json({ message: "Failed to run reconciliation", error: err.message });
+  }
+});
+
+/**
  * GET /api/admin/bookings/auto-cancel/config
  * Returns the current auto-cancel scheduler configuration.
  */
