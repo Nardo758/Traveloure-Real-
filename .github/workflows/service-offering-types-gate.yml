@@ -1,21 +1,27 @@
 name: Service Offering Types Gate
 
-# Guards against migrations silently deactivating or deleting the
-# service_provider rows in service_offering_types that power the /earn page.
+# Guards against migrations silently deactivating or deleting rows in
+# service_offering_types and expert_offering_types that power the /earn page.
 #
-# Root cause history: migrations 038 seeded 47 core rows; a later task
-# (fixed by migration 095) deleted/deactivated them, causing /earn to show
-# "No offerings published yet." silently. This gate catches the regression
-# before it ships by:
+# Root cause history: migrations 038 seeded 47 service_provider rows and
+# ~39 expert rows; a later task (fixed by migration 095) deleted/deactivated
+# the service_provider rows, causing /earn to show "No offerings published yet."
+# silently. The event_planner and expert tracks share the same tables and are
+# equally at risk. This gate catches regressions before they ship by:
 #
 #   1. verify-service-offering-types (HTTP count check, no DB access) —
-#      spins up a local server, hits /api/offering-types/services, and
-#      asserts at least 30 active service_provider-category rows exist.
-#      Exits non-zero if the count falls below the threshold.
+#      spins up a local server, hits /api/offering-types/services and
+#      /api/offering-types/experts, and asserts minimum active row counts
+#      for all four /earn tracks:
+#        • service_provider  ≥ 30 rows (service_offering_types, non-event categories)
+#        • event_planner     ≥  8 rows (service_offering_types, EVENT_CATEGORY_KEYS)
+#        • trip_planner      ≥  8 rows (expert_offering_types, planning+coordination tiers)
+#        • local_expert      ≥ 15 rows (expert_offering_types, advisory+live_support+specialized tiers)
+#      Exits non-zero if any count falls below its threshold.
 #
 #   2. earn-page-smoke (Playwright DOM gate) —
-#      visits /earn with role=service_provider and asserts the offering
-#      catalog has at least one visible card (earn-catalog data-testid).
+#      visits /earn with each of the four role query params and asserts the
+#      offering catalog has at least one visible card (earn-catalog data-testid).
 #      A missing or empty catalog fails the job.
 #
 # Status contexts (for branch-protection required checks):
@@ -95,9 +101,10 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a tsx || true
           exit 1
-      - name: Assert service_provider offering count ≥ 30
-        # Hits /api/offering-types/services and counts active service_provider
-        # rows. Fails non-zero when count < MIN_ACTIVE_SERVICE_PROVIDER_OFFERINGS.
+      - name: Assert offering counts for all four /earn tracks
+        # Hits /api/offering-types/services and /api/offering-types/experts,
+        # checks floor counts for service_provider, event_planner, trip_planner,
+        # and local_expert. Fails non-zero when any count is below its floor.
         # This is the primary guard against a migration silently breaking /earn.
         run: npx tsx scripts/verify-service-offering-types.ts
         env:
@@ -165,9 +172,10 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a tsx || true
           exit 1
-      - name: /earn Service Provider DOM smoke test
+      - name: /earn catalog DOM smoke tests (all four tracks)
         # Uses the default playwright.config.ts (testDir: ./playwright/tests).
         # No globalSetup / auth needed — /earn is a public page.
+        # Covers: service_provider, event_planner, trip_planner, local_expert.
         run: npx playwright test earn-smoke --project=chromium
         env:
           BASE_URL: http://localhost:5000
@@ -203,9 +211,10 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Guards against migrations silently deactivating service_provider rows in service_offering_types.',
-              '> A red gate means /earn would show "No offerings published yet." for the Service Provider track.',
-              allGreen ? '' : '> Fix: run migration 095_restore_service_provider_offering_types.sql or write a new restore migration.',
+              '> Guards against migrations silently deactivating rows in service_offering_types / expert_offering_types.',
+              '> Covers all four /earn tracks: service_provider, event_planner, trip_planner, local_expert.',
+              '> A red gate means /earn would show "No offerings published yet." for one or more tracks.',
+              allGreen ? '' : '> Fix: check migrations 038, 039, and 095. Re-activate deactivated rows with ON CONFLICT DO UPDATE SET is_active = true.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
