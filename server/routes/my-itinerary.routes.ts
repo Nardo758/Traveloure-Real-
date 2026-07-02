@@ -22,12 +22,23 @@ const router = Router();
 router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const callerUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
+
     // Get comparison data
     const comparison = await storage.getItineraryComparison(id);
     
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
+    }
+
+    // IDOR guard — verify the caller owns this itinerary comparison
+    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && callerRole !== "admin") {
+      console.warn(
+        `[IDOR ATTEMPT] User ${callerUserId} tried to read itinerary comparison ` +
+        `owned by ${comparison.userId} at ${req.path}`
+      );
+      return res.status(403).json({ error: "Access denied" });
     }
     
     // Get the selected variant or the first one
@@ -197,12 +208,23 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
 router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const callerUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
+
     // Get comparison data
     const comparison = await storage.getItineraryComparison(id);
     
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
+    }
+
+    // IDOR guard — calendar export contains private trip data
+    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && callerRole !== "admin") {
+      console.warn(
+        `[IDOR ATTEMPT] User ${callerUserId} tried to export calendar for itinerary ` +
+        `owned by ${comparison.userId} at ${req.path}`
+      );
+      return res.status(403).json({ error: "Access denied" });
     }
     
     // Get the selected variant
@@ -240,12 +262,23 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
 router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
+    const callerUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data
     const comparison = await storage.getItineraryComparison(id);
 
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
+    }
+
+    // IDOR guard — PDF export contains private trip details and pricing
+    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && callerRole !== "admin") {
+      console.warn(
+        `[IDOR ATTEMPT] User ${callerUserId} tried to export PDF for itinerary ` +
+        `owned by ${comparison.userId} at ${req.path}`
+      );
+      return res.status(403).json({ error: "Access denied" });
     }
 
     // Get the selected variant

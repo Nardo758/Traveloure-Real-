@@ -1,0 +1,91 @@
+Test and fix Insecure Direct Object Reference 
+(IDOR) vulnerabilities in Traveloure — where one 
+user might access another user's private data 
+by changing an ID in the URL or API call.
+
+TASK:
+
+STEP 1 — Audit all routes that take an :id param
+and confirm ownership is checked:
+
+Search for these patterns in routes:
+GET /api/trips/:id
+GET /api/bookings/:id
+PUT /api/trips/:id
+DELETE /api/trips/:id
+GET /api/conversations/:id
+GET /api/expert/clients/:id
+
+For EACH of these, show me the current code
+and confirm whether it checks:
+  booking.userId === req.user.id
+before returning data.
+
+STEP 2 — Add ownership middleware where missing:
+
+Create server/middleware/ownershipGuard.ts:
+
+export function requireOwnership(
+  getResourceUserId: (req: any) => Promise<number | null>
+) {
+  return async (req: any, res: any, next: any) => {
+    try {
+      const resourceUserId = await getResourceUserId(req);
+      
+      if (resourceUserId === null) {
+        return res.status(404).json({ 
+          message: "Not found" 
+        });
+      }
+      
+      if (resourceUserId !== req.user.id && 
+          req.user.role !== "admin") {
+        console.warn(
+          `[IDOR ATTEMPT] User ${req.user.id} ` +
+          `tried to access resource owned by ` +
+          `${resourceUserId} at ${req.path}`
+        );
+        return res.status(403).json({ 
+          message: "Access denied" 
+        });
+      }
+      
+      next();
+    } catch (err) {
+      res.status(500).json({ message: "Error" });
+    }
+  };
+}
+
+3. Apply to trip routes:
+
+router.get("/trips/:id", 
+  requireOwnership(async (req) => {
+    const trip = await db.select()
+      .from(trips)
+      .where(eq(trips.id, parseInt(req.params.id)));
+    return trip[0]?.userId || null;
+  }),
+  getTripHandler
+);
+
+Apply the same pattern to bookings, 
+conversations, and any other user-owned 
+resource accessed by :id.
+
+4. STEP 3 — Run this test manually:
+   - Log in as Test Traveler
+   - Note their trip ID (e.g. trip 5)
+   - Try accessing trip ID 6, 7, 8 
+     (likely owned by other users)
+   - Confirm each returns 403 or 404,
+     NOT another user's data
+
+5. Log every blocked attempt:
+   IDOR attempts should appear in console as
+   [IDOR ATTEMPT] for security monitoring
+
+Do NOT change admin's ability to view all data.
+Do NOT touch vite.config.ts.
+Show every route audited and every fix made.
+Report which routes were vulnerable BEFORE the fix.
