@@ -166,6 +166,16 @@ export default function BookingFlowModal({
         }),
       });
 
+      if (response.status === 409) {
+        const errorData = await response.json();
+        // Slot was taken by a concurrent booking — surface a clear message and
+        // prompt the user to pick a different time rather than a generic error.
+        throw new Error(
+          errorData.message ||
+          'This time slot was just booked by someone else. Please choose another time.'
+        );
+      }
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to process cart');

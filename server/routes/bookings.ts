@@ -28,6 +28,18 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
 
     const result = await bookingService.processCart(userId, cartItems, paymentMethod, bookingMetadata);
 
+    // If any item was rejected because the slot was taken (race-condition double-booking),
+    // return 409 Conflict so the frontend can show a clear message and refresh the slot list.
+    const slotTakenError = result.errors.find((e) => e.startsWith('SLOT_TAKEN:'));
+    if (slotTakenError) {
+      const itemTitle = slotTakenError.slice('SLOT_TAKEN:'.length);
+      return res.status(409).json({
+        success: false,
+        slotTaken: true,
+        message: `This time slot for "${itemTitle}" was just booked by someone else. Please choose another time.`,
+      });
+    }
+
     res.json({
       success: true,
       ...result,

@@ -144,6 +144,18 @@ export default function PaymentPage() {
         cartItems: cartItems.map((item: any) => ({ id: item.id, quantity: 1 })),
         paymentMethod,
       });
+
+      // 409 means a concurrent booking took the same expert slot.
+      if (res.status === 409) {
+        const errorData = await res.json();
+        toast({
+          title: "Time slot no longer available",
+          description: errorData.message || "This time slot was just booked by someone else. Please choose another time.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const result = await res.json();
       toast({
         title: "Payment successful!",
