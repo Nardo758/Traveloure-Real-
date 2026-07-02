@@ -336,6 +336,19 @@ router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) 
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
+      // IDOR guard — only the trip owner (or admin) may generate an itinerary.
+      // Without this, any authenticated user could burn AI credits and overwrite
+      // another user's itinerary_items by guessing a trip UUID.
+      const callerUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const callerRole = (req.user as any)?.claims?.role ?? (req.user as any)?.role;
+      if (trip.userId && String(trip.userId) !== String(callerUserId) && callerRole !== "admin") {
+        console.warn(
+          `[IDOR ATTEMPT] User ${callerUserId} tried to generate itinerary for trip ` +
+          `owned by ${trip.userId} at ${req.path}`
+        );
+        return res.status(403).json({ message: "Access denied" });
+      }
+
       const start = new Date(trip.startDate);
       const end = new Date(trip.endDate);
       const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
