@@ -24,6 +24,8 @@
  *  - server/migrations/038_phase2_seed_service_offering_types.sql
  *  - server/migrations/039_phase2_seed_expert_offering_types.sql
  *  - server/migrations/095_restore_service_provider_offering_types.sql
+ *  - server/migrations/098_restore_event_planner_offering_types.sql
+ *  - server/migrations/099_restore_expert_offering_types.sql
  *  - client/src/pages/earn.tsx
  *  - client/src/lib/earn-roles.ts
  */
@@ -182,8 +184,9 @@ async function main(): Promise<void> {
     "event_planner",
     eventPlannerRows.length,
     MIN_ACTIVE_EVENT_PLANNER_OFFERINGS,
-    "To fix: check that migration 038_phase2_seed_service_offering_types.sql ran successfully\n" +
-      "  and that no later migration deactivated event-planner category rows.\n" +
+    "To fix: re-run migration 098_restore_event_planner_offering_types.sql or write a new\n" +
+      "  migration that re-activates the missing rows with\n" +
+      "  ON CONFLICT (offering_type_key) DO UPDATE SET is_active = true.\n" +
       "  If you intentionally reduced the catalog below the floor, update\n" +
       "  MIN_ACTIVE_EVENT_PLANNER_OFFERINGS in scripts/verify-service-offering-types.ts."
   );
@@ -230,8 +233,9 @@ async function main(): Promise<void> {
     "trip_planner",
     tripPlannerRows.length,
     MIN_ACTIVE_TRIP_PLANNER_OFFERINGS,
-    "To fix: check that migration 039_phase2_seed_expert_offering_types.sql ran successfully\n" +
-      "  and that no later migration deactivated planning/coordination tier rows.\n" +
+    "To fix: re-run migration 099_restore_expert_offering_types.sql or write a new\n" +
+      "  migration that re-activates the missing rows with\n" +
+      "  ON CONFLICT (offering_type_key) DO UPDATE SET is_active = true.\n" +
       "  Affected tiers: " + [...TRIP_PLANNER_TIERS].join(", ") + ".\n" +
       "  If you intentionally reduced the catalog below the floor, update\n" +
       "  MIN_ACTIVE_TRIP_PLANNER_OFFERINGS in scripts/verify-service-offering-types.ts."
@@ -244,8 +248,9 @@ async function main(): Promise<void> {
     "local_expert",
     localExpertRows.length,
     MIN_ACTIVE_LOCAL_EXPERT_OFFERINGS,
-    "To fix: check that migration 039_phase2_seed_expert_offering_types.sql ran successfully\n" +
-      "  and that no later migration deactivated advisory/live_support/specialized tier rows.\n" +
+    "To fix: re-run migration 099_restore_expert_offering_types.sql or write a new\n" +
+      "  migration that re-activates the missing rows with\n" +
+      "  ON CONFLICT (offering_type_key) DO UPDATE SET is_active = true.\n" +
       "  Affected tiers: " + [...LOCAL_EXPERT_TIERS].join(", ") + ".\n" +
       "  If you intentionally reduced the catalog below the floor, update\n" +
       "  MIN_ACTIVE_LOCAL_EXPERT_OFFERINGS in scripts/verify-service-offering-types.ts."

@@ -7,7 +7,11 @@ name: Service Offering Types Gate
 # ~39 expert rows; a later task (fixed by migration 095) deleted/deactivated
 # the service_provider rows, causing /earn to show "No offerings published yet."
 # silently. The event_planner and expert tracks share the same tables and are
-# equally at risk. This gate catches regressions before they ship by:
+# equally at risk — restore migrations exist for each:
+#   • 095_restore_service_provider_offering_types.sql — service_provider rows
+#   • 098_restore_event_planner_offering_types.sql    — event_planner rows
+#   • 099_restore_expert_offering_types.sql           — trip_planner + local_expert rows
+# This gate catches regressions before they ship by:
 #
 #   1. verify-service-offering-types (HTTP count check, no DB access) —
 #      spins up a local server, hits /api/offering-types/services and
@@ -214,7 +218,7 @@ jobs:
               '> Guards against migrations silently deactivating rows in service_offering_types / expert_offering_types.',
               '> Covers all four /earn tracks: service_provider, event_planner, trip_planner, local_expert.',
               '> A red gate means /earn would show "No offerings published yet." for one or more tracks.',
-              allGreen ? '' : '> Fix: check migrations 038, 039, and 095. Re-activate deactivated rows with ON CONFLICT DO UPDATE SET is_active = true.',
+              allGreen ? '' : '> Fix: re-run the matching restore migration — 095 (service_provider), 098 (event_planner), or 099 (expert tracks) — with ON CONFLICT DO UPDATE SET is_active = true.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
