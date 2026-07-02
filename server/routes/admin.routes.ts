@@ -2090,6 +2090,30 @@ router.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
     }
   });
 
+router.get("/api/admin/ai/circuit-breaker", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { getCircuitBreakerState } = await import("../utils/requestDeduplication");
+      const state = getCircuitBreakerState();
+
+      res.json({
+        ...state,
+        retryAfterSeconds: state.open && state.openedAt
+          ? Math.max(0, Math.ceil((state.recoveryWindowMs - (Date.now() - state.openedAt)) / 1000))
+          : null,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get circuit breaker state", error: error.message });
+    }
+  });
+
   // External API Usage Tracking (Amadeus, etc.)
 
 router.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => {
