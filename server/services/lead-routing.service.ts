@@ -216,15 +216,61 @@ class LeadRoutingService {
       `reason="${reason}" timestamp=${timestamp}`
     );
 
-    // 2. Admin notification record (non-fatal if insert fails)
+    // 2a. Fetch AI cost breakdown for this user in the 5-minute window that
+    //     led up to this routing event (concierge quote, optimization preview,
+    //     etc.).  Non-fatal — if the query fails we still insert the notification.
+    let costMetadata: Record<string, unknown> | null = null;
+    let costSummaryLine = '';
+    if (ctx.userId) {
+      try {
+        const costRows = await db.execute<{
+          source_type: string;
+          requests: string;
+          total_cost: string;
+        }>(sql`
+          SELECT source_type,
+                 COUNT(*)::text        AS requests,
+                 SUM(cost)::text       AS total_cost
+          FROM   ai_cost_tracking
+          WHERE  user_id    = ${ctx.userId}
+            AND  created_at > NOW() - INTERVAL '5 minutes'
+          GROUP  BY source_type
+          ORDER  BY SUM(cost) DESC
+        `);
+
+        if (costRows.rows && costRows.rows.length > 0) {
+          const breakdown = costRows.rows.map(r => ({
+            source: r.source_type,
+            requests: parseInt(r.requests, 10),
+            costUsd: parseFloat(parseFloat(r.total_cost).toFixed(6)),
+          }));
+          const totalUsd = breakdown.reduce((s, r) => s + r.costUsd, 0);
+          const totalRequests = breakdown.reduce((s, r) => s + r.requests, 0);
+          costMetadata = {
+            windowMinutes: 5,
+            totalCostUsd: parseFloat(totalUsd.toFixed(6)),
+            totalRequests,
+            breakdown,
+            capturedAt: timestamp,
+          };
+          costSummaryLine = ` AI spend in last 5 min: $${totalUsd.toFixed(4)} across ${totalRequests} request(s) (${breakdown.map(b => `${b.source}: $${b.costUsd.toFixed(4)}`).join(', ')}).`;
+        }
+      } catch (costErr: any) {
+        console.warn('[LeadRouting] notifyNullAssign: AI cost lookup failed (non-fatal):', costErr?.message);
+      }
+    }
+
+    // 2b. Admin notification record (non-fatal if insert fails)
     try {
+      const baseMessage = `Lead for "${ctx.destination}" could not be auto-assigned: ${reason === 'no_approved_experts' ? 'no approved experts exist for this destination' : 'no expert scored above zero for this destination/specialty'}.`;
       await db.insert(adminNotifications).values({
         type: 'lead_unassigned',
-        message: `Lead for "${ctx.destination}" could not be auto-assigned: ${reason === 'no_approved_experts' ? 'no approved experts exist for this destination' : 'no expert scored above zero for this destination/specialty'}.`,
+        message: baseMessage + costSummaryLine,
         tripId: ctx.tripId ?? null,
         destination: ctx.destination,
         reason,
         isRead: false,
+        ...(costMetadata ? { metadata: costMetadata } : {}),
       });
     } catch (err: any) {
       console.warn('[LeadRouting] notifyNullAssign: admin_notifications insert failed (non-fatal):', err?.message);

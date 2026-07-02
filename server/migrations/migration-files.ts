@@ -274,4 +274,10 @@ export const MIGRATION_FILES = [
   // silently fails → traveler always sees instant-confirm copy even when no expert exists.
   // Rate mirrors expert_standard (25% platform / 75% expert). ON CONFLICT DO NOTHING.
   "100_expert_concierge_fee_band.sql",
+  // 101: Add metadata JSONB column to admin_notifications.
+  // Stores a structured AI cost breakdown (total spend, request count, per-source breakdown)
+  // on lead_unassigned notifications so admins can see how much AI spend was incurred in
+  // the 5-minute window before each dead-end routing event. Column is nullable — existing
+  // rows and non-cost notification types stay NULL.
+  "101_admin_notifications_metadata.sql",
 ] as const;

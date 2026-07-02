@@ -6567,6 +6567,7 @@ export const adminNotifications = pgTable("admin_notifications", {
   reason: text("reason"),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
 });
 
 export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({ id: true, createdAt: true });
