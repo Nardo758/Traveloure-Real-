@@ -260,4 +260,6 @@ export const MIGRATION_FILES = [
   // Enables deduplication (stripe_event_id UNIQUE), manual reconciliation via
   // GET /api/admin/webhooks/unprocessed, and daily gap-check vs Stripe's event API.
   "097_webhook_events.sql",
+  // 098: dispute_id + dispute_reason columns on bookings for chargeback tracking.
+  "098_bookings_dispute_columns.sql",
 ] as const;

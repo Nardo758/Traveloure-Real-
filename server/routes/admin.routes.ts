@@ -438,6 +438,47 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
 });
 
 /**
+ * GET /api/admin/disputes
+ * Returns all bookings with status="disputed" or status="dispute_lost",
+ * ordered by most recent first. Used by the admin reconciliation panel.
+ */
+router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        id,
+        status,
+        dispute_id,
+        dispute_reason,
+        stripe_payment_intent_id,
+        total_amount,
+        user_id,
+        provider_id,
+        booking_type,
+        title,
+        created_at,
+        updated_at
+      FROM bookings
+      WHERE status IN ('disputed', 'dispute_lost')
+      ORDER BY updated_at DESC NULLS LAST
+      LIMIT 200
+    `);
+    res.json({
+      disputes: result.rows,
+      count: result.rows.length,
+      note: "Do NOT refund or claw back expert payouts without manual Stripe dashboard confirmation.",
+    });
+  } catch (err: any) {
+    console.error("Admin disputes error:", err);
+    res.status(500).json({ message: "Failed to fetch disputed bookings" });
+  }
+});
+
+/**
  * GET /api/admin/reconciliation/run-now
  * Triggers Stripe reconciliation immediately and returns the result.
  * Useful for on-demand checks without waiting for the daily schedule.
