@@ -319,25 +319,49 @@ class BookingService {
           balanceAmount = finalPrice + feeBreakdown.platformFee - depositAmount;
         }
 
-        // Create booking in database
+        // Create booking in database — wrapped in a transaction so the
+        // slot-existence check and the INSERT are atomic.  If a concurrent
+        // request slips through the application-level check, the DB's partial
+        // unique index on (expert_id, booking_date, booking_time) will reject
+        // the second insert with Postgres error code 23505.
         const bookingTime = item.time || null;
         const totalAmountValue = finalPrice + feeBreakdown.platformFee;
         const providerPayout = finalPrice - feeBreakdown.providerDeduction;
         const bookingMetadataJson = bookingMetadata ? JSON.stringify(bookingMetadata) : '{}';
-        
-        const booking = await db.execute(sql`
-          INSERT INTO bookings (
-            user_id, trip_id, provider_id, booking_type, status,
-            title, booking_date, booking_time, travelers,
-            service_amount, platform_fee, total_amount, provider_payout,
-            payment_method, deposit_amount, balance_amount, booking_metadata, created_at
-          ) VALUES (
-            ${userId}, ${item.tripId}, ${item.providerId || null}, ${'instant'}, ${'pending_payment'},
-            ${item.title}, ${item.date}, ${bookingTime}, ${1},
-            ${finalPrice}, ${feeBreakdown.platformFee}, ${totalAmountValue}, ${providerPayout},
-            ${paymentMethod}, ${depositAmount}, ${balanceAmount}, ${bookingMetadataJson}::jsonb, NOW()
-          ) RETURNING id
-        `);
+        const expertId: string | null = item.metadata?.expertId ?? null;
+
+        const booking = await db.transaction(async (tx) => {
+          // Application-level slot check INSIDE the transaction.
+          // Only runs when we have all three coordinates for an expert slot.
+          if (expertId && item.date && bookingTime) {
+            const existing = await tx.execute(sql`
+              SELECT id FROM bookings
+              WHERE expert_id   = ${expertId}
+                AND booking_date = ${item.date}
+                AND booking_time = ${bookingTime}
+              LIMIT 1
+            `);
+            if ((existing.rows?.length ?? 0) > 0) {
+              const err = new Error('SLOT_ALREADY_BOOKED');
+              (err as any).slotTaken = true;
+              throw err;
+            }
+          }
+
+          return tx.execute(sql`
+            INSERT INTO bookings (
+              user_id, trip_id, provider_id, expert_id, booking_type, status,
+              title, booking_date, booking_time, travelers,
+              service_amount, platform_fee, total_amount, provider_payout,
+              payment_method, deposit_amount, balance_amount, booking_metadata, created_at
+            ) VALUES (
+              ${userId}, ${item.tripId}, ${item.providerId || null}, ${expertId}, ${'instant'}, ${'pending_payment'},
+              ${item.title}, ${item.date}, ${bookingTime}, ${1},
+              ${finalPrice}, ${feeBreakdown.platformFee}, ${totalAmountValue}, ${providerPayout},
+              ${paymentMethod}, ${depositAmount}, ${balanceAmount}, ${bookingMetadataJson}::jsonb, NOW()
+            ) RETURNING id
+          `);
+        });
 
         const insertedBooking = booking.rows?.[0] as { id: string } | undefined;
         const { id: _itemId, ...itemWithoutId } = item;
@@ -352,7 +376,13 @@ class BookingService {
         // Add to payment total
         totalAmount += depositAmount || (finalPrice + feeBreakdown.platformFee);
       } catch (error: any) {
-        errors.push(`Error booking ${item.title}: ${error.message}`);
+        // Distinguish slot-taken (23505 unique violation or explicit SLOT_ALREADY_BOOKED)
+        // from generic errors so the route layer can return 409 instead of 500.
+        if (error.slotTaken || error.message === 'SLOT_ALREADY_BOOKED' || error.code === '23505') {
+          errors.push(`SLOT_TAKEN:${item.title}`);
+        } else {
+          errors.push(`Error booking ${item.title}: ${error.message}`);
+        }
       }
     }
 
