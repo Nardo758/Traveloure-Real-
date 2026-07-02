@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+import { AlertTriangle, ShieldCheck, ShieldOff } from "lucide-react";
 
 interface AiUsageSummary {
   totalCalls: number;
@@ -85,6 +86,17 @@ interface AiPricingInfo {
     note: string;
   }>;
   lastUpdated: string;
+}
+
+interface CircuitBreakerState {
+  open: boolean;
+  consecutiveFailures: number;
+  openedAt: number | null;
+  recoveryWindowMs: number;
+  failureThreshold: number;
+  inFlightCount: number;
+  retryAfterSeconds: number | null;
+  checkedAt: string;
 }
 
 interface ApiPricingInfo {
@@ -158,8 +170,12 @@ export default function AdminAICosts() {
     queryKey: ["/api/admin/api-usage/pricing"],
   });
 
+  const { data: circuitBreaker, isLoading: cbLoading } = useQuery<CircuitBreakerState>({
+    queryKey: ["/api/admin/ai/circuit-breaker"],
+    refetchInterval: 10_000,
+  });
+
   const handleRefresh = () => {
-    // Invalidate all usage queries
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/summary"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/daily"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/logs"] });
@@ -168,6 +184,7 @@ export default function AdminAICosts() {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/api-usage/daily"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/api-usage/logs"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/api-usage/pricing"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai/circuit-breaker"] });
   };
 
   // AI costs are in cents, Amadeus costs are in tenths of cents
@@ -200,6 +217,56 @@ export default function AdminAICosts() {
             Refresh
           </Button>
         </div>
+
+        {/* AI Circuit Breaker Status */}
+        <Card data-testid="card-circuit-breaker" className={circuitBreaker?.open ? "border-red-400 bg-red-50 dark:bg-red-950/20" : "border-green-300 bg-green-50 dark:bg-green-950/20"}>
+          <CardContent className="p-4">
+            {cbLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Loading circuit breaker status…</span>
+              </div>
+            ) : circuitBreaker ? (
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  {circuitBreaker.open ? (
+                    <ShieldOff className="w-6 h-6 text-red-500 shrink-0" />
+                  ) : (
+                    <ShieldCheck className="w-6 h-6 text-green-600 shrink-0" />
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm" data-testid="text-cb-status">
+                        AI Circuit Breaker
+                      </span>
+                      <Badge
+                        variant={circuitBreaker.open ? "destructive" : "secondary"}
+                        className={!circuitBreaker.open ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
+                        data-testid="badge-cb-state"
+                      >
+                        {circuitBreaker.open ? "OPEN — AI calls blocked" : "CLOSED — healthy"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {circuitBreaker.open
+                        ? `Resets in ${circuitBreaker.retryAfterSeconds ?? 0}s · ${circuitBreaker.consecutiveFailures} consecutive failures`
+                        : `${circuitBreaker.consecutiveFailures} / ${circuitBreaker.failureThreshold} failures · ${circuitBreaker.inFlightCount} in-flight requests`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                  {circuitBreaker.open && (
+                    <div className="flex items-center gap-1 text-red-600 font-medium">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Users see "high demand" message
+                    </div>
+                  )}
+                  <span>Auto-refreshes every 10s</span>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         {/* Combined Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
