@@ -25,7 +25,8 @@ import { useQuery, useQueries } from "@tanstack/react-query";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { useSignInModal } from "@/contexts/SignInModalContext";
-import { Star, ArrowRight } from "lucide-react";
+import { Star, ArrowRight, AlertCircle, PackageOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   EARN_ROLES,
   EA_SIGNUP,
@@ -189,11 +190,11 @@ export default function EarnPage() {
   const setRole = (key: RoleKey) => navigate(`/earn?role=${key}`, { replace: true });
 
   // ── Data: the two offering catalogs + categories (names + band keys) ──────
-  const { data: providerOfferings, isLoading: loadingProv, error: errProv } = useQuery<ServiceOfferingType[]>({
+  const { data: providerOfferings, isLoading: loadingProv, error: errProv, refetch: refetchProv } = useQuery<ServiceOfferingType[]>({
     queryKey: ["/api/offering-types/services"],
     staleTime: 5 * 60_000,
   });
-  const { data: expertOfferings, isLoading: loadingExp, error: errExp } = useQuery<ExpertOfferingType[]>({
+  const { data: expertOfferings, isLoading: loadingExp, error: errExp, refetch: refetchExp } = useQuery<ExpertOfferingType[]>({
     queryKey: ["/api/offering-types/experts"],
     staleTime: 5 * 60_000,
   });
@@ -279,6 +280,7 @@ export default function EarnPage() {
 
   const catalogLoading = activeRole.track === "in-person" ? loadingProv : loadingExp;
   const catalogError = activeRole.track === "in-person" ? errProv : errExp;
+  const catalogRefetch = activeRole.track === "in-person" ? refetchProv : refetchExp;
   const catalog = offeringsForRole(activeKey);
 
   return (
@@ -360,9 +362,33 @@ export default function EarnPage() {
             {catalogLoading ? (
               <p className="text-sm text-[#6A7480]">Loading offerings…</p>
             ) : catalogError ? (
-              <p className="text-sm text-[#E85D55]">Couldn't load offerings.</p>
+              <div
+                className="flex flex-col items-center gap-3 py-8 px-5 bg-[#FFF4F4] border border-[#FCCACA] rounded-xl text-center"
+                data-testid="earn-catalog-error"
+              >
+                <AlertCircle className="w-7 h-7 text-[#E85D55]" />
+                <div>
+                  <p className="text-sm font-semibold text-[#C0392B]">Couldn't load offerings</p>
+                  <p className="text-xs text-[#8B3A3A] mt-0.5">There was a problem fetching the catalog. Please try again.</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => catalogRefetch()}
+                  className="border-[#E85D55] text-[#E85D55] hover:bg-[#FFF0F0]"
+                  data-testid="earn-catalog-retry"
+                >
+                  Retry
+                </Button>
+              </div>
             ) : catalog.length === 0 ? (
-              <p className="text-sm text-[#6A7480]">No offerings published yet.</p>
+              <div
+                className="flex flex-col items-center gap-2 py-8 px-5 bg-white border border-dashed border-[#D5D0C8] rounded-xl text-center"
+                data-testid="earn-catalog-empty"
+              >
+                <PackageOpen className="w-7 h-7 text-[#B0AAA0]" />
+                <p className="text-sm text-[#6A7480]">No offerings published yet.</p>
+              </div>
             ) : (
               <div className="grid gap-2" data-testid="earn-catalog">
                 {catalog.map((o) => (

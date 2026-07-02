@@ -5335,6 +5335,9 @@ export const bookings = pgTable("bookings", {
   stripeDepositIntentId: varchar("stripe_deposit_intent_id", { length: 255 }),
   stripeBalanceIntentId: varchar("stripe_balance_intent_id", { length: 255 }),
   paymentStatus: varchar("payment_status", { length: 50 }),
+  // Chargeback / dispute tracking (set by charge.dispute.created webhook)
+  disputeId: text("dispute_id"),
+  disputeReason: text("dispute_reason"),
   // Idempotency: set by the client on checkout; checked server-side before insert.
   idempotencyKey: text("idempotency_key"),
   confirmationCode: varchar("confirmation_code", { length: 50 }),

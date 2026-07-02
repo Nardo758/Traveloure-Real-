@@ -14,7 +14,7 @@ import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { db } from "../db";
-import { localExpertForms, serviceBookings, webhookEvents } from "@shared/schema";
+import { localExpertForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
 const router = Router();
@@ -334,6 +334,89 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         }
 
         console.log(`Stripe payment_intent.payment_failed: pi=${paymentIntent.id} last_error=${(paymentIntent as any).last_payment_error?.message ?? 'unknown'}`);
+        break;
+      }
+
+      case "charge.dispute.created": {
+        const dispute = event.data.object as Stripe.Dispute;
+
+        // Fetch the charge to get bookingId from metadata
+        const charge = await stripe.charges.retrieve(dispute.charge as string);
+        const bookingId = charge.metadata?.bookingId;
+
+        if (bookingId) {
+          // Mark booking as disputed
+          await db
+            .update(bookings)
+            .set({
+              status: "disputed",
+              disputeId: dispute.id,
+              disputeReason: dispute.reason,
+            })
+            .where(eq(bookings.id, bookingId));
+
+          // Alert admin immediately
+          await db.insert(adminNotifications).values({
+            type: "dispute_created",
+            message: `Chargeback filed for booking ${bookingId} — reason: ${dispute.reason}`,
+            reason: dispute.reason,
+          } as any);
+
+          console.warn(`[DISPUTE] Booking ${bookingId} disputed. Reason: ${dispute.reason} · Dispute ID: ${dispute.id}`);
+
+          // Check if expert was already paid for this booking —
+          // DO NOT automatically claw back funds; flag for human review only.
+          const booking = await db
+            .select({ tripId: bookings.tripId })
+            .from(bookings)
+            .where(eq(bookings.id, bookingId))
+            .limit(1);
+
+          if (booking[0]?.tripId) {
+            const relatedExpertRequest = await db
+              .select({ status: expertRequests.status })
+              .from(expertRequests)
+              .where(eq(expertRequests.tripId, booking[0].tripId))
+              .limit(1);
+
+            if (relatedExpertRequest[0]?.status === "completed") {
+              await db.insert(adminNotifications).values({
+                type: "dispute_after_payout",
+                message: `URGENT: Booking ${bookingId} disputed but expert may have already been paid. Manual review required.`,
+                reason: "payout_clawback_review",
+              } as any);
+              console.warn(`[DISPUTE] Booking ${bookingId}: expert request was completed — possible payout clawback needed. Manual review required.`);
+            }
+          }
+        } else {
+          console.warn(`[DISPUTE] Dispute ${dispute.id} on charge ${dispute.charge} has no bookingId in metadata — no booking updated.`);
+        }
+        break;
+      }
+
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+
+        // won  → we keep the funds; restore booking to confirmed
+        // lost → customer refunded; mark booking as dispute_lost for ops
+        const charge = await stripe.charges.retrieve(dispute.charge as string);
+        const bookingId = charge.metadata?.bookingId;
+
+        if (bookingId) {
+          const newStatus = dispute.status === "won" ? "confirmed" : "dispute_lost";
+          await db
+            .update(bookings)
+            .set({ status: newStatus })
+            .where(eq(bookings.id, bookingId));
+
+          await db.insert(adminNotifications).values({
+            type: "dispute_closed",
+            message: `Dispute ${dispute.id} for booking ${bookingId} closed — outcome: ${dispute.status}. Booking status set to "${newStatus}".`,
+            reason: dispute.status,
+          } as any);
+
+          console.log(`[DISPUTE] Dispute ${dispute.id} closed (${dispute.status}). Booking ${bookingId} → ${newStatus}.`);
+        }
         break;
       }
 

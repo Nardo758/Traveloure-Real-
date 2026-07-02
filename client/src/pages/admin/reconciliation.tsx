@@ -12,6 +12,8 @@ import {
   BookOpen,
   Clock,
   Loader2,
+  Siren,
+  ExternalLink,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -45,6 +47,19 @@ interface UnprocessedWebhook {
   created_at: string;
 }
 
+interface DisputedBooking {
+  id: string;
+  status: string;
+  dispute_id: string | null;
+  dispute_reason: string | null;
+  stripe_payment_intent_id: string | null;
+  total_amount: string | null;
+  booking_type: string | null;
+  title: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export default function AdminReconciliation() {
   const { toast } = useToast();
   const [lastRunResult, setLastRunResult] = useState<ReconciliationResult | null>(null);
@@ -58,6 +73,15 @@ export default function AdminReconciliation() {
     queryKey: ["/api/admin/webhooks/unprocessed"],
   });
 
+  // Disputed bookings (persistent, from DB)
+  const { data: disputeData, isLoading: disputesLoading, refetch: refetchDisputes } = useQuery<{
+    disputes: DisputedBooking[];
+    count: number;
+    note: string;
+  }>({
+    queryKey: ["/api/admin/disputes"],
+  });
+
   // Trigger reconciliation now
   const runNowMutation = useMutation({
     mutationFn: () => apiRequest("GET", "/api/admin/reconciliation/run-now"),
@@ -65,6 +89,7 @@ export default function AdminReconciliation() {
       const data: ReconciliationResult = await res.json();
       setLastRunResult(data);
       refetchWebhooks();
+      refetchDisputes();
       toast({
         title: data.mismatches.length === 0 ? "Reconciliation clean" : "Mismatches found",
         description: data.note,
@@ -78,6 +103,7 @@ export default function AdminReconciliation() {
 
   const unprocessedCount = webhookData?.count ?? 0;
   const mismatchCount = lastRunResult?.mismatches.length ?? 0;
+  const disputeCount = disputeData?.count ?? 0;
 
   return (
     <AdminLayout>
@@ -109,7 +135,7 @@ export default function AdminReconciliation() {
         </div>
 
         {/* Stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-5">
               <div className="flex items-center justify-between">
@@ -177,7 +203,138 @@ export default function AdminReconciliation() {
               <p className="text-xs text-gray-400 mt-2">Auto-runs daily at startup + 1 hour</p>
             </CardContent>
           </Card>
+
+          {/* Disputes card — red/urgent */}
+          <Card className={disputeCount > 0 ? "border-red-300 bg-red-50" : ""}>
+            <CardContent className="pt-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={`text-xs uppercase tracking-wide ${disputeCount > 0 ? "text-red-700 font-semibold" : "text-gray-500"}`}>
+                    Active Disputes
+                  </p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1" data-testid="text-dispute-count">
+                    {disputesLoading ? "—" : disputeCount}
+                  </p>
+                </div>
+                <div className={`p-3 rounded-full ${disputeCount > 0 ? "bg-red-200" : "bg-gray-100"}`}>
+                  <Siren className={`h-5 w-5 ${disputeCount > 0 ? "text-red-700" : "text-gray-400"}`} />
+                </div>
+              </div>
+              <p className={`text-xs mt-2 ${disputeCount > 0 ? "text-red-600 font-medium" : "text-gray-400"}`}>
+                {disputeCount > 0 ? "Requires manual review — see below" : "No open chargebacks"}
+              </p>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Disputes panel — always visible, red/urgent when populated */}
+        <Card className={disputeCount > 0 ? "border-red-300" : ""}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Siren className={`h-4 w-4 ${disputeCount > 0 ? "text-red-600" : "text-gray-400"}`} />
+                  Chargebacks & Disputes
+                  {disputeCount > 0 && (
+                    <Badge variant="destructive" className="ml-1">{disputeCount} open</Badge>
+                  )}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  {disputeData?.note ?? "Bookings flagged as disputed by Stripe. Do NOT refund or claw back payouts without Stripe dashboard confirmation."}
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchDisputes()}
+                disabled={disputesLoading}
+                data-testid="button-refresh-disputes"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${disputesLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {disputesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading disputes…
+              </div>
+            ) : disputeCount === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-4 py-3">
+                <CheckCircle2 className="h-4 w-4" />
+                No open disputes or chargebacks.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-red-200 bg-red-50">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Booking</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Status</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Dispute ID</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Reason</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Amount</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Updated</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-red-800">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {disputeData?.disputes.map((d) => (
+                      <tr key={d.id} className="border-b border-red-100 hover:bg-red-50" data-testid={`row-dispute-${d.id}`}>
+                        <td className="py-2 px-3">
+                          <p className="font-mono text-xs text-gray-700 truncate max-w-[120px]">{d.id}</p>
+                          {d.title && <p className="text-xs text-gray-500 truncate max-w-[120px]">{d.title}</p>}
+                        </td>
+                        <td className="py-2 px-3">
+                          <Badge
+                            variant={d.status === "dispute_lost" ? "destructive" : "outline"}
+                            className={d.status === "disputed" ? "border-red-400 text-red-700 bg-red-50" : ""}
+                          >
+                            {d.status}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-3 font-mono text-xs text-gray-600 max-w-[140px] truncate">
+                          {d.dispute_id ?? "—"}
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-600 capitalize">
+                          {d.dispute_reason?.replace(/_/g, " ") ?? "—"}
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-700 font-medium">
+                          {d.total_amount ? `$${parseFloat(d.total_amount).toFixed(2)}` : "—"}
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-500">
+                          {d.updated_at
+                            ? new Date(d.updated_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                            : "—"}
+                        </td>
+                        <td className="py-2 px-3">
+                          {d.dispute_id && (
+                            <a
+                              href={`https://dashboard.stripe.com/disputes/${d.dispute_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              data-testid={`link-dispute-stripe-${d.id}`}
+                            >
+                              Stripe <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {disputeCount > 0 && (
+              <p className="mt-3 text-xs text-red-700 font-medium bg-red-50 border border-red-200 rounded px-3 py-2">
+                ⚠ Do NOT refund or initiate payout clawbacks without first confirming the dispute outcome in the Stripe dashboard.
+                Each row above has a direct link.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Reconciliation mismatches */}
         {lastRunResult && (
