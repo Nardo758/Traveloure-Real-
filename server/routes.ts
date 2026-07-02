@@ -99,6 +99,7 @@ import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
+import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
@@ -667,6 +668,11 @@ export async function registerRoutes(
 
       let itineraryData: any;
 
+      // Dedup key covers all parameters that affect the AI output.
+      // Generic (non-personalised) — preferences string is included so
+      // trips with different prefs get independent AI calls.
+      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}`;
+
       try {
         const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}
 
@@ -693,16 +699,24 @@ Return ONLY valid JSON in this exact structure:
 
 Include 4-6 activities per day. Make it realistic, specific to ${destination}, and culturally accurate.`;
 
-        const completion = await anthropic.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 4000,
-          messages: [{ role: "user", content: prompt }],
-        });
+        // One AI call shared across all concurrent requests with the same key.
+        // callWithCircuitBreaker prevents further calls when AI is failing repeatedly.
+        itineraryData = await dedupedRequest(dedupKey, () =>
+          callWithCircuitBreaker(async () => {
+            const completion = await anthropic.messages.create({
+              model: "claude-sonnet-4-5",
+              max_tokens: 4000,
+              messages: [{ role: "user", content: prompt }],
+            });
 
-        const text = (completion.content[0] as any).text;
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        itineraryData = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-      } catch (aiErr) {
+            const text = (completion.content[0] as any).text;
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            return JSON.parse(jsonMatch ? jsonMatch[0] : text);
+          })
+        );
+      } catch (aiErr: any) {
+        // Circuit open → surface to outer handler as 503 (do NOT fall back).
+        if (aiErr?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") throw aiErr;
         console.error("AI generation failed, using contextual fallback:", aiErr);
         itineraryData = {
           days: Array.from({ length: duration }, (_, i) => ({
@@ -761,7 +775,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       res.status(201).json(itinerary);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") {
+        return res.status(503).json({
+          message: "Our AI is experiencing high demand. Please try again in a moment.",
+          retryAfterSeconds: err.retryAfterSeconds,
+        });
+      }
       console.error("Error generating itinerary:", err);
       res.status(500).json({ message: "Failed to generate itinerary" });
     }
