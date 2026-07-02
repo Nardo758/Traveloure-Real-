@@ -1,0 +1,122 @@
+Protect Traveloure's AI itinerary generation 
+from being overwhelmed by simultaneous requests 
+for the same destination.
+
+CONTEXT:
+You already have aiRateLimit (10 req/min per user) 
+from earlier work. This task adds protection 
+against a DIFFERENT problem: many DIFFERENT users 
+requesting the same destination at once, which 
+could mean redundant AI API calls and cost.
+
+TASK:
+
+1. Add a request deduplication layer using 
+   a simple in-memory lock per destination+params:
+
+Create server/utils/requestDeduplication.ts:
+
+const inFlightRequests = new Map
+  string, 
+  Promise<any>
+>();
+
+export async function dedupedRequest<T>(
+  key: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  if (inFlightRequests.has(key)) {
+    console.log(
+      `[DEDUP] Reusing in-flight request for: ${key}`
+    );
+    return inFlightRequests.get(key) as Promise<T>;
+  }
+
+  const promise = fn().finally(() => {
+    inFlightRequests.delete(key);
+  });
+
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
+2. Apply it to itinerary generation:
+
+In the generate-itinerary route:
+
+const cacheKey = 
+  `itinerary:${destination}:${days}:` +
+  `${JSON.stringify(preferences)}`;
+
+const itinerary = await dedupedRequest(
+  cacheKey,
+  () => callGrokForItinerary(
+    destination, days, preferences
+  )
+);
+
+This means: if 50 users request "Tokyo, 5 days"
+in the same few seconds, only ONE actual AI call 
+is made, and all 50 users get the same result 
+from the same promise.
+
+NOTE: Only safe for GENERIC requests (not 
+personalized to a specific logged-in user's 
+saved preferences). If personalization matters,
+adjust the cache key accordingly or skip dedup
+for personalized fields.
+
+3. Add a circuit breaker for AI API failures:
+
+let consecutiveFailures = 0;
+const FAILURE_THRESHOLD = 5;
+let circuitOpen = false;
+let circuitOpenedAt: number | null = null;
+
+async function callGrokWithCircuitBreaker(...args) {
+  if (circuitOpen) {
+    const elapsed = Date.now() - 
+      (circuitOpenedAt || 0);
+    if (elapsed < 30_000) {
+      throw new Error(
+        "AI_SERVICE_TEMPORARILY_UNAVAILABLE"
+      );
+    }
+    circuitOpen = false; // try again after 30s
+  }
+
+  try {
+    const result = await callGrokForItinerary(...args);
+    consecutiveFailures = 0;
+    return result;
+  } catch (err) {
+    consecutiveFailures++;
+    if (consecutiveFailures >= FAILURE_THRESHOLD) {
+      circuitOpen = true;
+      circuitOpenedAt = Date.now();
+      console.error(
+        "[CIRCUIT BREAKER] AI service failing " +
+        "repeatedly — pausing calls for 30s"
+      );
+    }
+    throw err;
+  }
+}
+
+4. Return a friendly error to frontend if 
+   circuit is open:
+   "Our AI is experiencing high demand. 
+   Please try again in a moment."
+
+5. Test:
+   - Simulate 10 simultaneous requests for 
+     the same destination (use a script or 
+     multiple browser tabs)
+   - Confirm only 1 actual AI API call fires
+     (check your AI cost tracking dashboard)
+   - Confirm all 10 users still get a response
+
+Do NOT change the AI Orchestrator routing logic
+between Grok and Claude.
+Do NOT touch vite.config.ts.
+Show every file changed.
