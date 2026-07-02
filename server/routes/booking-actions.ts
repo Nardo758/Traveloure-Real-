@@ -155,6 +155,25 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       destination: resolvedDestination, requestType, expertFee, notes, optimizationContext,
     });
 
+    // Fire-and-forget: run lead routing to score experts and trigger the
+    // dead-end fallback (notifyNullAssign) when no approved expert covers
+    // this destination.  Passing expertRequestId lets the service stamp
+    // the correct row with status='unassigned' + fallback_message.
+    import('../services/lead-routing.service').then(({ leadRoutingService }) => {
+      leadRoutingService.routeLead({
+        destination: resolvedDestination,
+        topic: requestType,
+        tripId: tripId ?? undefined,
+        userId: resolvedUserId,
+        requestType,
+        expertRequestId: requestId,
+      }).catch(err =>
+        console.error('[ExpertRequests] Lead routing fire-and-forget failed:', err)
+      );
+    }).catch(err =>
+      console.error('[ExpertRequests] Failed to import lead-routing service:', err)
+    );
+
     res.json({
       success: true,
       requestId,
