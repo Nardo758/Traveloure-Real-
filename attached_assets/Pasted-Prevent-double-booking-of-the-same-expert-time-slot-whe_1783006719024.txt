@@ -1,0 +1,79 @@
+Prevent double-booking of the same expert time 
+slot when two travelers book simultaneously.
+
+TASK:
+
+1. Add a database-level unique constraint as 
+   the ultimate safety net:
+
+In the bookings or expert_availability table,
+add a unique constraint on:
+(expertId, slotDate, slotTime)
+
+This means the DATABASE itself will reject
+a duplicate booking even if application code
+has a race condition — this is the strongest
+possible guarantee.
+
+ALTER TABLE bookings 
+ADD CONSTRAINT unique_expert_slot 
+UNIQUE (expert_id, slot_date, slot_time);
+
+2. In the booking creation route, wrap the 
+   slot-check + insert in a transaction:
+
+await db.transaction(async (tx) => {
+  // Check availability INSIDE the transaction
+  const existing = await tx.select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.expertId, expertId),
+        eq(bookings.slotDate, slotDate),
+        eq(bookings.slotTime, slotTime)
+      )
+    );
+
+  if (existing.length > 0) {
+    throw new Error("SLOT_ALREADY_BOOKED");
+  }
+
+  await tx.insert(bookings).values({
+    expertId, slotDate, slotTime, ...
+  });
+});
+
+3. Catch the unique constraint violation 
+   gracefully in the route handler:
+
+try {
+  await createBookingTransaction(...);
+} catch (err: any) {
+  if (err.message === "SLOT_ALREADY_BOOKED" ||
+      err.code === "23505") { // Postgres unique violation
+    return res.status(409).json({
+      message: 
+        "This time slot was just booked by " +
+        "someone else. Please choose another time."
+    });
+  }
+  throw err;
+}
+
+4. Update frontend to handle 409 response:
+   Show a friendly message and refresh 
+   available slots automatically.
+
+5. Test the race condition:
+   - Open two browser tabs as different users
+   - Both navigate to the same expert's same slot
+   - Click "Book" in both tabs as close to 
+     simultaneously as possible
+   - Confirm only ONE succeeds
+   - Confirm the other gets a clear "slot taken" 
+     message, not a crash or duplicate booking
+
+Do NOT change the booking UI flow significantly.
+Do NOT touch vite.config.ts.
+Show every file changed.
+Report the race condition test result.

@@ -262,4 +262,9 @@ export const MIGRATION_FILES = [
   "097_webhook_events.sql",
   // 098: dispute_id + dispute_reason columns on bookings for chargeback tracking.
   "098_bookings_dispute_columns.sql",
+  // 099: Partial unique index on bookings(expert_id, booking_date, booking_time) WHERE all NOT NULL.
+  // Prevents two travelers booking the same expert slot simultaneously. The application layer
+  // wraps the slot-check + insert in a transaction; this index is the ultimate DB safety net,
+  // converting a race-condition duplicate into a 23505 unique_violation → 409 response.
+  "099_bookings_expert_slot_unique.sql",
 ] as const;
