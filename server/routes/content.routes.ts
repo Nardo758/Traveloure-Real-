@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { withQueryTimer } from '../utils/queryTimer';
+import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -4164,20 +4165,44 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         ? interests
         : ["sightseeing", "local culture", "food"];
 
-      // Generate itinerary using Grok
-      const { grokService } = await import("../services/grok.service");
-      const { result, usage } = await grokService.generateAutonomousItinerary({
+      // Generate itinerary using Grok — deduplicated + circuit-broken.
+      //
+      // Dedup key: all params that affect AI output so concurrent requests for
+      // the same trip params share a single Grok call instead of N identical calls.
+      // personalisation fields (dietary, mobility, mustSee) are included so users
+      // with different needs still get their own AI call.
+      const dedupKey = [
+        "itinerary:grok",
         destination,
-        dates,
+        dates?.start,
+        dates?.end,
         travelers,
-        budget: budget || undefined,
-        eventType: eventType || undefined,
-        interests: effectiveInterests,
-        pacePreference: pacePreference || "moderate",
-        mustSeeAttractions: mustSeeAttractions || [],
-        dietaryRestrictions: dietaryRestrictions || [],
-        mobilityConsiderations: mobilityConsiderations || []
-      });
+        JSON.stringify(effectiveInterests),
+        pacePreference || "moderate",
+        JSON.stringify((mustSeeAttractions || []).slice().sort()),
+        JSON.stringify((dietaryRestrictions || []).slice().sort()),
+        JSON.stringify((mobilityConsiderations || []).slice().sort()),
+        budget ?? "",
+        eventType ?? "",
+      ].join(":");
+
+      const { grokService } = await import("../services/grok.service");
+      const { result, usage } = await dedupedRequest(dedupKey, () =>
+        callWithCircuitBreaker(() =>
+          grokService.generateAutonomousItinerary({
+            destination,
+            dates,
+            travelers,
+            budget: budget || undefined,
+            eventType: eventType || undefined,
+            interests: effectiveInterests,
+            pacePreference: pacePreference || "moderate",
+            mustSeeAttractions: mustSeeAttractions || [],
+            dietaryRestrictions: dietaryRestrictions || [],
+            mobilityConsiderations: mobilityConsiderations || [],
+          })
+        )
+      );
 
       // Save generated itinerary to database
       const savedItinerary = await insertAiGeneratedItinerary({
@@ -4292,6 +4317,12 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         status: savedItinerary.status
       });
     } catch (error: any) {
+      if (error?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") {
+        return res.status(503).json({
+          message: "Our AI is experiencing high demand. Please try again in a moment.",
+          retryAfterSeconds: error.retryAfterSeconds,
+        });
+      }
       console.error("Error generating AI itinerary:", error);
       res.status(500).json({ 
         message: error.message || "Failed to generate itinerary. Please try again."
