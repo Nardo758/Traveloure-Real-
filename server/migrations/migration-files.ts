@@ -267,4 +267,11 @@ export const MIGRATION_FILES = [
   // wraps the slot-check + insert in a transaction; this index is the ultimate DB safety net,
   // converting a race-condition duplicate into a 23505 unique_violation → 409 response.
   "099_bookings_expert_slot_unique.sql",
+  // 100: Add expert_concierge fee band to fee_bands table.
+  // resolveCommissionRates({ source:'expert', category:'expert_concierge' }) is called by
+  // concierge-router.service.ts on every /api/concierge/quote request.  Without this band
+  // the call throws "commission band missing" → 500 → EscalationCTA availability check
+  // silently fails → traveler always sees instant-confirm copy even when no expert exists.
+  // Rate mirrors expert_standard (25% platform / 75% expert). ON CONFLICT DO NOTHING.
+  "100_expert_concierge_fee_band.sql",
 ] as const;
