@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { db } from "../../db";
 import { users, passwordResetTokens, emailVerificationTokens } from "@shared/models/auth";
 import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
-import { sendPasswordResetEmail, sendEmailVerificationEmail, getAppBaseUrl } from "../../services/email.service";
+import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 
 // Simple password hashing using Node's built-in crypto
@@ -118,6 +118,12 @@ export function setupEmailAuth(app: Express): void {
       // inside sendEmailVerificationEmail.
       issueAndSendVerification(newUser.id, newUser.email!, newUser.firstName ?? null).catch(
         (err) => console.error("[auth/register] verification email issue failed:", err)
+      );
+
+      // Fire-and-forget welcome email. Sent after verification so the two emails
+      // don't race into the same inbox second. Failure is non-fatal.
+      sendWelcomeEmail({ toEmail: newUser.email!, firstName: newUser.firstName ?? null }).catch(
+        (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
       );
 
       // Log the user in
