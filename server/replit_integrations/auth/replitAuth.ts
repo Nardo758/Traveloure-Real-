@@ -140,6 +140,23 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   const user = req.user as any;
+  const userId: string | undefined = user?.claims?.sub ?? user?.id;
+
+  // Reject soft-deleted accounts regardless of auth method.
+  // This DB check catches accounts deleted after the session was created (e.g. an
+  // admin deletes a user who is currently logged in). One indexed PK lookup per
+  // request is negligible; the alternative (stale sessions) is a security hole.
+  if (userId) {
+    try {
+      const dbUser = await authStorage.getUser(userId);
+      if (dbUser?.isDeleted) {
+        req.logout(() => {});
+        return res.status(403).json({ message: "This account has been deleted" });
+      }
+    } catch (err) {
+      console.warn("[isAuthenticated] soft-delete DB check failed (fail-open):", (err as any)?.message);
+    }
+  }
 
   // Email/password auth sessions have no expires_at — let them through directly
   if (!user.expires_at) {

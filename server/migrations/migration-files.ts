@@ -280,4 +280,10 @@ export const MIGRATION_FILES = [
   // the 5-minute window before each dead-end routing event. Column is nullable — existing
   // rows and non-cost notification types stay NULL.
   "101_admin_notifications_metadata.sql",
+  // 102: Soft-delete columns on users table (is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  // deleted_at TIMESTAMP nullable). Hard deletes on users are prohibited — booking,
+  // Stripe, and tax records must persist for financial/legal compliance. Soft-delete
+  // anonymizes PII (email renamed to deleted_{id}@deleted) while keeping all FK refs intact.
+  // Partial index on (is_deleted=TRUE) keeps support/recovery lookups fast.
+  "102_user_soft_delete.sql",
 ] as const;
