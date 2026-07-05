@@ -67,6 +67,7 @@ class LeadRoutingService {
           FROM local_expert_forms lef
           JOIN users u ON u.id = lef.user_id
           WHERE lef.status = 'approved'
+            AND (lef.stripe_connect_status IS NULL OR lef.stripe_connect_status != 'restricted')
         `)
       );
 
