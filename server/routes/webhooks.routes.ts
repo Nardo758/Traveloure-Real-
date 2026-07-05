@@ -178,31 +178,87 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       case "account.updated": {
         const account = event.data.object as Stripe.Account;
         const userId = account.metadata?.userId;
-        if (!userId) break;
 
-        let status = "onboarding_incomplete";
-        if (account.details_submitted && account.charges_enabled && account.payouts_enabled) {
-          status = "active";
-        } else if (account.details_submitted) {
-          status = "under_review";
+        // ── Restriction detection ─────────────────────────────────────────────
+        // Stripe sets requirements.disabled_reason when it restricts or suspends
+        // an account (compliance violation, dispute, etc.). This can happen AFTER
+        // an expert is already approved and receiving leads, so we must detect it
+        // at webhook time and alert admins immediately — not just at onboarding.
+        const disabledReason = account.requirements?.disabled_reason;
+        const isRestricted =
+          disabledReason !== null && disabledReason !== undefined && disabledReason !== "";
+
+        // Canonical stripeConnectStatus for this event
+        const newStripeConnectStatus = isRestricted
+          ? "restricted"
+          : account.details_submitted && account.charges_enabled && account.payouts_enabled
+          ? "complete"
+          : account.details_submitted
+          ? "pending"
+          : "not_started";
+
+        // ── Path A: Update via metadata.userId (normal onboarding flow) ───────
+        if (userId) {
+          const userStatus =
+            !isRestricted && account.details_submitted && account.charges_enabled && account.payouts_enabled
+              ? "active"
+              : account.details_submitted
+              ? "under_review"
+              : "onboarding_incomplete";
+
+          await storage.updateUserStripeAccount(userId, account.id, userStatus);
+
+          await db
+            .update(localExpertForms)
+            .set({ stripeConnectStatus: newStripeConnectStatus } as any)
+            .where(eq(localExpertForms.userId, userId));
         }
 
-        await storage.updateUserStripeAccount(userId, account.id, status);
+        // ── Path B: Restriction alert via stripeAccountId lookup ─────────────
+        // Stripe compliance events often lack metadata.userId. We resolve the
+        // expert by matching account.id against local_expert_forms.stripe_account_id.
+        // Fire an admin notification if an already-approved expert gets restricted.
+        const expertByAccount = await db
+          .select()
+          .from(localExpertForms)
+          .where(eq(localExpertForms.stripeAccountId, account.id))
+          .limit(1);
 
-        // Keep local_expert_forms.stripe_connect_status in sync
-        const stripeConnectStatus =
-          account.details_submitted && account.charges_enabled && account.payouts_enabled
-            ? "complete"
-            : account.details_submitted
-            ? "pending"
-            : "not_started";
+        if (expertByAccount.length > 0) {
+          const expert = expertByAccount[0];
 
-        await db
-          .update(localExpertForms)
-          .set({ stripeConnectStatus } as any)
-          .where(eq(localExpertForms.userId, userId));
+          // Sync status (only if Path A didn't already write the same row)
+          if (!userId || expert.userId !== userId) {
+            await db
+              .update(localExpertForms)
+              .set({ stripeConnectStatus: newStripeConnectStatus } as any)
+              .where(eq(localExpertForms.id, expert.id));
+          }
 
-        console.log(`Stripe account.updated: userId=${userId} status=${status} stripeConnectStatus=${stripeConnectStatus}`);
+          // Alert admin when an approved expert's account becomes restricted.
+          // The expert may still appear in lead routing and be receiving leads
+          // but will be unable to receive payouts — admin must act immediately.
+          if (newStripeConnectStatus === "restricted" && expert.status === "approved") {
+            await db.insert(adminNotifications).values({
+              type: "expert_stripe_restricted",
+              message:
+                `Expert ${expert.id} Stripe account restricted: ` +
+                `${disabledReason ?? "unknown reason"}`,
+              reason: "stripe_account_restricted",
+            } as any);
+
+            console.error(
+              `[STRIPE RESTRICTION] Expert ${expert.id} ` +
+              `(${expert.firstName ?? ""} ${expert.lastName ?? ""}) ` +
+              `account restricted. Reason: ${disabledReason}`
+            );
+          }
+        }
+
+        console.log(
+          `[WEBHOOK] account.updated: connectId=${account.id} userId=${userId ?? "—"} ` +
+          `newStripeStatus=${newStripeConnectStatus} restricted=${isRestricted}`
+        );
         break;
       }
 
