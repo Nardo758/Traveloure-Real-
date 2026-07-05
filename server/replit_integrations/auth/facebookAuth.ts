@@ -97,17 +97,45 @@ export function setupFacebookAuth(app: Express) {
               const instagramData = await fetchInstagramData(accessToken);
 
               const fbUserId = `fb_${profile.id}`;
-              const existing = await authStorage.getUser(fbUserId).catch(() => undefined);
 
-              const user = await authStorage.upsertUser({
-                id: fbUserId,
-                email: email || null,
-                firstName: profile.name?.givenName || profile.displayName?.split(" ")[0] || null,
-                lastName: profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || null,
-                profileImageUrl: instagramData?.profile_picture_url || profileImageUrl || null,
-              });
+              // Email-merge: if an existing account already owns this email (e.g. the
+              // user previously registered with email/password or Replit OIDC), attach
+              // the Facebook profile to that account rather than spawning a duplicate.
+              let user;
+              let isNewUser = false;
 
-              if (!existing && email) {
+              const emailOwner = email
+                ? await authStorage.getUserByEmail(email).catch(() => undefined)
+                : undefined;
+
+              if (emailOwner) {
+                // Merge: update the canonical account with any richer Facebook data.
+                const updatedOwner = await authStorage.updateUser(emailOwner.id, {
+                  profileImageUrl:
+                    instagramData?.profile_picture_url ||
+                    profileImageUrl ||
+                    emailOwner.profileImageUrl ||
+                    undefined,
+                  firstName: emailOwner.firstName || profile.name?.givenName || profile.displayName?.split(" ")[0] || undefined,
+                  lastName: emailOwner.lastName || profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || undefined,
+                });
+                user = updatedOwner ?? emailOwner;
+                console.log(`[Facebook Auth] Merged fb_${profile.id} into existing account ${emailOwner.id}`);
+              } else {
+                // No email collision — create/update the fb_xxx account as before.
+                const existingFb = await authStorage.getUser(fbUserId).catch(() => undefined);
+                isNewUser = !existingFb;
+
+                user = await authStorage.upsertUser({
+                  id: fbUserId,
+                  email: email || null,
+                  firstName: profile.name?.givenName || profile.displayName?.split(" ")[0] || null,
+                  lastName: profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || null,
+                  profileImageUrl: instagramData?.profile_picture_url || profileImageUrl || null,
+                });
+              }
+
+              if (isNewUser && email) {
                 sendWelcomeEmail({ toEmail: email, firstName: user.firstName ?? null }).catch(
                   (err) => console.error("[auth/facebook] welcome email failed (non-fatal):", err)
                 );
