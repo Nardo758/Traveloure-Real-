@@ -2,6 +2,7 @@ import passport from "passport";
 import FacebookStrategy from "passport-facebook";
 import type { Express } from "express";
 import { authStorage } from "./storage";
+import { sendWelcomeEmail } from "../../services/email.service";
 
 interface InstagramAccount {
   id: string;
@@ -95,13 +96,22 @@ export function setupFacebookAuth(app: Express) {
 
               const instagramData = await fetchInstagramData(accessToken);
 
+              const fbUserId = `fb_${profile.id}`;
+              const existing = await authStorage.getUser(fbUserId).catch(() => undefined);
+
               const user = await authStorage.upsertUser({
-                id: `fb_${profile.id}`,
+                id: fbUserId,
                 email: email || null,
                 firstName: profile.name?.givenName || profile.displayName?.split(" ")[0] || null,
                 lastName: profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || null,
                 profileImageUrl: instagramData?.profile_picture_url || profileImageUrl || null,
               });
+
+              if (!existing && email) {
+                sendWelcomeEmail({ toEmail: email, firstName: user.firstName ?? null }).catch(
+                  (err) => console.error("[auth/facebook] welcome email failed (non-fatal):", err)
+                );
+              }
 
               const sessionUser = {
                 claims: {

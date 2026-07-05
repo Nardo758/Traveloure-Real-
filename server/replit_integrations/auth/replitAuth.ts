@@ -7,6 +7,7 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
+import { sendWelcomeEmail } from "../../services/email.service";
 
 const getOidcConfig = memoize(
   async () => {
@@ -51,14 +52,26 @@ function updateUserSession(
 }
 
 async function upsertUser(claims: any) {
+  const userId: string = claims["sub"];
+  const email: string | undefined = claims["email"];
+
+  // Check before upsert so we can fire the welcome email only for truly new accounts.
+  const existing = await authStorage.getUser(userId).catch(() => undefined);
+
   await authStorage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
+    id: userId,
+    email: email || undefined,
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
     authProvider: "replit",
   });
+
+  if (!existing && email) {
+    sendWelcomeEmail({ toEmail: email, firstName: claims["first_name"] ?? null }).catch(
+      (err) => console.error("[auth/replit] welcome email failed (non-fatal):", err)
+    );
+  }
 }
 
 export async function setupAuth(app: Express) {
