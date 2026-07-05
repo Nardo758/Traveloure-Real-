@@ -422,3 +422,55 @@ async function runDatabaseSeeding() {
     },
   );
 })();
+
+// ── Graceful Shutdown ────────────────────────────────────────────────────────
+// On SIGTERM (Replit deploy swap, Kubernetes pod eviction, etc.) or SIGINT
+// (Ctrl-C in dev), stop accepting new requests, let in-flight requests drain
+// (up to 10 s), then release the DB pool and exit cleanly.
+// Without this, the process is SIGKILL-ed mid-request causing orphaned DB
+// transactions and incomplete webhook processing.
+
+function gracefulShutdown(signal: string): void {
+  logger.info({ signal }, "Shutdown signal received — draining in-flight requests");
+
+  // Stop accepting new connections immediately
+  httpServer.close(async () => {
+    logger.info("HTTP server closed — no new connections accepted");
+
+    // Give schedulers a moment to finish their current tick
+    try {
+      cacheSchedulerService.stop?.();
+      bookingExpiryScheduler.stop?.();
+      adminDigestScheduler.stop?.();
+    } catch (_) {
+      // scheduler stop is best-effort
+    }
+
+    // Close the PostgreSQL connection pool
+    try {
+      const { pool } = await import("./db");
+      await pool.end();
+      logger.info("Database pool closed cleanly");
+    } catch (err) {
+      logger.error({ err }, "Error closing database pool during shutdown");
+    }
+
+    logger.info("Graceful shutdown complete");
+    process.exit(0);
+  });
+
+  // Force-kill if drain takes longer than 10 seconds
+  setTimeout(() => {
+    logger.error("Graceful shutdown timed out after 10 s — forcing exit");
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
+
+// Catch unhandled promise rejections so they surface in logs instead of
+// silently crashing the process in older Node versions.
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "Unhandled promise rejection");
+});
