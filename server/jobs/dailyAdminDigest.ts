@@ -3,6 +3,22 @@ import { localExpertForms, users, adminNotifications } from "../../shared/schema
 import { eq, and, ne } from "drizzle-orm";
 import { sendEmail } from "../services/email.service";
 
+async function getRestrictedExperts() {
+  return await db
+    .select({
+      expertId: localExpertForms.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+      city: localExpertForms.city,
+      stripeAccountId: localExpertForms.stripeAccountId,
+      stripeConnectStatus: localExpertForms.stripeConnectStatus,
+    })
+    .from(localExpertForms)
+    .innerJoin(users, eq(localExpertForms.userId, users.id))
+    .where(eq(localExpertForms.stripeConnectStatus, "restricted"));
+}
+
 async function getPayoutGapExperts() {
   return await db
     .select({
@@ -34,13 +50,14 @@ async function getUnreadNotifications() {
 
 export async function runDailyAdminDigest() {
   try {
-    const [payoutGap, unreadNotifs] = await Promise.all([
+    const [payoutGap, unreadNotifs, restrictedExperts] = await Promise.all([
       getPayoutGapExperts(),
       getUnreadNotifications(),
+      getRestrictedExperts(),
     ]);
 
     // Only send if there is something to report
-    if (payoutGap.length === 0 && unreadNotifs.length === 0) {
+    if (payoutGap.length === 0 && unreadNotifs.length === 0 && restrictedExperts.length === 0) {
       console.log("[DIGEST] Nothing to report — skipping email");
       return;
     }
@@ -72,6 +89,14 @@ export async function runDailyAdminDigest() {
       textBody += "\n";
     }
 
+    if (restrictedExperts.length > 0) {
+      textBody += `🚨 STRIPE RESTRICTED — ${restrictedExperts.length} expert(s) account restricted (cannot receive payouts):\n`;
+      restrictedExperts.forEach((e) => {
+        textBody += `  • ${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email} (${e.email}) — City: ${e.city ?? "—"} — Connect ID: ${e.stripeAccountId ?? "—"}\n`;
+      });
+      textBody += "\n";
+    }
+
     if (unreadNotifs.length > 0) {
       textBody += `UNASSIGNED LEADS — ${unreadNotifs.length} unread alert(s):\n`;
       unreadNotifs.forEach((n) => {
@@ -98,10 +123,33 @@ export async function runDailyAdminDigest() {
       )
       .join("");
 
+    const restrictedRows = restrictedExperts
+      .map(
+        (e) =>
+          `<tr><td style="padding:4px 8px">${[e.firstName, e.lastName].filter(Boolean).join(" ") || e.email}</td><td style="padding:4px 8px">${e.email}</td><td style="padding:4px 8px">${e.city ?? "—"}</td><td style="padding:4px 8px;font-family:monospace;font-size:11px">${e.stripeAccountId ?? "—"}</td></tr>`
+      )
+      .join("");
+
     const htmlBody = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
   <h2 style="color:#1A1A18">Traveloure — Daily Admin Digest</h2>
   <p style="color:#7A7A72;font-size:13px">${new Date().toUTCString()}</p>
+
+  ${
+    restrictedExperts.length > 0
+      ? `<h3 style="color:#C0392B">🚨 Stripe Restricted — ${restrictedExperts.length} expert(s) CANNOT receive payouts</h3>
+         <p style="font-size:13px;color:#7A7A72">These experts are approved and may be receiving leads but their Stripe Connect account is restricted. Resolve immediately.</p>
+         <table style="border-collapse:collapse;width:100%;font-size:13px">
+           <thead><tr style="background:#FDECEA">
+             <th style="padding:4px 8px;text-align:left">Name</th>
+             <th style="padding:4px 8px;text-align:left">Email</th>
+             <th style="padding:4px 8px;text-align:left">City</th>
+             <th style="padding:4px 8px;text-align:left">Connect Account ID</th>
+           </tr></thead>
+           <tbody>${restrictedRows}</tbody>
+         </table>`
+      : ""
+  }
 
   ${
     payoutGap.length > 0
@@ -141,7 +189,7 @@ export async function runDailyAdminDigest() {
 
     const result = await sendEmail({
       to: adminEmail,
-      subject: `Traveloure Daily Digest — ${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`,
+      subject: `Traveloure Daily Digest — ${restrictedExperts.length > 0 ? `🚨 ${restrictedExperts.length} restricted, ` : ""}${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`,
       html: htmlBody,
       text: textBody,
     });

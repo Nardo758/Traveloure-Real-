@@ -634,6 +634,44 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, 
 
   // Admin: Get all expert applications
 
+// GET /api/admin/experts/stripe-restricted
+// Returns all experts whose Stripe Connect account is currently in 'restricted' status.
+// Restricted experts are automatically excluded from lead routing but may still hold
+// active assignments made before the restriction — admin must review and reassign.
+
+router.get("/api/admin/experts/stripe-restricted", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const restricted = await db
+        .select({
+          expertFormId: localExpertForms.id,
+          userId: localExpertForms.userId,
+          firstName: localExpertForms.firstName,
+          lastName: localExpertForms.lastName,
+          email: localExpertForms.email,
+          city: localExpertForms.city,
+          stripeAccountId: localExpertForms.stripeAccountId,
+          stripeConnectStatus: localExpertForms.stripeConnectStatus,
+          status: localExpertForms.status,
+          createdAt: localExpertForms.createdAt,
+        })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.stripeConnectStatus, "restricted"))
+        .orderBy(desc(localExpertForms.createdAt));
+
+      res.json({
+        count: restricted.length,
+        experts: restricted,
+      });
+    } catch (err) {
+      console.error("Admin stripe-restricted experts error:", err);
+      res.status(500).json({ message: "Failed to fetch restricted experts" });
+    }
+  });
+
 router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
