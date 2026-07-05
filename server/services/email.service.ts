@@ -613,3 +613,126 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
 
   console.log(`[email] Admin digest sent to ${params.toEmail}`);
 }
+
+// ─── Welcome email ───────────────────────────────────────────────────────────
+
+interface WelcomeEmailParams {
+  toEmail: string;
+  firstName: string | null;
+}
+
+/**
+ * Fire-and-forget welcome email sent immediately after a new account is created.
+ * Introduces the platform, surfaces the three core actions (plan a trip, browse
+ * experts, explore hidden gems), and gives a direct CTA to the dashboard.
+ * Safe to call without awaiting — all errors are caught internally.
+ */
+export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping welcome email for", params.toEmail);
+    return;
+  }
+
+  const firstName = params.firstName?.trim() || null;
+  const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
+  const baseUrl = getAppBaseUrl();
+  const dashboardUrl = `${baseUrl}/dashboard`;
+  const exploreUrl  = `${baseUrl}/explore`;
+  const expertsUrl  = `${baseUrl}/travel-experts`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff;">
+
+      <!-- Header -->
+      <div style="text-align: center; margin-bottom: 32px;">
+        <h1 style="color: #FF385C; margin: 0; font-size: 28px; font-weight: 700;">Welcome to Traveloure</h1>
+        <p style="color: #6B7280; margin-top: 8px; font-size: 15px;">Your AI-powered travel companion</p>
+      </div>
+
+      <!-- Greeting -->
+      <p style="color: #374151; font-size: 16px;">${greeting}</p>
+      <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+        Your account is all set. Traveloure uses AI to turn your travel ideas into
+        personalised day-by-day itineraries — and connects you with verified local
+        experts when you want a human touch.
+      </p>
+
+      <!-- 3 feature tiles -->
+      <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+        <tr>
+          <td style="padding: 16px; background: #FFF1F2; border-radius: 8px; vertical-align: top; width: 30%;">
+            <div style="font-size: 24px; margin-bottom: 8px;">🗺️</div>
+            <div style="font-weight: 700; color: #111827; margin-bottom: 4px;">Plan a trip</div>
+            <div style="color: #6B7280; font-size: 13px;">Tell us where you're going and get a full AI itinerary in seconds.</div>
+          </td>
+          <td style="width: 4%;"></td>
+          <td style="padding: 16px; background: #F0FDF4; border-radius: 8px; vertical-align: top; width: 30%;">
+            <div style="font-size: 24px; margin-bottom: 8px;">🧑‍💼</div>
+            <div style="font-weight: 700; color: #111827; margin-bottom: 4px;">Meet an expert</div>
+            <div style="color: #6B7280; font-size: 13px;">Book a session with a local expert for tailored, insider advice.</div>
+          </td>
+          <td style="width: 4%;"></td>
+          <td style="padding: 16px; background: #EFF6FF; border-radius: 8px; vertical-align: top; width: 30%;">
+            <div style="font-size: 24px; margin-bottom: 8px;">💎</div>
+            <div style="font-weight: 700; color: #111827; margin-bottom: 4px;">Discover gems</div>
+            <div style="color: #6B7280; font-size: 13px;">Find hidden local spots in Tokyo, Kyoto, Paris and beyond.</div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Primary CTA -->
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${dashboardUrl}"
+           style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                  padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 16px;">
+          Start Planning
+        </a>
+      </div>
+
+      <!-- Secondary links -->
+      <p style="text-align: center; color: #6B7280; font-size: 13px;">
+        Or jump straight to
+        <a href="${exploreUrl}"  style="color: #FF385C; text-decoration: none;">Explore destinations</a>
+        &nbsp;·&nbsp;
+        <a href="${expertsUrl}" style="color: #FF385C; text-decoration: none;">Browse experts</a>
+      </p>
+
+      <!-- Footer -->
+      <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 32px 0;" />
+      <p style="color: #9CA3AF; font-size: 12px; text-align: center;">
+        You're receiving this because you just created a Traveloure account.<br>
+        Questions? Reply to this email — we read every one.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Welcome to Traveloure!`,
+    ``,
+    greeting,
+    ``,
+    `Your account is all set. Here's what you can do:`,
+    ``,
+    `🗺️  Plan a trip  — ${dashboardUrl}`,
+    `🧑‍💼  Meet an expert — ${expertsUrl}`,
+    `💎  Discover hidden gems — ${exploreUrl}`,
+    ``,
+    `Start planning: ${dashboardUrl}`,
+    ``,
+    `Questions? Just reply to this email.`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: `Welcome to Traveloure — let's plan your next adventure`,
+      html,
+      text,
+    });
+    console.log(`[email] Welcome email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Welcome email failed (non-fatal):", err);
+  }
+}
