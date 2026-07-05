@@ -183,15 +183,23 @@ router.get(api.trips.get.path, async (req, res) => {
     if (!trip) {
       return res.status(404).json({ message: "Trip not found" });
     }
-    // Check access: owner, assigned expert, managing EA, or guest with shareToken
-    const userId = (req.user as any)?.claims?.sub ?? null;
+    // Check access: owner, assigned expert, managing EA, or guest with shareToken.
+    // requireOwnership middleware cannot be used here because unauthenticated guests
+    // may access via shareToken — so ownership is enforced inline with IDOR logging.
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
     const shareToken = req.query.token as string | undefined;
     const isOwner = trip.userId && trip.userId === userId;
     const isExpert = (trip as any).expertId === userId;
     const isManagingEa = (trip as any).managedByEaId === userId;
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
     if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
-      return res.status(401).json({ message: "Unauthorized" });
+      if (userId) {
+        console.warn(
+          `[IDOR ATTEMPT] User ${userId} tried to access resource owned by ` +
+            `${trip.userId} at GET ${req.path}`
+        );
+      }
+      return res.status(403).json({ message: "Access denied" });
     }
     res.json(trip);
   });
