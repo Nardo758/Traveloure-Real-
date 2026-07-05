@@ -12,6 +12,7 @@ import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from '../utils/auth';
 import {
+  completeExpertRequest,
   getExpertRequestsByUser,
   getVariantCost,
   insertSavedTrip,
@@ -155,11 +156,21 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       destination: resolvedDestination, requestType, expertFee, notes, optimizationContext,
     });
 
-    // Fire-and-forget: run lead routing to score experts and trigger the
-    // dead-end fallback (notifyNullAssign) when no approved expert covers
-    // this destination.  Passing expertRequestId lets the service stamp
-    // the correct row with status='unassigned' + fallback_message.
-    import('../services/lead-routing.service').then(({ leadRoutingService }) => {
+    // "book with an expert" requests originating from a Partnerize-backed
+    // offer must only be routed to experts who've opted in to booking
+    // affiliate offers on a traveler's behalf.
+    const isPartnerizeAssisted = requestType === 'partnerize_booking_assist' || optimizationContext?.partnerizeAssisted === true;
+
+    // Fire-and-forget: run lead routing to score experts, persist a
+    // successful assignment (assigned_expert_id + status + notification),
+    // and trigger the dead-end fallback (notifyNullAssign) when no approved
+    // expert covers this destination. Passing expertRequestId lets the
+    // service stamp the correct row with status='unassigned' + fallback_message
+    // on the no-match path.
+    Promise.all([
+      import('../services/lead-routing.service'),
+      import('../services/booking-actions.service'),
+    ]).then(([{ leadRoutingService }, { assignExpertAdvisorToRequest, createExpertAssignmentNotification, getTripLabel }]) => {
       leadRoutingService.routeLead({
         destination: resolvedDestination,
         topic: requestType,
@@ -167,11 +178,21 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
         userId: resolvedUserId,
         requestType,
         expertRequestId: requestId,
+        requireCanBookOnBehalf: isPartnerizeAssisted,
+      }).then(async (result) => {
+        if (!result.assignedExpertId) return;
+        await assignExpertAdvisorToRequest(requestId, result.assignedExpertId);
+        if (tripId) {
+          const tripLabel = await getTripLabel(tripId);
+          await createExpertAssignmentNotification(result.assignedExpertId, tripId, tripLabel).catch(err =>
+            console.error('[ExpertRequests] Failed to create assignment notification:', err)
+          );
+        }
       }).catch(err =>
         console.error('[ExpertRequests] Lead routing fire-and-forget failed:', err)
       );
     }).catch(err =>
-      console.error('[ExpertRequests] Failed to import lead-routing service:', err)
+      console.error('[ExpertRequests] Failed to import lead-routing/booking-actions service:', err)
     );
 
     res.json({
@@ -186,6 +207,30 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     }
     console.error('Expert request error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/expert-requests/:id/complete
+ * Assigned expert marks a request as completed. When the request was a
+ * Partnerize-assisted "book with an expert" action, bumps the expert's
+ * total_bookings_assisted counter (local_expert_forms).
+ */
+router.patch('/expert-requests/:id/complete', isAuthenticated, async (req, res) => {
+  try {
+    const expertUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    if (!expertUserId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+    const result = await completeExpertRequest(id, expertUserId);
+    if (!result) {
+      return res.status(404).json({ error: 'Expert request not found or not assigned to you' });
+    }
+
+    res.json({ success: true, requestId: result.id, partnerizeAssisted: result.partnerizeAssisted });
+  } catch (error: any) {
+    console.error('Complete expert request error:', error);
+    res.status(500).json({ error: error.message || 'Failed to complete expert request' });
   }
 });
 

@@ -584,7 +584,7 @@ function TransportLegCard({
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Platform Options</p>
                       {platformOpts.map(opt => (
-                        <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly || false} />
+                        <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly || false} tripId={tripId} destination={destination} />
                       ))}
                     </div>
                   )}
@@ -592,7 +592,7 @@ function TransportLegCard({
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Third-Party Options</p>
                       {thirdPartyOpts.map(opt => (
-                        <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly || false} />
+                        <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly || false} tripId={tripId} destination={destination} />
                       ))}
                     </div>
                   )}

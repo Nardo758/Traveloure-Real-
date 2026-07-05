@@ -3681,6 +3681,10 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   }>(),
   isActive: boolean("is_active").default(true),
   lastScrapedAt: timestamp("last_scraped_at"),
+  // Source tracking: "manual" (admin-created / scraper) or "partnerize" (synced from Partnerize network).
+  source: varchar("source", { length: 30 }).default("manual"),
+  externalCampaignId: varchar("external_campaign_id", { length: 100 }),
+  lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4937,6 +4941,12 @@ export const transportBookingOptions = pgTable("transport_booking_options", {
   // Sorting and recommendation
   sortOrder: integer("sort_order").default(0),
   isRecommended: boolean("is_recommended").default(false),
+
+  // Partnerize sourcing: flags offers that came from a synced Partnerize
+  // campaign (affiliate_partners.source = 'partnerize') so surfaces can show
+  // the "book with an expert" CTA alongside the direct link.
+  isPartnerizeSourced: boolean("is_partnerize_sourced").default(false),
+  partnerizePartnerId: varchar("partnerize_partner_id"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
