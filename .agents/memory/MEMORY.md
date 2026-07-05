@@ -9,3 +9,4 @@
 - [Journey-2 E2E lessons](journey-2-e2e-lessons.md) — budget decimal guard, interests default, DashboardLayout link-logo testid, Playwright process OOM pattern
 - [ADR security fixes applied](adr-security-fixes.md) — role vuln (ADR-002), getUserId helper, admin routes patched, funnel_events table added
 - [users/trips ID column types](id-column-types.md) — users.id and trips.id are VARCHAR not UUID; FK constraints to them must use VARCHAR columns
+- [User soft-delete](user-soft-delete.md) — never hard-delete users; soft-delete anonymizes email + cascades to expertRequests/forms/sessions; isAuthenticated does DB lookup on every request

@@ -2,6 +2,10 @@ import type { Express } from "express";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
 import { z } from "zod";
+import { db } from "../../db";
+import { eq, inArray, sql as drizzleSql } from "drizzle-orm";
+import { users } from "@shared/models/auth";
+import { localExpertForms, serviceProviderForms, expertRequests, trips } from "@shared/schema";
 
 const CURRENT_TERMS_VERSION = "1.0";
 const CURRENT_PRIVACY_VERSION = "1.0";
@@ -178,5 +182,90 @@ export function registerAuthRoutes(app: Express): void {
       termsVersion: CURRENT_TERMS_VERSION,
       privacyVersion: CURRENT_PRIVACY_VERSION,
     });
+  });
+
+  // ─── Soft-delete: DELETE /api/auth/account ──────────────────────────────────
+  //
+  // Self-service account deletion. Hard deletes are prohibited: booking records,
+  // Stripe payment history, and financial data MUST be retained for compliance.
+  // Instead we:
+  //   1. Anonymize the email  → deleted_{userId}@deleted.traveloure.com
+  //   2. Set is_deleted=true + deleted_at=NOW()
+  //   3. Cancel pending expert requests owned by the user
+  //   4. Deactivate local_expert_forms and service_provider_forms for this user
+  //   5. Destroy all active sessions for this user from the sessions store
+  //   6. Log the current session out
+  //
+  // The isAuthenticated middleware already blocks deleted accounts on every
+  // subsequent request, so even a race-condition session becomes harmless after
+  // the session store rows are deleted in step 5.
+  app.delete("/api/auth/account", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId: string | undefined = req.user?.claims?.sub ?? req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const dbUser = await authStorage.getUser(userId);
+      if (!dbUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Idempotent — if already deleted, return success
+      if (dbUser.isDeleted) {
+        return res.json({ success: true, message: "Account already deleted" });
+      }
+
+      const anonymizedEmail = `deleted_${userId}@deleted.traveloure.com`;
+
+      // 1 & 2: Anonymize email + mark deleted
+      await db
+        .update(users)
+        .set({
+          isDeleted: true,
+          deletedAt: new Date(),
+          email: anonymizedEmail,
+          password: null,
+          instagramAccessToken: null,
+        })
+        .where(eq(users.id, userId));
+
+      // 3: Cancel pending/queued expert requests owned by this user
+      await db
+        .update(expertRequests)
+        .set({ status: "cancelled" })
+        .where(
+          eq(expertRequests.userId, userId)
+        );
+
+      // 4a: Deactivate local expert form
+      await db
+        .update(localExpertForms)
+        .set({ status: "deactivated" })
+        .where(eq(localExpertForms.userId, userId));
+
+      // 4b: Deactivate service provider form
+      await db
+        .update(serviceProviderForms)
+        .set({ status: "deactivated" })
+        .where(eq(serviceProviderForms.userId, userId));
+
+      // 5: Destroy all sessions for this user from the PostgreSQL session store.
+      // Both email-auth (claims.sub) and Replit OIDC (id) session shapes are covered.
+      await db.execute(drizzleSql`
+        DELETE FROM sessions
+        WHERE sess -> 'passport' -> 'user' -> 'claims' ->> 'sub' = ${userId}
+           OR sess -> 'passport' -> 'user' ->> 'id' = ${userId}
+      `);
+
+      // 6: Destroy current session
+      req.logout(() => {});
+
+      console.info(`[account-delete] User ${userId} soft-deleted`);
+      res.json({ success: true, message: "Account deleted successfully" });
+    } catch (error) {
+      console.error("[account-delete] error:", error);
+      res.status(500).json({ message: "Failed to delete account" });
+    }
   });
 }

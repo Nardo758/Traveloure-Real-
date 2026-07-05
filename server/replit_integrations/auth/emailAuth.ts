@@ -202,6 +202,15 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
+      // Defense-in-depth: also block soft-deleted accounts at the login handler so
+      // no session is ever created for them (isAuthenticated middleware is the
+      // primary gate for already-active sessions).
+      if (user.isDeleted) {
+        return res.status(403).json({
+          message: "This account has been deleted. Please contact support if you believe this is an error.",
+        });
+      }
+
       // Create session
       const sessionUser = {
         claims: {

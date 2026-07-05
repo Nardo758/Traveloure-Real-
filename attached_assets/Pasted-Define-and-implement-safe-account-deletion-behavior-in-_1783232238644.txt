@@ -1,0 +1,96 @@
+Define and implement safe account deletion 
+behavior in Traveloure so deleting a user 
+doesn't orphan data or break the platform.
+
+TASK:
+
+1. Decide the deletion strategy — SOFT DELETE
+   is safer than hard delete for a marketplace
+   (preserves financial/legal records):
+
+Add to users table:
+deletedAt: timestamp("deleted_at")
+isDeleted: boolean("is_deleted").default(false)
+
+2. Update DELETE /api/users/:id (or account 
+   deletion route) to soft-delete instead of 
+   hard delete:
+
+await db.update(users)
+  .set({ 
+    isDeleted: true, 
+    deletedAt: new Date(),
+    email: `deleted_${userId}_${user.email}`,
+    // Anonymize PII but keep ID for 
+    // referential integrity
+  })
+  .where(eq(users.id, userId));
+
+3. Handle related data per type:
+
+TRIPS (owned by deleted user):
+  Keep them, but mark as inaccessible.
+  Add isOwnerDeleted flag or check via join.
+
+BOOKINGS (financial records — NEVER delete):
+  Keep entirely intact for accounting/legal.
+  Stripe and tax records must be preserved.
+
+EXPERT_REQUESTS (if user was the traveler):
+  If status is pending/queued, cancel it:
+  UPDATE expert_requests 
+  SET status = 'cancelled' 
+  WHERE trip_id IN (
+    SELECT id FROM trips WHERE user_id = X
+  ) AND status IN ('pending', 'queued');
+
+REVIEWS (written by deleted user):
+  Keep the review but show "Deleted user" 
+  as author instead of their name.
+
+CONVERSATIONS/MESSAGES:
+  Keep message history but anonymize sender 
+  display name.
+
+4. If the deleted user was an EXPERT or 
+   PROVIDER with active routing eligibility:
+   
+   Immediately set local_expert_forms.status 
+   or service_provider_forms.status to 
+   'deactivated' so they stop receiving leads:
+
+   await db.update(localExpertForms)
+     .set({ status: 'deactivated' })
+     .where(eq(localExpertForms.userId, userId));
+
+5. Update all login/auth checks to reject 
+   deleted users:
+
+In your auth middleware, add:
+if (user.isDeleted) {
+  return res.status(403).json({
+    message: "This account has been deleted"
+  });
+}
+
+6. Add admin endpoint to view soft-deleted 
+   users (for support/recovery within X days):
+   GET /api/admin/users/deleted
+
+7. Test:
+   - Soft-delete the test traveler account
+   - Confirm they cannot log in
+   - Confirm their trip still exists in DB
+     but is not accessible to them
+   - Confirm any pending expert_requests 
+     for their trips are cancelled
+   - If testing with the test expert account:
+     confirm local_expert_forms.status 
+     changes to 'deactivated' and they stop 
+     appearing in expert search
+
+Do NOT hard-delete any booking or payment 
+related data — ever. This is required for 
+financial/legal compliance.
+Do NOT touch vite.config.ts.
+Show every file changed.

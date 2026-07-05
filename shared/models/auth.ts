@@ -66,6 +66,11 @@ export const users = pgTable("users", {
   preferredCurrency: varchar("preferred_currency", { length: 3 }).default("USD"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).
+  // On deletion: isDeleted=true, deletedAt=NOW(), email anonymized to deleted_{id}@deleted.
+  // All login paths check isDeleted and reject with 403. Sessions are destroyed on delete.
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  deletedAt: timestamp("deleted_at"),
 }, (table) => [
   index("users_role_idx").on(table.role),
 ]);
