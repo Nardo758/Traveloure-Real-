@@ -6,6 +6,11 @@ import { feverCacheService } from "./fever-cache.service";
 import { sharedCache } from "./shared-cache.service";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
+import { partnerizeSyncService } from "./partnerize/partnerize-sync.service";
+
+// Partnerize campaign catalog changes infrequently — sync every 12 hours,
+// separate from the 24h stale-data refresh loop above.
+const PARTNERIZE_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 // Configuration
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -29,6 +34,7 @@ interface CacheRefreshStats {
 
 class CacheSchedulerService {
   private refreshTimer: NodeJS.Timeout | null = null;
+  private partnerizeSyncTimer: NodeJS.Timeout | null = null;
   private isRefreshing: boolean = false;
   private lastStats: CacheRefreshStats | null = null;
 
@@ -50,6 +56,19 @@ class CacheSchedulerService {
     }, REFRESH_INTERVAL_MS);
 
     console.log(`[CacheScheduler] Scheduled to run every ${REFRESH_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+
+    // Partnerize campaign sync — separate cadence, gracefully no-ops without credentials
+    setTimeout(() => partnerizeSyncService.syncCampaigns().catch((err) =>
+      console.error("[CacheScheduler] Initial Partnerize sync failed:", err)
+    ), 2 * 60 * 1000);
+
+    this.partnerizeSyncTimer = setInterval(() => {
+      partnerizeSyncService.syncCampaigns().catch((err) =>
+        console.error("[CacheScheduler] Partnerize sync failed:", err)
+      );
+    }, PARTNERIZE_SYNC_INTERVAL_MS);
+
+    console.log(`[CacheScheduler] Partnerize campaign sync scheduled every ${PARTNERIZE_SYNC_INTERVAL_MS / (60 * 60 * 1000)} hours`);
   }
 
   // Stop the scheduler
@@ -58,6 +77,10 @@ class CacheSchedulerService {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
       console.log("[CacheScheduler] Scheduler stopped");
+    }
+    if (this.partnerizeSyncTimer) {
+      clearInterval(this.partnerizeSyncTimer);
+      this.partnerizeSyncTimer = null;
     }
   }
 

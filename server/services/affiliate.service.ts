@@ -12,11 +12,22 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { buildPartnerizeTrackingLink, getPartnerizeCredentials } from './partnerize/partnerize-client';
 
 interface AffiliateLink {
   url: string;
   partner: string;
   commission?: number;
+  partnerId?: string;
+  source?: 'static' | 'partnerize';
+}
+
+interface PartnerizePartnerRow {
+  id: string;
+  name: string;
+  externalCampaignId: string;
+  commissionRate: number | null;
+  websiteUrl: string;
 }
 
 export interface AffiliateAttribution {
@@ -77,7 +88,10 @@ class AffiliateService {
       // Determine best partner for this item type
       const partner = this.selectPartner(itemType);
       if (!partner) {
-        return null;
+        // No static partner covers this category — fall back to a
+        // Partnerize-synced campaign (source='partnerize' in affiliate_partners)
+        // for the same category, if one exists.
+        return this.generatePartnerizeLink(itemType, destination, date, metadata, attribution);
       }
 
       // Build affiliate URL
@@ -144,6 +158,72 @@ class AffiliateService {
       console.warn(`[affiliate] commission lookup failed for ${partnerName}:`, err);
       return fallback;
     }
+  }
+
+  /**
+   * Generate a tracked Partnerize deep link for a Partnerize-synced campaign
+   * matching this item type's category. Returns null (no throw) if
+   * credentials are missing, no matching campaign exists, or the request fails —
+   * callers already treat a null AffiliateLink as "no affiliate option available".
+   */
+  private async generatePartnerizeLink(
+    itemType: string,
+    destination: string,
+    date: string,
+    metadata?: any,
+    attribution?: AffiliateAttribution
+  ): Promise<AffiliateLink | null> {
+    if (!getPartnerizeCredentials()) {
+      return null;
+    }
+    try {
+      const category = this.mapItemTypeToCategory(itemType);
+      const result = await db.execute(sql`
+        SELECT id, name, external_campaign_id, commission_rate, website_url
+        FROM affiliate_partners
+        WHERE source = 'partnerize'
+          AND is_active = true
+          AND category = ${category}
+        ORDER BY last_synced_at DESC NULLS LAST
+        LIMIT 1
+      `);
+      const row = result.rows?.[0] as any;
+      if (!row) return null;
+
+      const destinationUrl = metadata?.productUrl || row.website_url;
+      const url = buildPartnerizeTrackingLink(row.external_campaign_id, destinationUrl, {
+        destination,
+        date,
+      });
+      if (!url) return null;
+
+      await this.trackLinkGeneration(`partnerize:${row.external_campaign_id}`, itemType, destination, attribution);
+
+      const commission = row.commission_rate !== null && row.commission_rate !== undefined
+        ? Number(row.commission_rate) / 100
+        : undefined;
+
+      return {
+        url,
+        partner: row.name,
+        commission,
+        partnerId: row.id,
+        source: 'partnerize',
+      };
+    } catch (error) {
+      console.error('[Affiliate] Partnerize link generation error:', error);
+      return null;
+    }
+  }
+
+  private mapItemTypeToCategory(itemType: string): string {
+    const t = itemType.toLowerCase();
+    if (t.includes('hotel') || t.includes('accommodation') || t.includes('stay')) return 'hotels_accommodation';
+    if (t.includes('activit') || t.includes('tour') || t.includes('experience')) return 'tours_activities';
+    if (t.includes('transport') || t.includes('car')) return 'transportation';
+    if (t.includes('restaurant') || t.includes('dining')) return 'restaurants_dining';
+    if (t.includes('event') || t.includes('ticket')) return 'events_tickets';
+    return 'other';
   }
 
   /**

@@ -10,6 +10,7 @@
 import { db } from "../db";
 import { affiliateEarnings, affiliateClicks, affiliatePartners } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { getConversionReport, getPartnerizeCredentials } from "./partnerize/partnerize-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -190,6 +191,30 @@ async function fetchFeverCommissions(
   }
 }
 
+async function fetchPartnerizeCommissions(
+  start: Date,
+  end: Date
+): Promise<ExternalCommission[]> {
+  if (!getPartnerizeCredentials()) {
+    console.warn("[Reconciliation] Partnerize credentials not set – skipping");
+    return [];
+  }
+  try {
+    const conversions = await getConversionReport(start, end);
+    return conversions.map((c) => ({
+      partnerReferenceId: c.conversionId,
+      partner: "partnerize",
+      amount: c.commission || c.amount,
+      currency: c.currency || "USD",
+      reportedAt: c.convertedAt,
+      rawData: c.rawData,
+    })).filter((r) => r.partnerReferenceId);
+  } catch (err) {
+    console.error("[Reconciliation] Partnerize fetch error:", err);
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Reconciliation service
 // ---------------------------------------------------------------------------
@@ -213,6 +238,9 @@ class AffiliateReconciliationService {
     }
     if (!partner || partner === "fever") {
       fetchers.push(fetchFeverCommissions(start, end));
+    }
+    if (!partner || partner === "partnerize") {
+      fetchers.push(fetchPartnerizeCommissions(start, end));
     }
 
     const results = await Promise.all(fetchers);

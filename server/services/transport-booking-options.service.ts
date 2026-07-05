@@ -13,6 +13,7 @@ import { db } from "../db";
 import { transportBookingOptions, transportLegs, itineraryVariants, providerServices, bookingFeeConfigs } from "@shared/schema";
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { getTravelpayoutsToken } from "./travelpayouts/travelpayouts-client";
+import { buildPartnerizeTrackingLink } from "./partnerize/partnerize-client";
 
 export interface TransportBookingOption {
   transportLegId?: string;
@@ -30,7 +31,7 @@ export interface TransportBookingOption {
   currency?: string;
   estimatedMinutes?: number;
   estimatedMinutesHigh?: number;
-  providerId?: string;
+  providerId?: number;
   externalUrl?: string;
   affiliateCode?: string;
   deepLinkScheme?: string;
@@ -44,6 +45,8 @@ export interface TransportBookingOption {
   isRecommended?: boolean;
   revenueType?: "platform_commission" | "affiliate_margin";
   revenueRate?: number;
+  isPartnerizeSourced?: boolean;
+  partnerizePartnerId?: string;
 }
 
 /**
@@ -130,6 +133,8 @@ export async function populateBookingOptionsForLeg(
       sortOrder: 1,
       revenueType: "affiliate_margin",
       revenueRate: affiliate.revenueRate,
+      isPartnerizeSourced: affiliate.isPartnerizeSourced,
+      partnerizePartnerId: affiliate.partnerizePartnerId,
     });
   }
 
@@ -534,6 +539,47 @@ async function findAffiliateTransportOptions(
       affiliateCode: token ?? "traveloure",
       revenueRate: kiwiMargin,
     });
+  }
+
+  // Partnerize — synced brand campaigns (car rental, airport transfer, etc.)
+  // approved for the transportation category. Requires checkout on the
+  // brand's own site, so these are flagged for the "book with an expert"
+  // CTA alongside the direct link.
+  try {
+    const partnerizeRows = await db.execute(sql`
+      SELECT id, name, external_campaign_id, commission_rate, website_url
+      FROM affiliate_partners
+      WHERE source = 'partnerize'
+        AND is_active = true
+        AND category = 'transportation'
+      ORDER BY last_synced_at DESC NULLS LAST
+      LIMIT 3
+    `);
+    for (const row of (partnerizeRows.rows || []) as any[]) {
+      const url = buildPartnerizeTrackingLink(row.external_campaign_id, row.website_url, {
+        destination,
+      });
+      if (!url) continue;
+      results.push({
+        partner: "partnerize",
+        title: row.name,
+        description: `Book ${row.name} — completed on their site or via a booking expert`,
+        modeType: "car",
+        priceDisplay: "View pricing",
+        priceCentsLow: null,
+        priceCentsHigh: null,
+        pricePerPerson: false,
+        currency: "USD",
+        estimatedMinutes: null,
+        urlWithAffiliate: url,
+        affiliateCode: row.external_campaign_id,
+        revenueRate: row.commission_rate !== null && row.commission_rate !== undefined ? Number(row.commission_rate) / 100 : undefined,
+        isPartnerizeSourced: true,
+        partnerizePartnerId: row.id,
+      });
+    }
+  } catch (err) {
+    console.warn("[transport-booking-options] Partnerize option lookup failed, skipping:", err);
   }
 
   return results;
