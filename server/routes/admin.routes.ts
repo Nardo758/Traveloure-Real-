@@ -39,6 +39,7 @@ import {
   accessAuditLogs,
   serviceOfferingTypes, insertServiceOfferingTypeSchema,
   expertOfferingTypes, insertExpertOfferingTypeSchema,
+  localExpertForms, expertRequests,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -2903,6 +2904,9 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
       const offset = (page - 1) * limit;
 
       let conditions: any[] = [];
+      // Always exclude soft-deleted users from the normal admin listing.
+      // Deleted users are visible at GET /api/admin/users/deleted instead.
+      conditions.push(eq(users.isDeleted, false));
       if (search) {
         conditions.push(
           or(
@@ -2949,6 +2953,116 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin users error:", err);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // === Admin: Soft-deleted user recovery list ===
+  // Returns only users with is_deleted=true so support/recovery workflows can
+  // inspect or restore accounts without commingling them with active users.
+
+router.get("/api/admin/users/deleted", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const deletedUsers = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          deletedAt: users.deletedAt,
+          createdAt: users.createdAt,
+        })
+        .from(users)
+        .where(eq(users.isDeleted, true))
+        .orderBy(desc(users.deletedAt));
+
+      res.json({ users: deletedUsers, total: deletedUsers.length });
+    } catch (err) {
+      console.error("Admin deleted users error:", err);
+      res.status(500).json({ message: "Failed to fetch deleted users" });
+    }
+  });
+
+  // === Admin: Force soft-delete a user account ===
+  // Performs the same cascade as the self-service DELETE /api/auth/account but
+  // allows an admin to delete any account (except their own, as a safety guard).
+
+router.delete("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const adminUser = req.user as any;
+      if (adminUser?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const adminId: string = adminUser?.claims?.sub ?? adminUser?.id;
+
+      if (targetUserId === adminId) {
+        return res.status(400).json({ message: "Admins cannot delete their own account via this endpoint" });
+      }
+
+      const [targetUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, targetUserId));
+
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.isDeleted) {
+        return res.json({ success: true, message: "User already deleted" });
+      }
+
+      const anonymizedEmail = `deleted_${targetUserId}@deleted.traveloure.com`;
+
+      // 1 & 2: Anonymize PII + mark deleted
+      await db
+        .update(users)
+        .set({
+          isDeleted: true,
+          deletedAt: new Date(),
+          email: anonymizedEmail,
+          password: null,
+          instagramAccessToken: null,
+        })
+        .where(eq(users.id, targetUserId));
+
+      // 3: Cancel pending expert requests
+      await db
+        .update(expertRequests)
+        .set({ status: "cancelled" })
+        .where(eq(expertRequests.userId, targetUserId));
+
+      // 4a: Deactivate local expert form
+      await db
+        .update(localExpertForms)
+        .set({ status: "deactivated" })
+        .where(eq(localExpertForms.userId, targetUserId));
+
+      // 4b: Deactivate service provider form
+      await db
+        .update(serviceProviderForms)
+        .set({ status: "deactivated" })
+        .where(eq(serviceProviderForms.userId, targetUserId));
+
+      // 5: Destroy all sessions for target user from the PostgreSQL session store
+      await db.execute(sql`
+        DELETE FROM sessions
+        WHERE sess -> 'passport' -> 'user' -> 'claims' ->> 'sub' = ${targetUserId}
+           OR sess -> 'passport' -> 'user' ->> 'id' = ${targetUserId}
+      `);
+
+      console.info(`[admin-delete] Admin ${adminId} soft-deleted user ${targetUserId}`);
+      res.json({ success: true, message: "User account deleted successfully" });
+    } catch (err) {
+      console.error("Admin delete user error:", err);
+      res.status(500).json({ message: "Failed to delete user" });
     }
   });
 
