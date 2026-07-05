@@ -34,6 +34,7 @@ import About from "@/pages/about";
 import EarnPage from "@/pages/earn";
 import NotFound from "@/pages/not-found";
 import { SignupPage } from "@/pages/Signup";
+import BookingConfirmationPage from "@/pages/BookingConfirmationPage";
 import ExpertDashboard from "@/pages/expert/dashboard";
 import ExpertClients from "@/pages/expert/clients";
 import ExpertEarnings from "@/pages/expert/earnings";
@@ -775,6 +776,9 @@ function Router() {
 
       {/* Dedicated signup page for paid acquisition attribution */}
       <Route path="/signup" component={SignupPage} />
+
+      {/* 3DS / Stripe redirect-back landing page */}
+      <Route path="/booking/confirmation" component={BookingConfirmationPage} />
 
       {/* 404 */}
       <Route>

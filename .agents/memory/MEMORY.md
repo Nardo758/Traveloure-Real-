@@ -6,7 +6,4 @@
 - [Auth user shape mismatch](auth-user-shape.md) — Replit Auth sessions have user.id; email-auth sessions have user.claims.sub — any route that extracts userId must check both.
 - [serviceBookings transport inserts](service-bookings-transport.md) — transport bookings insert into service_bookings; serviceId/travelerId/providerId are nullable (schema + DB altered); use correct Drizzle column names (not userId/serviceProviderId).
 - [Route module mount gap](route-mount-gap.md) — paymentsRoutes (and possibly others) imported in routes.ts but never app.use()'d; always verify mounts when a route returns HTML 404
-- [Journey-2 E2E lessons](journey-2-e2e-lessons.md) — budget decimal guard, interests default, DashboardLayout link-logo testid, Playwright process OOM pattern
-- [ADR security fixes applied](adr-security-fixes.md) — role vuln (ADR-002), getUserId helper, admin routes patched, funnel_events table added
-- [users/trips ID column types](id-column-types.md) — users.id and trips.id are VARCHAR not UUID; FK constraints to them must use VARCHAR columns
-- [User soft-delete](user-soft-delete.md) — never hard-delete users; soft-delete anonymizes email + cascades to expertRequests/forms/sessions; isAuthenticated does DB lookup on every request
+- [3DS payment flow](3ds-payment-flow.md) — requires_action must be handled in 3 places: client status branch, /booking/confirmation redirect-back page, webhook handler stamping DB
