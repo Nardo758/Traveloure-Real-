@@ -14,6 +14,10 @@ import { UserCheck, ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
 
 interface PartnerizeBookingCTAProps {
   tripId?: string;
+  // Required by POST /api/expert-requests whenever tripId isn't supplied
+  // (i.e. non-trip contexts, such as a standalone offer or optimizer variant).
+  variantId?: string;
+  comparisonId?: string;
   destination?: string;
   partnerName: string;
   partnerId?: string;
@@ -24,6 +28,8 @@ interface PartnerizeBookingCTAProps {
 
 export function PartnerizeBookingCTA({
   tripId,
+  variantId,
+  comparisonId,
   destination,
   partnerName,
   partnerId,
@@ -35,7 +41,21 @@ export function PartnerizeBookingCTA({
   const [submitting, setSubmitting] = useState(false);
   const [requested, setRequested] = useState(false);
 
+  // /api/expert-requests requires either a tripId, or both variantId +
+  // comparisonId, for optimizer-based (non-trip) requests. Without one of
+  // these the request will always 400 server-side, so we disable the CTA
+  // instead of letting the traveler hit a confusing error.
+  const canRequestExpert = !!tripId || (!!variantId && !!comparisonId);
+
   async function handleBookWithExpert() {
+    if (!canRequestExpert) {
+      toast({
+        variant: "destructive",
+        title: "Can't request an expert here",
+        description: "This offer isn't linked to a trip or plan yet. Use the direct link instead.",
+      });
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/expert-requests", {
@@ -45,6 +65,8 @@ export function PartnerizeBookingCTA({
         body: JSON.stringify({
           requestType: "partnerize_booking_assist",
           tripId,
+          variantId,
+          comparisonId,
           destination,
           notes: `Please book "${offerTitle}" via ${partnerName} on my behalf.`,
           optimizationContext: {
@@ -95,7 +117,8 @@ export function PartnerizeBookingCTA({
     <div className="flex items-center gap-2 flex-wrap">
       <Button
         onClick={handleBookWithExpert}
-        disabled={submitting}
+        disabled={submitting || !canRequestExpert}
+        title={!canRequestExpert ? "This offer isn't linked to a trip or plan yet" : undefined}
         size="sm"
         className="bg-[#FF385C] hover:bg-[#E23350] text-white"
         data-testid="button-partnerize-book-with-expert"

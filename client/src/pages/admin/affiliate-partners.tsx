@@ -664,6 +664,7 @@ function ReconciliationPanel() {
                   <SelectItem value="viator">Viator</SelectItem>
                   <SelectItem value="fever">Fever</SelectItem>
                   <SelectItem value="booking">Booking.com</SelectItem>
+                  <SelectItem value="partnerize">Partnerize</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" onClick={() => refetch()} data-testid="button-recon-refresh">

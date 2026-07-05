@@ -7,10 +7,16 @@ import { sharedCache } from "./shared-cache.service";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { partnerizeSyncService } from "./partnerize/partnerize-sync.service";
+import { affiliateReconciliationService } from "./affiliate-reconciliation.service";
 
 // Partnerize campaign catalog changes infrequently — sync every 12 hours,
 // separate from the 24h stale-data refresh loop above.
 const PARTNERIZE_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
+
+// Partnerize conversion/commission reports poll on a shorter cadence than the
+// campaign catalog sync so payouts reconcile against fresh data. Runs the
+// same fetch+match pipeline the admin "run now" reconciliation button uses.
+const PARTNERIZE_REPORT_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Configuration
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -35,6 +41,7 @@ interface CacheRefreshStats {
 class CacheSchedulerService {
   private refreshTimer: NodeJS.Timeout | null = null;
   private partnerizeSyncTimer: NodeJS.Timeout | null = null;
+  private partnerizeReportTimer: NodeJS.Timeout | null = null;
   private isRefreshing: boolean = false;
   private lastStats: CacheRefreshStats | null = null;
 
@@ -69,6 +76,36 @@ class CacheSchedulerService {
     }, PARTNERIZE_SYNC_INTERVAL_MS);
 
     console.log(`[CacheScheduler] Partnerize campaign sync scheduled every ${PARTNERIZE_SYNC_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+
+    // Partnerize conversion/commission report polling — pulls and auto-matches
+    // recent commission data so payouts stay reconciled without requiring an
+    // admin to hit "Run Now". Gracefully no-ops (logs + skips) if credentials
+    // are missing or the API call fails.
+    setTimeout(() => this.pollPartnerizeReports().catch((err) =>
+      console.error("[CacheScheduler] Initial Partnerize report poll failed:", err)
+    ), 3 * 60 * 1000);
+
+    this.partnerizeReportTimer = setInterval(() => {
+      this.pollPartnerizeReports().catch((err) =>
+        console.error("[CacheScheduler] Partnerize report poll failed:", err)
+      );
+    }, PARTNERIZE_REPORT_POLL_INTERVAL_MS);
+
+    console.log(`[CacheScheduler] Partnerize report polling scheduled every ${PARTNERIZE_REPORT_POLL_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+  }
+
+  // Poll Partnerize for conversion/commission reports and auto-match them
+  // against internal affiliate_earnings. Safe to call on an interval; the
+  // underlying fetch functions already log warnings and return an empty
+  // array when Partnerize credentials aren't configured.
+  private async pollPartnerizeReports(): Promise<void> {
+    try {
+      await affiliateReconciliationService.fetchExternalReports("this_month", "partnerize");
+      await affiliateReconciliationService.matchRecords("this_month", "partnerize");
+      console.log("[CacheScheduler] Partnerize report poll + auto-match complete");
+    } catch (err) {
+      console.error("[CacheScheduler] Partnerize report poll error:", err);
+    }
   }
 
   // Stop the scheduler
@@ -81,6 +118,10 @@ class CacheSchedulerService {
     if (this.partnerizeSyncTimer) {
       clearInterval(this.partnerizeSyncTimer);
       this.partnerizeSyncTimer = null;
+    }
+    if (this.partnerizeReportTimer) {
+      clearInterval(this.partnerizeReportTimer);
+      this.partnerizeReportTimer = null;
     }
   }
 

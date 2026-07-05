@@ -8,3 +8,4 @@
 - [Route module mount gap](route-mount-gap.md) — paymentsRoutes (and possibly others) imported in routes.ts but never app.use()'d; always verify mounts when a route returns HTML 404
 - [3DS payment flow](3ds-payment-flow.md) — requires_action must be handled in 3 places: client status branch, /booking/confirmation redirect-back page, webhook handler stamping DB
 - [Lead routing silent SQL failure](lead-routing-silent-sql-failure.md) — scoreExperts() swallows SQL errors and returns [], which looks identical to "no eligible experts"; verify column names against schema before trusting a no-match result
+- [Affiliate integration checklist](affiliate-integration-checklist.md) — new affiliate networks need a recurring commission-poll timer (not just catalog sync), admin UI partner-filter parity, and client-side gating for context-dependent CTA fields
