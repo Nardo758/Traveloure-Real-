@@ -10,6 +10,49 @@ import crypto from "crypto";
 
 // ─── Expert Requests ──────────────────────────────────────────────────────────
 
+/**
+ * Mark an expert request as completed. If the request's optimization_context
+ * flags it as Partnerize-assisted (partnerizeAssisted: true), also increments
+ * total_bookings_assisted on the assigned expert's local_expert_forms row —
+ * the metric used to surface booking-assist volume in expert/admin dashboards.
+ *
+ * Returns null if the request doesn't exist, isn't assigned to expertUserId,
+ * or is already completed (idempotent no-op on repeat calls).
+ */
+export async function completeExpertRequest(
+  requestId: string,
+  expertUserId: string,
+): Promise<{ id: string; partnerizeAssisted: boolean } | null> {
+  const existing = await db.execute(sql`
+    SELECT id, status, assigned_expert_id, optimization_context
+    FROM expert_requests
+    WHERE id = ${requestId} AND assigned_expert_id = ${expertUserId}
+    LIMIT 1
+  `);
+  const row = existing.rows?.[0] as any;
+  if (!row) return null;
+  if (row.status === 'completed') return { id: row.id, partnerizeAssisted: false };
+
+  const optimizationContext = row.optimization_context || {};
+  const partnerizeAssisted = optimizationContext?.partnerizeAssisted === true;
+
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET status = 'completed', completed_at = NOW()
+    WHERE id = ${requestId}
+  `);
+
+  if (partnerizeAssisted) {
+    await db.execute(sql`
+      UPDATE local_expert_forms
+      SET total_bookings_assisted = COALESCE(total_bookings_assisted, 0) + 1
+      WHERE user_id = ${expertUserId}
+    `);
+  }
+
+  return { id: row.id, partnerizeAssisted };
+}
+
 export async function getExpertRequestsByUser(
   userId: string,
   tripId?: string,
@@ -292,6 +335,23 @@ export async function getExpertQueuePosition(destination: string): Promise<numbe
     WHERE destination_city = ${destination.toLowerCase()} AND status IN ('queued', 'assigned')
   `);
   return Number((result.rows?.[0] as any)?.next_position) || 1;
+}
+
+/**
+ * Persist a successful lead-routing decision onto an existing expert_requests
+ * row (created by POST /api/expert-requests). Distinct from assignExpertAdvisor
+ * below, which inserts a brand-new row for the older advisor-assignment flow.
+ * Non-fatal on failure — caller is fire-and-forget.
+ */
+export async function assignExpertAdvisorToRequest(
+  requestId: string,
+  expertUserId: string,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET assigned_expert_id = ${expertUserId}, status = 'assigned', assigned_at = NOW()
+    WHERE id = ${requestId}
+  `);
 }
 
 export async function assignExpertAdvisor(values: {

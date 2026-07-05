@@ -331,9 +331,11 @@ export default function AdminAffiliatePartners() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Partner</TableHead>
+                        <TableHead>Source</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Last Scraped</TableHead>
+                        <TableHead>Last Synced</TableHead>
                         <TableHead>Commission</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -365,6 +367,17 @@ export default function AdminAffiliatePartners() {
                             </div>
                           </TableCell>
                           <TableCell>
+                            {partner.source === "partnerize" ? (
+                              <Badge variant="outline" className="border-purple-500 text-purple-700 dark:text-purple-300" data-testid={`badge-source-${partner.id}`}>
+                                Partnerize
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-source-${partner.id}`}>
+                                Manual
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             <Badge variant="secondary" data-testid={`badge-category-${partner.id}`}>
                               {getCategoryLabel(partner.category)}
                             </Badge>
@@ -390,6 +403,16 @@ export default function AdminAffiliatePartners() {
                               </div>
                             ) : (
                               <span className="text-sm text-muted-foreground">Never</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {partner.lastSyncedAt ? (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground" data-testid={`text-last-synced-${partner.id}`}>
+                                <Clock className="h-3 w-3" />
+                                {new Date(partner.lastSyncedAt).toLocaleDateString()}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground" data-testid={`text-last-synced-${partner.id}`}>-</span>
                             )}
                           </TableCell>
                           <TableCell>
@@ -641,6 +664,7 @@ function ReconciliationPanel() {
                   <SelectItem value="viator">Viator</SelectItem>
                   <SelectItem value="fever">Fever</SelectItem>
                   <SelectItem value="booking">Booking.com</SelectItem>
+                  <SelectItem value="partnerize">Partnerize</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" onClick={() => refetch()} data-testid="button-recon-refresh">
