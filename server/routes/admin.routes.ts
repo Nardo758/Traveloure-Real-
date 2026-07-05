@@ -2781,12 +2781,20 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
         summary = await storage.getProviderEarningsSummary(requesterId);
       }
 
+      const MIN_PAYOUT_CENTS = 1000; // $10.00 — below this Stripe fees consume too much
       const payoutAmountCents = amountCents ?? Math.round(summary.available * 100);
       if (payoutAmountCents <= 0) {
         return res.status(400).json({ error: "No available earnings to payout" });
       }
+      if (payoutAmountCents < MIN_PAYOUT_CENTS) {
+        return res.status(400).json({
+          error: `Payout amount is below the minimum threshold of $${(MIN_PAYOUT_CENTS / 100).toFixed(2)}. Current amount: $${(payoutAmountCents / 100).toFixed(2)}.`,
+          minimumCents: MIN_PAYOUT_CENTS,
+          requestedCents: payoutAmountCents,
+        });
+      }
       if (payoutAmountCents > Math.round(summary.available * 100)) {
-        return res.status(400). json({ error: "Payout amount exceeds available earnings" });
+        return res.status(400).json({ error: "Payout amount exceeds available earnings" });
       }
 
       let payout;
@@ -2849,6 +2857,16 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
           const payoutAmount = await getPayoutAmount(id, requesterType);
 
           const payoutAmountNum = parseFloat(payoutAmount || '0');
+
+          // Minimum payout threshold — same $10 floor as the creation gate
+          const MIN_PAYOUT_DOLLARS = 10;
+          if (payoutAmountNum < MIN_PAYOUT_DOLLARS) {
+            return res.status(400).json({
+              error: `Payout of $${payoutAmountNum.toFixed(2)} is below the $${MIN_PAYOUT_DOLLARS.toFixed(2)} minimum. Accumulate more earnings before transferring.`,
+              minimumDollars: MIN_PAYOUT_DOLLARS,
+              requestedDollars: payoutAmountNum,
+            });
+          }
 
           // Check platform balance before initiating transfer
           try {
