@@ -2336,14 +2336,28 @@ export class DatabaseStorage implements IStorage {
       };
     }));
 
+    // SECURITY GATE: local_expert role users MUST have an approved local_expert_forms row
+    // to appear anywhere on the platform.  Users who somehow acquire role='local_expert'
+    // without completing the approval flow (no form at all, or status='pending'/'rejected')
+    // must be excluded from every public-facing expert surface.
+    //
+    // Other expert roles (travel_expert, event_planner, executive_assistant) have separate
+    // onboarding paths and are not gated by local_expert_forms here.
+    const approvedExperts = expertsWithProfiles.filter(expert => {
+      if (expert.role === 'local_expert') {
+        return expert.expertForm?.status === 'approved';
+      }
+      return true;
+    });
+
     // Filter by experience type if provided
     if (experienceTypeId) {
-      return expertsWithProfiles.filter(expert => 
+      return approvedExperts.filter(expert =>
         expert.experienceTypes.some((et: any) => et.experienceTypeId === experienceTypeId)
       );
     }
 
-    return expertsWithProfiles;
+    return approvedExperts;
   }
 
   // Expert Custom Services
