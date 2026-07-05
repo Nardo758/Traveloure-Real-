@@ -9,10 +9,45 @@ import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
 import { isAuthenticated } from '../replit_integrations/auth';
+import { requireOwnership } from '../middleware/ownershipGuard';
 import { storage } from '../storage';
+import { db } from '../db';
+import { serviceBookings } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 
 const router = Router();
+
+/**
+ * GET /api/bookings/:id
+ * Fetch a single service booking by ID.
+ * Protected by requireOwnership — only the traveler who made the booking or an admin may access.
+ */
+router.get(
+  '/:id',
+  isAuthenticated,
+  requireOwnership(async (req) => {
+    const rows = await db
+      .select({ travelerId: serviceBookings.travelerId })
+      .from(serviceBookings)
+      .where(eq(serviceBookings.id, req.params.id))
+      .limit(1);
+    return rows[0]?.travelerId ?? null;
+  }),
+  async (req, res) => {
+    try {
+      const rows = await db
+        .select()
+        .from(serviceBookings)
+        .where(eq(serviceBookings.id, req.params.id))
+        .limit(1);
+      if (!rows[0]) return res.status(404).json({ message: 'Booking not found' });
+      res.json(rows[0]);
+    } catch (err: any) {
+      res.status(500).json({ message: 'Failed to fetch booking' });
+    }
+  }
+);
 
 /**
  * POST /api/bookings/process-cart
