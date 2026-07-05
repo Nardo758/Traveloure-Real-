@@ -90,6 +90,32 @@ app.use("/api/flights", searchRateLimiter as RequestHandler);
 app.use("/api/activities", searchRateLimiter as RequestHandler);
 app.use("/api/auth", authRateLimiter as RequestHandler);
 
+// CORS — explicit header control for all API routes.
+// Allowed origins are the Replit-hosted domains for this repl; fall back to the
+// request's own host so same-origin browser calls are always permitted.
+const _corsAllowedOrigins: Set<string> = new Set(
+  (process.env.REPLIT_DOMAINS || "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .flatMap((d) => [`https://${d}`, `http://${d}`])
+);
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin as string | undefined;
+  if (origin && (_corsAllowedOrigins.has(origin) || _corsAllowedOrigins.size === 0)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
+
 
 export function log(message: string, source = "express") {
   logger.info({ source }, message);
