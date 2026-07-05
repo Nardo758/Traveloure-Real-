@@ -26,6 +26,7 @@ import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
 import { sendBookingConfirmationEmail } from './email.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
+import { logger } from '../infrastructure/logger';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -133,6 +134,10 @@ class StripePaymentService {
 
         case 'payment_intent.canceled':
           await this.handlePaymentCanceled(event.data.object as Stripe.PaymentIntent);
+          break;
+
+        case 'payment_intent.requires_action':
+          await this.handleRequiresAction(event.data.object as Stripe.PaymentIntent);
           break;
 
         case 'charge.refunded':
@@ -298,6 +303,33 @@ class StripePaymentService {
         WHERE id = ${bookingId}
       `);
     }
+  }
+
+  /**
+   * Handle 3DS / bank-authentication pending
+   * Fires when Stripe cannot auto-confirm a PaymentIntent and needs
+   * the customer to complete a challenge (3D Secure, bank redirect, etc.).
+   * We stamp the DB row so the admin stuck-payment report picks it up,
+   * and log it for observability.
+   */
+  private async handleRequiresAction(paymentIntent: Stripe.PaymentIntent) {
+    const { userId, bookingIds } = paymentIntent.metadata;
+
+    logger.warn(
+      {
+        paymentIntentId: paymentIntent.id,
+        userId,
+        bookingIds,
+        nextAction: paymentIntent.next_action?.type,
+      },
+      '[WEBHOOK] payment_intent.requires_action — 3DS / bank challenge pending'
+    );
+
+    await db.execute(sql`
+      UPDATE payment_intents
+      SET status = 'requires_action'
+      WHERE stripe_payment_intent_id = ${paymentIntent.id}
+    `);
   }
 
   /**
