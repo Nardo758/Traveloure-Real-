@@ -60,9 +60,24 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
       if (error) {
         setErrorMessage(error.message || 'Payment failed');
         onError(error.message || 'Payment failed');
-      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-        // Payment successful
-        onSuccess(paymentIntent.id);
+      } else if (paymentIntent) {
+        if (paymentIntent.status === 'succeeded') {
+          onSuccess(paymentIntent.id);
+        } else if (paymentIntent.status === 'processing') {
+          // Async payment (e.g. bank transfer) — webhook will fire payment_intent.succeeded
+          onSuccess(paymentIntent.id);
+        } else if (paymentIntent.status === 'requires_action') {
+          // 3DS redirect-back landed here without completing — user should check email/banking app
+          setErrorMessage(
+            'Your bank requires additional verification. Please check your banking app or the email from your bank, then return here to confirm your booking.'
+          );
+          onError('requires_action');
+        } else {
+          setErrorMessage(
+            `Payment could not be completed (status: ${paymentIntent.status}). Please try again or use a different card.`
+          );
+          onError(`Unexpected status: ${paymentIntent.status}`);
+        }
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred');
