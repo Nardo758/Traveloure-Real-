@@ -1,0 +1,235 @@
+Run a full Gap Prompts completion audit.
+Check every item and report PASS or FAIL.
+
+GAP 1 — Payment Idempotency:
+1. Does bookings table have 
+   idempotencyKey column?
+   SELECT column_name FROM 
+   information_schema.columns
+   WHERE table_name='bookings' 
+   AND column_name='idempotency_key';
+   PASS if column exists
+
+2. Does checkout route pass idempotencyKey 
+   to Stripe paymentIntents.create?
+   PASS if yes
+
+3. Does checkout route check for existing 
+   booking with same idempotencyKey before 
+   creating a new one?
+   PASS if yes
+
+GAP 2 — Payment Crash Recovery:
+4. Does checkout create booking with 
+   status="payment_pending" BEFORE 
+   charging Stripe?
+   PASS if order is correct
+
+5. Does payment_intent.succeeded webhook 
+   handler update pending booking to 
+   status="confirmed"?
+   PASS if yes
+
+6. Does GET /api/admin/bookings/stuck-pending
+   endpoint exist?
+   PASS if yes
+
+7. Does payment_intent.payment_failed handler
+   flip payment_pending to status="failed"?
+   PASS if yes
+
+GAP 3 — Webhook Retry/Catch-up:
+8. Does webhook endpoint return 200 
+   IMMEDIATELY before processing?
+   PASS if res.json({received:true}) comes
+   before processWebhookEvent()
+
+9. Does webhookEvents table exist with
+   stripeEventId as unique column?
+   SELECT column_name FROM
+   information_schema.columns
+   WHERE table_name='webhook_events';
+   PASS if table exists
+
+10. Does webhook handler check for 
+    duplicate stripeEventId before 
+    processing same event twice?
+    PASS if yes
+
+11. Does GET /api/admin/webhooks/unprocessed
+    endpoint exist?
+    PASS if yes
+
+GAP 4 — Stripe-DB Reconciliation:
+12. Does server/jobs/stripeReconciliation.ts
+    exist?
+    PASS if file exists
+
+13. Is runStripeReconciliation() scheduled
+    in server/index.ts with setInterval?
+    PASS if yes
+
+14. Does GET /api/admin/reconciliation/run-now
+    endpoint exist?
+    PASS if yes
+
+15. Does reconciliation insert into 
+    admin_notifications when mismatches found?
+    PASS if yes
+
+GAP 5 — Chargeback/Dispute Handling:
+16. Does bookings table have disputeId 
+    and disputeReason columns?
+    SELECT column_name FROM
+    information_schema.columns
+    WHERE table_name='bookings'
+    AND column_name IN (
+      'dispute_id','dispute_reason'
+    );
+    PASS if both columns exist
+
+17. Does charge.dispute.created webhook 
+    handler exist and update booking 
+    status to "disputed"?
+    PASS if yes
+
+18. Does GET /api/admin/disputes endpoint
+    exist?
+    PASS if yes
+
+GAP 6 — IDOR Cross-User Access:
+19. Does server/middleware/ownershipGuard.ts
+    exist?
+    PASS if file exists
+
+20. Is ownershipGuard applied to at minimum:
+    GET /api/trips/:id
+    GET /api/bookings/:id
+    PASS if both protected
+
+21. Does ownershipGuard log 
+    [IDOR ATTEMPT] when blocked?
+    PASS if yes
+
+22. Test IDOR manually right now:
+    Log in as traveler@traveloure-test.com
+    Try GET /api/trips/1 (likely not theirs)
+    Try GET /api/trips/2
+    Try GET /api/bookings/1
+    Confirm each returns 403 or 404
+    NOT another user's data
+    PASS if all return 403/404
+
+GAP 7 — Double-Booking Race Condition:
+23. Does bookings table have unique 
+    constraint on (expert_id, slot_date, 
+    slot_time)?
+    SELECT constraint_name FROM
+    information_schema.table_constraints
+    WHERE table_name='bookings'
+    AND constraint_type='UNIQUE';
+    PASS if unique_expert_slot exists
+
+24. Does booking creation use a DB 
+    transaction that checks availability
+    before inserting?
+    PASS if yes
+
+25. Does route return 409 status when 
+    slot already taken?
+    PASS if yes
+
+GAP 8 — AI Burst Protection:
+26. Does server/utils/requestDeduplication.ts
+    exist with dedupedRequest function?
+    PASS if file exists
+
+27. Is dedupedRequest applied to the 
+    itinerary generation route?
+    PASS if yes
+
+28. Does a circuit breaker exist for 
+    AI API failures with 5-failure threshold?
+    PASS if yes
+
+GAP 9 — Real Dead-End Lead Test:
+29. Was the dead-end lead flow tested 
+    with a REAL city (not TestCityXYZ)?
+    PASS if yes — report which city was used
+
+30. Did the traveler see a friendly 
+    fallback message (not a blank/error)?
+    PASS if yes
+
+31. Did admin notification appear in 
+    NotificationsPanel for the real city?
+    PASS if yes
+
+GAP 10 — Unverified Expert Visibility:
+32. Does GET /api/experts filter by
+    local_expert_forms.status = 'approved'
+    NOT by users.role = 'local_expert'?
+    Show me the exact WHERE clause.
+    PASS if filters by form status
+
+33. Does discover page expert query also
+    filter by approval status?
+    PASS if yes
+
+34. Does AI expert matching filter by
+    approval status?
+    PASS if yes
+
+35. Was the fake-expert test account 
+    confirmed invisible on all pages?
+    PASS if yes
+
+GAP 11 — Account Deletion Cascade:
+36. Do users table have isDeleted and 
+    deletedAt columns?
+    SELECT column_name FROM
+    information_schema.columns
+    WHERE table_name='users'
+    AND column_name IN (
+      'is_deleted','deleted_at'
+    );
+    PASS if both exist
+
+37. Does deletion anonymize PII but keep 
+    the users row (soft delete)?
+    PASS if yes
+
+38. Does deletion cancel pending 
+    expert_requests for that user's trips?
+    PASS if yes
+
+39. Does auth middleware reject login 
+    attempts from deleted users?
+    PASS if yes
+
+GAP 12 — Expert Stripe Suspension:
+40. Does account.updated webhook handler
+    check for restrictions and update
+    stripeConnectStatus to "restricted"?
+    PASS if yes
+
+41. Does scoreExperts() in lead routing
+    exclude experts with 
+    stripeConnectStatus = "restricted"?
+    PASS if yes
+
+42. Does GET /api/admin/experts/
+    stripe-restricted endpoint exist?
+    PASS if yes
+
+FINAL COUNT:
+Count all PASS and FAIL.
+List every FAIL with the reason.
+
+If all 42 = PASS print:
+"✅ ALL 12 GAPS COMPLETE —
+ ARCHITECTURE IS TRULY LEAK-PROOF"
+
+If any FAIL print:
+"❌ X ITEMS NEED ATTENTION"
+and list them with file and line reference.
