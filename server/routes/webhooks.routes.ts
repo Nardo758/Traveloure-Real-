@@ -153,7 +153,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     .limit(1);
 
   if (existing.length > 0 && existing[0].processed) {
-    console.log(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already processed — skipping`);
+    console.info(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already processed — skipping`);
     return;
   }
 
@@ -274,7 +274,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         } else if (requesterType === "provider") {
           await storage.updateProviderPayoutStatus(payoutId, "completed", undefined, transfer.id);
         }
-        console.log(`Stripe ${event.type}: payoutId=${payoutId} transferId=${transfer.id}`);
+        console.info(`Stripe ${event.type}: payoutId=${payoutId} transferId=${transfer.id}`);
         break;
       }
 
@@ -308,7 +308,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           `);
           if (recovered.rows.length > 0) {
             const ids = (recovered.rows as any[]).map((r: any) => r.id).join(', ');
-            console.log(`[RECOVERY] payment_intent.succeeded: confirmed ${recovered.rows.length} payment_pending service_booking(s) [${ids}] via webhook for PI ${paymentIntent.id}`);
+            console.info(`[RECOVERY] payment_intent.succeeded: confirmed ${recovered.rows.length} payment_pending service_booking(s) [${ids}] via webhook for PI ${paymentIntent.id}`);
           }
         } catch (recoveryErr: any) {
           console.error("payment_intent.succeeded: service_booking crash-recovery error:", recoveryErr.message);
@@ -323,7 +323,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         if (sourceId && sourceType) {
           const alreadyRecorded = await storage.hasPaymentIntentRevenue(paymentIntent.id);
           if (alreadyRecorded) {
-            console.log(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
+            console.info(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
             break;
           }
 
@@ -347,7 +347,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
               description: `Payment intent ${paymentIntent.id}`,
               metadata: { paymentIntentId: paymentIntent.id },
             });
-            console.log(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId} paymentIntentId=${paymentIntent.id}`);
+            console.info(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId} paymentIntentId=${paymentIntent.id}`);
           } catch (err: any) {
             console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
           }
@@ -372,7 +372,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           `);
           if (failed.rows.length > 0) {
             const ids = (failed.rows as any[]).map((r: any) => r.id).join(', ');
-            console.log(`[payment_intent.payment_failed] Marked ${failed.rows.length} service_booking(s) as failed [${ids}] for PI ${paymentIntent.id}`);
+            console.info(`[payment_intent.payment_failed] Marked ${failed.rows.length} service_booking(s) as failed [${ids}] for PI ${paymentIntent.id}`);
           }
         } catch (failErr: any) {
           console.error("payment_intent.payment_failed: service_booking update error:", failErr.message);
@@ -389,7 +389,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           // payment_intents row may not exist for all PI flows — non-fatal
         }
 
-        console.log(`Stripe payment_intent.payment_failed: pi=${paymentIntent.id} last_error=${(paymentIntent as any).last_payment_error?.message ?? 'unknown'}`);
+        console.info(`Stripe payment_intent.payment_failed: pi=${paymentIntent.id} last_error=${(paymentIntent as any).last_payment_error?.message ?? 'unknown'}`);
         break;
       }
 
@@ -471,7 +471,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
             reason: dispute.status,
           } as any);
 
-          console.log(`[DISPUTE] Dispute ${dispute.id} closed (${dispute.status}). Booking ${bookingId} → ${newStatus}.`);
+          console.info(`[DISPUTE] Dispute ${dispute.id} closed (${dispute.status}). Booking ${bookingId} → ${newStatus}.`);
         }
         break;
       }
