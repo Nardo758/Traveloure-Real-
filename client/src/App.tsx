@@ -123,6 +123,7 @@ import AdminEventPackages from "@/pages/admin/event-packages";
 import AdminPlatformProviders from "@/pages/admin/platform-providers";
 import AdminRoutingQueue from "@/pages/admin/routing-queue";
 import AdminCrossSellAnalytics from "@/pages/admin/cross-sell-analytics";
+import AdminQAChecklist from "@/pages/admin/qa-checklist";
 import ExpertAnalytics from "@/pages/expert/analytics";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
@@ -727,6 +728,9 @@ function Router() {
       </Route>
       <Route path="/admin/analytics/cross-sell">
         {() => <ProtectedRoute component={AdminCrossSellAnalytics} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/qa-checklist">
+        {() => <ProtectedRoute component={AdminQAChecklist} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
