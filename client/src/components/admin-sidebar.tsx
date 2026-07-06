@@ -95,6 +95,7 @@ const menuGroups = [
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
       { title: "Neighborhoods", href: "/admin/neighborhood-backfill", icon: MapPin },
       { title: "Gem Photos", href: "/admin/gem-photo-backfill", icon: ImageIcon },
+      { title: "QA Checklist", href: "/admin/qa-checklist", icon: ClipboardList },
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
