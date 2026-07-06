@@ -71,6 +71,12 @@ export const users = pgTable("users", {
   // All login paths check isDeleted and reject with 403. Sessions are destroyed on delete.
   isDeleted: boolean("is_deleted").default(false).notNull(),
   deletedAt: timestamp("deleted_at"),
+  // Suspension: account is temporarily blocked (e.g. abuse, fraud hold, ToS violation).
+  // Distinct from soft-delete — PII and email are NOT anonymized, account is recoverable.
+  // All login paths check isSuspended and reject with 403. Sessions are destroyed on suspend.
+  isSuspended: boolean("is_suspended").default(false).notNull(),
+  suspendedAt: timestamp("suspended_at"),
+  suspensionReason: varchar("suspension_reason", { length: 500 }),
 }, (table) => [
   index("users_role_idx").on(table.role),
 ]);

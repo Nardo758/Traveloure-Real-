@@ -51,14 +51,32 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(claims: any) {
+async function upsertUser(claims: any): Promise<void> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
-  // Check before upsert so we can fire the welcome email only for truly new accounts.
+  // Check whether this Replit sub already has its own account.
   const existing = await authStorage.getUser(userId).catch(() => undefined);
 
-  await authStorage.upsertUser({
+  // Email-merge: if a different account already owns this email (e.g. email/password
+  // or Facebook), attach the Replit profile to that canonical account rather than
+  // creating a second account keyed on the Replit sub.
+  if (!existing && email) {
+    const emailOwner = await authStorage.getUserByEmail(email).catch(() => undefined);
+    if (emailOwner) {
+      const updated = await authStorage.updateUser(emailOwner.id, {
+        profileImageUrl: claims["profile_image_url"] || emailOwner.profileImageUrl || undefined,
+        firstName: emailOwner.firstName || claims["first_name"] || undefined,
+        lastName: emailOwner.lastName || claims["last_name"] || undefined,
+      });
+      const merged = updated ?? emailOwner;
+      console.log(`[auth/replit] Merged Replit OIDC ${userId} → existing account ${emailOwner.id}`);
+      if (merged.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
+      return;
+    }
+  }
+
+  const user = await authStorage.upsertUser({
     id: userId,
     email: email || undefined,
     firstName: claims["first_name"],
@@ -66,6 +84,8 @@ async function upsertUser(claims: any) {
     profileImageUrl: claims["profile_image_url"],
     authProvider: "replit",
   });
+
+  if (user.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
 
   if (!existing && email) {
     sendWelcomeEmail({ toEmail: email, firstName: claims["first_name"] ?? null }).catch(
@@ -93,7 +113,14 @@ export async function setupAuth(app: Express) {
   ) => {
     const user = {};
     updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
+    try {
+      await upsertUser(tokens.claims());
+    } catch (err: any) {
+      if (err?.message === "ACCOUNT_SUSPENDED") {
+        return verified(null, false, { message: "Your account has been suspended. Please contact support." } as any);
+      }
+      return verified(err as Error);
+    }
     verified(null, user);
   };
 
@@ -166,8 +193,15 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         req.logout(() => {});
         return res.status(403).json({ message: "This account has been deleted" });
       }
+      if (dbUser?.isSuspended) {
+        req.logout(() => {});
+        return res.status(403).json({
+          message: "Your account has been suspended. Please contact support.",
+          reason: dbUser.suspensionReason ?? undefined,
+        });
+      }
     } catch (err) {
-      console.warn("[isAuthenticated] soft-delete DB check failed (fail-open):", (err as any)?.message);
+      console.warn("[isAuthenticated] account-status DB check failed (fail-open):", (err as any)?.message);
     }
   }
 

@@ -294,4 +294,10 @@ export const MIGRATION_FILES = [
   // Partnerize campaign so the client can surface the "book with an expert"
   // CTA alongside the direct affiliate link for those offers.
   "104_transport_booking_partnerize_columns.sql",
+  // 105: Suspension columns on users table (is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+  // suspended_at TIMESTAMP nullable, suspension_reason VARCHAR(500) nullable).
+  // Suspension is a temporary, recoverable block distinct from soft-delete — PII is NOT
+  // anonymized. All login paths and isAuthenticated check isSuspended and return HTTP 403.
+  // Admin actions: PATCH /api/admin/users/:id/suspend and /unsuspend.
+  "105_user_suspended_flag.sql",
 ] as const;
