@@ -1,0 +1,532 @@
+You are the final quality gate before this 
+platform goes to production testing.
+
+Your job is simple but critical:
+Verify every architectural decision that has 
+been made on Traveloure is correctly implemented,
+working, and confirmed in the live codebase.
+
+Do not assume anything is done.
+Do not skip any check.
+Do not move forward until every item is verified.
+
+This is the ARCHITECT SIGN-OFF AUDIT.
+After this, the platform moves to testing phase.
+
+================================================================
+IDENTITY: WHO YOU ARE RIGHT NOW
+================================================================
+
+You are acting as the lead architect who has 
+spent the last 4 weeks building this platform.
+You know every file, every endpoint, every table.
+You are now doing your final walkthrough before 
+handing off to the QA team.
+
+Your standard: Netflix production readiness.
+Your question for every item: 
+"Would I be comfortable if 10,000 real users 
+hit this tomorrow?"
+
+================================================================
+FINAL VERIFICATION CHECKLIST
+================================================================
+
+Run every check below. For each one:
+- Actually check the code/DB — do not guess
+- Report: ✅ CONFIRMED or ❌ BROKEN or 
+  ⚠️ PARTIAL or 🔴 NOT FOUND
+- Fix anything that is ❌ or 🔴 immediately
+- Show the fix if you make one
+
+================================================================
+BLOCK 1 — SECURITY (must be 100% before anything)
+================================================================
+
+S1: Role security at registration
+Check server/routes/auth.ts or emailAuth.ts
+Confirm: role is NEVER taken from req.body
+Confirm: role always defaults to "user"
+Show me the exact line that sets the role.
+
+S2: Three-gate ProtectedRoute
+Check client/src/App.tsx around line 150
+Confirm gates exist in this order:
+Gate 1: authenticated?
+Gate 2: terms + privacy accepted?
+Gate 3: role sufficient?
+Show me the gate code.
+
+S3: Ownership guard on private resources
+Check server/middleware/ownershipGuard.ts exists
+Confirm it is applied to:
+GET /api/trips/:id
+GET /api/bookings/:id
+Confirm [IDOR ATTEMPT] is logged on block.
+
+S4: No secrets in client-side code
+Run this search RIGHT NOW:
+grep -r "process.env" ./client --include="*.ts" \
+--include="*.tsx" -l
+Expected result: zero files found
+If ANY files found: this is CRITICAL — 
+show me and fix immediately.
+
+S5: Stripe webhook signature verification
+Find the webhook endpoint.
+Confirm stripe.webhooks.constructEvent() 
+is called with raw body + signature.
+Show me the verification code.
+
+S6: Admin endpoints protected
+Run this check:
+grep -r "requireAdmin" ./server/routes \
+--include="*.ts" -l
+Confirm these files all appear in results:
+admin.ts, payments.ts, leads.ts
+Show me the list.
+
+S7: Password hashing
+Find the registration code.
+Confirm passwords are hashed with bcrypt 
+or equivalent before storing.
+Show me the hash line.
+
+S8: Rate limiting on auth endpoints
+Confirm login and registration routes 
+have rate limiting applied.
+Brute force on login must be prevented.
+Show me the rate limiter applied to 
+the login route.
+
+================================================================
+BLOCK 2 — DATA INTEGRITY
+================================================================
+
+D1: Critical database constraints
+Run this SQL:
+SELECT tc.table_name, tc.constraint_name,
+  tc.constraint_type
+FROM information_schema.table_constraints tc
+WHERE tc.constraint_type IN (
+  'UNIQUE','FOREIGN KEY'
+)
+AND tc.table_schema = 'public'
+ORDER BY tc.table_name, tc.constraint_type;
+
+Confirm these exist:
+- users: UNIQUE on email
+- bookings: UNIQUE on idempotency_key
+- bookings: UNIQUE on 
+  (expert_id, slot_date, slot_time)
+- webhook_events: UNIQUE on stripe_event_id
+- funnel_events: has user_id foreign key
+
+D2: All 6 performance indexes present
+Run:
+SELECT indexname, tablename
+FROM pg_indexes
+WHERE schemaname = 'public'
+AND indexname LIKE '%idx%'
+ORDER BY tablename;
+Confirm 6 custom indexes returned.
+
+D3: No orphaned data
+Run these four queries:
+
+Query A — trips with no owner:
+SELECT COUNT(*) as orphaned_trips
+FROM trips t
+LEFT JOIN users u ON t.user_id = u.id
+WHERE u.id IS NULL;
+Expected: 0
+
+Query B — bookings with no trip:
+SELECT COUNT(*) as orphaned_bookings
+FROM bookings b
+LEFT JOIN trips t ON b.trip_id = t.id
+WHERE t.id IS NULL;
+Expected: 0
+
+Query C — unprocessed webhooks over 1hr:
+SELECT COUNT(*) as stuck_webhooks
+FROM webhook_events
+WHERE processed = false
+AND created_at < NOW() - INTERVAL '1 hour';
+Expected: 0
+
+Query D — stuck payment_pending bookings:
+SELECT COUNT(*) as stuck_payments
+FROM bookings
+WHERE status = 'payment_pending'
+AND created_at < NOW() - INTERVAL '10 minutes';
+Expected: 0
+
+Report exact count for each.
+Any non-zero count = investigate and explain.
+
+D4: Soft delete is working
+Confirm users table has:
+isDeleted boolean column
+deletedAt timestamp column
+Confirm auth middleware rejects 
+isDeleted=true users.
+
+D5: Legacy table is gone
+Run:
+SELECT table_name
+FROM information_schema.tables
+WHERE table_name = 'expert_city_queues';
+Expected: 0 rows
+(should be renamed to 
+_deprecated_expert_city_queues)
+
+================================================================
+BLOCK 3 — PAYMENT INTEGRITY
+================================================================
+
+P1: Booking created before Stripe charge
+Find the checkout route.
+Confirm this exact order:
+Step 1: INSERT booking (status=payment_pending)
+Step 2: stripe.paymentIntents.create()
+Step 3: UPDATE booking (status=confirmed)
+Show me the order in the code.
+
+P2: Idempotency protection
+Confirm checkout sends idempotencyKey 
+to Stripe paymentIntents.create()
+Confirm DB checks for existing booking 
+with same idempotencyKey before inserting.
+Show me both checks.
+
+P3: Webhook handlers exist for all events
+Confirm these cases exist in webhook handler:
+payment_intent.succeeded → confirm booking
+payment_intent.payment_failed → fail booking
+charge.dispute.created → dispute booking
+account.updated → detect restriction
+Show me the case list in the switch statement.
+
+P4: Commission calculator is correct
+Call GET /api/admin/commission-test
+Confirm these exact results on $100:
+expertNew: platform=15, expert=85
+expertEstablished: platform=25, expert=75
+providerTier1: platform=12, provider=88
+providerTier4: platform=4, provider=96
+experienceCart: platform=30
+creditPurchase: platform=100
+
+P5: Reconciliation job is scheduled
+Confirm runStripeReconciliation() is called
+in server/index.ts with 24hr interval.
+Confirm GET /api/admin/reconciliation/run-now
+endpoint exists.
+
+P6: Dispute handling
+Confirm bookings table has:
+dispute_id column
+dispute_reason column
+Confirm GET /api/admin/disputes exists.
+
+================================================================
+BLOCK 4 — LEAD FLOW INTEGRITY
+================================================================
+
+L1: Routing engine only scores approved experts
+Find scoreExperts() in 
+lead-routing.service.ts
+Confirm the WHERE clause includes:
+status = 'approved'
+AND stripeConnectStatus != 'restricted'
+Show me the filter.
+
+L2: Null-assign fallback is complete
+Confirm when no expert is found:
+expert_requests.status → 'unassigned'
+admin_notifications row inserted
+traveler-facing fallback message exists
+Console logs [LEAD UNASSIGNED]
+
+L3: Dual flag system working
+Confirm local_expert_forms has:
+status column (approval)
+stripeConnectStatus column (payable)
+Confirm GET /api/expert/dashboard returns:
+isRoutingEligible (from status)
+isPayable (from stripeConnectStatus)
+
+L4: Lead routing audit log
+Confirm lead_routing_logs table exists
+Confirm GET /api/admin/lead-routing-logs works
+Confirm PATCH override endpoint exists.
+
+L5: Dead-end lead tested on real city
+Confirm this was tested with a REAL city
+(not TestCityXYZ) that has zero experts.
+Which city was used? Report it.
+Did traveler see friendly message? yes/no
+
+================================================================
+BLOCK 5 — ANALYTICS INTEGRITY
+================================================================
+
+A1: All funnel stages fire correctly
+Run:
+SELECT DISTINCT funnel_stage, COUNT(*) 
+FROM funnel_events
+GROUP BY funnel_stage
+ORDER BY funnel_stage;
+Report which stages have events.
+Confirm T1 through T7 all appear
+(may have low counts from test data).
+
+A2: Funnel stats endpoint works
+Call GET /api/admin/funnel-stats
+Confirm it returns:
+{ windowDays: 30, stages: [...] }
+With at least T1 and T2 having counts > 0
+(from test account activity).
+
+A3: Revenue dashboard returns real data
+Call GET /api/admin/revenue or equivalent
+Confirm it returns:
+Real numbers (not all zeros)
+Month-over-month growth percentage
+At least 1 recent transaction
+
+A4: Admin notifications working
+Call GET /api/admin/notifications
+Confirm it returns 200 with JSON array.
+Confirm requireAdmin guard is active.
+
+================================================================
+BLOCK 6 — CODE QUALITY
+================================================================
+
+C1: Routes are properly split
+Run:
+ls server/routes/
+Confirm ALL these files exist:
+auth.ts
+trips.ts
+itinerary.ts
+leads.ts
+bookings.ts
+experts.ts
+providers.ts
+payments.ts
+admin.ts
+ea.ts
+social.ts
+
+C2: All utility files exist
+Run:
+ls server/utils/
+Confirm these exist:
+queryTimer.ts
+queryCounter.ts
+commissionCalculator.ts
+requestDeduplication.ts
+
+Run:
+ls server/utils/ server/jobs/
+Confirm these exist:
+funnelTracker.ts (or in utils/)
+dailyAdminDigest.ts (in jobs/)
+stripeReconciliation.ts (in jobs/)
+
+C3: Migration files exist
+ls server/migrations/
+Confirm:
+scheduled_drop_deprecated_city_queues.sql
+validate_before_drop_city_queues.ts
+
+C4: Signup page exists
+Confirm client/src/pages/Signup.tsx exists
+Confirm /signup route in App.tsx
+Confirm /signup?ref=TEST loads correctly.
+
+C5: Frontend components exist
+ls client/src/components/admin/
+Confirm: FunnelChart.tsx, SlowQueryWidget.tsx,
+NotificationsPanel.tsx
+
+ls client/src/components/expert/
+Confirm: PayoutBanner.tsx
+
+================================================================
+BLOCK 7 — TEST ACCOUNTS READY
+================================================================
+
+T1: All 5 test accounts exist and work
+Run:
+SELECT email, role, is_deleted
+FROM users
+WHERE email LIKE '%traveloure-test.com%';
+
+Confirm these 5 exist and is_deleted=false:
+traveler@traveloure-test.com (role: user)
+expert@traveloure-test.com (role: local_expert)
+provider@traveloure-test.com 
+  (role: service_provider)
+admin@traveloure-test.com (role: admin)
+ea@traveloure-test.com 
+  (role: executive_assistant)
+
+T2: Expert test account is fully verified
+Run:
+SELECT status, stripe_connect_status,
+  identity_verification_status
+FROM local_expert_forms lef
+JOIN users u ON lef.user_id = u.id
+WHERE u.email = 'expert@traveloure-test.com';
+
+Confirm:
+status = 'approved'
+stripe_connect_status = 'complete'
+identity_verification_status = 'verified'
+
+T3: Provider test account is fully verified
+Run:
+SELECT status, stripe_connect_status,
+  business_verification_status
+FROM service_provider_forms spf
+JOIN users u ON spf.user_id = u.id
+WHERE u.email = 'provider@traveloure-test.com';
+
+Confirm:
+status = 'approved'
+stripe_connect_status = 'complete'
+business_verification_status = 'verified'
+
+T4: Test data seeded correctly
+Confirm test expert has 2 active services:
+Tokyo Guide and Paris Insider
+Confirm test provider has 2 active services:
+Photography and Airport Transfer
+Confirm test traveler has 1 sample trip:
+Tokyo Adventure (Sep 1-10 2026)
+
+================================================================
+BLOCK 8 — PRODUCTION READINESS
+================================================================
+
+R1: Health check endpoint exists
+Confirm GET /health or /api/health exists
+Confirm it checks DB connectivity
+Confirm it returns 200 when healthy.
+
+R2: Global error handler exists
+Find the Express error handler 
+(4-argument middleware: err, req, res, next)
+Confirm it exists at the bottom of the 
+server setup.
+Show me the handler.
+
+R3: SEO meta tags on index.html
+Check client/index.html
+Confirm:
+<title> is not just "Traveloure"
+<meta name="description"> exists
+<meta property="og:title"> exists
+<link rel="canonical"> points to 
+https://traveloure.com
+
+R4: No console.log left in payment code
+Run:
+grep -r "console.log" ./server/routes \
+--include="*.ts" | grep -i "payment\|stripe\|charge"
+Replace any debug console.log in payment 
+routes with console.info or remove them.
+Payment code should only have 
+console.error and console.warn.
+
+R5: Environment check on startup
+Confirm server startup logs check for 
+required environment variables and warns 
+if any are missing:
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+RESEND_API_KEY
+DATABASE_URL
+Show me the startup environment check.
+
+R6: Resend email is configured
+Confirm RESEND_API_KEY is set in 
+Replit Secrets (not .env)
+Confirm POST /api/admin/digest/send-now 
+works and delivers email.
+Trigger it now and confirm delivery.
+
+================================================================
+FINAL SIGN-OFF
+================================================================
+
+After completing ALL blocks above,
+produce this exact report:
+
+╔══════════════════════════════════════════╗
+║   TRAVELOURE ARCHITECT SIGN-OFF REPORT   ║
+║   Date: [today's date]                   ║
+║   Audited by: Replit AI (Senior Arch)    ║
+╠══════════════════════════════════════════╣
+║                                          ║
+║  BLOCK 1: Security          X/8  checks  ║
+║  BLOCK 2: Data integrity    X/5  checks  ║
+║  BLOCK 3: Payment integrity X/6  checks  ║
+║  BLOCK 4: Lead flow         X/5  checks  ║
+║  BLOCK 5: Analytics         X/4  checks  ║
+║  BLOCK 6: Code quality      X/5  checks  ║
+║  BLOCK 7: Test accounts     X/4  checks  ║
+║  BLOCK 8: Production ready  X/6  checks  ║
+║                                          ║
+║  TOTAL: XX / 43 checks passing           ║
+║                                          ║
+║  CRITICAL FIXES MADE: N                  ║
+║  ITEMS ADDED TO BACKLOG: N               ║
+║  REMAINING RISKS: N                      ║
+║                                          ║
+╠══════════════════════════════════════════╣
+║                                          ║
+║  IF 43/43:                               ║
+║  ✅ ARCHITECTURE COMPLETE                ║
+║  ✅ ALL FLOWS VERIFIED                   ║
+║  ✅ ALL PAYMENTS PROTECTED               ║
+║  ✅ ALL LEADS TRACKED                    ║
+║  ✅ ALL SECURITY HARDENED                ║
+║  ✅ READY FOR TESTING PHASE              ║
+║                                          ║
+║  ARCHITECT SIGN-OFF: CONFIRMED ✅        ║
+║  NEXT STAGE: QA TESTING                  ║
+║  TEST CASES: 68 (in tracker)             ║
+║  TEST ACCOUNTS: 5 (all verified)         ║
+║                                          ║
+║  IF < 43/43:                             ║
+║  ❌ NOT READY                            ║
+║  FIX ALL FAILURES BEFORE PROCEEDING      ║
+║                                          ║
+╚══════════════════════════════════════════╝
+
+IMPORTANT FINAL INSTRUCTION TO REPLIT:
+After producing the report above, add this 
+confirmation message:
+
+"I have personally verified every check in 
+this audit against the live codebase. Every 
+flow has been walked. Every path has been 
+tested. Every fix has been confirmed working.
+
+The Traveloure architecture is [COMPLETE / 
+NOT COMPLETE — X items remaining].
+
+[If COMPLETE]:
+This platform is ready to move to the QA 
+testing phase. The 68 test cases in the 
+tracker can now be executed against the 
+live site at traveloure.com with confidence 
+that the underlying architecture will not 
+cause false failures.
+
+Architect sign-off: ✅ CONFIRMED"

@@ -295,7 +295,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           LIMIT 1
         `);
         if (existing.rows.length > 0) {
-          console.log(`[checkout] duplicate request detected, idempotencyKey=${idempotencyKey} — returning early`);
+          console.info(`[checkout] duplicate request detected, idempotencyKey=${idempotencyKey} — returning early`);
           return res.status(200).json({
             success: true,
             duplicate: true,
