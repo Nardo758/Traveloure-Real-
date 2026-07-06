@@ -286,4 +286,18 @@ export const MIGRATION_FILES = [
   // anonymizes PII (email renamed to deleted_{id}@deleted) while keeping all FK refs intact.
   // Partial index on (is_deleted=TRUE) keeps support/recovery lookups fast.
   "102_user_soft_delete.sql",
+  // 103: source, external_campaign_id, last_synced_at columns on affiliate_partners.
+  // Lets synced Partnerize campaigns be distinguished from manual/scraper partners
+  // (source='partnerize') and re-synced idempotently (unique index on external_campaign_id).
+  "103_partnerize_affiliate_source.sql",
+  // Flags AI-populated transport booking options generated from a synced
+  // Partnerize campaign so the client can surface the "book with an expert"
+  // CTA alongside the direct affiliate link for those offers.
+  "104_transport_booking_partnerize_columns.sql",
+  // 105: Suspension columns on users table (is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+  // suspended_at TIMESTAMP nullable, suspension_reason VARCHAR(500) nullable).
+  // Suspension is a temporary, recoverable block distinct from soft-delete — PII is NOT
+  // anonymized. All login paths and isAuthenticated check isSuspended and return HTTP 403.
+  // Admin actions: PATCH /api/admin/users/:id/suspend and /unsuspend.
+  "105_user_suspended_flag.sql",
 ] as const;

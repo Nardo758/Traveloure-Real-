@@ -141,6 +141,10 @@ export function setupFacebookAuth(app: Express) {
                 );
               }
 
+              if (user.isSuspended) {
+                return done(null, false, { message: "Your account has been suspended. Please contact support." } as any);
+              }
+
               const sessionUser = {
                 claims: {
                   sub: user.id,

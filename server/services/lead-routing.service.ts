@@ -36,6 +36,10 @@ export interface LeadContext {
   userId?: string;
   tripId?: string;
   expertRequestId?: string;
+  // When true (e.g. Partnerize-backed "book with an expert" actions), only
+  // route to experts who have opted in to booking affiliate offers on a
+  // traveler's behalf (local_expert_forms.can_book_on_behalf = true).
+  requireCanBookOnBehalf?: boolean;
 }
 
 class LeadRoutingService {
@@ -52,6 +56,8 @@ class LeadRoutingService {
       const dest = ctx.destination?.toLowerCase().trim() || '';
       const topic = ctx.topic?.toLowerCase().trim() || '';
 
+      const requireCanBookOnBehalf = !!ctx.requireCanBookOnBehalf;
+
       const experts = await withQueryTimer(
         "lead-routing-score-experts",
         () => db.execute(sql`
@@ -60,7 +66,7 @@ class LeadRoutingService {
             u.first_name            AS first_name,
             u.last_name             AS last_name,
             lef.specialties         AS specialties,
-            lef.cities_covered      AS cities_covered,
+            lef.destinations        AS cities_covered,
             lef.languages           AS languages,
             lef.status              AS status,
             lef.stripe_connect_status AS stripe_connect_status
@@ -68,6 +74,7 @@ class LeadRoutingService {
           JOIN users u ON u.id = lef.user_id
           WHERE lef.status = 'approved'
             AND (lef.stripe_connect_status IS NULL OR lef.stripe_connect_status != 'restricted')
+            ${requireCanBookOnBehalf ? sql`AND lef.can_book_on_behalf = true` : sql``}
         `)
       );
 
@@ -172,7 +179,9 @@ class LeadRoutingService {
     const scores = await this.scoreExperts(ctx);
 
     if (scores.length === 0) {
-      const reason = 'No approved experts found';
+      const reason = ctx.requireCanBookOnBehalf
+        ? 'No approved experts with booking-on-behalf permission found'
+        : 'No approved experts found';
       void this.logRoutingDecision(ctx, [], null, reason);
       void this.notifyNullAssign(ctx, 'no_approved_experts');
       return { assignedExpertId: null, scores: [], reason };

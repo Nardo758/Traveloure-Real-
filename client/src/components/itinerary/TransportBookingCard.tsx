@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ExternalLink, Star, CheckCircle2, AlertCircle } from "lucide-react";
+import { PartnerizeBookingCTA } from "./PartnerizeBookingCTA";
 
 interface TransportBookingOption {
   id: string;
@@ -34,16 +35,22 @@ interface TransportBookingOption {
   isRecommended?: boolean;
   bookingStatus?: string;
   confirmationRef?: string | null;
+  isPartnerizeSourced?: boolean;
+  partnerizePartnerId?: string;
 }
 
 interface TransportBookingCardProps {
   option: TransportBookingOption;
   readOnly?: boolean;
+  tripId?: string;
+  destination?: string;
 }
 
 export function TransportBookingCard({
   option,
   readOnly = false,
+  tripId,
+  destination,
 }: TransportBookingCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -275,7 +282,20 @@ export function TransportBookingCard({
       </div>
 
       {/* Action row */}
-      {!readOnly && (
+      {!readOnly && option.isPartnerizeSourced && option.bookingType === "affiliate" && !effectivelyBooked && !effectivelyConfirmed && !isCancelled && (
+        <div className="pt-1">
+          <PartnerizeBookingCTA
+            tripId={tripId}
+            destination={destination}
+            partnerName={option.title}
+            partnerId={option.partnerizePartnerId}
+            offerTitle={option.title}
+            directUrl={option.externalUrl || "#"}
+            itemType={option.modeType}
+          />
+        </div>
+      )}
+      {!readOnly && !(option.isPartnerizeSourced && option.bookingType === "affiliate") && (
         <div className="flex items-center gap-2 flex-wrap pt-1">
           {actionButton()}
           {/* "Mark as booked" trigger — shown after clicking affiliate link, before the panel is open */}

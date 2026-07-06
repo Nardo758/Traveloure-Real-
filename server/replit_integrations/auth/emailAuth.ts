@@ -126,7 +126,7 @@ export function setupEmailAuth(app: Express): void {
         (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
       );
 
-      // Log the user in
+      // Log the user in — regenerate the session ID first to prevent fixation.
       const sessionUser = {
         claims: {
           sub: newUser.id,
@@ -138,21 +138,27 @@ export function setupEmailAuth(app: Express): void {
         expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
       };
 
-      (req as any).login(sessionUser, (err: any) => {
-        if (err) {
-          console.error("Login error after registration:", err);
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("Session regeneration error after registration:", regenErr);
           return res.status(500).json({ message: "Failed to create session" });
         }
-        
-        res.status(201).json({
-          message: "Account created successfully",
-          user: {
-            id: newUser.id,
-            email: newUser.email,
-            firstName: newUser.firstName,
-            lastName: newUser.lastName,
-            role: newUser.role,
-          },
+        (req as any).login(sessionUser, (err: any) => {
+          if (err) {
+            console.error("Login error after registration:", err);
+            return res.status(500).json({ message: "Failed to create session" });
+          }
+          
+          res.status(201).json({
+            message: "Account created successfully",
+            user: {
+              id: newUser.id,
+              email: newUser.email,
+              firstName: newUser.firstName,
+              lastName: newUser.lastName,
+              role: newUser.role,
+            },
+          });
         });
       });
     } catch (error) {
@@ -208,12 +214,17 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
-      // Defense-in-depth: also block soft-deleted accounts at the login handler so
-      // no session is ever created for them (isAuthenticated middleware is the
-      // primary gate for already-active sessions).
+      // Defense-in-depth: block soft-deleted and suspended accounts before a session
+      // is ever created (isAuthenticated middleware is the primary gate for active sessions).
       if (user.isDeleted) {
         return res.status(403).json({
           message: "This account has been deleted. Please contact support if you believe this is an error.",
+        });
+      }
+      if (user.isSuspended) {
+        return res.status(403).json({
+          message: "Your account has been suspended. Please contact support.",
+          reason: user.suspensionReason ?? undefined,
         });
       }
 
@@ -229,21 +240,30 @@ export function setupEmailAuth(app: Express): void {
         expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
       };
 
-      (req as any).login(sessionUser, (err: any) => {
-        if (err) {
-          console.error("Login error:", err);
+      // Explicitly regenerate the session ID before binding credentials to it.
+      // This prevents session-fixation: an attacker who planted a known session
+      // cookie before login cannot use that same ID after authentication.
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("Session regeneration error:", regenErr);
           return res.status(500).json({ message: "Failed to create session" });
         }
+        (req as any).login(sessionUser, (err: any) => {
+          if (err) {
+            console.error("Login error:", err);
+            return res.status(500).json({ message: "Failed to create session" });
+          }
 
-        res.json({
-          message: "Logged in successfully",
-          user: {
-            id: user.id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            role: user.role,
-          },
+          res.json({
+            message: "Logged in successfully",
+            user: {
+              id: user.id,
+              email: user.email,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              role: user.role,
+            },
+          });
         });
       });
     } catch (error) {
