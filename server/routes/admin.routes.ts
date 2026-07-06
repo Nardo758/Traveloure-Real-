@@ -5377,4 +5377,83 @@ router.post("/api/admin/digest/send-now", requireAdminLocal, async (_req, res) =
   }
 });
 
+// ─── Account suspension management ──────────────────────────────────────────
+// Suspension is a temporary, recoverable block distinct from soft-delete.
+// PII is NOT anonymized — admins can unsuspend and the user can log back in.
+// Active sessions are terminated immediately: isAuthenticated checks isSuspended
+// on every request, so a currently-logged-in user is kicked out at their next call.
+
+const suspendBodySchema = z.object({
+  reason: z.string().min(1, "Suspension reason is required").max(500),
+});
+
+router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) => {
+  try {
+    const adminUserId = (req.user as any).claims?.sub;
+    const adminUser = await storage.getUser(adminUserId);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const parsed = suspendBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Validation failed", errors: parsed.error.errors });
+    }
+
+    const { id } = req.params;
+    const { reason } = parsed.data;
+
+    const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!target) return res.status(404).json({ message: "User not found" });
+    if (target.isDeleted) return res.status(400).json({ message: "Cannot suspend a deleted account" });
+    if (target.role === "admin") return res.status(400).json({ message: "Cannot suspend another admin account" });
+
+    const [updated] = await db
+      .update(users)
+      .set({ isSuspended: true, suspendedAt: new Date(), suspensionReason: reason, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+
+    // Destroy all active sessions for this user so the suspension takes effect immediately.
+    try {
+      await db.execute(
+        sql`DELETE FROM sessions WHERE sess->'passport'->'user'->'claims'->>'sub' = ${id}`
+      );
+    } catch (sessErr) {
+      console.warn("[admin/suspend] session purge failed (non-fatal):", (sessErr as any)?.message);
+    }
+
+    res.json({ message: "Account suspended", user: { id: updated.id, isSuspended: updated.isSuspended, suspendedAt: updated.suspendedAt, suspensionReason: updated.suspensionReason } });
+  } catch (error: any) {
+    console.error("Error suspending user:", error);
+    res.status(500).json({ message: "Failed to suspend account", error: error.message });
+  }
+});
+
+router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res) => {
+  try {
+    const adminUserId = (req.user as any).claims?.sub;
+    const adminUser = await storage.getUser(adminUserId);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const { id } = req.params;
+    const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!target) return res.status(404).json({ message: "User not found" });
+    if (!target.isSuspended) return res.status(400).json({ message: "Account is not suspended" });
+
+    const [updated] = await db
+      .update(users)
+      .set({ isSuspended: false, suspendedAt: null, suspensionReason: null, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+
+    res.json({ message: "Account reinstated", user: { id: updated.id, isSuspended: updated.isSuspended } });
+  } catch (error: any) {
+    console.error("Error unsuspending user:", error);
+    res.status(500).json({ message: "Failed to reinstate account", error: error.message });
+  }
+});
+
 export default router;
