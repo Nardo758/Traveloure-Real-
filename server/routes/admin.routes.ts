@@ -5431,6 +5431,54 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
 });
 
 // ─── QA Live Verify endpoint ─────────────────────────────────────────────────
+// GET /api/admin/qa/last-run
+// Returns the most recent QA run snapshot so the checklist page can show a badge.
+router.get("/api/admin/qa/last-run", isAuthenticated, async (req, res) => {
+  try {
+    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUser = await storage.getUser(adminUserId);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { qaRunSnapshots } = await import("@shared/schema");
+    const { desc: descOrd } = await import("drizzle-orm");
+    const rows = await db.select().from(qaRunSnapshots).orderBy(descOrd(qaRunSnapshots.ranAt)).limit(1);
+    if (rows.length === 0) return res.json({ lastRun: null });
+    const r = rows[0];
+    res.json({
+      lastRun: {
+        id: r.id,
+        ranAt: r.ranAt,
+        triggeredBy: r.triggeredBy,
+        passCount: r.passCount,
+        failCount: r.failCount,
+        totalCount: r.totalCount,
+      },
+    });
+  } catch (err: any) {
+    console.error("QA last-run error:", err);
+    res.status(500).json({ message: "Failed to fetch last run" });
+  }
+});
+
+// POST /api/admin/qa/run-nightly
+// Triggers the nightly QA job on-demand (same as the scheduled 02:00 UTC run).
+router.post("/api/admin/qa/run-nightly", isAuthenticated, async (req, res) => {
+  try {
+    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUser = await storage.getUser(adminUserId);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { runNightlyQA } = await import("../jobs/nightlyQA");
+    const result = await runNightlyQA("manual");
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    console.error("QA run-nightly error:", err);
+    res.status(500).json({ message: "Failed to run nightly QA", error: err.message });
+  }
+});
+
 // GET /api/admin/qa/verify
 // Runs all DB / filesystem checks for the Architect Sign-Off Audit and
 // returns a flat map of checkId → { pass, detail }.

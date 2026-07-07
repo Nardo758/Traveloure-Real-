@@ -6602,3 +6602,20 @@ export const webhookEvents = pgTable("webhook_events", {
 export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({ id: true, createdAt: true });
 export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
+
+// === QA Run Snapshots ===
+// Stores each nightly (or manual) QA run for diff reporting and dashboard badge.
+export const qaRunSnapshots = pgTable("qa_run_snapshots", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  ranAt:        timestamp("ran_at").notNull().defaultNow(),
+  triggeredBy:  text("triggered_by").notNull().default("scheduled"),
+  results:      jsonb("results").$type<Record<string, { pass: boolean; detail: string }>>().notNull().default({}),
+  passCount:    integer("pass_count").notNull().default(0),
+  failCount:    integer("fail_count").notNull().default(0),
+  partialCount: integer("partial_count").notNull().default(0),
+  totalCount:   integer("total_count").notNull().default(0),
+});
+
+export const insertQaRunSnapshotSchema = createInsertSchema(qaRunSnapshots).omit({ id: true });
+export type InsertQaRunSnapshot = z.infer<typeof insertQaRunSnapshotSchema>;
+export type QaRunSnapshot = typeof qaRunSnapshots.$inferSelect;
