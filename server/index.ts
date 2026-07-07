@@ -23,6 +23,7 @@ import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
+import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import {
   logger,
@@ -419,6 +420,22 @@ async function runDatabaseSeeding() {
         runStripeReconciliation();
         setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
       }, 60 * 60 * 1000);
+
+      // Schedule nightly QA at ~02:00 UTC each night.
+      // First run is delayed until the next 02:00 UTC; subsequent runs every 24 h.
+      (() => {
+        const now = new Date();
+        const next2amUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
+        if (next2amUtc <= now) next2amUtc.setUTCDate(next2amUtc.getUTCDate() + 1);
+        const msUntilFirst = next2amUtc.getTime() - now.getTime();
+        logger.info({ nextRunAt: next2amUtc.toISOString() }, "Nightly QA scheduled");
+        setTimeout(() => {
+          runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+          setInterval(() => {
+            runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+          }, 24 * 60 * 60 * 1000);
+        }, msUntilFirst);
+      })();
       
       // One-time admin promotion
       import("./db").then(({ pool }) => {

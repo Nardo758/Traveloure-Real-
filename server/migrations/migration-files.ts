@@ -300,4 +300,10 @@ export const MIGRATION_FILES = [
   // anonymized. All login paths and isAuthenticated check isSuspended and return HTTP 403.
   // Admin actions: PATCH /api/admin/users/:id/suspend and /unsuspend.
   "105_user_suspended_flag.sql",
+  // 106: qa_run_snapshots table — stores each nightly (or manual) QA run.
+  // Enables diff reporting (new failures / newly passing) and the dashboard badge
+  // showing last run timestamp and pass/fail counts on the QA Checklist page.
+  // Triggered nightly at ~02:00 UTC via the NightlyQA scheduler, or on-demand
+  // via POST /api/admin/qa/run-nightly.
+  "106_qa_run_snapshots.sql",
 ] as const;
