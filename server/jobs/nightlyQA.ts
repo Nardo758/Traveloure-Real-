@@ -214,11 +214,23 @@ export async function runNightlyQA(triggeredBy: "scheduled" | "manual" = "schedu
       `[NightlyQA] Snapshot saved — id=${inserted.id} pass=${summary.passCount} fail=${summary.failCount} newFail=${newFailures.length} newPass=${newPasses.length}`
     );
 
-    // ── 4. Send email to all admin users ─────────────────────────────────────
-    const adminEmail = process.env.ADMIN_EMAIL;
-    if (!adminEmail) {
-      console.warn("[NightlyQA] ADMIN_EMAIL not set — skipping email");
+    // ── 4. Collect recipient list: all admin users + ADMIN_EMAIL fallback ────
+    const adminRows = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.role, "admin"));
+
+    const recipientSet = new Set<string>(
+      adminRows.map(r => r.email).filter(Boolean) as string[]
+    );
+
+    const envEmail = process.env.ADMIN_EMAIL;
+    if (envEmail) recipientSet.add(envEmail);
+
+    if (recipientSet.size === 0) {
+      console.warn("[NightlyQA] No admin recipients found (no admin users in DB and ADMIN_EMAIL not set) — skipping email");
     } else {
+      const recipients = Array.from(recipientSet);
       const baseUrl =
         process.env.REPLIT_DOMAINS
           ? `https://${process.env.REPLIT_DOMAINS.split(",")[0].trim()}`
@@ -238,19 +250,20 @@ export async function runNightlyQA(triggeredBy: "scheduled" | "manual" = "schedu
 
       const statusLabel = summary.failCount === 0 ? "✅ ALL PASSING" : `❌ ${summary.failCount} FAILING`;
       const diffLabel = newFailures.length > 0 ? `, ${newFailures.length} new failure(s)` : newPasses.length > 0 ? `, ${newPasses.length} newly fixed` : "";
+      const subject = `Traveloure QA — ${statusLabel} (${summary.passCount}/${summary.totalCount})${diffLabel}`;
 
-      const result = await sendEmail({
-        to: adminEmail,
-        subject: `Traveloure QA — ${statusLabel} (${summary.passCount}/${summary.totalCount})${diffLabel}`,
-        html,
-        text,
+      // Send to each recipient (Resend supports array but keep per-recipient for audit clarity)
+      const sendResults = await Promise.allSettled(
+        recipients.map(to => sendEmail({ to, subject, html, text }))
+      );
+
+      const sent = sendResults.filter(r => r.status === "fulfilled" && (r as any).value?.ok).length;
+      const failed = sendResults.length - sent;
+      console.log(`[NightlyQA] Email sent to ${sent}/${recipients.length} admin(s)${failed > 0 ? ` (${failed} failed)` : ""}`);
+      sendResults.forEach((r, i) => {
+        if (r.status === "rejected") console.error(`[NightlyQA] Email to ${recipients[i]} rejected:`, r.reason);
+        else if (!(r as any).value?.ok) console.error(`[NightlyQA] Email to ${recipients[i]} failed:`, (r as any).value?.error);
       });
-
-      if (result.ok) {
-        console.log(`[NightlyQA] Email sent to ${adminEmail} — id=${result.id}`);
-      } else {
-        console.error("[NightlyQA] Email failed:", result.error);
-      }
     }
 
     return {
