@@ -24,8 +24,12 @@ import {
   Zap,
   Loader2,
   PlayCircle,
+  Moon,
+  RefreshCw,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 type ItemStatus = "pass" | "fail" | "partial" | "pending";
 
@@ -305,8 +309,31 @@ export default function AdminQAChecklist() {
   const [verifying, setVerifying] = useState<Record<string, boolean>>({});
   const [verifyingAll, setVerifyingAll] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const { data: lastRunData } = useQuery<{
+    lastRun: {
+      id: string;
+      ranAt: string;
+      triggeredBy: string;
+      passCount: number;
+      failCount: number;
+      totalCount: number;
+    } | null;
+  }>({
+    queryKey: ["/api/admin/qa/last-run"],
+    refetchInterval: 60_000,
+  });
+
+  const runNightlyMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/qa/run-nightly"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/qa/last-run"] });
+    },
+  });
 
   const { statuses, notes, tester } = state;
+  const lastRun = lastRunData?.lastRun ?? null;
 
   useEffect(() => { saveState(state); }, [state]);
 
@@ -532,6 +559,62 @@ export default function AdminQAChecklist() {
             <div className="mt-4 h-1.5 rounded-full bg-[#F3F3EE] overflow-hidden">
               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: progressColor }} />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Nightly Run Card */}
+        <Card style={{ border: "1px solid #E8E8E2" }} data-testid="card-nightly-run">
+          <CardContent className="py-4 px-5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-2.5 flex-1">
+                <Moon className="w-4 h-4 text-[#7A7A72]" />
+                <span className="text-[13px] font-semibold text-[#1A1A18]">Nightly QA Run</span>
+                <span className="text-[11px] text-[#AEAEA6]">runs at 02:00 UTC · results emailed to admin team</span>
+              </div>
+              {lastRun ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                    style={{
+                      background: lastRun.failCount === 0 ? "rgba(22,163,74,0.1)" : "rgba(220,38,38,0.08)",
+                      color: lastRun.failCount === 0 ? "#15803D" : "#DC2626",
+                      border: `1px solid ${lastRun.failCount === 0 ? "rgba(22,163,74,0.2)" : "rgba(220,38,38,0.2)"}`,
+                    }}
+                    data-testid="badge-last-run-status"
+                  >
+                    {lastRun.failCount === 0 ? `✅ ${lastRun.passCount}/${lastRun.totalCount} passing` : `❌ ${lastRun.failCount} failing`}
+                  </span>
+                  <span className="text-[11px] text-[#AEAEA6]" data-testid="text-last-run-time">
+                    last run {new Date(lastRun.ranAt).toLocaleString()} ({lastRun.triggeredBy})
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[11px] text-[#AEAEA6]">No runs yet</span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-[12px] h-8 gap-1.5 border-[#E8E8E2] text-[#7A7A72] hover:text-[#1A1A18] flex-shrink-0"
+                onClick={() => runNightlyMutation.mutate()}
+                disabled={runNightlyMutation.isPending}
+                data-testid="button-run-nightly"
+              >
+                {runNightlyMutation.isPending
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Running…</>
+                  : <><RefreshCw className="w-3.5 h-3.5" /> Run Now</>
+                }
+              </Button>
+            </div>
+            {runNightlyMutation.isSuccess && (
+              <p className="text-[11px] text-green-600 mt-2" data-testid="text-run-success">
+                ✅ Run complete — results saved and email sent
+              </p>
+            )}
+            {runNightlyMutation.isError && (
+              <p className="text-[11px] text-red-600 mt-2" data-testid="text-run-error">
+                ❌ Run failed — check server logs
+              </p>
+            )}
           </CardContent>
         </Card>
 
