@@ -26,7 +26,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    trace: 'on',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
