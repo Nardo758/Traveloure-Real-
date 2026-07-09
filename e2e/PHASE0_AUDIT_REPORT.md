@@ -39,20 +39,18 @@ Auth fixture: `e2e/fixtures/accounts.ts:13–19`
 
 | Item | Value | Status |
 |------|-------|--------|
-| STRIPE_SECRET_KEY prefix | `sk_live_51T8Xrd...` (live secret key) | **FAIL** |
-| Expected prefix | `sk_test_` | — |
-| VITE_STRIPE_PUBLISHABLE_KEY | `pk_live_...` (live publishable key) | **FAIL** |
-| Impact | Payment steps in Journey 1A/1B (spec lines 101–112) hit live Stripe; test card `4242...` will be declined | — |
-| Mitigation in spec | `test.skip()` guard at lines 82–86 / 127–130 prevents payment reach when no service cards found in DB | — |
+| STRIPE_SECRET_KEY at initial audit | `sk_live_...` (live secret key) | **FAIL** (initial state) |
+| STRIPE_SECRET_KEY after user update | `sk_test_...` (test secret key) | **PASS** (resolved before Phase 4) |
+| Impact | Phase 1 gate initially FAIL; resolved before Phase 4 runs began | — |
 
 Citation: `server/services/stripe.service.ts:9` reads `process.env.STRIPE_SECRET_KEY`  
-⚠️ **Follow-up #688**: Switch to `sk_test_` key for dev environment
+Note: follow-up #688 tracks keeping the test key consistently set
 
 ---
 
 ## §0.4 Router Mount Surface
 
-All `import *Routes from` declarations in `server/routes.ts` cross-referenced against all `app.use()` calls.
+All `import *Routes from` declarations in `server/routes.ts` cross-referenced against all `app.use()` calls (grep: `grep -n "app\.use" server/routes.ts`).
 
 | Router file | Import line | Mount line | Status |
 |-------------|-------------|------------|--------|
@@ -77,7 +75,7 @@ All `import *Routes from` declarations in `server/routes.ts` cross-referenced ag
 | **`saved-items.routes.ts`** | :111 | **no `app.use(savedItemsRoutes)` found** | **FAIL** |
 | `messages` router | :55 | `:430 app.use("/api/messages", ...)` | **PASS** |
 
-**4 routers are imported but never mounted**: `trips.routes.ts`, `experts.routes.ts`, `cross-sell.routes.ts`, `saved-items.routes.ts`. Their route handlers are unreachable dead code. Confirmed by API probe: `PATCH /api/trips/:id` with a valid traveler session returns 401 (no route registered), not 403 (ownership denied).
+**4 routers are imported but never mounted**: `trips.routes.ts`, `experts.routes.ts`, `cross-sell.routes.ts`, `saved-items.routes.ts`. Their route handlers are unreachable dead code. Confirmed by API probe: `PATCH /api/trips/:id` with a valid traveler session returns 401 (no route registered), consistent with an unregistered route hitting Express default error handling.
 
 ---
 
@@ -86,11 +84,11 @@ All `import *Routes from` declarations in `server/routes.ts` cross-referenced ag
 | Check | Finding | Status |
 |-------|---------|--------|
 | Unauthenticated `GET /api/conversations` | 401 — auth guard active | **PASS** |
-| Unauthenticated `GET /api/my-trips` | 200 HTML (Vite SPA catch-all) — not an API auth gap | **PASS** |
-| Authed traveler `GET /api/my-trips` | 200 JSON — trips returned correctly | **PASS** |
-| Traveler `PATCH /api/trips/:id` (cross-user) | 401 — route not registered (trips.routes.ts not mounted) | **FAIL** |
+| Authed traveler `GET /api/my-trips` | 200 JSON — trips returned | **PASS** |
+| Traveler `PATCH /api/trips/:id` (cross-user) | 401 — route not registered (`trips.routes.ts` not mounted) | **FAIL** |
 | Traveler `GET /api/provider/dashboard` | 200 with financial data — IDOR | **FAIL** (doc-only per task) |
 | Traveler `GET /api/admin/revenue` | 403 — role guard active | **PASS** |
+| Provider `GET /api/provider/services` | 200 — correct own-data access | **PASS** |
 
 ⚠️ **Follow-up #689**: Guard `/api/provider/dashboard` behind provider role check
 
@@ -107,7 +105,7 @@ All `import *Routes from` declarations in `server/routes.ts` cross-referenced ag
 | timeout per test | 45 000 ms | **PASS** |
 | retries | 0 (local) / 1 (CI) | **PASS** |
 | workers | 1 | **PASS** |
-| trace | `'on'` (set for Phase 4 verification runs) | **PASS** |
+| trace | `'on'` (changed from `on-first-retry` for verification runs) | **PASS** |
 | webServer block | Absent — app must be pre-started | **PASS** |
 | E2E auth files | `e2e/auth/{admin,ea,expert,provider,traveler}.json` all present | **PASS** |
 
@@ -132,8 +130,8 @@ Citation: `server/migrations/__tests__/chain-integrity.test.ts` — 2/2 tests pa
 |---------|---------|--------|
 | §0.1 | DB target | **PASS** |
 | §0.2 | Self-seed | **PASS** |
-| §0.3 | Stripe mode | **FAIL** (live key; follow-up #688) |
-| §0.4 | Router mounts | **FAIL** (4 routers unmounted; dead code) |
-| §0.5 | Auth surface | **FAIL** (provider IDOR + trips route gap; follow-up #689) |
+| §0.3 | Stripe mode | **PASS** (resolved before Phase 4; was FAIL at initial audit) |
+| §0.4 | Router mounts | **FAIL** (4 routers unmounted — dead code endpoints) |
+| §0.5 | Auth surface | **FAIL** (provider IDOR + unmounted trips route; both doc-only per task) |
 | §0.6 | Playwright config | **PASS** |
 | §0.7 | Migration chain | **PASS** |
