@@ -215,6 +215,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  app.get("/api/__debug_stripe_key", async (_req, res) => {
+    const { _debugKeyPrefix } = await import("./services/stripe.service");
+    res.json({ prefix: _debugKeyPrefix() });
+  });
+
   // Auth setup
   try {
     await setupAuth(app);

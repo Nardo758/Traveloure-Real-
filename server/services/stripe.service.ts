@@ -38,6 +38,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
+export function _debugKeyPrefix(): string {
+  return process.env.STRIPE_SECRET_KEY?.slice(0, 8) || "MISSING";
+}
+
 export function getBaseUrl(): string {
   const replitDomains = process.env.REPLIT_DOMAINS;
   if (replitDomains) {
