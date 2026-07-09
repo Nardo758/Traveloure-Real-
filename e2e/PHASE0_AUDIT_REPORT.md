@@ -31,7 +31,16 @@ Citation: `server/index.ts:318` — `if (process.env.ENVIRONMENT !== "PROD") { a
 | Idempotency | Seed uses `ON CONFLICT DO NOTHING` / `existing.length === 0` guards | **PASS** |
 
 Citation: `server/seeds/e2e-test-accounts.seed.ts:40–89`  
-Auth fixture: `e2e/fixtures/accounts.ts:13–19`
+Auth fixture accounts: `e2e/fixtures/accounts.ts:13–19`
+
+```
+traveler: test-traveler-kyoto@traveloure.test
+expert:   kyoto-food@traveloure.test
+provider: test-provider@traveloure.test (kyoto-photography@traveloure.test)
+ea:       test-ea@traveloure.test
+admin:    test-admin@traveloure.test
+password: TestPass123! (all)
+```
 
 ---
 
@@ -41,19 +50,18 @@ Auth fixture: `e2e/fixtures/accounts.ts:13–19`
 |------|-------|--------|
 | STRIPE_SECRET_KEY at initial audit | `sk_live_...` (live secret key) | **FAIL** (initial state) |
 | STRIPE_SECRET_KEY after user update | `sk_test_...` (test secret key) | **PASS** (resolved before Phase 4) |
-| Impact | Phase 1 gate initially FAIL; resolved before Phase 4 runs began | — |
 
 Citation: `server/services/stripe.service.ts:9` reads `process.env.STRIPE_SECRET_KEY`  
-Note: follow-up #688 tracks keeping the test key consistently set
+Note: follow-up #688 tracks ensuring test key stays set in dev environment
 
 ---
 
 ## §0.4 Router Mount Surface
 
-All `import *Routes from` declarations in `server/routes.ts` cross-referenced against all `app.use()` calls (grep: `grep -n "app\.use" server/routes.ts`).
+All `import *Routes from` in `server/routes.ts` cross-referenced against every `app.use()` call (grep: `grep -n "app\.use" server/routes.ts`).
 
-| Router file | Import line | Mount line | Status |
-|-------------|-------------|------------|--------|
+| Router file | Import line | Mount | Status |
+|-------------|-------------|-------|--------|
 | `instagram.ts` | :90 | `:423 app.use("/api/instagram", ...)` | **PASS** |
 | `identity.routes.ts` | :91 | `:469 app.use("/api/identity", ...)` | **PASS** |
 | `webhooks.routes.ts` | :92 | `:471 app.use("/api/webhooks", ...)` | **PASS** |
@@ -75,7 +83,7 @@ All `import *Routes from` declarations in `server/routes.ts` cross-referenced ag
 | **`saved-items.routes.ts`** | :111 | **no `app.use(savedItemsRoutes)` found** | **FAIL** |
 | `messages` router | :55 | `:430 app.use("/api/messages", ...)` | **PASS** |
 
-**4 routers are imported but never mounted**: `trips.routes.ts`, `experts.routes.ts`, `cross-sell.routes.ts`, `saved-items.routes.ts`. Their route handlers are unreachable dead code. Confirmed by API probe: `PATCH /api/trips/:id` with a valid traveler session returns 401 (no route registered), consistent with an unregistered route hitting Express default error handling.
+**4 routers imported but never mounted**: `trips.routes.ts`, `experts.routes.ts`, `cross-sell.routes.ts`, `saved-items.routes.ts`. All endpoints defined in these files are unreachable dead code.
 
 ---
 
@@ -84,13 +92,15 @@ All `import *Routes from` declarations in `server/routes.ts` cross-referenced ag
 | Check | Finding | Status |
 |-------|---------|--------|
 | Unauthenticated `GET /api/conversations` | 401 — auth guard active | **PASS** |
-| Authed traveler `GET /api/my-trips` | 200 JSON — trips returned | **PASS** |
-| Traveler `PATCH /api/trips/:id` (cross-user) | 401 — route not registered (`trips.routes.ts` not mounted) | **FAIL** |
+| Unauthenticated `PATCH /api/trips/:id` | 200 — **no auth guard on this inline route handler** | **FAIL** |
+| Traveler cross-owner `PATCH /api/provider/services/:id` | 404 `"not owned by you"` — ownership guard active | **PASS** |
 | Traveler `GET /api/provider/dashboard` | 200 with financial data — IDOR | **FAIL** (doc-only per task) |
 | Traveler `GET /api/admin/revenue` | 403 — role guard active | **PASS** |
-| Provider `GET /api/provider/services` | 200 — correct own-data access | **PASS** |
+| Expert `GET /api/expert/assigned-trips` | 200 `[]` — route live, empty result | **PASS** |
+| Admin `GET /api/admin/revenue` | 200 — correct role access | **PASS** |
 
-⚠️ **Follow-up #689**: Guard `/api/provider/dashboard` behind provider role check
+⚠️ **Follow-up #689**: Guard `/api/provider/dashboard` behind provider role check  
+⚠️ **Critical**: `PATCH /api/trips/:id` inline handler in `server/routes.ts` lacks `isAuthenticated` — unauthenticated writes accepted
 
 ---
 
@@ -102,10 +112,11 @@ All `import *Routes from` declarations in `server/routes.ts` cross-referenced ag
 | testDir | `./e2e/specs` | **PASS** |
 | globalSetup | `./e2e/global-setup.ts` | **PASS** |
 | baseURL | `process.env.BASE_URL \|\| 'http://localhost:5000'` | **PASS** |
-| timeout per test | 45 000 ms | **PASS** |
+| timeout | `60_000` ms (raised from 45_000 for Phase 4) | **PASS** |
+| expect.timeout | `30_000` ms (raised from 10_000 for Phase 4) | **PASS** |
 | retries | 0 (local) / 1 (CI) | **PASS** |
 | workers | 1 | **PASS** |
-| trace | `'on'` (changed from `on-first-retry` for verification runs) | **PASS** |
+| trace | `'on'` (changed from `on-first-retry`) | **PASS** |
 | webServer block | Absent — app must be pre-started | **PASS** |
 | E2E auth files | `e2e/auth/{admin,ea,expert,provider,traveler}.json` all present | **PASS** |
 
@@ -130,8 +141,8 @@ Citation: `server/migrations/__tests__/chain-integrity.test.ts` — 2/2 tests pa
 |---------|---------|--------|
 | §0.1 | DB target | **PASS** |
 | §0.2 | Self-seed | **PASS** |
-| §0.3 | Stripe mode | **PASS** (resolved before Phase 4; was FAIL at initial audit) |
+| §0.3 | Stripe mode | **PASS** (resolved; was FAIL at initial audit) |
 | §0.4 | Router mounts | **FAIL** (4 routers unmounted — dead code endpoints) |
-| §0.5 | Auth surface | **FAIL** (provider IDOR + unmounted trips route; both doc-only per task) |
-| §0.6 | Playwright config | **PASS** |
+| §0.5 | Auth surface | **FAIL** (IDOR + unauth PATCH trips gap; doc-only per task) |
+| §0.6 | Playwright config | **PASS** (timeout raised to 60s/30s, trace set to `on`) |
 | §0.7 | Migration chain | **PASS** |
