@@ -24,6 +24,9 @@ async function main() {
   // Trip with managed_by_ea_id NULL and no expert (itn-seed-trip-0000-0001 has share_token, no ea/expert)
   const tripWithShareToken = "itn-seed-trip-0000-0001";
   const shareToken = "itn-smoke-share-tok-0001";
+  const otherTripsToken = "fresh-task34-xyz"; // belongs to a different trip entirely
+  // Trip with BOTH managed_by_ea_id and expert_id NULL, owned by someone other than the expert test account below.
+  const nonOwnedNullTrip = "60cbec64-3796-41d7-98db-9f858c52c064";
 
   // 1. unauth PATCH /api/trips/:id, trip with managedByEaId null -> expect 401
   {
@@ -88,6 +91,51 @@ async function main() {
   {
     const result = await verifyTripOwnership(null as any, null as any);
     check("verifyTripOwnership(null, null) -> false", result === false, `got ${result}`);
+  }
+
+  // 7. wrong-token surface (Phase C): garbage token, empty token, another
+  // trip's valid token used against this trip -> all expect a 4xx rejection.
+  {
+    const garbage = await fetch(`${BASE}/api/trips/${tripWithShareToken}?token=garbage-nonsense-123`);
+    check("GET with garbage token -> 4xx", garbage.status >= 400 && garbage.status < 500, `got ${garbage.status}`);
+
+    const empty = await fetch(`${BASE}/api/trips/${tripWithShareToken}?token=`);
+    check("GET with empty token -> 4xx", empty.status >= 400 && empty.status < 500, `got ${empty.status}`);
+
+    const wrongTrip = await fetch(`${BASE}/api/trips/${tripWithShareToken}?token=${encodeURIComponent(otherTripsToken)}`);
+    check(
+      "GET with another trip's valid shareToken -> 4xx",
+      wrongTrip.status >= 400 && wrongTrip.status < 500,
+      `got ${wrongTrip.status}`
+    );
+  }
+
+  // 8. authed non-owner PATCH on a trip with BOTH managedByEaId and expertId
+  // null. Logs in as a real E2E expert test account, attempts a write against
+  // a trip it does not own. Must reject with SOME 4xx (handler has no 403
+  // branch — asserting "rejected", not a specific code, per the standing
+  // prohibition on asserting a status the handler cannot produce).
+  {
+    const loginRes = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "kyoto-food@traveloure.test", password: process.env.E2E_TEST_PASSWORD || "TestPass123!" }),
+    });
+    const setCookie = loginRes.headers.get("set-cookie") ?? "";
+    if (loginRes.status !== 200 || !setCookie) {
+      check("authed non-owner PATCH -> rejected (login precondition)", false, `login failed: ${loginRes.status}`);
+    } else {
+      const patchRes = await fetch(`${BASE}/api/trips/${nonOwnedNullTrip}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Cookie: setCookie },
+        body: JSON.stringify({ title: "HIJACKED-BY-REGRESSION-TEST" }),
+      });
+      check(
+        "authed non-owner PATCH (managedByEaId+expertId null) -> rejected (4xx)",
+        patchRes.status >= 400 && patchRes.status < 500,
+        `got ${patchRes.status}`
+      );
+    }
   }
 
   console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);
