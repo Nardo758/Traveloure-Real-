@@ -149,8 +149,24 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 // Helper function to verify trip ownership
 async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
+  if (userId == null) return false;
   const trip = await storage.getTrip(tripId);
-  return trip?.userId === userId;
+  return trip?.userId != null && trip.userId === userId;
+}
+
+// Guards /api/trips/:id GET and PATCH: requires either an authenticated session
+// OR a shareToken query param (guest link access). Does NOT validate the token
+// against the trip here — that per-trip check still happens in the handler
+// (isGuestWithToken). This only blocks fully-anonymous requests with neither
+// a session nor a token, closing the null===null bypass at the middleware layer
+// as a defense-in-depth backstop to the handler-level null-guards.
+function requireAuthOrShareToken(req: any, res: any, next: any) {
+  const hasSession = typeof req.isAuthenticated === "function" && req.isAuthenticated();
+  const hasToken = typeof req.query?.token === "string" && req.query.token.length > 0;
+  if (!hasSession && !hasToken) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
 }
 
 function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
@@ -482,7 +498,7 @@ export async function registerRoutes(
   });
 
   // GET /api/trips/:id — get trip (auth: owner/expert/EA, or guest via shareToken)
-  app.get(api.trips.get.path, async (req, res) => {
+  app.get(api.trips.get.path, requireAuthOrShareToken, async (req, res) => {
     const trip = await storage.getTrip(req.params.id);
     if (!trip) {
       return res.status(404).json({ message: "Trip not found" });
@@ -492,8 +508,8 @@ export async function registerRoutes(
     const userId = (req.user as any)?.claims?.sub ?? null;
     const shareToken = req.query.token as string | undefined;
     const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = (trip as any).expertId === userId;
-    const isManagingEa = (trip as any).managedByEaId === userId;
+    const isExpert = userId != null && (trip as any).expertId === userId;
+    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
 
     if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
@@ -552,7 +568,7 @@ export async function registerRoutes(
   });
 
   // PATCH /api/trips/:id — update trip (auth: owner/EA, or guest via shareToken)
-  app.patch(api.trips.update.path, async (req, res) => {
+  app.patch(api.trips.update.path, requireAuthOrShareToken, async (req, res) => {
     try {
       const input = api.trips.update.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
@@ -563,7 +579,7 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub ?? null;
       const shareToken = req.query.token as string | undefined;
       const isOwner = trip.userId && trip.userId === userId;
-      const isManagingEa = (trip as any).managedByEaId === userId;
+      const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
       const isGuestWithToken = shareToken && trip.shareToken === shareToken;
 
       if (!isOwner && !isManagingEa && !isGuestWithToken) {

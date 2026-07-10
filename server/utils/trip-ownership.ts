@@ -10,10 +10,11 @@ import { storage } from '../storage';
  */
 export async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
   try {
+    if (userId == null) return false;
     const trip = await storage.getTrip(tripId);
     if (!trip) return false;
     const owner = (trip as any).userId ?? (trip as any).user_id;
-    return owner === userId;
+    return owner != null && owner === userId;
   } catch {
     return false;
   }
