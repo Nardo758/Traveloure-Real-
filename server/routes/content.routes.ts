@@ -2,6 +2,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { Router } from "express";
+import { db } from "../db";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
