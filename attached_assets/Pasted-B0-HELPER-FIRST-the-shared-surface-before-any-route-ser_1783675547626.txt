@@ -1,0 +1,43 @@
+B0. HELPER FIRST — the shared surface, before any route.
+    server/utils/trip-ownership.ts:16
+    server/routes.ts:153        (file-scoped duplicate)
+    server/guest-invites.ts:56  (verifyExperienceOwnership)
+
+    Guard so absence never matches absence:
+      if (userId == null) return false;
+      return owner != null && owner === userId;
+
+    Return false, do not throw — callers expect a boolean.
+    This makes all ~35 call sites safe without touching them.
+    Paste each diff.
+
+B1. ROUTES — both handlers, all three comparisons.
+    routes.ts:495  expertId       → userId != null && trip.expertId === userId
+    routes.ts:496  managedByEaId  → same shape
+    routes.ts:566  managedByEaId  → same shape
+    Do NOT alter :494. It is already correct and is the reference pattern.
+
+B2. AUTH — add isAuthenticated to:
+    GET   /api/trips/:id   (routes.ts:485)
+    PATCH /api/trips/:id   (routes.ts:555)
+    Do NOT add it to POST /api/trips. Guest creation is intentional.
+
+    ⚠ GET /api/trips/:id may currently be the ONLY way a guest reads their
+    own trip via shareToken. Before adding auth, trace: does the guest read
+    path go through this route? If yes, auth must accept a valid shareToken,
+    not just a session. Cite the guest read path with file:line BEFORE
+    changing the middleware. If you cannot find it, stop and report.
+
+B3. REGRESSION TESTS — committed, and each must FAIL against current main.
+    - unauth PATCH /api/trips/:id, trip with managedByEaId null  → 401
+    - unauth GET   /api/trips/:id, trip with expertId null       → 401
+    - unauth GET   /api/trips/:id, trip with managedByEaId null  → 401
+    - authed non-owner PATCH                                     → 403
+    - guest with valid shareToken GET own trip                   → 200
+    - unit: verifyTripOwnership(null, null) → false
+    Run each against origin/main first. Paste the failures. A test that
+    passes pre-fix proves nothing.
+
+B4. tsc --noEmit clean. Paste every changed line.
+
+B5. DEPLOY. This is live on production. Ship B0–B2 before the census work.
