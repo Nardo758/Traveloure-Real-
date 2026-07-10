@@ -27,6 +27,13 @@ if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not set");
 }
 
+if (!process.env.STRIPE_SECRET_KEY.startsWith("sk_")) {
+  throw new Error(
+    "STRIPE_SECRET_KEY does not look like a Stripe secret key (expected it to start with 'sk_'). " +
+      "It looks like a publishable key (pk_...) may have been set in this slot by mistake."
+  );
+}
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-12-18.acacia" as any,
 });
