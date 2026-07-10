@@ -49,6 +49,13 @@ import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+interface AffiliateProvider {
+  id: string;
+  name: string;
+  isActive: boolean;
+  productCount: number;
+}
+
 interface ContentRegistry {
   id: string;
   trackingNumber: string;
@@ -134,7 +141,7 @@ export default function ContentTracking() {
     queryKey: ["/api/admin/content/summary"],
   });
 
-  const { data: affiliateProviders } = useQuery<string[]>({
+  const { data: affiliateProviders } = useQuery<AffiliateProvider[]>({
     queryKey: ["/api/admin/content/providers"],
   });
 
@@ -306,7 +313,14 @@ export default function ContentTracking() {
                       <SelectContent>
                         <SelectItem value="all">All Providers</SelectItem>
                         {affiliateProviders?.map((p) => (
-                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                          <SelectItem key={p.id} value={p.name}>
+                            <span className={p.isActive ? "" : "opacity-50"}>
+                              {p.name}
+                              {p.productCount > 0 && (
+                                <span className="ml-1 text-xs text-muted-foreground">({p.productCount})</span>
+                              )}
+                            </span>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -514,20 +528,22 @@ export default function ContentTracking() {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <ShoppingBag className="w-4 h-4 text-indigo-500" />
-                      Affiliate Providers in Registry
+                      Affiliate Partners ({affiliateProviders.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
                       {affiliateProviders.map((p) => (
                         <Badge
-                          key={p}
+                          key={p.id}
                           variant="outline"
-                          className="text-indigo-700 border-indigo-300 cursor-pointer"
-                          onClick={() => { setTypeFilter("affiliate_product"); setProviderFilter(p); }}
-                          data-testid={`badge-affiliate-provider-${p.toLowerCase().replace(/\s+/g, "-")}`}
+                          className={`cursor-pointer ${p.isActive ? "text-indigo-700 border-indigo-300 hover:bg-indigo-50" : "text-gray-400 border-gray-300 opacity-60"}`}
+                          onClick={() => { setTypeFilter("affiliate_product"); setProviderFilter(p.name); }}
+                          data-testid={`badge-affiliate-provider-${p.name.toLowerCase().replace(/\s+/g, "-")}`}
+                          title={p.isActive ? `${p.productCount} products` : "Inactive partner"}
                         >
-                          {p}
+                          {p.name}
+                          <span className="ml-1 text-xs opacity-70">({p.productCount})</span>
                         </Badge>
                       ))}
                     </div>
