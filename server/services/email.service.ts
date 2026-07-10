@@ -49,6 +49,31 @@ export function getAppBaseUrl(): string {
   return "http://localhost:5000";
 }
 
+/**
+ * Escape a string for safe interpolation inside an HTML email body.
+ * Converts the five characters that have special meaning in HTML so that
+ * user-controlled values cannot inject markup or attributes.
+ */
+function escHtml(raw: string | null | undefined): string {
+  if (raw == null) return "";
+  return String(raw)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Strip carriage-return and line-feed characters from a value before it is
+ * interpolated into an email `subject` header.  A bare CR or LF in a header
+ * value is the classic "email header injection" vector.
+ */
+function stripCrLf(raw: string | null | undefined): string {
+  if (raw == null) return "";
+  return String(raw).replace(/[\r\n]/g, "");
+}
+
 // ─── Generic sendEmail ──────────────────────────────────────────────────────
 
 export interface SendEmailParams {
@@ -100,7 +125,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       subject: params.subject,
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
-      reply_to: replyTo,
+      replyTo: replyTo,
     });
 
     if (error) {
@@ -141,12 +166,12 @@ export async function sendBookingConfirmationEmail(params: BookingConfirmationPa
     return;
   }
 
-  const greeting = params.userName ? `Hi ${params.userName},` : "Hi,";
+  const greeting = params.userName ? `Hi ${escHtml(params.userName)},` : "Hi,";
   const myBookingsUrl = `${getAppBaseUrl()}/my-bookings`;
   const dateLine = params.bookingDate
     ? `<tr style="background: #F3F4F6;">
          <td style="padding: 12px 16px; color: #6B7280;">Date</td>
-         <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${params.bookingDate}</td>
+         <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${escHtml(params.bookingDate)}</td>
        </tr>`
     : "";
   const datePlain = params.bookingDate ? `Date:              ${params.bookingDate}\n` : "";
@@ -161,12 +186,12 @@ export async function sendBookingConfirmationEmail(params: BookingConfirmationPa
       <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
         <tr>
           <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Booking</td>
-          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${params.bookingTitle}</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${escHtml(params.bookingTitle)}</td>
         </tr>
         ${dateLine}
         <tr>
           <td style="padding: 12px 16px; color: #6B7280;">Confirmation code</td>
-          <td style="padding: 12px 16px; color: #111827; font-weight: 600; font-family: monospace; letter-spacing: 1px;">${params.confirmationCode}</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600; font-family: monospace; letter-spacing: 1px;">${escHtml(params.confirmationCode)}</td>
         </tr>
       </table>
       <a href="${myBookingsUrl}"
@@ -198,7 +223,7 @@ export async function sendBookingConfirmationEmail(params: BookingConfirmationPa
   await client.emails.send({
     from: getFromAddress(),
     to: params.toEmail,
-    subject: `Your booking is confirmed — ${params.bookingTitle}`,
+    subject: `Your booking is confirmed — ${stripCrLf(params.bookingTitle)}`,
     text,
     html,
   });
@@ -232,24 +257,24 @@ export async function sendBookingAlertEmail(params: BookingAlertParams): Promise
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #FF385C; margin-bottom: 8px;">New Booking Request</h2>
-      <p style="color: #374151;">Hi ${params.providerName},</p>
+      <p style="color: #374151;">Hi ${escHtml(params.providerName)},</p>
       <p style="color: #374151;">You have a new booking request on Traveloure.</p>
       <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
         <tr>
           <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Service</td>
-          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${params.serviceName}</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${escHtml(params.serviceName)}</td>
         </tr>
         <tr style="background: #F3F4F6;">
           <td style="padding: 12px 16px; color: #6B7280;">Traveler</td>
-          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${params.travelerName}</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${escHtml(params.travelerName)}</td>
         </tr>
         <tr>
           <td style="padding: 12px 16px; color: #6B7280;">Amount</td>
-          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">$${params.amount}</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">$${escHtml(params.amount)}</td>
         </tr>
         <tr style="background: #F3F4F6;">
           <td style="padding: 12px 16px; color: #6B7280;">Booking ID</td>
-          <td style="padding: 12px 16px; color: #6B7280; font-size: 12px;">${params.bookingId}</td>
+          <td style="padding: 12px 16px; color: #6B7280; font-size: 12px;">${escHtml(params.bookingId)}</td>
         </tr>
       </table>
       <a href="${bookingsUrl}"
@@ -282,7 +307,7 @@ export async function sendBookingAlertEmail(params: BookingAlertParams): Promise
   await client.emails.send({
     from: getFromAddress(),
     to: params.providerEmail,
-    subject: `New booking request: ${params.serviceName}`,
+    subject: `New booking request: ${stripCrLf(params.serviceName)}`,
     text,
     html,
   });
@@ -312,7 +337,7 @@ export async function sendPasswordResetEmail(params: PasswordResetParams): Promi
     return;
   }
 
-  const greeting = params.firstName ? `Hi ${params.firstName},` : "Hi,";
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #FF385C; margin-bottom: 8px;">Reset your Traveloure password</h2>
@@ -376,7 +401,7 @@ export async function sendEmailVerificationEmail(params: EmailVerificationParams
     return;
   }
 
-  const greeting = params.firstName ? `Hi ${params.firstName},` : "Hi,";
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #FF385C; margin-bottom: 8px;">Confirm your email</h2>
@@ -476,8 +501,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
     .map(
       (n) =>
         `<tr style="background:#FFF7F0">
-          <td style="padding:8px 12px;color:#111827;font-size:13px">${n.message}</td>
-          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${n.destination ?? "—"}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(n.message)}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${escHtml(n.destination) || "—"}</td>
         </tr>`
     )
     .join("");
@@ -487,8 +512,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
       (e) => {
         const name = [e.firstName, e.lastName].filter(Boolean).join(" ") || e.email || e.id;
         return `<tr style="background:#FFF5F5">
-          <td style="padding:8px 12px;color:#111827;font-size:13px">${name}</td>
-          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${e.email ?? "—"}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(name)}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${escHtml(e.email) || "—"}</td>
         </tr>`;
       }
     )
@@ -499,9 +524,9 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
       (w) => {
         const ts = new Date(w.stripeCreatedAt * 1000).toISOString();
         return `<tr style="background:#FFF1F2">
-          <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${w.stripeEventId}</td>
-          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${w.eventType}</td>
-          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${ts}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${escHtml(w.stripeEventId)}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${escHtml(w.eventType)}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${escHtml(ts)}</td>
         </tr>`;
       }
     )
@@ -515,8 +540,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
           : "Booking confirmed — no charge";
       const ref =
         m.type === "stripe_charge_no_booking"
-          ? `Charge: ${m.chargeId ?? "—"} · $${m.amount ?? "?"}`
-          : `Booking: ${m.bookingId ?? "—"} · PI: ${m.paymentIntentId ?? "—"}`;
+          ? `Charge: ${escHtml(m.chargeId) || "—"} · $${escHtml(String(m.amount ?? "?"))}`
+          : `Booking: ${escHtml(m.bookingId) || "—"} · PI: ${escHtml(m.paymentIntentId) || "—"}`;
       return `<tr style="background:#FFF7ED">
         <td style="padding:8px 12px;color:#92400E;font-size:13px;font-weight:600">${label}</td>
         <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${ref}</td>
@@ -635,7 +660,7 @@ export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void
   }
 
   const firstName = params.firstName?.trim() || null;
-  const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
+  const greeting = firstName ? `Hi ${escHtml(firstName)},` : "Hi there,";
   const baseUrl = getAppBaseUrl();
   const dashboardUrl = `${baseUrl}/dashboard`;
   const exploreUrl  = `${baseUrl}/explore`;
