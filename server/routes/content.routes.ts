@@ -5056,6 +5056,7 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
         best: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "best" || c.seasonalRating === "excellent"),
         good: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "good"),
         average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average" || !c.seasonalRating),
+        eventsOnly: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "events-only"),
         avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
       };
       
