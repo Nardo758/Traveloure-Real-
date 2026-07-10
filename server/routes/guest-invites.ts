@@ -52,8 +52,9 @@ const travelPlansSchema = z.object({
 
 // Helper to verify experience ownership via storage
 async function verifyExperienceOwnership(experienceId: string, userId: string): Promise<boolean> {
+  if (userId == null) return false;
   const experience = await storage.getUserExperienceById(experienceId);
-  return !!experience && experience.userId === userId;
+  return !!experience && experience.userId != null && experience.userId === userId;
 }
 
 /**
