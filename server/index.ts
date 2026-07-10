@@ -18,6 +18,7 @@ import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
+import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -331,6 +332,15 @@ async function runDatabaseSeeding() {
     } catch (err) {
       logger.error({ err }, "Failed to purge E2E test accounts from prod DB");
     }
+  }
+
+  try {
+    const backfillResult = await storage.backfillAffiliateProviderMetadata();
+    if (backfillResult.updated > 0) {
+      logger.info({ updated: backfillResult.updated }, "Backfilled missing affiliate provider metadata in content_registry");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to backfill affiliate provider metadata");
   }
 
   seedingDurationMs = Date.now() - seedingStartTime;
