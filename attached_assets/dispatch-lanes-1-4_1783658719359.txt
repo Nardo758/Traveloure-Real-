@@ -1,0 +1,164 @@
+DISPATCH — four lanes. Lane 1 is a security lane and runs first, alone.
+Lanes 2–4 do not begin until Lane 1 reports.
+
+═══════════════════════════════════════════════════════════════════
+LANE 1 — auth bypass: null === null      branch: fix/trips-patch-auth
+═══════════════════════════════════════════════════════════════════
+SEVERITY: anonymous write to production data. This is the only open item
+where a third party can act on Leon's database. It has been open for six
+messages. Nothing else runs until Phase A reports.
+
+THE BUG (server/routes.ts):
+  :555  app.patch(api.trips.update.path, async (req, res) => {   // no isAuthenticated
+  :563  const userId = (req.user as any)?.claims?.sub ?? null;   // unauth → null
+  :566  const isManagingEa = (trip as any).managedByEaId === userId;
+  :569  guard passes when isManagingEa is true
+
+Unauthenticated → userId = null. Trip with no EA → managedByEaId = null.
+null === null → true → guard passes. Any anonymous caller can PATCH any
+trip that has no EA assigned. That is most trips.
+
+Adding isAuthenticated does not close the class. The defect is that ABSENCE
+is compared to ABSENCE and treated as a MATCH.
+
+──── PHASE A — READ ONLY. No writes. No probes that succeed. ────
+
+A1. PROD EXPOSURE. Is server/routes.ts:555 the handler serving
+    PATCH /api/trips/:id on the DEPLOYED app? Establish by reading landed
+    code on origin/main and the mount order — NOT by calling the endpoint.
+    Do NOT send a PATCH to production. Do NOT send a PATCH anywhere.
+    If you must confirm reachability, send a request you EXPECT to be
+    rejected (bad body → 400) and report the status.
+
+A2. Count the blast radius, read-only:
+      SELECT count(*) FROM trips WHERE managed_by_ea_id IS NULL;
+      SELECT count(*) FROM trips;
+    Report both.
+
+A3. THE CLASS, not the line. Grep the entire codebase for absence-compared-
+    to-absence. Every site matching the shape:
+      <something> === userId
+      <something> === req.user?.id
+      ownerId === currentUserId
+      *Id === *Id
+    where EITHER side can be null/undefined. Paste every hit with file:line
+    and state, per hit: can both sides be null simultaneously? The EA path
+    found one. There will be siblings. Do not fix them yet — enumerate.
+
+A4. Cite every route in api.trips.* and, for each, whether isAuthenticated
+    (or equivalent) is present. Table: method | path | file:line | auth? 
+
+    🛑 HARD STOP. Report A1–A4. No code. Await approval.
+
+──── PHASE B — only after approval ────
+
+B1. Fix the guard so null NEVER matches null. Pattern:
+      const isManagingEa = userId != null && trip.managedByEaId === userId;
+    Apply the same shape at every A3 site approved for fix.
+B2. Add isAuthenticated to the route.
+B3. REGRESSION TESTS, committed:
+      - unauthenticated PATCH /api/trips/:id  → expect 401
+      - authenticated non-owner PATCH         → expect 403
+      - trip with managedByEaId = null, unauth → expect 401 (this is the bug)
+    A test that would have passed before the fix is not a regression test.
+B4. tsc --noEmit clean. Paste the diff of every changed line.
+
+PROHIBITED: touching mounts. Deleting duplicates. Refactoring routes.ts.
+Any successful write to any trip. Widening to Row H.
+
+
+═══════════════════════════════════════════════════════════════════
+LANE 2 — ?role= silently dropped        branch: audit/experts-role-filter
+═══════════════════════════════════════════════════════════════════
+READ-ONLY. Report only.
+
+experts.routes.ts:588 (DEAD, never mounted) supports ?role=travel_expert|
+local_expert|event_planner. The LIVE inline copy at routes.ts:3892 ignores
+the param entirely — no 400, no error, wrong results silently.
+
+L2.1 Grep the client for every call to /api/experts. Does any pass ?role= —
+     query string, axios params, react-query key, anywhere? Paste each
+     call site with file:line.
+L2.2 If yes: is that code path reachable in the deployed UI today? Which
+     screen, which control? Users are getting unfiltered expert lists.
+L2.3 Diff the two handler bodies in full. Is ?role= the ONLY divergence?
+     The last three spot-checks found divergence in two of three.
+L2.4 State the correct resolution: does the live copy gain the filter, or
+     does experts.routes.ts get mounted and the inline copy deleted?
+     Recommend. Do not execute.
+
+PROHIBITED: mounting experts.routes.ts. Deleting the inline copy. Editing
+either handler. This lane produces a recommendation, not a change.
+
+
+═══════════════════════════════════════════════════════════════════
+LANE 3 — eventsOnly is unreachable      branch: fix/global-calendar-eventsonly
+═══════════════════════════════════════════════════════════════════
+SETTLED BY DATA: destination_seasons.rating is notNull(). Six values, 397
+rows, partitioning cleanly across best/good/average/avoid. Cities without a
+season match die at content.routes.ts:5022 before grouping. The eventsOnly
+bucket has no possible members under the current schema. Both candidate
+semantics were dead.
+
+L3.1 REVERT the content.routes.ts eventsOnly edit. Shipping a permanently
+     empty array is a lie in the API contract. Paste the reverted diff.
+L3.2 Fix the CLIENT. GlobalCalendar.tsx reads grouped.eventsOnly.length
+     unconditionally; the server never had that key. Either:
+       const { eventsOnly = [], ...rest } = data.grouped;
+     or remove the reference if the UI renders nothing for it. State which
+     and why, with file:line.
+L3.3 Grep GlobalCalendar.tsx and siblings for EVERY unguarded sub-key read
+     off an API response. Same crash shape. Paste hits. Do not fix.
+L3.4 Verify: curl the endpoint, paste grouped's keys and each length.
+     Then STATE PLAINLY that you cannot screenshot an authenticated,
+     below-the-fold view and are handing that check to Leon. Do not claim
+     the tab renders.
+
+DEFERRED, product decision, NOT this lane: whether "events-only" should
+exist as a real destination state. That is a schema change + backfill.
+
+PROHIBITED: adding eventsOnly to the server response. Schema changes.
+Touching destination_seasons.
+
+
+═══════════════════════════════════════════════════════════════════
+LANE 4 — prove the E2E password fix      branch: fix/e2e-password-coalesce
+═══════════════════════════════════════════════════════════════════
+The || fix is correct but was never exercised. The seed skips existing
+users, so no fresh hash was ever produced. The 200 proved the OLD account
+still logs in — nothing about the new fallback.
+
+L4.1 Delete the 5 test accounts by pattern (WHERE email LIKE '%@traveloure.test').
+     Confirm the prod-refusal guard is present and ENVIRONMENT != PROD before
+     running. Paste both.
+L4.2 Re-seed from scratch. Paste the log. Confirm rows were CREATED, not skipped.
+L4.3 Log in as test-traveler-kyoto@traveloure.test. Paste status + body.
+L4.4 Now the real test: set E2E_TEST_PASSWORD="" explicitly, re-seed, log in
+     with TestPass123!. It must succeed. That is the fix under the exact
+     condition that broke it. Restore the env var afterward.
+L4.5 LOG (do not fix): server/lib/explain-analyze.ts:26 —
+     SLOW_QUERY_EXPLAIN_THRESHOLD_MS ?? "100" → parseInt("") → NaN →
+     threshold check silently disabled. Same class.
+
+
+═══════════════════════════════════════════════════════════════════
+STANDING PROHIBITIONS — every lane
+═══════════════════════════════════════════════════════════════════
+• DO NOT delete anything in routes.ts. 385 duplicate registrations, direction
+  of shadowing varies by line number, and experts.routes.ts is dead-but-BETTER.
+  Deleting the "dead" copy there destroys the correct implementation.
+• A read-only probe uses GET, or a request you EXPECT to fail. Never confirm a
+  write vulnerability with a successful write.
+• Do not report a mutation you did not make. A prior agent claimed to have
+  PATCHed trip 7f82873e; updated_at === created_at to the microsecond proves
+  no write ever landed. Fabricated successes are as bad as fabricated diagnoses.
+• Do not report curl 200, a compile, or an above-the-fold screenshot as evidence
+  that a page renders.
+• Do not explain an anomaly as "transient", "stale", "warm-up", or "a quirk".
+  Produce a mechanism, or write "cannot explain".
+• Never restart a workflow during a read-only phase.
+• STRIPE_SECRET_KEY must begin sk_test_. If not, stop the lane and report.
+• State your scope limits explicitly. "I did not check X" is a valid and valued
+  deliverable. Claiming coverage you do not have is not.
+• Do not touch: router mounts, migrations, components/plancard/, fee_bands.
+  No fee/commission/margin literals anywhere.
