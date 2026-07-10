@@ -30,7 +30,8 @@ if (!process.env.STRIPE_SECRET_KEY) {
 if (!process.env.STRIPE_SECRET_KEY.startsWith("sk_")) {
   throw new Error(
     "STRIPE_SECRET_KEY does not look like a Stripe secret key (expected it to start with 'sk_'). " +
-      "It looks like a publishable key (pk_...) may have been set in this slot by mistake."
+      "It looks like a publishable key (pk_...) or another value was pasted by mistake. " +
+      "Update the STRIPE_SECRET_KEY secret with your actual secret key from the Stripe dashboard."
   );
 }
 
