@@ -27,21 +27,25 @@ if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not set");
 }
 
-const isProd = process.env.NODE_ENV === "production";
+// Primary enforcement lives in server/validate-env.ts (imported first in
+// server/index.ts, before this or any other Stripe-constructing module).
+// This is a defense-in-depth duplicate using the same canonical variable —
+// ENVIRONMENT === "PROD" — not NODE_ENV, which is unset on this deployment.
+const isProd = process.env.ENVIRONMENT === "PROD";
 const key = process.env.STRIPE_SECRET_KEY;
 
 if (isProd) {
   if (!key.startsWith("sk_live_")) {
     throw new Error(
-      "STRIPE_SECRET_KEY must be a live secret key (sk_live_...) in production. " +
+      "STRIPE_SECRET_KEY must be a live secret key (sk_live_...) when ENVIRONMENT=PROD. " +
         "Found a value that does not match — refusing to start."
     );
   }
 } else {
   if (!key.startsWith("sk_test_")) {
     throw new Error(
-      "STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production (NODE_ENV=" +
-        (process.env.NODE_ENV || "undefined") +
+      "STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production (ENVIRONMENT=" +
+        (process.env.ENVIRONMENT || "undefined") +
         "). A live key (sk_live_...) or publishable key (pk_...) was found instead. " +
         "Live keys are never allowed in dev/E2E — update the STRIPE_SECRET_KEY secret with a sk_test_ key."
     );

@@ -1,0 +1,17 @@
+The guard placement is right — validate-env.ts imported before any of the ~13 Stripe client constructions, failing at boot rather than at checkout. That's the correct shape, and the app being down is the guard doing its job. Good.
+But it gates on NODE_ENV, and this project's canonical env var is ENVIRONMENT.
+Your self-seed fires when ENVIRONMENT !== 'PROD'. Your seed script's prod-refusal guard exits 1 when ENVIRONMENT === 'PROD'. Now Stripe validation reads NODE_ENV. That's two variables deciding the same question, which is the exact two-sources-of-truth pattern we spent this entire conversation running to ground in the sandbox port.
+The failure mode is not hypothetical. If the deployed Replit app doesn't set NODE_ENV=production, this guard will demand sk_test_ in production and the app will refuse to boot on next restart. You'd take a hard outage, triggered by a safety fix.
+Before this goes anywhere near a deploy:
+# On the deployed app, not locally:
+echo "NODE_ENV=$NODE_ENV  ENVIRONMENT=$ENVIRONMENT"
+If NODE_ENV isn't production there, switch the guard to ENVIRONMENT. Either way, pick one variable and make it the only one. I'd use ENVIRONMENT, since two existing guards already depend on it.
+Also: the guard forbids sk_live_ outside production. Good. Does it forbid pk_ in STRIPE_SECRET_KEY in production too? The original bug was a publishable key in the secret slot, and pk_live_ doesn't start with sk_live_, so it should throw — confirm that path, don't assume it.
+Item 4 is genuinely closed. git log -S plus merge-base --is-ancestor against both remotes is the right evidence, and an 8-character prefix is exactly sk_live_ — it revealed nothing beyond the key type. Accepted.
+Items 2 and 3 are still open, and they're the ones that cost money. The agent can't do them and correctly said so. Only you can:
+
+Stripe → Developers → API keys → roll sk_live_. Do it whether or not anything was charged.
+Stripe → Live mode → last 24h → Payments, Payment Intents, Checkout Sessions, Customers. The previous session reported creating a real PaymentIntent and a real Checkout Session with that key. Cancel the intents. Refund anything captured.
+
+Item 1 isn't blocked on propagation, incidentally — it's blocked on you pasting a sk_test_ value. Grab it from Stripe → Developers → API keys with the Test mode toggle on. It'll start sk_test_51....
+One thing still unreconciled. Two sessions ago: key was sk_live_, you replaced it with sk_test_. This session: key was pk_live_, you replaced it with sk_live_. Both can't be true, and now it's sk_live_ again. Nobody has a log showing which key was loaded during which test run — which is the entire reason item 3 has to be answered by looking at Stripe, not by reasoning about the sequence.
