@@ -1,3 +1,4 @@
+import "./validate-env";
 import express, { type Request, Response, NextFunction, RequestHandler } from "express";
 import crypto from "crypto";
 import { createServer, request as httpRequest } from "http";

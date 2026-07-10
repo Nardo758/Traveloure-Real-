@@ -27,12 +27,25 @@ if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not set");
 }
 
-if (!process.env.STRIPE_SECRET_KEY.startsWith("sk_")) {
-  throw new Error(
-    "STRIPE_SECRET_KEY does not look like a Stripe secret key (expected it to start with 'sk_'). " +
-      "It looks like a publishable key (pk_...) or another value was pasted by mistake. " +
-      "Update the STRIPE_SECRET_KEY secret with your actual secret key from the Stripe dashboard."
-  );
+const isProd = process.env.NODE_ENV === "production";
+const key = process.env.STRIPE_SECRET_KEY;
+
+if (isProd) {
+  if (!key.startsWith("sk_live_")) {
+    throw new Error(
+      "STRIPE_SECRET_KEY must be a live secret key (sk_live_...) in production. " +
+        "Found a value that does not match — refusing to start."
+    );
+  }
+} else {
+  if (!key.startsWith("sk_test_")) {
+    throw new Error(
+      "STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production (NODE_ENV=" +
+        (process.env.NODE_ENV || "undefined") +
+        "). A live key (sk_live_...) or publishable key (pk_...) was found instead. " +
+        "Live keys are never allowed in dev/E2E — update the STRIPE_SECRET_KEY secret with a sk_test_ key."
+    );
+  }
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
