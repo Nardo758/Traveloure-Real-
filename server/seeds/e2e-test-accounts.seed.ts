@@ -15,7 +15,7 @@ import { trips } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
-const PASSWORD = process.env.E2E_TEST_PASSWORD ?? "TestPass123!";
+const PASSWORD = process.env.E2E_TEST_PASSWORD || "TestPass123!";
 
 async function hashPassword(password: string): Promise<string> {
   return new Promise((resolve, reject) => {
