@@ -573,7 +573,8 @@ export interface IStorage {
     isActive?: boolean | null;
     partnerName?: string;
   }): Promise<string>;
-  getAffiliateProviders(): Promise<string[]>;
+  getAffiliateProviders(): Promise<{ id: string; name: string; isActive: boolean; productCount: number }[]>;
+  backfillAffiliateProviderMetadata(): Promise<{ updated: number }>;
   getContentRegistry(filters?: {
     status?: string;
     contentType?: string;
@@ -3484,15 +3485,47 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get distinct provider names from affiliate_product registry entries
-  async getAffiliateProviders(): Promise<string[]> {
+  async getAffiliateProviders(): Promise<{ id: string; name: string; isActive: boolean; productCount: number }[]> {
     const rows = await db.execute(sql`
-      SELECT DISTINCT metadata->>'provider' AS provider
-      FROM content_registry
-      WHERE content_type = 'affiliate_product'
-        AND metadata->>'provider' IS NOT NULL
-      ORDER BY 1
+      SELECT
+        ap.id,
+        ap.name,
+        ap.is_active AS "isActive",
+        COALESCE(cr.product_count, 0)::int AS "productCount"
+      FROM affiliate_partners ap
+      LEFT JOIN (
+        SELECT metadata->>'partnerId' AS partner_id, COUNT(*) AS product_count
+        FROM content_registry
+        WHERE content_type = 'affiliate_product'
+          AND metadata->>'partnerId' IS NOT NULL
+        GROUP BY metadata->>'partnerId'
+      ) cr ON cr.partner_id = ap.id
+      ORDER BY ap.name
     `);
-    return (rows.rows as any[]).map((r) => r.provider as string).filter(Boolean);
+    return (rows.rows as any[]).map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      isActive: r.isActive as boolean,
+      productCount: Number(r.productCount),
+    }));
+  }
+
+  async backfillAffiliateProviderMetadata(): Promise<{ updated: number }> {
+    const result = await db.execute(sql`
+      UPDATE content_registry cr
+      SET metadata = jsonb_set(
+        COALESCE(cr.metadata, '{}'::jsonb),
+        '{provider}',
+        to_jsonb(ap.name)
+      ),
+      updated_at = NOW()
+      FROM affiliate_partners ap
+      WHERE cr.content_type = 'affiliate_product'
+        AND (cr.metadata->>'provider' IS NULL OR cr.metadata->>'provider' = '')
+        AND cr.metadata->>'partnerId' IS NOT NULL
+        AND ap.id = cr.metadata->>'partnerId'
+    `);
+    return { updated: result.rowCount ?? 0 };
   }
 
   // Register an affiliate product in the content tracking system
@@ -3506,6 +3539,15 @@ export class DatabaseStorage implements IStorage {
     isActive?: boolean | null;
     partnerName?: string;
   }): Promise<string> {
+    // Resolve partnerName from DB if not explicitly provided
+    let resolvedPartnerName = product.partnerName;
+    if (!resolvedPartnerName) {
+      const partnerRow = await db.execute(sql`
+        SELECT name FROM affiliate_partners WHERE id = ${product.partnerId} LIMIT 1
+      `);
+      resolvedPartnerName = (partnerRow.rows[0] as any)?.name as string | undefined;
+    }
+
     // Check if already registered to avoid duplicates
     const existing = await this.getContentByContentId(product.id, 'affiliate_product');
     if (existing) {
@@ -3514,8 +3556,10 @@ export class DatabaseStorage implements IStorage {
       const titleChanged = existing.title !== product.name;
       const priceChanged = prevMeta.price !== product.price;
       const statusChanged = prevMeta.isActive !== product.isActive;
+      // Also update if provider was previously missing
+      const providerMissing = !prevMeta.provider && resolvedPartnerName;
 
-      if (titleChanged || priceChanged || statusChanged) {
+      if (titleChanged || priceChanged || statusChanged || providerMissing) {
         await db.update(contentRegistry)
           .set({
             title: product.name,
@@ -3525,7 +3569,8 @@ export class DatabaseStorage implements IStorage {
               ...(existing.metadata as object || {}),
               price: product.price,
               isActive: product.isActive,
-              provider: product.partnerName,
+              provider: resolvedPartnerName,
+              partnerId: product.partnerId,
               externalId: product.externalId,
             },
             updatedAt: new Date(),
@@ -3551,7 +3596,7 @@ export class DatabaseStorage implements IStorage {
       description: product.description || undefined,
       status: product.isActive === false ? 'archived' : 'published',
       metadata: {
-        provider: product.partnerName,
+        provider: resolvedPartnerName,
         partnerId: product.partnerId,
         externalId: product.externalId,
         price: product.price,
