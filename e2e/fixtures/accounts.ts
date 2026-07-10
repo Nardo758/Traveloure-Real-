@@ -19,4 +19,4 @@ export const ACCOUNTS: Record<Role, { email: string }> = {
 };
 // ────────────────────────────────────────────────────────────────────────────────
 
-export const PASSWORD = process.env.E2E_TEST_PASSWORD ?? 'TestPass123!';
+export const PASSWORD = process.env.E2E_TEST_PASSWORD || 'TestPass123!';
