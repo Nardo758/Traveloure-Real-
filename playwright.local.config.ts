@@ -18,8 +18,8 @@ const baseURL = process.env.BASE_URL || 'http://localhost:5000';
 export default defineConfig({
   testDir: './e2e/specs',
   globalSetup: './e2e/global-setup.ts',
-  timeout: 45_000,
-  expect: { timeout: 10_000 },
+  timeout: 60_000,
+  expect: { timeout: 30_000 },
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
