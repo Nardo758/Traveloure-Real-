@@ -100,6 +100,13 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Must register before the REPL_ID early-return: email/password login
+  // (emailAuth.ts req.login) depends on these in every environment, not
+  // just Replit — without them req.login() fails with "Failed to
+  // serialize user into session" in CI and non-Replit deploys.
+  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
   if (!process.env.REPL_ID) {
     console.warn('[Auth] REPL_ID not set — skipping Replit OIDC strategy (CI / non-Replit env)');
     return;
@@ -144,9 +151,6 @@ export async function setupAuth(app: Express) {
       registeredStrategies.add(strategyName);
     }
   };
-
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
