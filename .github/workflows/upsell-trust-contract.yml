@@ -1,0 +1,43 @@
+name: Upsell Trust Contract
+
+# The relevance-dominance guarantee — "revenue can never reorder two candidates
+# across a relevance band" — is the upsell engine's core trust contract. It is
+# verified as a pure-function unit test (server/services/__tests__/
+# upsell-engine.test.ts), which sweeps 100+ (gap, revenue, policy) combinations
+# against blendScore/holdsDominance directly. This gate makes that test actually
+# guard the build: it was silently un-run for the whole engine's life (a stale
+# import — resolveTemplateKey imported from routes/upsell.routes instead of
+# services/upsell-query.service — made the file fail to load, and no workflow
+# invoked it).
+#
+# No Postgres service: the suite never queries the DB. It needs DATABASE_URL set
+# only because server/db.ts throws at module load if it is unset (the Pool
+# connects lazily and is never used here), so a dummy DSN suffices.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upsell-trust-contract:
+    name: relevance-dominance (pure unit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run relevance-dominance contract test
+        run: npm run test:upsell-contract
+        env:
+          # Dummy DSN — satisfies db.ts's load-time guard; no connection is made.
+          DATABASE_URL: postgresql://ci-noconnect@127.0.0.1:1/nodb
