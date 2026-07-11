@@ -323,7 +323,9 @@ export const MIGRATION_FILES = [
   // 109: delivery_method row remap + CHECK, both provider_services and
   // service_templates (structural brief Phase 1d, remap table approved
   // Jul 11 2026). Remaps video-call→video, in-person→in_person,
-  // document→pdf (flatten; not added to the enum); CHECK locks the D3a
+  // document→pdf and digital→pdf (flattens; neither added to the enum —
+  // 'digital' was surfaced by this migration's own refusal guard firing
+  // on a single dev row in the Replit workspace DB); CHECK locks the D3a
   // canonical set (pdf, video, call, in_person, voice_notes,
   // async_messaging, hybrid; NULL allowed) atomically with the remap.
   // Guarded: REFUSES on any unmapped value rather than half-applying.

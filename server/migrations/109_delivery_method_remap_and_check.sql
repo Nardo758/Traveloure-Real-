@@ -14,6 +14,11 @@
 --                            CANONICAL_TEMPLATES seed rows in service_templates.
 --                            'document' is NOT added to the enum and is NOT in
 --                            the CHECK set.)
+--   digital    → pdf        (flatten: zero prod rows; discovered by this
+--                            migration's own refusal guard firing in the Replit
+--                            workspace DB — one dev/test row ('Photography').
+--                            Flattened per the decision-maker's trivial/test-
+--                            data rule; NOT in the enum, NOT in the CHECK set.)
 --
 -- Production distribution at approval time (provider_services, 105 rows):
 --   pdf 67 · in_person 35 · call 2 · async_messaging 1 — no NULLs, no
@@ -45,7 +50,7 @@ BEGIN
     WHERE delivery_method IS NOT NULL
       AND delivery_method NOT IN (
         'pdf','video','call','in_person','voice_notes','async_messaging','hybrid',
-        'video-call','in-person','document');
+        'video-call','in-person','document','digital');
 
   SELECT string_agg(DISTINCT delivery_method, ', ')
     INTO bad_st
@@ -53,7 +58,7 @@ BEGIN
     WHERE delivery_method IS NOT NULL
       AND delivery_method NOT IN (
         'pdf','video','call','in_person','voice_notes','async_messaging','hybrid',
-        'video-call','in-person','document');
+        'video-call','in-person','document','digital');
 
   IF bad_ps IS NOT NULL OR bad_st IS NOT NULL THEN
     RAISE EXCEPTION
@@ -65,10 +70,12 @@ END $$;
 UPDATE provider_services SET delivery_method = 'video'     WHERE delivery_method = 'video-call';
 UPDATE provider_services SET delivery_method = 'in_person' WHERE delivery_method = 'in-person';
 UPDATE provider_services SET delivery_method = 'pdf'       WHERE delivery_method = 'document';
+UPDATE provider_services SET delivery_method = 'pdf'       WHERE delivery_method = 'digital';
 
 UPDATE service_templates SET delivery_method = 'video'     WHERE delivery_method = 'video-call';
 UPDATE service_templates SET delivery_method = 'in_person' WHERE delivery_method = 'in-person';
 UPDATE service_templates SET delivery_method = 'pdf'       WHERE delivery_method = 'document';
+UPDATE service_templates SET delivery_method = 'pdf'       WHERE delivery_method = 'digital';
 
 -- CHECKs — idempotent via pg_constraint probe (ADD CONSTRAINT has no IF NOT EXISTS).
 DO $$
