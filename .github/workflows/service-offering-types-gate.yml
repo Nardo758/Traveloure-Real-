@@ -149,8 +149,17 @@ jobs:
         run: npx tsx scripts/create-sessions-table.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-      - name: Start dev server
-        run: npx tsx server/index.ts &
+      - name: Build production bundle
+        # The smoke gate serves a PRODUCTION build (serveStatic, no Vite):
+        # under NODE_ENV=development the Vite dev middleware's HMR WebSocket
+        # (ws://…/vite-hmr) 400s against the CI server and trips the spec's
+        # "no JS errors" assertion — a false red. In prod mode HMR does not
+        # exist, so the whole error class disappears. Startup seeding still
+        # runs: it is gated on ENVIRONMENT !== "PROD", not NODE_ENV
+        # (server/index.ts), so /api/ready flips true exactly as before.
+        run: npm run build
+      - name: Start production server
+        run: node dist/index.cjs &
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
@@ -158,7 +167,7 @@ jobs:
           AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
           AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
-          NODE_ENV: development
+          NODE_ENV: production
           PORT: 5000
           PGUSER: postgres
           PGPASSWORD: postgres
@@ -174,7 +183,7 @@ jobs:
             echo "attempt $i/60: waiting... ($result)"; sleep 5
           done
           echo "::error::Server did not become ready within 5 minutes"
-          pgrep -a tsx || true
+          pgrep -a node || true
           exit 1
       - name: /earn catalog DOM smoke tests (all four tracks)
         # Uses the default playwright.config.ts (testDir: ./playwright/tests).
@@ -183,7 +192,6 @@ jobs:
         run: npx playwright test earn-smoke --project=chromium
         env:
           BASE_URL: http://localhost:5000
-          NODE_ENV: development
           CI: 'true'
       - name: Upload report
         if: always()
