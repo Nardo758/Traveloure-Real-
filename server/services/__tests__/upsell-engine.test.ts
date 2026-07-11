@@ -33,7 +33,7 @@ import {
   type SlotConfig,
   type UpsellContext,
 } from "../upsell-engine.service";
-import { resolveTemplateKey } from "../../routes/upsell.routes";
+import { resolveTemplateKey } from "../upsell-query.service";
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 

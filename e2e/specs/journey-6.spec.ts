@@ -72,16 +72,21 @@ test.describe("Journey 6 — Transport Booking", () => {
     await page.waitForURL(/12go|omio|booking|viator/, { timeout: 10000 });
   });
 
-  test("Affiliate click attribution endpoint", async ({ request }) => {
+  test("Affiliate click attribution endpoint", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
+    // The seed + click endpoints are isAuthenticated (server/routes/transport-hub.routes.ts).
+    // Authenticate first, then drive them through page.request so the session cookie rides
+    // along — a bare `request` fixture carries no session and the server correctly 401s.
+    await loginAsTestAccount(page, "traveler");
+
     // Create a test transport booking option via seed endpoint
-    const seedRes = await request.post(`${BASE}/api/transport-booking-options/seed/test-variant`);
+    const seedRes = await page.request.post(`${BASE}/api/transport-booking-options/seed/test-variant`);
     expect(seedRes.status()).toBe(201);
     const option = await seedRes.json();
 
     // Click the option (simulates affiliate click)
-    const clickRes = await request.post(`${BASE}/api/transport-booking-options/${option.id}/click`);
+    const clickRes = await page.request.post(`${BASE}/api/transport-booking-options/${option.id}/click`);
     expect(clickRes.status()).toBe(200);
     const click = await clickRes.json();
     expect(click.redirectUrl).toBeTruthy();
