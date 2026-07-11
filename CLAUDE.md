@@ -126,7 +126,9 @@ Catalog vocabulary only — no eligibility/fee wiring yet (3.3/3.4). Ratified by
 remaps `delivery_method` on BOTH `provider_services` and `service_templates`: `video-call→video` (NOT
 `call` — video session vs voice call is a real distinction), `in-person→in_person`, `document→pdf`
 (flatten — zero prod provider_services rows; the only real rows were the two CANONICAL_TEMPLATES seed
-rows; `document` is NOT in the enum). Adds the DB CHECK atomically with the remap on both tables: valid
+rows; `document` is NOT in the enum), and `digital→pdf` (flatten — zero prod rows; surfaced by the
+refusal guard firing on one dev row in the Replit workspace DB, exactly the guard's purpose; also NOT
+in the enum). Adds the DB CHECK atomically with the remap on both tables: valid
 set = the D3a canonical `deliveryMethodEnum` (`pdf, video, call, in_person, voice_notes, async_messaging,
 hybrid`; NULL allowed). `hybrid` stays valid because ServiceForm offers it as a live delivery option —
 a CHECK without it would break every hybrid create. Guarded: REFUSES listing any unmapped value rather than
