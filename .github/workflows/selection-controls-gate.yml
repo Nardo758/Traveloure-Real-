@@ -118,6 +118,9 @@ jobs:
           # they are talking to this PR's artifact, not a stale deployment.
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
+          # Keyless AI: stub grokService.generateAutonomousItinerary so journey-2A's
+          # generate→comparison→redirect flow runs without XAI/Anthropic keys.
+          E2E_AI_STUB: "1"
           PORT: 5000
           PGUSER: postgres
           PGPASSWORD: postgres
@@ -221,6 +224,9 @@ jobs:
           AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
+          # Keyless AI: stub grokService.generateAutonomousItinerary so journey-2A's
+          # generate→comparison→redirect flow runs without XAI/Anthropic keys.
+          E2E_AI_STUB: "1"
           PORT: 5000
           PGUSER: postgres
           PGPASSWORD: postgres
