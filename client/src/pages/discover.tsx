@@ -585,7 +585,7 @@ function FilterPanel({
 export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { data: trips } = useTrips();
   const { data: creditsData } = useQuery<{ balance: number }>({
     queryKey: ["/api/credits/balance"],
@@ -795,6 +795,19 @@ export default function DiscoverPage() {
     });
   };
 
+  // Guest cart fallback — used when auth has resolved to no user, or when the
+  // server returns 401 (the definitive "not authenticated" signal).
+  const saveToGuestCart = (serviceId: string) => {
+    const GUEST_CART_KEY = "traveloure_guest_cart_pending";
+    try {
+      const existing: string[] = JSON.parse(localStorage.getItem(GUEST_CART_KEY) || "[]");
+      if (!existing.includes(serviceId)) {
+        localStorage.setItem(GUEST_CART_KEY, JSON.stringify([...existing, serviceId]));
+      }
+    } catch { /* ignore */ }
+    toast({ title: "Saved!", description: "Sign in to checkout and save your selection." });
+  };
+
   // Cart mutations
   const addToCartMutation = useMutation({
     mutationFn: async (serviceId: string) => {
@@ -807,7 +820,17 @@ export default function DiscoverPage() {
       toast({ title: "Added to cart!", description: "Service has been added to your cart." });
       setAddingToCartId(null);
     },
-    onError: (error: any) => {
+    onError: (error: any, serviceId: string) => {
+      // A 401 means the session cookie was not established server-side — i.e. a
+      // genuine guest, or a click that beat the /api/auth/user query on a cold
+      // load. Fall back to the guest cart instead of a scary error toast; this
+      // closes the auth-state race that dropped authed users' items into
+      // localStorage (Stage-1 journey-1A cart-empty failure).
+      if (typeof error?.message === "string" && error.message.startsWith("401")) {
+        saveToGuestCart(serviceId);
+        setAddingToCartId(null);
+        return;
+      }
       console.error("[Cart] addToCartMutation failed:", error);
       toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
       setAddingToCartId(null);
@@ -815,18 +838,15 @@ export default function DiscoverPage() {
   });
 
   const handleAddToCart = (serviceId: string) => {
-    if (!user) {
-      const GUEST_CART_KEY = "traveloure_guest_cart_pending";
-      try {
-        const existing: string[] = JSON.parse(localStorage.getItem(GUEST_CART_KEY) || "[]");
-        if (!existing.includes(serviceId)) {
-          localStorage.setItem(GUEST_CART_KEY, JSON.stringify([...existing, serviceId]));
-        }
-      } catch { /* ignore */ }
-      toast({ 
-        title: "Saved!", 
-        description: "Sign in to checkout and save your selection." 
-      });
+    // Auth is authoritative server-side (the session cookie), not the client
+    // `user` query — which can still be loading on a cold page load. Only take
+    // the guest path once auth has DEFINITIVELY resolved to no user; while it is
+    // still loading, attempt the authenticated add and let the server's 401
+    // (handled in the mutation's onError) fall back to the guest cart. Branching
+    // on `!user` alone raced the auth query and silently dropped authenticated
+    // users' selections into localStorage (Stage-1 journey-1A cart-empty).
+    if (!user && !authLoading) {
+      saveToGuestCart(serviceId);
       return;
     }
     addToCartMutation.mutate(serviceId);
