@@ -88,14 +88,16 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     }
   });
 
-  test("Coordination fee endpoint returns correct fee with credit", async ({ request }) => {
+  test("Coordination fee endpoint returns correct fee with credit", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
-    // Login as traveler
-    // ... (auth helper)
+    // /api/coordination-states is isAuthenticated (server/routes.ts:7788); authenticate and
+    // drive the calls through page.request so the session cookie rides along. A bare
+    // `request` fixture carries no session and the server correctly 401s.
+    await loginAsTestAccount(page, "traveler");
 
     // Create a coordination state for a wedding
-    const createRes = await request.post(`${BASE}/api/coordination-states`, {
+    const createRes = await page.request.post(`${BASE}/api/coordination-states`, {
       data: {
         experienceType: "wedding",
         title: "Santorini Wedding",
@@ -106,7 +108,7 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     const state = await createRes.json();
 
     // Get the fee
-    const feeRes = await request.get(`${BASE}/api/coordination-states/${state.id}/fee`);
+    const feeRes = await page.request.get(`${BASE}/api/coordination-states/${state.id}/fee`);
     expect(feeRes.status()).toBe(200);
     const fee = await feeRes.json();
 
