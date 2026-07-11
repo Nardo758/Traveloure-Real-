@@ -45,4 +45,17 @@ export async function loginAsTestAccount(page: Page, role: Role): Promise<void> 
         `(session cookie was not retained; over http this usually means a Secure cookie was dropped).`,
     );
   }
+
+  // Terms gate: accounts with NULL terms_accepted_at/privacy_accepted_at are
+  // bounced to /accept-terms by ProtectedRoute before any authed destination,
+  // so every waitForSelector on the target page times out (deploy-run bucket 1).
+  // Accept once per login; idempotent against already-accepted accounts.
+  const terms = await page.request.post('/api/auth/accept-terms', {
+    data: { acceptTerms: true, acceptPrivacy: true },
+  });
+  if (!terms.ok()) {
+    throw new Error(
+      `loginAsTestAccount(${role}): accept-terms failed (${terms.status()}) — authed pages would bounce to /accept-terms`,
+    );
+  }
 }
