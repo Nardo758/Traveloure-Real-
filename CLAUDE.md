@@ -108,6 +108,20 @@ facilitation. Experts opt in by creating an APPROVED `provider_services` row ref
 `expert_offering_type_id` (migration 057); market scoping rides `expert_neighborhoods` (no new column).
 Catalog vocabulary only — no eligibility/fee wiring yet (3.3/3.4). Ratified by the Phase 3.2 GO (CREATE).
 
+**Migrations 107–108 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1 (decisions D3a/D4/D5a):**
+107 adds nullable `offering_type_key` to `local_expert_forms` (FK → `expert_offering_types.offering_type_key`)
+and `service_provider_forms` (FK → `service_offering_types.offering_type_key`), both `ON DELETE SET NULL` —
+the canonical /earn selection the signup forms previously dropped (only the display name survived). Two
+parallel catalogs, two FKs; experts remain NOT `service_categories` rows. 107 also repairs the missing
+unique constraint on `service_offering_types.offering_type_key` (declared in schema.ts, absent from shipped
+DDL), guarded to REFUSE on pre-existing duplicate keys rather than half-apply. 108 adds nullable
+`has_insurance` boolean to `service_provider_forms` (applicant self-attestation, previously collected and
+dropped; NULL = pre-108 "never asked"); table chosen because signup writes it and the FEE-2 brief homes the
+admin-validated `insurance_tier` evidence there. D3a: `deliveryMethodEnum` (shared/schema.ts) is extended
+with `hybrid` — canonical set is now `pdf, video, call, in_person, voice_notes, async_messaging, hybrid`;
+the column is varchar with no DB CHECK, so this is TS-level; NO row remap has run — that requires the
+Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a·D2a·D3a·D4·D5a locked).
+
 **Migration 067 (Jun 11, 2026; registered in `migration-files.ts`) — Discover Feed Composition admin rows:**
 data-seed only, no schema change. Inserts the five `feed_*` `platform_settings` rows read by the public
 `GET /api/feed-composition-config` (Discover Feed Composition Brief): `feed_rec_cadence` ('4'),
