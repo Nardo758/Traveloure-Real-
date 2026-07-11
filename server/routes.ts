@@ -268,7 +268,8 @@ export async function registerRoutes(
           title: "Cart Review & Optimization",
           description: "Expert review of your travel cart to find savings and better alternatives",
           serviceType: "review",
-          deliveryMethod: "document",
+          // 'pdf' per the canonical deliveryMethodEnum (migration 109 CHECK); was 'document'
+          deliveryMethod: "pdf",
           deliveryTimeframe: "24 hours",
           suggestedPrice: "49",
           requirements: JSON.stringify(["Cart link or selections", "Budget constraints"]),
@@ -292,7 +293,8 @@ export async function registerRoutes(
           title: "Destination Deep Dive",
           description: "In-depth guide to a specific destination with local insights and hidden gems",
           serviceType: "custom",
-          deliveryMethod: "document",
+          // 'pdf' per the canonical deliveryMethodEnum (migration 109 CHECK); was 'document'
+          deliveryMethod: "pdf",
           deliveryTimeframe: "48 hours",
           suggestedPrice: "79",
           requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),

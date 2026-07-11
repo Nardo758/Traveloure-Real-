@@ -122,6 +122,19 @@ facilitation. Experts opt in by creating an APPROVED `provider_services` row ref
 `expert_offering_type_id` (migration 057); market scoping rides `expert_neighborhoods` (no new column).
 Catalog vocabulary only — no eligibility/fee wiring yet (3.3/3.4). Ratified by the Phase 3.2 GO (CREATE).
 
+**Migration 109 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1d (D3a row remap + CHECK):**
+remaps `delivery_method` on BOTH `provider_services` and `service_templates`: `video-call→video` (NOT
+`call` — video session vs voice call is a real distinction), `in-person→in_person`, `document→pdf`
+(flatten — zero prod provider_services rows; the only real rows were the two CANONICAL_TEMPLATES seed
+rows; `document` is NOT in the enum). Adds the DB CHECK atomically with the remap on both tables: valid
+set = the D3a canonical `deliveryMethodEnum` (`pdf, video, call, in_person, voice_notes, async_messaging,
+hybrid`; NULL allowed). `hybrid` stays valid because ServiceForm offers it as a live delivery option —
+a CHECK without it would break every hybrid create. Guarded: REFUSES listing any unmapped value rather than
+half-applying. Companion change in the same commit: `CANONICAL_TEMPLATES` seeder literals (server/routes.ts)
+`document`→`pdf` so fresh environments seed CHECK-clean. Prod distribution at approval: pdf 67 /
+in_person 35 / call 2 / async_messaging 1, no NULLs. Ratified by the decision-maker's remap-table approval
++ amended-CHECK confirm (Jul 11).
+
 **Migrations 107–108 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1 (decisions D3a/D4/D5a):**
 107 adds nullable `offering_type_key` to `local_expert_forms` (FK → `expert_offering_types.offering_type_key`)
 and `service_provider_forms` (FK → `service_offering_types.offering_type_key`), both `ON DELETE SET NULL` —
