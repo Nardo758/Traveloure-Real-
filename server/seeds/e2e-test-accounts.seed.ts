@@ -53,8 +53,27 @@ async function seedE2EAccounts() {
       .where(eq(users.email, account.email.toLowerCase()))
       .then((r) => r[0]);
 
+    // Test accounts must start PAST the accept-terms gate: ProtectedRoute
+    // bounces any account with NULL terms_accepted_at/privacy_accepted_at to
+    // /accept-terms before every authed destination, which silently blocks
+    // every authed E2E journey. Stamp on create, and backfill accounts seeded
+    // before this existed (idempotent — only touches NULL rows).
+    const termsStamp = new Date();
+
     if (existing) {
-      console.log(`  ✓ ${account.email} already exists`);
+      if (!existing.termsAcceptedAt || !existing.privacyAcceptedAt) {
+        await db
+          .update(users)
+          .set({
+            termsAcceptedAt: existing.termsAcceptedAt ?? termsStamp,
+            privacyAcceptedAt: existing.privacyAcceptedAt ?? termsStamp,
+            updatedAt: termsStamp,
+          })
+          .where(eq(users.id, existing.id));
+        console.log(`  ✓ ${account.email} already exists (backfilled terms acceptance)`);
+      } else {
+        console.log(`  ✓ ${account.email} already exists`);
+      }
       continue;
     }
 
@@ -65,6 +84,8 @@ async function seedE2EAccounts() {
       lastName: account.lastName,
       role: account.role,
       authProvider: "email",
+      termsAcceptedAt: termsStamp,
+      privacyAcceptedAt: termsStamp,
     });
     console.log(`  + Created ${account.email} (${account.role})`);
   }
