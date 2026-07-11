@@ -542,7 +542,7 @@ export const providerServices = pgTable("provider_services", {
   pricingTiers: jsonb("pricing_tiers"),
   
   // Delivery
-  deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // canonical: deliveryMethodEnum (pdf, video, call, in_person, voice_notes, async_messaging, hybrid)
+  deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // canonical: deliveryMethodEnum — DB CHECK enforced since migration 109
   deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
   revisionsIncluded: integer("revisions_included").default(0),
   includesExpertNotes: boolean("includes_expert_notes").default(false),

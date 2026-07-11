@@ -320,4 +320,14 @@ export const MIGRATION_FILES = [
   // FEE-2 brief's admin-validated insurance_tier evidence will live; NULL =
   // pre-108 "never asked", distinct from explicit false.
   "108_provider_has_insurance.sql",
+  // 109: delivery_method row remap + CHECK, both provider_services and
+  // service_templates (structural brief Phase 1d, remap table approved
+  // Jul 11 2026). Remaps video-call→video, in-person→in_person,
+  // document→pdf (flatten; not added to the enum); CHECK locks the D3a
+  // canonical set (pdf, video, call, in_person, voice_notes,
+  // async_messaging, hybrid; NULL allowed) atomically with the remap.
+  // Guarded: REFUSES on any unmapped value rather than half-applying.
+  // Companion code change: CANONICAL_TEMPLATES seeder literals
+  // 'document'→'pdf' so fresh environments seed CHECK-clean rows.
+  "109_delivery_method_remap_and_check.sql",
 ] as const;
