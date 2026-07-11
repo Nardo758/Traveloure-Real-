@@ -1,0 +1,26 @@
+Here's the board. Three things are genuinely yours; everything else is either running on autopilot or waiting behind one of your calls.
+
+## Yours to do, in priority order
+
+**1. Run the prod count and give the 109 go (unblocks the whole structural lane).** Against production:
+```sql
+SELECT COALESCE(delivery_method,'(NULL)') AS value, COUNT(*)
+FROM provider_services GROUP BY 1 ORDER BY 2 DESC;
+```
+Paste the output plus your two calls: `document` → flatten to `pdf` vs add `document` to the enum (your rule: trivial/test rows = flatten, real user population = add), and whether the post-remap `CHECK` constraint rides in 109 or waits for Phase 3. `video-call→video` and `in-person→in_person` are locked. Once I have that, I cut migration 109 with the same gate discipline, and the structural brief's Phases 2–8 (ServiceForm absorbs the wizard, wizard retirement, admin approval surface, selection-only signup…) are unblocked behind it.
+
+**2. Review/merge PR #134 (durable lockfile fix) — before the next Replit-side merge.** Every merge pulled into the Replit workspace re-pollutes the lockfile until this lands (the `[postMerge]` → `npm install` engine). It's small: scrub-after-install in `post-merge.sh`, a pre-commit guard, the `.npmrc`, CLAUDE.md note. Bonus if you're ever in the Replit workspace: run `npm install && grep -c "replit.local" package-lock.json` — a 0 settles the Phase-A `.npmrc` question empirically.
+
+**3. Nothing on PR #135 yet — but it'll need your review/merge next.** The bucket-1 checkpoint (full deploy suite) is running now; I'm subscribed and will report the `test | bucket | root cause | now passing?` table with journey-1's Stage-1 status leading, then land buckets 2 and 4 on the same PR. After it merges, a restart of the deployed Replit app heals the seeded accounts durably (the harness path already covers tests either way).
+
+## Running on my side, no action needed
+
+- PR #135 deploy-suite watch (webhooks + a 16:54 check-in armed).
+- Buckets 2 (harness auth on direct `request` calls) and 4 (journey-7-cleanup redirect) queued behind the checkpoint read, per the dispatch order.
+
+## Decisions parked with you, no urgency today
+
+- **Bucket 3 disposition:** `/api/upsell/rank` never existed — redesign the trust-contract test against a real surface endpoint, or commission a test-only ranking probe. Say which when you care.
+- **Queued briefs you own dispatching:** the urgent trust-claims cluster (can run parallel on its own branch any time), the dark-families triage (~24 endpoint families dead in production — you rated it P1), the journey-2A AI-stub brief (root cause fully pinned, fix seam identified), and the expert-role backfill data brief.
+
+If you only do one thing right now: **the prod count + 109 go** — it's the one blocking a whole phased program rather than a single PR.
