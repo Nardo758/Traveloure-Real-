@@ -86,6 +86,20 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
+**CRITICAL: Lockfile purity (do not remove these guards)**
+- `npm install` inside the Replit workspace resolves through Replit's package-firewall proxy and bakes
+  unreachable `package-firewall.replit.local` URLs into `package-lock.json` — that breaks `npm ci` on every
+  GitHub runner (this kept main red ~Jul 7–11). The main recurrence engine is `.replit [postMerge]` →
+  `scripts/post-merge.sh` → `npm install` after every merge.
+- Guards, in order: `scripts/post-merge.sh` scrubs right after its install; the pre-commit hook
+  (`.githooks/pre-commit`, installed by the `prepare` script) scrubs staged lockfiles from manual installs;
+  the CI `lockfile-purity` gate is the backstop. All use `scripts/scrub-lockfile.cjs` (URL-only rewrite).
+- The project `.npmrc` (`registry=https://registry.npmjs.org/`) may prevent pollution from forming, but its
+  precedence against Replit's proxy is UNVERIFIED (env-level `NPM_CONFIG_*` would override it). To verify
+  from inside a Replit workspace: `npm install && grep -c "replit.local" package-lock.json` — 0 = it works.
+- Do not remove the `.npmrc`, the hooks, or the CI gate; do not run bare `npm install` and commit without
+  the scrub.
+
 **Migration 059 (Jun 10, 2026; registered in the canonical `migration-files.ts` list):** index-only — `idx_pnc_neighborhood_category` on
 `provider_neighborhood_coverage(neighborhood_id, category_key)`. The upsell engine's
 candidate gather (Engine Inventory-Sourcing brief) reads coverage by
