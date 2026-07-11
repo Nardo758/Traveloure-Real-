@@ -27,12 +27,16 @@ You expect Discover to offer **Book / Ask-Expert / Add-to-Cart**, with separate 
 | **`/discover/location/:city`** | ⚠ works, 3 broken paths⁴ | ✅ (non-contextual)⁵ | ✅ works | ✅ works |
 | **`/spontaneous`** | ✅ works | ✗ absent | ✗ absent | ✗ absent |
 | **`/discover-experiences`** | ⚠ external-only | ✗ absent | ✗ absent (→ wizard) | ✗ absent |
+| **`/discover` "By Date" tab** (GlobalCalendar) | ⚠ plan-only⁶ | ✗ absent⁷ | ✗ absent | ✗ absent |
+| **`/global-calendar`** (standalone) | ✗ absent | ✗ absent | ✗ absent | ✗ absent |
 
 ¹ The only Book/purchase CTA lives in an **unreachable tab** and points at a **missing route**.
 ² "Talk to an Expert"→`/experts` works; **"Connect"→`/expert/:id` is a missing route (broken)**; "AI Suggestions" works.
 ³ "Become an expert" / "Create your first template" sit in the hidden `packages` tab (`VISIBLE_TABS` excludes it).
 ⁴ Gem "Book"→`#`, supply "Book" silent no-op, matched-supply "request"→404 (all detailed below).
 ⁵ "💬 Ask" always goes to the static `/local-experts` directory — no context about the item/expert is passed.
+⁶ Only "Plan This Trip" / "Plan a…" nav into `/experiences/:slug` (a planning flow, not a checkout) and city-click → `/discover/location/:city`. No direct Book.
+⁷ Expert-match data is *fetched* (`TimeRelevantMatch.experts`) but never rendered as an Ask-Expert button — a surfacing gap, not a broken link.
 
 **Headline:** the main `/discover` page — the one you named — is the weakest. It has a working **Add-to-Cart** but **no reachable Book**, a **broken Ask-Expert ("Connect")**, and **no reachable Apply-to-Earn** (both earn CTAs are buried in a hidden tab).
 
@@ -44,7 +48,7 @@ These are the "missing" cases — the button renders and fires, but the target r
 
 | # | Button | File:line | Targets | Why it's broken | Fix |
 |---|---|---|---|---|---|
-| **B1** | **"Connect"** (matched-expert, Ask-Expert) | discover.tsx:1164 | `setLocation("/expert/${expert.id}?…")` → `/expert/:id` | **No `/expert/:id` route.** Router has `/experts/:id` (plural) and the `/expert/*` console pages, but nothing matches `/expert/<uuid>` → NotFound. | Change literal to `/experts/${expert.id}` (the plural route exists and is the expert profile page). One-char-family typo. |
+| **B1** ✅FIXED | **"Connect"** (matched-expert, Ask-Expert) | discover.tsx:1164 | `setLocation("/expert/${expert.id}?…")` → `/expert/:id` | **No `/expert/:id` route.** Router has `/experts/:id` (plural) and the `/expert/*` console pages, but nothing matched `/expert/<uuid>` → NotFound. | **DONE** — repointed to `/experts/${expert.id}` (commit `2831f869`). |
 | **B2** | **"View & Purchase"** (template) | discover.tsx:1700 | `<Link href="/expert-templates/${template.id}">` → `/expert-templates/:id` | **No `/expert-templates/:id` route** (only `/admin/expert-templates` and `/expert/templates`). Also inside the unreachable `packages` tab (see C1). | Add the route + a template detail/purchase page, or repoint to the real template view. Decide alongside C1. |
 | **B3** | **"request"** action (matched-supply variant) | city-feed-card.tsx:131 | `fetch("POST /api/services/request", …)` | **Endpoint exists nowhere in `server/`** (0 registrations). Button posts → 404, caught and toasted as failure. | Implement the endpoint, or remove/repoint the request action. |
 | **B4** | **"Book / Reserve"** (gem card) | city-feed-card.tsx:651–668 | anchor `href={suggestion?.href ?? "#"}`; `suggestion` from `GET /api/gems/:id/matched-service` | **That endpoint exists nowhere in `server/`** → query never resolves → `suggestion` stays null → the visible Book/Reserve button navigates to **`"#"`** (scroll-to-top no-op). The affiliate-track `fetch` still fires, so it *looks* tracked. | Implement `GET /api/gems/:id/matched-service`, or hide the Book button when `suggestion` is absent (don't render a live-looking dead CTA). |
@@ -89,7 +93,26 @@ No server dependency — these are inert at the client level.
 
 ---
 
-## E. Recommended fix order (for a follow-up work item — not done here)
+## F. Discover-by-Date surface (second pass — was a gap in the first cut)
+
+The "By Date" tab on `/discover` renders `<GlobalCalendar />` (discover.tsx:2035), and there's a standalone `/global-calendar` page. The first pass only saw the *tab trigger*, not these. Audited both files (`client/src/components/travelpulse/GlobalCalendar.tsx`, `client/src/pages/global-calendar.tsx`).
+
+**Good news:** **no broken buttons and no broken endpoints** here. Every handler does something real; all three data endpoints resolve (`GET /api/travelpulse/global-calendar` and `GET /api/travelpulse/calendar/:city` both exist — each registered twice, in `server/routes.ts` **and** `server/routes/content.routes.ts`; first-wins duplicate-shadow, cosmetic). The `/api/travelpulse/year-summary` "query" is a **cache-key label only** — its custom `queryFn` loops over the real `global-calendar` endpoint, so nothing 404s.
+
+**The real issue is absence, not breakage:**
+
+| # | Finding | Detail |
+|---|---|---|
+| **F1** | **No Book / Ask-Expert / Add-to-Cart on the "By Date" tab** | GlobalCalendar offers only *planning* nav: "Plan This Trip" / per-city "Plan a…" → `/experiences/:slug` (a quote/planning flow, not checkout), and city-card click → `/discover/location/:city` (booking happens on that downstream page). No direct Book, no Add-to-Cart. |
+| **F2** | **Ask-Expert data is fetched but never surfaced** | The calendar API type carries `TimeRelevantMatch.experts` (GlobalCalendar.tsx:93–97) — expert matches *are fetched* — but **no button renders them**. Given the expectation that Discover lets users Ask an Expert, this is the highest-value add on this surface: the data is already there, it just needs an "Ask an expert about {month/city}" CTA. |
+| **F3** | **Standalone `/global-calendar` is a read-only dead-end** | Every control (city search, month nav, date-cell select) is local state; selecting a date opens a display-only sidebar (crowd %, price impact, tips) with **zero CTAs**. You can learn "wedding season, prices +30%" but can't Book, Ask, Add, or Apply-to-Earn from anywhere on the page. |
+| **F4** | **No Apply-to-Earn on either by-date view** | Neither file has a become-expert / earn CTA. |
+
+**Buttons that DO work here (for regression safety):** vibe filter chips, month/year/date navigation, Hide/Show calendar, "Plan This Trip" → `/experiences/travel`, per-city plan buttons → `/experiences/:slug` (slugs: date-night, proposal, wedding, travel, retreat, corporate, birthday, reunion — all resolve via the `/experiences/:slug` route), city-click → `/discover/location/:city`. Child components rendered: `YearOverviewCalendar`, `MonthCalendarGrid`, `CompactYearCalendar` (all nav callbacks are local-state only).
+
+---
+
+## E. Recommended fix order (for a follow-up work item — B1 already done)
 
 1. **B1 (`/expert/:id`→`/experts/:id`)** — trivial, high-impact: it's the primary "Connect to expert" CTA on the main page and it's a plural/singular typo.
 2. **C1 decision** — decide whether `packages`/`articles` tabs come back. This gates whether the main page gets a reachable **Book** and **Apply-to-Earn**. If they stay hidden, the earn CTAs need a home on a *visible* tab (they're the "apply to earn money" buttons you asked about, and they currently can't be reached from `/discover`).
@@ -105,8 +128,8 @@ No server dependency — these are inert at the client level.
 `/services/:id` ✅ · `/experiences` ✅ · `/experiences/:slug` ✅ (covers `/experiences/events`, `/experiences/photo`, `/experiences/gear`) · `/experiences/:slug/new` ✅ · `/experts` ✅ · `/experts/:id` ✅ · `/local-experts` ✅ · `/local-experts/:id` ✅ · `/expert-status` ✅ · `/expert/templates` ✅ · `/become-expert` ✅ · `/discover` ✅ · **`/expert/:id` ❌ (B1)** · **`/expert-templates/:id` ❌ (B2)**
 
 **Server endpoints referenced** (✅ exists / ❌ missing, verified against `server/`):
-`POST /api/cart` ✅ · `POST /api/discover/recommendations` ✅ · `POST /api/affiliates/track` ✅ · `POST /api/spontaneous/:id/book` ✅ · `POST /api/feed/impression` (not verified here — not a button) · **`POST /api/services/request` ❌ (B3)** · **`GET /api/gems/:id/matched-service` ❌ (B4)**
+`POST /api/cart` ✅ · `POST /api/discover/recommendations` ✅ · `POST /api/affiliates/track` ✅ · `POST /api/spontaneous/:id/book` ✅ · `GET /api/travelpulse/global-calendar` ✅ (dup-registered) · `GET /api/travelpulse/calendar/:city` ✅ (dup-registered) · `POST /api/feed/impression` (not verified here — not a button) · **`POST /api/services/request` ❌ (B3)** · **`GET /api/gems/:id/matched-service` ❌ (B4)**
 
 ---
 
-*Read-only audit. No fixes applied. B1 (the `/expert/:id`→`/experts/:id` typo) is the cheapest, highest-value fix and can be done independently; the rest are grouped for a follow-up work item pending the C1 tab-reachability decision.*
+*Read-only audit (B1 fix applied as an approved one-liner; everything else is findings only). The remaining items are grouped for a follow-up work item pending the C1 tab-reachability decision.*
