@@ -4,6 +4,8 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "scrub-lockfile": "node scripts/scrub-lockfile.cjs",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",

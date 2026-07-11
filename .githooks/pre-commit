@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-commit guard: never let Replit package-firewall URLs reach a commit.
+#
+# If package-lock.json is staged, scrub any *.replit.local resolved URLs
+# (see scripts/scrub-lockfile.cjs for why) and re-stage the file. URL-only —
+# no version or integrity churn. The CI lockfile-purity gate is the backstop
+# if this hook is bypassed (--no-verify) or not installed.
+#
+# Installed via `npm install` → package.json "prepare" script
+# (git config core.hooksPath .githooks).
+
+if git diff --cached --name-only | grep -q "^package-lock.json$"; then
+  node scripts/scrub-lockfile.cjs || exit 1
+  git add package-lock.json
+fi
