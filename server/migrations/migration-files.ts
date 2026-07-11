@@ -306,4 +306,30 @@ export const MIGRATION_FILES = [
   // Triggered nightly at ~02:00 UTC via the NightlyQA scheduler, or on-demand
   // via POST /api/admin/qa/run-nightly.
   "106_qa_run_snapshots.sql",
+  // 107: offering_type_key on local_expert_forms (FK → expert_offering_types)
+  // and service_provider_forms (FK → service_offering_types) — the canonical
+  // /earn selection the signup forms previously dropped (structural brief
+  // Phase 1a, D5a). Also repairs the missing unique constraint on
+  // service_offering_types.offering_type_key that schema.ts declares but the
+  // shipped DDL lacked (guarded: refuses on duplicate keys). Two parallel
+  // catalogs, two FKs — never one shared reference.
+  "107_signup_offering_type_key.sql",
+  // 108: has_insurance (nullable boolean) on service_provider_forms — the
+  // provider application's self-attested insurance flag, previously collected
+  // and silently dropped (structural brief Phase 1b, D4). Sits where the
+  // FEE-2 brief's admin-validated insurance_tier evidence will live; NULL =
+  // pre-108 "never asked", distinct from explicit false.
+  "108_provider_has_insurance.sql",
+  // 109: delivery_method row remap + CHECK, both provider_services and
+  // service_templates (structural brief Phase 1d, remap table approved
+  // Jul 11 2026). Remaps video-call→video, in-person→in_person,
+  // document→pdf and digital→pdf (flattens; neither added to the enum —
+  // 'digital' was surfaced by this migration's own refusal guard firing
+  // on a single dev row in the Replit workspace DB); CHECK locks the D3a
+  // canonical set (pdf, video, call, in_person, voice_notes,
+  // async_messaging, hybrid; NULL allowed) atomically with the remap.
+  // Guarded: REFUSES on any unmapped value rather than half-applying.
+  // Companion code change: CANONICAL_TEMPLATES seeder literals
+  // 'document'→'pdf' so fresh environments seed CHECK-clean rows.
+  "109_delivery_method_remap_and_check.sql",
 ] as const;

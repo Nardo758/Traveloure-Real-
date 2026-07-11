@@ -75,6 +75,18 @@ export default async function globalSetup(config: FullConfig) {
     if (!me.ok()) {
       throw new Error(`authed-confirmation failed for ${role}: /api/auth/user returned ${me.status()}`);
     }
+    // Terms gate: ProtectedRoute (client/src/App.tsx) bounces any account with
+    // NULL terms_accepted_at/privacy_accepted_at to /accept-terms before every
+    // authed destination — which silently blocks EVERY authed journey (the
+    // deploy-run bucket-1 failure wall). Accept once here so the accepted state
+    // is baked into the reused storageState. Idempotent; the seed also stamps
+    // these for fresh accounts, this covers accounts seeded before that.
+    const terms = await page.request.post('/api/auth/accept-terms', {
+      data: { acceptTerms: true, acceptPrivacy: true },
+    });
+    if (!terms.ok()) {
+      throw new Error(`accept-terms failed for ${role}: ${terms.status()} — authed journeys would bounce to /accept-terms`);
+    }
     // To drive the real UI instead, open the SignInModal and use its testids:
     //   [data-testid="input-email"], [data-testid="input-password"], [data-testid="button-auth-submit"]
     // ──────────────────────────────────────────────────────────────────────────────

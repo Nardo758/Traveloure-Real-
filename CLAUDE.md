@@ -86,6 +86,20 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
+**CRITICAL: Lockfile purity (do not remove these guards)**
+- `npm install` inside the Replit workspace resolves through Replit's package-firewall proxy and bakes
+  unreachable `package-firewall.replit.local` URLs into `package-lock.json` — that breaks `npm ci` on every
+  GitHub runner (this kept main red ~Jul 7–11). The main recurrence engine is `.replit [postMerge]` →
+  `scripts/post-merge.sh` → `npm install` after every merge.
+- Guards, in order: `scripts/post-merge.sh` scrubs right after its install; the pre-commit hook
+  (`.githooks/pre-commit`, installed by the `prepare` script) scrubs staged lockfiles from manual installs;
+  the CI `lockfile-purity` gate is the backstop. All use `scripts/scrub-lockfile.cjs` (URL-only rewrite).
+- The project `.npmrc` (`registry=https://registry.npmjs.org/`) may prevent pollution from forming, but its
+  precedence against Replit's proxy is UNVERIFIED (env-level `NPM_CONFIG_*` would override it). To verify
+  from inside a Replit workspace: `npm install && grep -c "replit.local" package-lock.json` — 0 = it works.
+- Do not remove the `.npmrc`, the hooks, or the CI gate; do not run bare `npm install` and commit without
+  the scrub.
+
 **Migration 059 (Jun 10, 2026; registered in the canonical `migration-files.ts` list):** index-only — `idx_pnc_neighborhood_category` on
 `provider_neighborhood_coverage(neighborhood_id, category_key)`. The upsell engine's
 candidate gather (Engine Inventory-Sourcing brief) reads coverage by
@@ -107,6 +121,35 @@ item and add it to your trip"), idempotent `ON CONFLICT (offering_type_key) DO N
 facilitation. Experts opt in by creating an APPROVED `provider_services` row referencing it via
 `expert_offering_type_id` (migration 057); market scoping rides `expert_neighborhoods` (no new column).
 Catalog vocabulary only — no eligibility/fee wiring yet (3.3/3.4). Ratified by the Phase 3.2 GO (CREATE).
+
+**Migration 109 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1d (D3a row remap + CHECK):**
+remaps `delivery_method` on BOTH `provider_services` and `service_templates`: `video-call→video` (NOT
+`call` — video session vs voice call is a real distinction), `in-person→in_person`, `document→pdf`
+(flatten — zero prod provider_services rows; the only real rows were the two CANONICAL_TEMPLATES seed
+rows; `document` is NOT in the enum), and `digital→pdf` (flatten — zero prod rows; surfaced by the
+refusal guard firing on one dev row in the Replit workspace DB, exactly the guard's purpose; also NOT
+in the enum). Adds the DB CHECK atomically with the remap on both tables: valid
+set = the D3a canonical `deliveryMethodEnum` (`pdf, video, call, in_person, voice_notes, async_messaging,
+hybrid`; NULL allowed). `hybrid` stays valid because ServiceForm offers it as a live delivery option —
+a CHECK without it would break every hybrid create. Guarded: REFUSES listing any unmapped value rather than
+half-applying. Companion change in the same commit: `CANONICAL_TEMPLATES` seeder literals (server/routes.ts)
+`document`→`pdf` so fresh environments seed CHECK-clean. Prod distribution at approval: pdf 67 /
+in_person 35 / call 2 / async_messaging 1, no NULLs. Ratified by the decision-maker's remap-table approval
++ amended-CHECK confirm (Jul 11).
+
+**Migrations 107–108 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1 (decisions D3a/D4/D5a):**
+107 adds nullable `offering_type_key` to `local_expert_forms` (FK → `expert_offering_types.offering_type_key`)
+and `service_provider_forms` (FK → `service_offering_types.offering_type_key`), both `ON DELETE SET NULL` —
+the canonical /earn selection the signup forms previously dropped (only the display name survived). Two
+parallel catalogs, two FKs; experts remain NOT `service_categories` rows. 107 also repairs the missing
+unique constraint on `service_offering_types.offering_type_key` (declared in schema.ts, absent from shipped
+DDL), guarded to REFUSE on pre-existing duplicate keys rather than half-apply. 108 adds nullable
+`has_insurance` boolean to `service_provider_forms` (applicant self-attestation, previously collected and
+dropped; NULL = pre-108 "never asked"); table chosen because signup writes it and the FEE-2 brief homes the
+admin-validated `insurance_tier` evidence there. D3a: `deliveryMethodEnum` (shared/schema.ts) is extended
+with `hybrid` — canonical set is now `pdf, video, call, in_person, voice_notes, async_messaging, hybrid`;
+the column is varchar with no DB CHECK, so this is TS-level; NO row remap has run — that requires the
+Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a·D2a·D3a·D4·D5a locked).
 
 **Migration 067 (Jun 11, 2026; registered in `migration-files.ts`) — Discover Feed Composition admin rows:**
 data-seed only, no schema change. Inserts the five `feed_*` `platform_settings` rows read by the public

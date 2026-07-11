@@ -405,6 +405,10 @@ export const localExpertForms = pgTable("local_expert_forms", {
   stripeConnectStatus: varchar("stripe_connect_status", { length: 20 }).default("not_started"),
   status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),
+  // Canonical offering-type selection carried from /earn (migration 107).
+  // FK to expert_offering_types.offering_type_key — the expert catalog only;
+  // the provider form references service_offering_types (parallel catalogs).
+  offeringTypeKey: varchar("offering_type_key", { length: 100 }).references(() => expertOfferingTypes.offeringTypeKey, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   statusIdx: index("local_expert_forms_status_idx").on(table.status),
@@ -451,6 +455,13 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   personaInquiryId: varchar("persona_inquiry_id", { length: 255 }),
   status: varchar("status", { length: 20 }).default("pending"), // Enum: applicationStatusEnum
   rejectionMessage: text("rejection_message"),
+  // Canonical offering-type selection carried from /earn (migration 107).
+  // FK to service_offering_types.offering_type_key — the provider catalog only.
+  offeringTypeKey: varchar("offering_type_key", { length: 100 }).references(() => serviceOfferingTypes.offeringTypeKey, { onDelete: "set null" }),
+  // Applicant's self-attested insurance flag (migration 108). Nullable: NULL =
+  // never asked (pre-108 rows), distinct from an explicit false. The FEE-2
+  // brief's admin-validated insurance_tier evidence columns will sit beside it.
+  hasInsurance: boolean("has_insurance"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -505,7 +516,11 @@ export const serviceSubcategories = pgTable("service_subcategories", {
 // === Expert/Provider Services (Enhanced for Marketplace) ===
 
 export const serviceTypeEnum = ["consultation", "planning", "action", "concierge", "experience", "specialty"] as const;
-export const deliveryMethodEnum = ["pdf", "video", "call", "in_person", "voice_notes", "async_messaging"] as const;
+// D3a canonical set (structural brief Phase 1c): schema set + "hybrid".
+// The column is varchar with no DB CHECK; this const is the single canonical
+// vocabulary all writers must use. Legacy rows carry divergent values
+// (video-call, document, in-person) until the Phase-1d approved remap runs.
+export const deliveryMethodEnum = ["pdf", "video", "call", "in_person", "voice_notes", "async_messaging", "hybrid"] as const;
 export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 
 export const providerServices = pgTable("provider_services", {
@@ -527,7 +542,7 @@ export const providerServices = pgTable("provider_services", {
   pricingTiers: jsonb("pricing_tiers"),
   
   // Delivery
-  deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // pdf, video, call, in_person, voice_notes, async_messaging
+  deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // canonical: deliveryMethodEnum — DB CHECK enforced since migration 109
   deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
   revisionsIncluded: integer("revisions_included").default(0),
   includesExpertNotes: boolean("includes_expert_notes").default(false),
