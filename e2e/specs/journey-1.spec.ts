@@ -87,15 +87,24 @@ test.describe('Journey 1A — Authed traveler', () => {
 
     await page.locator(SELECTORS.serviceCard).first().click();
     await page.waitForSelector(SELECTORS.addToCartBtn, { timeout: 15_000 });
-    await page.click(SELECTORS.addToCartBtn);
-    await page.waitForTimeout(500);
+    // Wait for the POST /api/cart response to complete before navigating —
+    // avoids the 500 ms race where the mutation hasn't finished yet.
+    const [cartRes] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes('/api/cart') && res.request().method() === 'POST',
+        { timeout: 15_000 },
+      ),
+      page.locator(SELECTORS.addToCartBtn).first().click(),
+    ]);
+    expect(cartRes.status(), 'add-to-cart POST succeeded').toBeLessThan(300);
 
     await page.goto('/cart');
     await page.waitForSelector(SELECTORS.cartItem, { timeout: 15_000 });
     await expect(page.locator(SELECTORS.cartTotal)).toContainText('$');
 
     await page.click(SELECTORS.resolveTripBtn);
-    await page.waitForTimeout(1_000);
+    // Wait for the cart to re-render rather than a fixed sleep
+    await page.waitForSelector(SELECTORS.cartItem, { timeout: 10_000 });
     await expect(page.locator(SELECTORS.cartItem).first()).toBeVisible();
 
     await page.click(SELECTORS.checkoutBtn);
@@ -132,8 +141,15 @@ test.describe('Journey 1B — Guest path with cart migration', () => {
 
     await page.locator(SELECTORS.serviceCard).first().click();
     await page.waitForSelector(SELECTORS.addToCartBtn, { timeout: 15_000 });
-    await page.click(SELECTORS.addToCartBtn);
-    await page.waitForTimeout(500);
+    // Same network-response gate as Journey 1A — avoids the 500 ms race.
+    const [cartRes1B] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes('/api/cart') && res.request().method() === 'POST',
+        { timeout: 15_000 },
+      ),
+      page.locator(SELECTORS.addToCartBtn).first().click(),
+    ]);
+    expect(cartRes1B.status(), 'guest add-to-cart POST succeeded').toBeLessThan(300);
 
     await page.goto('/cart');
     await expect(page.locator(SELECTORS.guestSignInPrompt)).toBeVisible();
@@ -152,7 +168,8 @@ test.describe('Journey 1B — Guest path with cart migration', () => {
     await expect(page.locator(SELECTORS.cartItem).first()).toBeVisible();
 
     await page.click(SELECTORS.resolveTripBtn);
-    await page.waitForTimeout(1_000);
+    // Wait for cart items to remain visible rather than a fixed sleep
+    await page.waitForSelector(SELECTORS.cartItem, { timeout: 10_000 });
 
     await page.click(SELECTORS.checkoutBtn);
     await page.waitForURL(/\/checkout|\/payment/, { timeout: 20_000 });

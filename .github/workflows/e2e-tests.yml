@@ -105,6 +105,7 @@ jobs:
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
 
       - name: Upload Playwright report
         if: always()
