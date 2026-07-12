@@ -242,6 +242,37 @@ export async function registerRoutes(
     // Continue without auth - public routes will still work
   }
 
+  // ─── Admin API backstop: default-deny on /api/admin/* ──────────────────────
+  // Root-cause fix for the leak class: admin protection was per-endpoint opt-in
+  // with no backstop, so routes leaked when a guard was forgotten (POST
+  // /api/admin/fee-config was world-writable — any authed user could rewrite the
+  // platform's fee/commission splits). This middleware runs BEFORE every admin
+  // route is registered below (inline routes here and the mounted adminRoutes
+  // router alike), so it covers all /api/admin/* regardless of which router
+  // ultimately handles the request. Role is read from a DB lookup on the
+  // authenticated session — never a request-supplied value — and it fails
+  // closed (401 unauth / 403 non-admin / 500 on lookup error). Existing
+  // per-endpoint checks are left in place as harmless belt-and-suspenders.
+  const adminApiGuard = async (req: any, res: any, next: any) => {
+    try {
+      if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const uid = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = uid
+        ? await db.select().from(users).where(eq(users.id, uid)).then((r) => r[0])
+        : undefined;
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      return next();
+    } catch (err) {
+      console.error("adminApiGuard error:", err);
+      return res.status(500).json({ message: "Authorization check failed" });
+    }
+  };
+  app.use("/api/admin", adminApiGuard);
+
   // Chat / Conversations routes (GET/POST/PATCH/DELETE /api/conversations)
   registerChatRoutes(app);
 
@@ -7795,7 +7826,19 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         totalEstimatedCost: z.string().optional(),
         metadata: z.record(z.any()).optional(),
       }).parse(req.body);
-      const state = await storage.createCoordinationState({ ...coordInput, userId });
+      // D-BUDGET(interim): persist the event budget into the existing `budget` jsonb column
+      // ({ amount: dollars, currency }). The request carries it as metadata.budget (dollars); the
+      // fee reads budget.amount ×100 (GET /fee). NOTE: title/metadata are accepted but map to no
+      // columns and are silently dropped by Drizzle — filed known-issue, not fixed here.
+      const budgetAmount = Number((coordInput.metadata as any)?.budget);
+      const budget = Number.isFinite(budgetAmount) && budgetAmount > 0
+        ? { amount: budgetAmount, currency: "USD" }
+        : undefined;
+      const state = await storage.createCoordinationState({
+        ...coordInput,
+        userId,
+        ...(budget ? { budget } : {}),
+      });
       res.status(201).json(state);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -7817,7 +7860,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      const updated = await storage.updateCoordinationState(req.params.id, coordUpdateInput);
+      // D-BUDGET(interim): if the patch carries metadata.budget, persist it to the `budget` column
+      // (same { amount: dollars, currency } contract as create).
+      const patchBudgetAmount = Number((coordUpdateInput.metadata as any)?.budget);
+      const budgetPatch = Number.isFinite(patchBudgetAmount) && patchBudgetAmount > 0
+        ? { budget: { amount: patchBudgetAmount, currency: "USD" } }
+        : {};
+      const updated = await storage.updateCoordinationState(req.params.id, { ...coordUpdateInput, ...budgetPatch });
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -7972,8 +8021,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const eventType = state.experienceType;
-      const budgetCents = state.totalEstimatedCost
-        ? Math.round(parseFloat(state.totalEstimatedCost) * 100)
+      // D-BUDGET(interim): read the event budget from the `budget` jsonb column
+      // ({ amount: dollars, currency }), NOT total_estimated_cost (which means *cost*, not budget).
+      // Absent/{}/non-positive → 0 → intentional floor-only (max(floor, 8%×0) = floor).
+      const budgetDollars = Number((state.budget as any)?.amount);
+      const budgetCents = Number.isFinite(budgetDollars) && budgetDollars > 0
+        ? Math.round(budgetDollars * 100)
         : 0;
 
       const fee = await resolveCoordinationFee(eventType, budgetCents);
