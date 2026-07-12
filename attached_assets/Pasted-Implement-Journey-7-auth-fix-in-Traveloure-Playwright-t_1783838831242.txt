@@ -1,0 +1,113 @@
+Implement Journey 7 auth fix in Traveloure
+Playwright tests.
+
+PROBLEM:
+journey-7.spec.ts { request } fixture is 
+unauthenticated. Hits isAuthenticated middleware
+which redirects to login HTML page instead of
+processing the coordination fee request.
+Causes: SyntaxError: Unexpected token '<'
+
+TASK:
+
+STEP 1 — Create auth directory:
+mkdir -p playwright/.auth
+
+Add to .gitignore:
+playwright/.auth/
+
+STEP 2 — Create global setup file:
+playwright/global-setup.ts
+
+import { chromium } from "@playwright/test";
+
+async function globalSetup() {
+  const browser = await chromium.launch();
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  const baseURL = process.env.BASE_URL || 
+    "https://traveloure-platform.replit.app";
+
+  // Login as traveler test account
+  await page.goto(baseURL + "/login");
+  
+  await page.fill(
+    '[name="email"]',
+    "traveler@traveloure-test.com"
+  );
+  await page.fill(
+    '[name="password"]',
+    "TestPass@1234"
+  );
+  await page.click('[type="submit"]');
+  
+  // Wait for successful login
+  await page.waitForURL("**/dashboard", {
+    timeout: 15000
+  });
+
+  // Save session state
+  await context.storageState({
+    path: "playwright/.auth/traveler.json"
+  });
+
+  await browser.close();
+  console.log(
+    "[GLOBAL SETUP] Traveler session saved"
+  );
+}
+
+export default globalSetup;
+
+STEP 3 — Update playwright.config.ts:
+Add globalSetup reference:
+
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  globalSetup: "./playwright/global-setup.ts",
+  use: {
+    baseURL: process.env.BASE_URL || 
+      "https://traveloure-platform.replit.app",
+  },
+  // keep all existing config unchanged
+});
+
+STEP 4 — Update journey-7.spec.ts:
+At the top of the file add:
+
+import { test, expect } from "@playwright/test";
+
+// Use saved authenticated session
+test.use({
+  storageState: "playwright/.auth/traveler.json"
+});
+
+Find the commented-out auth section 
+around line 91-109:
+// Login as traveler
+// ... (auth helper)   ← never implemented
+
+Replace with the storageState approach above.
+Remove all commented-out auth code.
+
+STEP 5 — Verify the fix:
+Run journey-7.spec.ts specifically:
+npx playwright test journey-7.spec.ts
+
+Expected: 
+POST /api/coordination-states → 
+  authenticated → 201 (not HTML redirect)
+POST /api/coordination-states/:id/fee → 
+  authenticated → 200 + { fee, breakdown }
+expect(feeResult.fee).toBeTruthy() → ✅
+
+Report:
+✅ PASS — Journey 7 green
+❌ FAIL — show exact error
+
+Do NOT change any backend auth logic.
+Do NOT change coordination fee calculation.
+Do NOT touch vite.config.ts.
+Show every file created or changed.
