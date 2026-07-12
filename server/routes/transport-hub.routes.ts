@@ -10,6 +10,8 @@
 
 import { Router } from "express";
 import { storage } from "../storage";
+import { db } from "../db";
+import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg } from "../services/transport-booking-options.service";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -397,6 +399,34 @@ router.patch(
     }
   }
 );
+
+/**
+ * POST /api/transport-booking-options/seed/test-variant
+ *
+ * CI/test-only endpoint: inserts a minimal transport booking option with a
+ * known externalUrl so the click endpoint can be exercised without a real
+ * itinerary in the database. Static segment must come BEFORE the dynamic
+ * /seed/:variantId route so Express matches it first.
+ */
+router.post("/api/transport-booking-options/seed/test-variant", isAuthenticated, async (req, res) => {
+  try {
+    const [row] = await db
+      .insert(transportBookingOptions)
+      .values({
+        bookingType: "affiliate",
+        source: "test",
+        title: "Test Transport Option",
+        modeType: "bus",
+        externalUrl: "https://12go.asia/en",
+        bookingStatus: "available",
+      })
+      .returning();
+    return res.status(201).json({ id: row.id, variant: "test-variant", createdAt: row.createdAt });
+  } catch (error) {
+    console.error("Error seeding test transport option:", error);
+    return res.status(500).json({ error: "Failed to seed test transport option" });
+  }
+});
 
 /**
  * POST /api/transport-booking-options/seed/:variantId
