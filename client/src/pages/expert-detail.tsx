@@ -154,7 +154,7 @@ export default function ExpertDetailPage() {
   };
   const localityProofLabel = localityProofLabels[localityProof] || "";
   const superExpert = expert.superExpert || false;
-  const verified = expert.verified || true;
+  const verified = expert.verified === true;
   const idVerified = expert.expertForm?.identityVerificationStatus === "verified";
 
   return (
