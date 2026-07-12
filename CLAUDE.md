@@ -30,7 +30,19 @@ This document captures architectural decisions to maintain consistency across co
    `service_category`.** `offering_type_key` is persisted via **two separate FKs** (migration 107), `ON DELETE SET NULL`.
 5. **One builder; selection-only signup.** `ServiceForm` is the single offering-creation surface for **both** roles; the
    expert create wizard is retired (Phase 3). Signup is **selection-only** — listing creation is deferred to the
-   post-approval console. ⚠️ **Current code:** not yet done — the wizard is still live; Phase 2/3 is parked pending go.
+   post-approval console. 🔄 **Phase 2 IN PROGRESS** (`claude/phase2-serviceform-absorption`): `ServiceForm` absorbs the
+   wizard's two unique capabilities — the from-template **gallery entry** (writing via the canonical
+   `POST /api/provider/services` with `approvalStatus` `draft`/`submitted`, **never** the born-approved
+   `POST /api/expert/services/from-template/:id`) and the **`requirements`** field. Also lands a pre-existing P1 fix
+   (Step 0.5): ServiceForm's delivery vocab is canonicalized at the write boundary (`in-person`→`in_person`,
+   `video-call`→`video`, keep `hybrid`) so writes satisfy the migration-109 CHECK — before this, ServiceForm creates with
+   those two values failed on insert. Every create path stays `draft`/`submitted`, never born-approved (D1a). The wizard is
+   **not deleted** in Phase 2 — its retirement is Phase 3. Filed for Phase 3: retire/redirect the born-approved
+   `from-template/:id` route; and **evaluate** (do not add mechanically) exposing the not-yet-in-picker canonical
+   delivery methods (`call`, `voice_notes`, `async_messaging`, `pdf`) — confirm **each** is a delivery type a
+   provider/expert should be able to *choose* in ServiceForm before adding it. In particular `pdf` (the written-deliverable
+   method the wizard's `document` mapped to) may be a template-/offering-only concept, not a picker option; adding a picker
+   option the rest of the create/booking flow doesn't support would be a new "surface-without-a-backend" trap.
 6. **Insurance.** `has_insurance` (provider self-attestation, `service_provider_forms`, migration 108) is the **sole**
    provider insurance field; the "023 insurance evidence" was a never-shipped plan. When FEE-2 Phase 1 ships the
    admin-validated `insurance_tier`, a **boolean-vs-tier precedence rule must be written here before both coexist.**
