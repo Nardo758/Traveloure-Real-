@@ -242,6 +242,37 @@ export async function registerRoutes(
     // Continue without auth - public routes will still work
   }
 
+  // ─── Admin API backstop: default-deny on /api/admin/* ──────────────────────
+  // Root-cause fix for the leak class: admin protection was per-endpoint opt-in
+  // with no backstop, so routes leaked when a guard was forgotten (POST
+  // /api/admin/fee-config was world-writable — any authed user could rewrite the
+  // platform's fee/commission splits). This middleware runs BEFORE every admin
+  // route is registered below (inline routes here and the mounted adminRoutes
+  // router alike), so it covers all /api/admin/* regardless of which router
+  // ultimately handles the request. Role is read from a DB lookup on the
+  // authenticated session — never a request-supplied value — and it fails
+  // closed (401 unauth / 403 non-admin / 500 on lookup error). Existing
+  // per-endpoint checks are left in place as harmless belt-and-suspenders.
+  const adminApiGuard = async (req: any, res: any, next: any) => {
+    try {
+      if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const uid = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = uid
+        ? await db.select().from(users).where(eq(users.id, uid)).then((r) => r[0])
+        : undefined;
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      return next();
+    } catch (err) {
+      console.error("adminApiGuard error:", err);
+      return res.status(500).json({ message: "Authorization check failed" });
+    }
+  };
+  app.use("/api/admin", adminApiGuard);
+
   // Chat / Conversations routes (GET/POST/PATCH/DELETE /api/conversations)
   registerChatRoutes(app);
 
