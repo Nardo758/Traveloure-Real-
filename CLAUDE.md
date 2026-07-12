@@ -17,10 +17,10 @@ This document captures architectural decisions to maintain consistency across co
    Lifecycle: `draft → submitted → approved`. ⚠️ **Current code:** `provider_services.approval_status` defaults
    `"approved"` (`shared/schema.ts:578`) and `GET /api/expert/services` has no approval gate (`server/routes.ts:5538`) —
    both tracked by D1a/Phase 2.
-2. **Admin auth = default-deny.** `/api/admin/*` is protected by a **blanket `requireAdmin`** guard (DB role lookup on the
-   session; 401/403; no bypass). Do **not** reintroduce per-endpoint opt-in — that pattern leaked
-   (`POST /api/admin/fee-config` was world-writable). ⚠️ **Current code:** the blanket guard lands via PR **#141**; until it
-   merges, the hole is still open on `main` (`server/routes/admin.routes.ts:4092`).
+2. **Admin auth = default-deny.** `/api/admin/*` is protected by a **blanket `requireAdmin`** guard
+   (`app.use("/api/admin", …)` in `server/routes.ts`, DB role lookup on the session; 401/403; no bypass) — **landed via
+   #141**; the previously world-writable `POST /api/admin/fee-config` hole is **closed on `main`**. Do **not** reintroduce
+   per-endpoint opt-in — that pattern is what leaked.
 3. **Delivery-method vocabulary = the 7.** Canonical set is `pdf, video, call, in_person, voice_notes, async_messaging,
    hybrid` — enforced by both `deliveryMethodEnum` (`shared/schema.ts:523`) and the migration-109 DB CHECK on
    `provider_services` + `service_templates`. No `document`/`digital`/hyphenated variants; the `CANONICAL_TEMPLATES` seeder
@@ -35,12 +35,13 @@ This document captures architectural decisions to maintain consistency across co
    provider insurance field; the "023 insurance evidence" was a never-shipped plan. When FEE-2 Phase 1 ships the
    admin-validated `insurance_tier`, a **boolean-vs-tier precedence rule must be written here before both coexist.**
 7. **Coordination fee.** Fee logic lives in the service (`optimization-fee.service.ts`); rates resolve via config, no
-   literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. ⚠️ **Current code (live bug):**
-   the fee reads budget from `coordination_states.total_estimated_cost`, a column **nothing writes**, so every fee prices
-   against a **$0 budget** (percent tier dead → always floor), and the optimize credit is subtracted **unconditionally**.
-   🚧 **Open decision (blocking the fix):** the ratified interim "read `metadata.budget`" is **not viable as written** —
-   `coordination_states` has **no `metadata` column**; the interim must use an existing column
-   (`total_estimated_cost`) or the first-class field. Do not mark this resolved until the decision-maker picks the source.
+   literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. **Resolved (interim, #144):**
+   the fee reads the event budget from the existing `coordination_states.budget` jsonb column
+   (`{ amount: <dollars>, currency }`, written at create/patch from the request's `metadata.budget`, read ×100), **not**
+   `total_estimated_cost` (that means *cost*, not budget); absent/`{}` budget → intentional floor-only. The optimize
+   credit is **not applied** pending the Phase-4 paid-signal linkage (no unearned discount). Filed follow-ups: first-class
+   validated `budget` field (D-BUDGET(b)); the paid-signal ledger. Full contract in the "Recorded change — Coordination-fee"
+   note below.
 8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
    touched code is a defect (see §13). The `499`/`8%` coordination constants are a pre-existing exception pending
    migration to config (Phase 4.1 TODO in the service).
@@ -59,7 +60,7 @@ This document captures architectural decisions to maintain consistency across co
 - **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief: `verified || true`
   (every expert renders "Verified"), fabricated `4.9`/`4.5` ratings, a `90/10` commission **literal**, hardcoded
   "free cancellation / instant confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap.
-- **Approval divergences** (§1) and the **coordination-fee $0-budget bug** (§7) — tracked, fixes in flight.
+- **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 
 ---
