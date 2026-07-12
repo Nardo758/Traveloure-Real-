@@ -7825,7 +7825,19 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         status: z.string().max(50).optional(),
         metadata: z.record(z.any()).optional(),
       }).parse(req.body);
-      const state = await storage.createCoordinationState({ ...coordInput, userId });
+      // D-BUDGET(interim): persist the event budget into the existing `budget` jsonb column
+      // ({ amount: dollars, currency }). The request carries it as metadata.budget (dollars); the
+      // fee reads budget.amount ×100 (GET /fee). NOTE: title/metadata are accepted but map to no
+      // columns and are silently dropped by Drizzle — filed known-issue, not fixed here.
+      const budgetAmount = Number((coordInput.metadata as any)?.budget);
+      const budget = Number.isFinite(budgetAmount) && budgetAmount > 0
+        ? { amount: budgetAmount, currency: "USD" }
+        : undefined;
+      const state = await storage.createCoordinationState({
+        ...coordInput,
+        userId,
+        ...(budget ? { budget } : {}),
+      });
       res.status(201).json(state);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -7847,7 +7859,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      const updated = await storage.updateCoordinationState(req.params.id, coordUpdateInput);
+      // D-BUDGET(interim): if the patch carries metadata.budget, persist it to the `budget` column
+      // (same { amount: dollars, currency } contract as create).
+      const patchBudgetAmount = Number((coordUpdateInput.metadata as any)?.budget);
+      const budgetPatch = Number.isFinite(patchBudgetAmount) && patchBudgetAmount > 0
+        ? { budget: { amount: patchBudgetAmount, currency: "USD" } }
+        : {};
+      const updated = await storage.updateCoordinationState(req.params.id, { ...coordUpdateInput, ...budgetPatch });
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -8002,8 +8020,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const eventType = state.experienceType;
-      const budgetCents = state.totalEstimatedCost
-        ? Math.round(parseFloat(state.totalEstimatedCost) * 100)
+      // D-BUDGET(interim): read the event budget from the `budget` jsonb column
+      // ({ amount: dollars, currency }), NOT total_estimated_cost (which means *cost*, not budget).
+      // Absent/{}/non-positive → 0 → intentional floor-only (max(floor, 8%×0) = floor).
+      const budgetDollars = Number((state.budget as any)?.amount);
+      const budgetCents = Number.isFinite(budgetDollars) && budgetDollars > 0
+        ? Math.round(budgetDollars * 100)
         : 0;
 
       const fee = await resolveCoordinationFee(eventType, budgetCents);
