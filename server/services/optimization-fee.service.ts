@@ -145,17 +145,15 @@ export async function resolveCoordinationFee(
   const rawFeeCents = Math.max(floorCents, percentFee);
   const rule: "floor" | "percent" = rawFeeCents === floorCents ? "floor" : "percent";
 
-  // 3.0.1d: Double-count fence — Event optimizers get their optimize fee credited
-  // toward coordination. Subtract the optimize fee from the coordination fee,
-  // but never go below $0.
-  let optimizeCreditCents = 0;
-  if (isEventOptimizer(eventType)) {
-    const tier = complexityTier(eventType);
-    const optimizeFee = await getFee(eventType, tier);
-    if (!optimizeFee.isDisabled && optimizeFee.creditTowardCoordination) {
-      optimizeCreditCents = optimizeFee.priceCents;
-    }
-  }
+  // D-CREDIT (interim): NO optimize-fee credit is applied here. The credit was previously
+  // subtracted unconditionally for every event type based on config alone (isEventOptimizer),
+  // with no signal that the traveler actually PAID an optimize fee — the payment record
+  // (optimization.routes.ts confirm) ties to itinerary_comparisons/platform_revenue, never to a
+  // coordination state (explicit TODO there). Crediting an unpaid fee is an unearned discount, so
+  // the honest interim charges the correct floor-or-percent with no credit.
+  // Follow-up (filed): record/lookup the paid optimize fee per coordination state, then credit only
+  // when actually paid. The optimize-fee config (getFee / creditTowardCoordination) is left intact.
+  const optimizeCreditCents = 0;
   const feeCents = Math.max(0, rawFeeCents - optimizeCreditCents);
 
   return {

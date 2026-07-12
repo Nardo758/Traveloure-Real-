@@ -263,6 +263,29 @@ overwrites an admin-tuned value, mirroring the 033 seed pattern.
   for `upsell_expert_endorsements`; do **not** register or execute it. The live
   endorsement schema remains `050_phase5_expert_endorsements.sql`.
 
+**Recorded change — Coordination-fee budget wiring + interim credit (Jul 12, 2026):**
+- **Bug (was live on `main`):** `GET /api/coordination-states/:id/fee` read the budget from
+  `state.total_estimated_cost`, a column **no code path writes**, so every coordination fee priced against a
+  **$0 budget** — the `max(floor, 8%×budget)` percent tier could never fire; every fee collapsed to the `$499`
+  floor minus an optimize credit. Reconstructed exactly: `47901 = 49900 floor − 1999 wedding optimize credit`.
+- **D-BUDGET (interim, ratified):** budget now persists to the **existing `budget` jsonb column** (no migration).
+  Contract: `budget = { amount: <number, USD dollars>, currency: "USD" }`, written at create/patch from the
+  request's `metadata.budget`; the fee reads `budget.amount × 100 → cents`; absent/`{}`/non-positive → `0` →
+  **intentional** floor-only. The fee reads `budget`, **NOT** `total_estimated_cost` (that column means *cost*,
+  not *budget* — no overloading). The first-class validated `budget` field is the **filed follow-up** (D-BUDGET(b)).
+- **D-CREDIT (interim, ratified):** the optimize-fee credit is **no longer subtracted** in `resolveCoordinationFee`
+  (`server/services/optimization-fee.service.ts`). It was applied unconditionally for all event types with **no
+  paid-signal** — the payment `confirm` (`optimization.routes.ts`) records payment on
+  `itinerary_comparisons`/`platform_revenue`, never linked to a coordination state (TODO there defers linkage to
+  Phase 4). Crediting an unpaid fee is an unearned discount; the honest interim charges floor-or-percent with **no
+  credit**. **Follow-up (filed):** record/lookup the paid optimize fee per coordination state, then credit only when paid.
+- The `499_00` floor / `0.08` percent constants are **unchanged** (they were correct; only the budget input + credit gate were).
+- **Known-issue (filed, NOT fixed here):** the coordination-state create/patch zod schemas accept `title` +
+  `metadata` that map to **no columns** (Drizzle silently drops them) — the same "looks-stored-but-isn't" class that
+  caused the $0-budget bug. And `server/__tests__/event-coordination.test.ts` is **dead** (imports uninstalled
+  `vitest`; calls unimported `getFee`) — journey-7:91 is the only live test for this fee engine.
+- Ratified by Leon's D-BUDGET(existing-`budget`-column) + D-CREDIT(interim) lock. Own money-fix lane.
+
 ---
 
 ## FAQ
