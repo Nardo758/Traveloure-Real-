@@ -89,6 +89,7 @@ interface ServiceFormData {
   contentAffinityTags: string[];
   // Shared: content
   whatIncluded: string[];
+  requirements: string[];
   maxConcurrentClients: number;
   // Logistics
   serviceArea: string;
@@ -146,6 +147,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     includesExpertNotes: false,
     contentAffinityTags: [],
     whatIncluded: [],
+    requirements: [],
     maxConcurrentClients: 1,
     serviceArea: "",
     neighborhood: "",
@@ -214,7 +216,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     guestMin,
     guestMax,
     duration: s.deliveryTimeframe || s.duration || "",
-    deliveryMethod: s.deliveryMethod || "in-person",
+    deliveryMethod: fromCanonicalDelivery(s.deliveryMethod),
     expertOfferingTypeId: s.expertOfferingTypeId || "",
     approvalStatus: s.approvalStatus || "draft",
     active: s.status === "active",
@@ -222,6 +224,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     includesExpertNotes: Boolean(s.includesExpertNotes),
     contentAffinityTags: Array.isArray(s.contentAffinityTags) ? s.contentAffinityTags : [],
     whatIncluded: (s.whatIncluded as string[]) || [],
+    requirements: (s.requirements as string[]) || [],
     maxConcurrentClients: s.maxConcurrentBookings || 1,
     serviceArea: s.location || "",
     neighborhood: s.neighborhood || "",
@@ -237,6 +240,46 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     categoryAttributes: (s.categoryAttributes && typeof s.categoryAttributes === "object") ? s.categoryAttributes : {},
   };
 }
+
+// Canonical service-template row (from GET /api/service-templates) — the wizard's
+// template gallery source, absorbed into ServiceForm in Phase 2.
+interface ServiceTemplate {
+  id: string;
+  title: string;
+  description: string | null;
+  categoryId: string | null;
+  deliveryMethod: string | null;
+  deliveryTimeframe: string | null;
+  suggestedPrice: string | null;
+  requirements: unknown;
+  whatIncluded: unknown;
+}
+
+const templateArrayToStrings = (v: unknown): string[] =>
+  Array.isArray(v)
+    ? (v as string[])
+    : typeof v === "string" && v
+    ? v.split("\n").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+// ── Delivery-method canonicalization (migration-109 CHECK) ──────────────────
+// The DB CHECK enforces the canonical 7: pdf, video, call, in_person,
+// voice_notes, async_messaging, hybrid. ServiceForm's UI historically used the
+// legacy labels in-person / video-call / hybrid and wrote them RAW — which the
+// CHECK rejects (in-person / video-call are not canonical), so every create/edit
+// with those two values failed on insert. Map at the write boundary so all
+// ServiceForm writes are CHECK-valid, and on the way in so edits/templates
+// (which now carry canonical values post-109) display correctly in the picker.
+// Phase 3 exposes the other 4 canonical methods (call/voice_notes/async_messaging/pdf) in the UI.
+type UiDelivery = ServiceFormData["deliveryMethod"];
+const toCanonicalDelivery = (v: string): string =>
+  v === "in-person" ? "in_person" : v === "video-call" ? "video" : v; // hybrid + already-canonical pass through
+const fromCanonicalDelivery = (v: string | null | undefined): UiDelivery =>
+  v === "video" || v === "video-call"
+    ? "video-call"
+    : v === "hybrid"
+    ? "hybrid"
+    : "in-person"; // in_person/in-person and the 4 not-yet-in-UI → in-person until Phase 3
 
 // Map tier deliveryFormats to the form's deliveryMethod values
 function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
@@ -262,6 +305,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const isEditMode = !!id;
   const [creationSuccess, setCreationSuccess] = useState(false);
   const [newIncluded, setNewIncluded] = useState("");
+  const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
 
   // Single category taxonomy
@@ -273,6 +317,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const { data: expertOfferingTypes = [] } = useQuery<ExpertOfferingType[]>({
     queryKey: ["/api/expert/offering-types"],
     enabled: role === "expert",
+    staleTime: 5 * 60_000,
+  });
+
+  // Canonical service-template gallery (expert create-from-template — Phase 2).
+  // Selection pre-fills the form; the write still goes through the canonical
+  // create mutation below (draft/submitted), NOT the born-approved from-template route.
+  const { data: serviceTemplates = [] } = useQuery<ServiceTemplate[]>({
+    queryKey: ["/api/service-templates"],
+    enabled: role === "expert" && !isEditMode,
     staleTime: 5 * 60_000,
   });
 
@@ -313,16 +366,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (!tplName) return;
       templatePreFilled.current = true;
 
-      const deliveryRaw = sp.get("tpl_delivery") || "";
-      const deliveryMap: Record<string, ServiceFormData["deliveryMethod"]> = {
-        "video": "video-call",
-        "video-call": "video-call",
-        "in-person": "in-person",
-        "hybrid": "hybrid",
-        "document": "in-person",
-      };
+      // tpl_delivery carries the canonical delivery value from the template row (post-109).
       const deliveryMethod: ServiceFormData["deliveryMethod"] =
-        deliveryMap[deliveryRaw] ?? "in-person";
+        fromCanonicalDelivery(sp.get("tpl_delivery") || "");
 
       let whatIncluded: string[] = [];
       try {
@@ -424,10 +470,44 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     set("whatIncluded", formData.whatIncluded.filter((_, i) => i !== index));
   };
 
+  const handleAddRequirement = () => {
+    if (newRequirement.trim()) {
+      set("requirements", [...formData.requirements, newRequirement.trim()]);
+      setNewRequirement("");
+    }
+  };
+
+  const handleRemoveRequirement = (index: number) => {
+    set("requirements", formData.requirements.filter((_, i) => i !== index));
+  };
+
+  // Create-from-template (Phase 2): pre-fill the form from a canonical template
+  // row. The write is the normal ServiceForm submit → canonical POST with
+  // approvalStatus draft/submitted; never born-approved.
+  const applyTemplate = (t: ServiceTemplate) => {
+    setFormData((prev) => ({
+      ...prev,
+      name: t.title,
+      description: t.description ?? prev.description,
+      categoryId: t.categoryId ?? prev.categoryId,
+      deliveryMethod: fromCanonicalDelivery(t.deliveryMethod),
+      duration: t.deliveryTimeframe ?? prev.duration,
+      basePrice: t.suggestedPrice ? (parseFloat(t.suggestedPrice) || prev.basePrice) : prev.basePrice,
+      requirements: templateArrayToStrings(t.requirements),
+      whatIncluded: templateArrayToStrings(t.whatIncluded),
+    }));
+    toast({
+      title: "Loaded from template",
+      description: "Review and edit below, then Save as draft or Submit for review — it is never auto-approved.",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleAddAnother = () => {
     setCreationSuccess(false);
     setFormData(buildEmptyForm(role));
     setNewIncluded("");
+    setNewRequirement("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -460,8 +540,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         pricingTiers: pricingTiersPayload,
         priceBasedOn,
         deliveryTimeframe: formData.duration,
-        deliveryMethod: formData.deliveryMethod,
+        // Canonicalize to the migration-109 CHECK vocabulary before write.
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
         whatIncluded: formData.whatIncluded,
+        requirements: formData.requirements,
         maxConcurrentBookings: formData.maxConcurrentClients,
         location: formData.serviceArea || "Unknown",
         neighborhood: formData.neighborhoods.length > 0 ? formData.neighborhoods[0] : (formData.neighborhood || null),
@@ -598,6 +680,41 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {isEditMode ? "Edit Service" : "New Service"}
         </span>
       </div>
+
+      {/* ── Start from a template (expert create — absorbed from the wizard, Phase 2) ── */}
+      {role === "expert" && !isEditMode && serviceTemplates.length > 0 && (
+        <Card data-testid="service-template-gallery">
+          <CardHeader>
+            <CardTitle>Start from a template</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {serviceTemplates.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-3 border rounded-lg p-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{t.title}</div>
+                    {t.description && (
+                      <div className="text-sm text-muted-foreground truncate">{t.description}</div>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyTemplate(t)}
+                    data-testid={`button-use-template-${t.id}`}
+                  >
+                    Use this template
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Picking a template pre-fills the form below. Review, edit, then Save as draft or Submit for review —
+              it is never auto-approved.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Basic Information ── */}
       <Card>
@@ -1113,6 +1230,40 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               onKeyDown={(e) => e.key === "Enter" && handleAddIncluded()}
             />
             <Button onClick={handleAddIncluded} variant="outline" size="icon">
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Requirements from Client (absorbed from the expert wizard, Phase 2) ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Requirements from Client</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {formData.requirements.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded">
+                <span className="text-sm">{item}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveRequirement(idx)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newRequirement}
+              onChange={(e) => setNewRequirement(e.target.value)}
+              placeholder="e.g., Passport copy, Dietary restrictions, Preferred dates..."
+              onKeyDown={(e) => e.key === "Enter" && handleAddRequirement()}
+            />
+            <Button onClick={handleAddRequirement} variant="outline" size="icon">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
