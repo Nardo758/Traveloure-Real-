@@ -1,7 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, authFile } from "../fixtures/roles";
 import { loginAsTestAccount } from "./helpers/auth";
 
 test.describe("Journey 7 — Event Coordination (Wedding)", () => {
+  // Authenticates both { page } and { request } fixtures as traveler.
+  // The { request } fixture used in "Coordination fee endpoint" carries the
+  // session cookie from this storageState, so isAuthenticated passes and the
+  // server returns JSON (not an HTML login redirect).
+  test.use({ storageState: authFile("traveler") });
+
   test("Concierge → Quote → Expert → Event Coordination surface", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
@@ -91,8 +97,8 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
   test("Coordination fee endpoint returns correct fee with credit", async ({ request }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
-    // Login as traveler
-    // ... (auth helper)
+    // Session loaded from storageState: authFile("traveler") above — no
+    // per-test login needed; the { request } fixture carries the cookie.
 
     // Create a coordination state for a wedding
     const createRes = await request.post(`${BASE}/api/coordination-states`, {
