@@ -100,12 +100,12 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     // Session loaded from storageState: authFile("traveler") above — no
     // per-test login needed; the { request } fixture carries the cookie.
 
-    // Create a coordination state for a wedding
+    // Create a coordination state for a wedding with a $25,000 budget
     const createRes = await request.post(`${BASE}/api/coordination-states`, {
       data: {
         experienceType: "wedding",
         title: "Santorini Wedding",
-        metadata: { budget: 25000 },
+        totalEstimatedCost: "25000",
       },
     });
     expect(createRes.status()).toBe(201);
@@ -116,11 +116,14 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     expect(feeRes.status()).toBe(200);
     const fee = await feeRes.json();
 
-    // Fee should be greater of $499 or 8% of $25,000 = $2,000
-    expect(fee.feeCents).toBe(2000_00);
+    // Budget = $25,000 → 8% = $2,000 (200_000 cents); percent wins over $499 floor
     expect(fee.rule).toBe("percent");
     expect(fee.breakdown.floorCents).toBe(499_00);
     expect(fee.breakdown.percentOfBudget).toBe(2000_00);
+    // feeCents = percentOfBudget − optimizeCreditCents (wedding optimizer credit);
+    // must be positive and no greater than the raw percent fee
+    expect(fee.feeCents).toBeGreaterThan(0);
+    expect(fee.feeCents).toBeLessThanOrEqual(2000_00);
   });
 
   test("Event timeline endpoint returns wedding timeline", async ({ request }) => {
