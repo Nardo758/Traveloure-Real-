@@ -6,6 +6,64 @@ This document captures architectural decisions to maintain consistency across co
 
 ---
 
+## Locked Decisions & Current Intent (updated Jul 12, 2026)
+
+> This section carries **intent** — how the platform is *supposed* to work — from the decision-maker's sessions, which the
+> repo alone can't convey. Where a "⚠️ current code" note appears, the code **diverges from intent**; that is a tracked
+> **bug**, not the design. Do not "fix" the doc to match a divergence — fix the code (or leave it flagged).
+
+1. **Approval lifecycle (D1a).** Offerings are born `draft`/`submitted`, **never born-approved**. A minimal admin
+   approve/reject queue runs on the real admin gate; recommendations/availability filter on `approved`.
+   Lifecycle: `draft → submitted → approved`. ⚠️ **Current code:** `provider_services.approval_status` defaults
+   `"approved"` (`shared/schema.ts:578`) and `GET /api/expert/services` has no approval gate (`server/routes.ts:5538`) —
+   both tracked by D1a/Phase 2.
+2. **Admin auth = default-deny.** `/api/admin/*` is protected by a **blanket `requireAdmin`** guard (DB role lookup on the
+   session; 401/403; no bypass). Do **not** reintroduce per-endpoint opt-in — that pattern leaked
+   (`POST /api/admin/fee-config` was world-writable). ⚠️ **Current code:** the blanket guard lands via PR **#141**; until it
+   merges, the hole is still open on `main` (`server/routes/admin.routes.ts:4092`).
+3. **Delivery-method vocabulary = the 7.** Canonical set is `pdf, video, call, in_person, voice_notes, async_messaging,
+   hybrid` — enforced by both `deliveryMethodEnum` (`shared/schema.ts:523`) and the migration-109 DB CHECK on
+   `provider_services` + `service_templates`. No `document`/`digital`/hyphenated variants; the `CANONICAL_TEMPLATES` seeder
+   must emit canonical values.
+4. **Two parallel offering catalogs, never merged.** `expert_offering_types` (`serviceTier` + `deliveryFormats`) and
+   `service_offering_types` (`categoryKey` → `service_categories`) are strictly separate. **Experts are NOT a
+   `service_category`.** `offering_type_key` is persisted via **two separate FKs** (migration 107), `ON DELETE SET NULL`.
+5. **One builder; selection-only signup.** `ServiceForm` is the single offering-creation surface for **both** roles; the
+   expert create wizard is retired (Phase 3). Signup is **selection-only** — listing creation is deferred to the
+   post-approval console. ⚠️ **Current code:** not yet done — the wizard is still live; Phase 2/3 is parked pending go.
+6. **Insurance.** `has_insurance` (provider self-attestation, `service_provider_forms`, migration 108) is the **sole**
+   provider insurance field; the "023 insurance evidence" was a never-shipped plan. When FEE-2 Phase 1 ships the
+   admin-validated `insurance_tier`, a **boolean-vs-tier precedence rule must be written here before both coexist.**
+7. **Coordination fee.** Fee logic lives in the service (`optimization-fee.service.ts`); rates resolve via config, no
+   literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. ⚠️ **Current code (live bug):**
+   the fee reads budget from `coordination_states.total_estimated_cost`, a column **nothing writes**, so every fee prices
+   against a **$0 budget** (percent tier dead → always floor), and the optimize credit is subtracted **unconditionally**.
+   🚧 **Open decision (blocking the fix):** the ratified interim "read `metadata.budget`" is **not viable as written** —
+   `coordination_states` has **no `metadata` column**; the interim must use an existing column
+   (`total_estimated_cost`) or the first-class field. Do not mark this resolved until the decision-maker picks the source.
+8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
+   touched code is a defect (see §13). The `499`/`8%` coordination constants are a pre-existing exception pending
+   migration to config (Phase 4.1 TODO in the service).
+9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
+   endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
+   200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
+10. **Expert-template marketplace.** The storefront read (`GET /api/expert-templates`) exists, but the purchase endpoint
+    (`POST /api/expert-templates/:id/purchase`) is a **ledger stub with no real checkout** (writes an "available" earning
+    with zero Stripe charge) and is called by no UI. It is a **filed feature, not a live product**; the `/discover`
+    `packages` tab is dead. Do not treat template purchase as functional.
+11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
+    works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
+
+### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
+
+- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief: `verified || true`
+  (every expert renders "Verified"), fabricated `4.9`/`4.5` ratings, a `90/10` commission **literal**, hardcoded
+  "free cancellation / instant confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap.
+- **Approval divergences** (§1) and the **coordination-fee $0-budget bug** (§7) — tracked, fixes in flight.
+- **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
+
+---
+
 ## Service Model: Canonical Table
 
 ### Decision: `provider_services` is the canonical service source (NOT `expert_service_offerings`)
@@ -17,8 +75,11 @@ This document captures architectural decisions to maintain consistency across co
 - The data itself has already converged: wizard writes to provider_services, bookings FK there
 
 **What This Means:**
-- All service creation (expert custom, provider, templates) writes to `provider_services`
-- The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere
+- All **service** creation (expert custom, provider, and the `service_templates` seed catalog) writes to `provider_services`.
+  **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — see Known Decisions & Divergences §10.
+- The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
+  ⚠️ **Intent vs. current code:** the intent (D1a) is that offerings are born `draft`/`submitted` and **never born-approved**. The live column
+  `provider_services.approval_status` **defaults `"approved"`** (`shared/schema.ts:578`) — a divergence tracked by D1a/Phase 2, not the intended behavior.
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
@@ -46,12 +107,20 @@ This document captures architectural decisions to maintain consistency across co
 All service creation routes converge on one destination: `POST /api/provider/services` writes to `provider_services`.
 
 - Experts creating custom services use the same route/schema as providers
-- Role-based filtering happens at read time (GET /api/expert/services filters by userId + approvalStatus)
+- Role-based filtering happens at read time. ⚠️ **Intent vs. current code:** the intent is that `GET /api/expert/services`
+  gates on `approvalStatus`. The live handler (`server/routes.ts:5538` → `storage.getProviderServicesByStatus`) filters by
+  `userId` + an **arbitrary `status` query param** and **never consults `approvalStatus`** — the read-side approval gate does
+  not exist yet. Divergence tracked by D1a/Phase 2; do not treat the gate as implemented.
 - No separate tables; no separate approval workflows
 
 ---
 
-## Category Mapping (Non-Negotiable)
+## Category Mapping (historical — one-time consolidation, completed)
+
+> **Status note (Jul 2026):** this describes the one-time migration 011–012 consolidation. Its source table
+> `expert_service_categories` was **dropped by migration 013**, so this is a record of a completed migration, not an
+> ongoing rule. ⚠️ Code-internal drift: `expert_service_categories` is still defined in `shared/schema.ts` and referenced
+> by live server code despite being dropped — a latent bug, filed separately (not a doc issue).
 
 When migrating services from expert taxonomy (`expert_service_categories`) to canonical (`service_categories`):
 
@@ -69,9 +138,12 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 ## Coordination Prevention
 
 **If you are making changes that affect:**
-- Service creation routes (`POST /api/provider/services`, `/api/expert/custom-services`)
-- Service schema (provider_services, expert_custom_services, expert_service_offerings)
+- Service creation routes (`POST /api/provider/services`) — note `/api/expert/custom-services` and the `expert_custom_services`
+  table are **dropped/dead** (migration 013); do not re-add them
+- Service schema (`provider_services`; `expert_service_offerings` = read-only catalog; `expert_templates` = marketplace)
+- The two offering catalogs (`expert_offering_types` / `service_offering_types`) — never merge them (see §4)
 - Approval workflows (status enums, submission logic)
+- Fee/commission config (`fee_bands`) — no rate literals in code (see §8)
 - Service category taxonomy
 - **Database migrations** (schema or data)
 
@@ -82,7 +154,9 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 
 **CRITICAL: Migration Directory**
 - All SQL migrations must go in `server/migrations/` (NOT `migrations/`)
-- Register each migration in `server/migrations/run-migrations.ts` in the `MIGRATION_FILES` array
+- Register each migration in `server/migrations/migration-files.ts` — the **canonical registry** for both runtime and the
+  chain-integrity test. `run-migrations.ts` imports this list rather than carrying its own copy (see the migration-chain
+  repair note below). Registry order is authoritative; numeric filename order is not.
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
@@ -150,6 +224,9 @@ admin-validated `insurance_tier` evidence there. D3a: `deliveryMethodEnum` (shar
 with `hybrid` — canonical set is now `pdf, video, call, in_person, voice_notes, async_messaging, hybrid`;
 the column is varchar with no DB CHECK, so this is TS-level; NO row remap has run — that requires the
 Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a·D2a·D3a·D4·D5a locked).
+**[SUPERSEDED by migration 109 (above):** the DB CHECK and the row remap are now applied on **both**
+`provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
+both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
 
 **Migration 067 (Jun 11, 2026; registered in `migration-files.ts`) — Discover Feed Composition admin rows:**
 data-seed only, no schema change. Inserts the five `feed_*` `platform_settings` rows read by the public
