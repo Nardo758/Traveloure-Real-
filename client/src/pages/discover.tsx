@@ -585,7 +585,7 @@ function FilterPanel({
 export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { data: trips } = useTrips();
   const { data: creditsData } = useQuery<{ balance: number }>({
     queryKey: ["/api/credits/balance"],
@@ -795,6 +795,19 @@ export default function DiscoverPage() {
     });
   };
 
+  // Guest cart fallback — used when auth has resolved to no user, or when the
+  // server returns 401 (the definitive "not authenticated" signal).
+  const saveToGuestCart = (serviceId: string) => {
+    const GUEST_CART_KEY = "traveloure_guest_cart_pending";
+    try {
+      const existing: string[] = JSON.parse(localStorage.getItem(GUEST_CART_KEY) || "[]");
+      if (!existing.includes(serviceId)) {
+        localStorage.setItem(GUEST_CART_KEY, JSON.stringify([...existing, serviceId]));
+      }
+    } catch { /* ignore */ }
+    toast({ title: "Saved!", description: "Sign in to checkout and save your selection." });
+  };
+
   // Cart mutations
   const addToCartMutation = useMutation({
     mutationFn: async (serviceId: string) => {
@@ -807,7 +820,17 @@ export default function DiscoverPage() {
       toast({ title: "Added to cart!", description: "Service has been added to your cart." });
       setAddingToCartId(null);
     },
-    onError: (error: any) => {
+    onError: (error: any, serviceId: string) => {
+      // A 401 means the session cookie was not established server-side — i.e. a
+      // genuine guest, or a click that beat the /api/auth/user query on a cold
+      // load. Fall back to the guest cart instead of a scary error toast; this
+      // closes the auth-state race that dropped authed users' items into
+      // localStorage (Stage-1 journey-1A cart-empty failure).
+      if (typeof error?.message === "string" && error.message.startsWith("401")) {
+        saveToGuestCart(serviceId);
+        setAddingToCartId(null);
+        return;
+      }
       console.error("[Cart] addToCartMutation failed:", error);
       toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
       setAddingToCartId(null);
@@ -815,18 +838,15 @@ export default function DiscoverPage() {
   });
 
   const handleAddToCart = (serviceId: string) => {
-    if (!user) {
-      const GUEST_CART_KEY = "traveloure_guest_cart_pending";
-      try {
-        const existing: string[] = JSON.parse(localStorage.getItem(GUEST_CART_KEY) || "[]");
-        if (!existing.includes(serviceId)) {
-          localStorage.setItem(GUEST_CART_KEY, JSON.stringify([...existing, serviceId]));
-        }
-      } catch { /* ignore */ }
-      toast({ 
-        title: "Saved!", 
-        description: "Sign in to checkout and save your selection." 
-      });
+    // Auth is authoritative server-side (the session cookie), not the client
+    // `user` query — which can still be loading on a cold page load. Only take
+    // the guest path once auth has DEFINITIVELY resolved to no user; while it is
+    // still loading, attempt the authenticated add and let the server's 401
+    // (handled in the mutation's onError) fall back to the guest cart. Branching
+    // on `!user` alone raced the auth query and silently dropped authenticated
+    // users' selections into localStorage (Stage-1 journey-1A cart-empty).
+    if (!user && !authLoading) {
+      saveToGuestCart(serviceId);
       return;
     }
     addToCartMutation.mutate(serviceId);
@@ -1161,7 +1181,7 @@ export default function DiscoverPage() {
                             const params = new URLSearchParams();
                             if (expertHandoffTripId) params.set("tripId", expertHandoffTripId);
                             params.set("source", "quick-start");
-                            setLocation(`/expert/${expert.id}?${params.toString()}`);
+                            setLocation(`/experts/${expert.id}?${params.toString()}`);
                           }}
                           data-testid={`button-connect-expert-${expert.id}`}
                         >
@@ -2065,6 +2085,38 @@ export default function DiscoverPage() {
                   Plan Your Experience
                 </Button>
               </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Earn on Traveloure — relocated from the hidden `packages` tab so the
+            Apply-to-Earn funnel is reachable on a visible surface (the packages
+            tab is not in VISIBLE_TABS). Role-gated: experts see "create a
+            template", everyone else sees "become an expert". */}
+        <section className="py-16 border-t">
+          <div className="container mx-auto px-4 max-w-4xl text-center">
+            <h2 className="text-3xl font-bold mb-4">
+              Share your local expertise — get paid
+            </h2>
+            <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+              Local experts publish ready-made itinerary packages and offer services to
+              travelers on Traveloure. Turn what you know into income.
+            </p>
+            <div className="flex flex-wrap justify-center gap-4">
+              {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
+                <Link href="/expert/templates">
+                  <Button size="lg" className="px-8" data-testid="button-create-first-template">
+                    Create your first template
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/expert-status">
+                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert">
+                    Become an expert
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </section>

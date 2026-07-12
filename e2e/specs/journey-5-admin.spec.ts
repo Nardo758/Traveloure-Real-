@@ -65,30 +65,18 @@ test.describe("Journey 5 — Admin Fee Propagation & Trust", () => {
     await page.waitForSelector("text=Payout approved", { timeout: 10000 });
   });
 
-  test("Trust enforcement: revenue cap prevents upsell from overriding relevance", async ({ request }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
-
-    // This is a structural verification of the upsell engine's trust contract.
-    // The engine uses blendScore with revenueCap: 0.15 and bandWidth: 0.15.
-    // If relevance(A) - relevance(B) > bandWidth, then revenue can NEVER make B rank above A.
-
-    // We verify by calling the upsell engine with a high-relevance, low-revenue item
-    // and a low-relevance, high-revenue item. The high-relevance item should always win.
-    const res = await request.post(`${BASE}/api/upsell/rank`, {
-      data: {
-        candidates: [
-          { id: "high-relevance", relevanceScore: 0.95, revenueScore: 0.10 },
-          { id: "low-relevance", relevanceScore: 0.20, revenueScore: 0.95 },
-        ],
-        policy: { revenueWeight: 0.15, revenueCap: 0.15, bandWidth: 0.15 },
-      },
-    });
-
-    expect(res.status()).toBe(200);
-    const result = await res.json();
-    expect(result.ranked[0].id).toBe("high-relevance");
-    expect(result.ranked[1].id).toBe("low-relevance");
-  });
+  // Trust contract (revenue can never override relevance across a band) is verified
+  // as a PURE-FUNCTION UNIT TEST, not here — see
+  //   server/services/__tests__/upsell-engine.test.ts
+  //     → describe("Phase 5.1 — RELEVANCE DOMINANCE (the contract)")
+  // which sweeps 100+ (gap, revenue, policy) combinations against blendScore/
+  // holdsDominance directly. The former E2E test here POSTed /api/upsell/rank
+  // with synthetic {relevanceScore, revenueScore} candidates — but that endpoint
+  // never existed (the engine derives relevance/revenue from live data inside its
+  // per-surface endpoints; it cannot accept injected scores), so the test always
+  // hit the SPA catch-all and failed on "Unexpected token '<'". The contract lives
+  // at the pure layer; the unit suite is wired into CI via the upsell-trust-contract
+  // workflow (npm run test:upsell-contract).
 
   test("Upsell click attribution tracked", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
