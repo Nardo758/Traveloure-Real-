@@ -100,16 +100,16 @@ describe('Phase 4 — coordination fee resolution', () => {
     expect(coordination.feeCents).toBe(rawFee);
   });
 
-  it('coordination fee credits optimize fee for Events', async () => {
-    // 3.0.1d: verify the SERVICE applies the credit, not the test.
-    const optimizeFee = await getFee('wedding', 'standard');
+  it('coordination fee applies NO optimize credit (D-CREDIT interim — unearned credit removed)', async () => {
+    // D-CREDIT interim: the optimize-fee credit was subtracted unconditionally with no signal the fee
+    // was ever paid (no payment→coordination-state linkage — see the TODO in optimization.routes.ts
+    // confirm). Crediting an unpaid fee is an unearned discount, so the honest interim charges
+    // floor-or-percent with NO credit. Restore crediting only for an actually-paid optimize fee when
+    // the paid-signal ships (filed follow-up).
     const coordination = await resolveCoordinationFee('wedding', 100_000);
-    // Payable = coordination - optimize credit (applied by the service)
-    expect(coordination.optimizeCreditCents).toBe(optimizeFee.priceCents);
-    expect(coordination.feeCents).toBeLessThan(100_000); // less than raw budget
-    expect(coordination.feeCents).toBeGreaterThan(0);
-    // Structural: raw fee minus credit equals payable
+    expect(coordination.optimizeCreditCents).toBe(0);
+    // Payable = raw fee, no credit subtracted.
     const rawFee = Math.max(499_00, Math.round(100_000 * 0.08));
-    expect(coordination.feeCents).toBe(rawFee - optimizeFee.priceCents);
+    expect(coordination.feeCents).toBe(rawFee);
   });
 });

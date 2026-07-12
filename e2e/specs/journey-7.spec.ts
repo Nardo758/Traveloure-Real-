@@ -1,13 +1,7 @@
-import { test, expect, authFile } from "../fixtures/roles";
+import { test, expect } from "@playwright/test";
 import { loginAsTestAccount } from "./helpers/auth";
 
 test.describe("Journey 7 — Event Coordination (Wedding)", () => {
-  // Authenticates both { page } and { request } fixtures as traveler.
-  // The { request } fixture used in "Coordination fee endpoint" carries the
-  // session cookie from this storageState, so isAuthenticated passes and the
-  // server returns JSON (not an HTML login redirect).
-  test.use({ storageState: authFile("traveler") });
-
   test("Concierge → Quote → Expert → Event Coordination surface", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
@@ -94,36 +88,35 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     }
   });
 
-  test("Coordination fee endpoint returns correct fee with credit", async ({ request }) => {
+  test("Coordination fee endpoint returns correct fee with credit", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
-    // Session loaded from storageState: authFile("traveler") above — no
-    // per-test login needed; the { request } fixture carries the cookie.
+    // /api/coordination-states is isAuthenticated (server/routes.ts:7788); authenticate and
+    // drive the calls through page.request so the session cookie rides along. A bare
+    // `request` fixture carries no session and the server correctly 401s.
+    await loginAsTestAccount(page, "traveler");
 
-    // Create a coordination state for a wedding with a $25,000 budget
-    const createRes = await request.post(`${BASE}/api/coordination-states`, {
+    // Create a coordination state for a wedding
+    const createRes = await page.request.post(`${BASE}/api/coordination-states`, {
       data: {
         experienceType: "wedding",
         title: "Santorini Wedding",
-        totalEstimatedCost: "25000",
+        metadata: { budget: 25000 },
       },
     });
     expect(createRes.status()).toBe(201);
     const state = await createRes.json();
 
     // Get the fee
-    const feeRes = await request.get(`${BASE}/api/coordination-states/${state.id}/fee`);
+    const feeRes = await page.request.get(`${BASE}/api/coordination-states/${state.id}/fee`);
     expect(feeRes.status()).toBe(200);
     const fee = await feeRes.json();
 
-    // Budget = $25,000 → 8% = $2,000 (200_000 cents); percent wins over $499 floor
+    // Fee should be greater of $499 or 8% of $25,000 = $2,000
+    expect(fee.feeCents).toBe(2000_00);
     expect(fee.rule).toBe("percent");
     expect(fee.breakdown.floorCents).toBe(499_00);
     expect(fee.breakdown.percentOfBudget).toBe(2000_00);
-    // feeCents = percentOfBudget − optimizeCreditCents (wedding optimizer credit);
-    // must be positive and no greater than the raw percent fee
-    expect(fee.feeCents).toBeGreaterThan(0);
-    expect(fee.feeCents).toBeLessThanOrEqual(2000_00);
   });
 
   test("Event timeline endpoint returns wedding timeline", async ({ request }) => {

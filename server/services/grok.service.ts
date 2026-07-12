@@ -209,6 +209,68 @@ export interface AutonomousItineraryResult {
   estimatedSavingsWithExpert?: number;
 }
 
+// ─── E2E AI stub (non-production only; gated by E2E_AI_STUB=1) ────────────────
+// A deterministic, schema-valid AutonomousItineraryResult so the itinerary-
+// generation journey can run end-to-end in CI without an LLM key. Derived from
+// the request so the pipeline sees real destination/dates/traveler values.
+const STUB_USAGE: GrokUsageStats = {
+  promptTokens: 0,
+  completionTokens: 0,
+  totalTokens: 0,
+  estimatedCost: 0,
+  costCents: 0,
+};
+
+function buildStubItinerary(request: AutonomousItineraryRequest): AutonomousItineraryResult {
+  const dest = request.destination || "Your Destination";
+  const start = request.dates?.start || new Date().toISOString().slice(0, 10);
+  return {
+    title: `${dest} Trip (E2E stub)`,
+    summary: `Stubbed itinerary for ${dest} — generated without an LLM for CI.`,
+    totalEstimatedCost: 500,
+    dailyItinerary: [
+      {
+        day: 1,
+        date: start,
+        theme: "Arrival & orientation",
+        activities: [
+          {
+            time: "10:00 AM",
+            name: `Explore ${dest}`,
+            type: "activities",
+            duration: "2 hours",
+            estimatedCost: 0,
+            location: dest,
+            description: "Self-guided orientation walk.",
+            bookingRequired: false,
+          },
+        ],
+        meals: [
+          {
+            time: "1:00 PM",
+            type: "lunch",
+            suggestion: "Local café",
+            cuisine: "Local",
+            priceRange: "$",
+          },
+        ],
+        transportation: [],
+      },
+    ],
+    accommodationSuggestions: [
+      {
+        name: "Central Stay",
+        type: "hotel",
+        pricePerNight: 120,
+        neighborhood: "City Center",
+        whyRecommended: "Walkable to the day-1 activity.",
+      },
+    ],
+    packingList: ["Comfortable shoes", "Weather-appropriate layers"],
+    travelTips: ["This is a CI stub itinerary — not a real AI plan."],
+  };
+}
+
 class GrokService {
   // xAI Pricing (Jan 2026):
   // Grok-4.1 Fast: $0.20/1M input, $0.50/1M output
@@ -481,6 +543,18 @@ Provide current, actionable information.`;
   }
 
   async generateAutonomousItinerary(request: AutonomousItineraryRequest): Promise<{ result: AutonomousItineraryResult; usage: GrokUsageStats }> {
+    // E2E stub: CI runs the itinerary-generation journey without XAI/Anthropic
+    // keys, so the real AI call would throw and the flow would never reach the
+    // comparison/redirect the test asserts. When E2E_AI_STUB=1 (and NOT
+    // production — double-gated so a prod deploy can never serve stubbed AI),
+    // return a valid canned result derived from the request. Every downstream
+    // step (insertAiGeneratedItinerary → insertItineraryComparison → optimizer
+    // → comparisonId response → client redirect) then runs against real code;
+    // only the external LLM call is bypassed.
+    if (process.env.E2E_AI_STUB === "1" && process.env.NODE_ENV !== "production") {
+      return { result: buildStubItinerary(request), usage: STUB_USAGE };
+    }
+
     const systemPrompt = `You are an autonomous trip planning AI for Traveloure. Create comprehensive, day-by-day itineraries that travelers can follow or use as a starting point for expert refinement.
 
 Create itineraries that are:
