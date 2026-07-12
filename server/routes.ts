@@ -4343,7 +4343,29 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // === Expert Templates (Income Streams) ===
-  
+
+  // Gap 2 field whitelist (marketplace activation, Phase A/A1): the expert create/update
+  // endpoints must write ONLY these expert-editable content fields — never raw req.body.
+  // Deliberately excluded: isPublished / isFeatured (approval- and admin-gated, not
+  // self-settable — see the shared approval queue), expertId (ownership), and every derived
+  // counter (salesCount, viewCount, averageRating, reviewCount) + timestamps. Guarding these
+  // closes the mass-assignment hole where an expert could self-publish or overwrite any column.
+  // (Currency VALUE validation against a supported set lands with A3/price-integrity.)
+  const EXPERT_TEMPLATE_EDITABLE_FIELDS = [
+    "title", "description", "shortDescription", "destination", "duration",
+    "price", "currency", "category", "coverImage", "images", "itineraryData",
+    "tags", "highlights",
+  ] as const;
+  const pickExpertTemplateFields = (body: any): any => {
+    const out: Record<string, any> = {};
+    if (body && typeof body === "object") {
+      for (const k of EXPERT_TEMPLATE_EDITABLE_FIELDS) {
+        if (body[k] !== undefined) out[k] = body[k];
+      }
+    }
+    return out;
+  };
+
   // Get all published templates (public)
   app.get("/api/expert-templates", async (req, res) => {
     try {
@@ -4393,9 +4415,12 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.post("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      // Field whitelist (Gap 2): only expert-editable content fields; ownership is server-set;
+      // never born-published — publishing is approval-gated via the shared queue.
       const template = await storage.createExpertTemplate({
-        ...req.body,
+        ...pickExpertTemplateFields(req.body),
         expertId: userId,
+        isPublished: false,
       });
       res.json(template);
     } catch (err) {
@@ -4417,7 +4442,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(403).json({ message: "Not authorized to update this template" });
       }
 
-      const updated = await storage.updateExpertTemplate(req.params.id, req.body);
+      // Field whitelist (Gap 2): only expert-editable content fields persist; isPublished /
+      // approval / ownership / earning columns are ignored if present in the body.
+      const updated = await storage.updateExpertTemplate(req.params.id, pickExpertTemplateFields(req.body));
       res.json(updated);
     } catch (err) {
       console.error("Error updating template:", err);

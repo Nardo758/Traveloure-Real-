@@ -60,18 +60,48 @@ This document captures architectural decisions to maintain consistency across co
 9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
    endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
-10. **Expert-template marketplace.** The storefront read (`GET /api/expert-templates`) exists, but the purchase endpoint
-    (`POST /api/expert-templates/:id/purchase`) is a **ledger stub with no real checkout** (writes an "available" earning
-    with zero Stripe charge) and is called by no UI. It is a **filed feature, not a live product**; the `/discover`
-    `packages` tab is dead. Do not treat template purchase as functional.
+10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
+    Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
+    /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
+    and `POST /api/expert-templates/:id/purchase/confirm` server-verifies the intent (`status === 'succeeded'`, IDOR +
+    ownership + idempotency guards) before marking complete and recording the earning. The payment **guards are sound**
+    and there is no dual-path/cart leak. **But the checkout is unsafe to surface until three gaps close, and is currently
+    kept unreachable only by an orphaned purchase UI** (the `/expert-templates/:id` route is unregistered in `App.tsx`;
+    the `/discover` `packages` tab is hidden). **Governing rule: safety before surfacing — the purchase path must not
+    become reachable until Gap 1 (approval) and Gap 2 (field whitelist) hold.**
+    - **Gap 1 — no approval gate.** The only purchase gate is `if (!template.isPublished)` (`routes.ts:4461`), and
+      `expert_templates` has **no approval-status column** — `isPublished` is expert-controlled and self-settable. Fix:
+      a template is purchasable only after **admin approval**, via the **shared approval queue that is Phase 4's queue**
+      (D1a `draft → submitted → approved`) — **built once, drawn from by both** `provider_services` (structural Phase 4)
+      **and** `expert_templates` (this feature). **Do not fork a template-only approval path** (§4/§10 rule). The shared
+      queue is the next build, as its own clean piece; A2 (wire the marketplace gate) and A3 (re-review on material
+      change) depend on it and cannot land before it.
+    - **Gap 2 — mass-assignment.** BOTH the create (`routes.ts:4396`) and PATCH (`routes.ts:4420`) endpoints spread raw
+      `req.body`, so `isPublished`/`approvalStatus`/`expertId`/earnings columns are self-settable. Fix (A1, landed on
+      this branch, **decision-independent**): write only an explicit expert-editable allow-set on both paths; never raw
+      `req.body`; force `isPublished` false at create.
+    - **Gap 3 — surfacing (Phase B, LAST).** Register `/expert-templates/:id`, un-dead the `packages` tab, integrate
+      approved packages into Discover — **only admin-approved packages surface**, at the approved/locked price. Gated
+      behind Phase A holding.
+    - **Currency (decision 2 = A):** validate against the single platform currency (USD) now + keep per-listing
+      `price`/`currency`; whitelist the currency field to a known set. Conversion infra exists (`budgetService`) but is
+      budget-scoped; **Stage-2 multi-currency layers on later** — do not build it here.
+    - **State machine at the DB (decision 3 = A):** add a CHECK on `template_purchases.status` (and the new template
+      approval-status) to the valid set — the migration-109 lesson — and **flip the `status` default off `'completed'`**
+      to a pre-payment state. Enforce the money state machine at the DB, not just app code.
+    - **Price is locked at create** (`routes.ts` create reads `template.price` into the PaymentIntent + stores
+      `expertEarnings` on the purchase row; `/confirm` records from the stored row, never re-reads `template.price`) —
+      A3 adds "material `price`/`currency` change to an approved template re-enters review."
 11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
     works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
-- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief: `verified || true`
-  (every expert renders "Verified"), fabricated `4.9`/`4.5` ratings, a `90/10` commission **literal**, hardcoded
-  "free cancellation / instant confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap.
+- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **One arm
+  FIXED:** the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
+  `expert-detail.tsx` now uses `verified === true`. **Still open:** fabricated `4.9`/`4.5` ratings, a `90/10` commission
+  **literal**, hardcoded "free cancellation / instant confirmation / 24-7 support" copy, and a 2-character-neighbourhood
+  empty-result trap. Do not mark §13 resolved — only the `verified` arm is done.
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 
