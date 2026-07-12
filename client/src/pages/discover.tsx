@@ -1181,7 +1181,7 @@ export default function DiscoverPage() {
                             const params = new URLSearchParams();
                             if (expertHandoffTripId) params.set("tripId", expertHandoffTripId);
                             params.set("source", "quick-start");
-                            setLocation(`/expert/${expert.id}?${params.toString()}`);
+                            setLocation(`/experts/${expert.id}?${params.toString()}`);
                           }}
                           data-testid={`button-connect-expert-${expert.id}`}
                         >
