@@ -7823,7 +7823,6 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         experienceType: z.string().min(1).max(100),
         title: z.string().min(1).max(255).optional(),
         status: z.string().max(50).optional(),
-        totalEstimatedCost: z.string().optional(),
         metadata: z.record(z.any()).optional(),
       }).parse(req.body);
       // D-BUDGET(interim): persist the event budget into the existing `budget` jsonb column
