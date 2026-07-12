@@ -80,9 +80,9 @@ test.describe("Stage 7 — Orphan Cleanup & Redirects", () => {
       // Skip parameterized routes that need specific IDs
       if (source.includes(":")) continue;
 
-      await page.goto(`${BASE}${source}`);
-      // Wait for redirect to settle
-      await page.waitForTimeout(500);
+      await page.goto(`${BASE}${source}`, { waitUntil: 'domcontentloaded' });
+      // SPA (Wouter) redirects complete synchronously on first render, so
+      // domcontentloaded is sufficient — no fixed sleep needed.
       const url = page.url();
       // Should not be a 404 page
       expect(url).not.toContain("404");
