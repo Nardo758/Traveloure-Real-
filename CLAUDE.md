@@ -69,13 +69,20 @@ This document captures architectural decisions to maintain consistency across co
     kept unreachable only by an orphaned purchase UI** (the `/expert-templates/:id` route is unregistered in `App.tsx`;
     the `/discover` `packages` tab is hidden). **Governing rule: safety before surfacing — the purchase path must not
     become reachable until Gap 1 (approval) and Gap 2 (field whitelist) hold.**
-    - **Gap 1 — no approval gate.** The only purchase gate is `if (!template.isPublished)` (`routes.ts:4461`), and
-      `expert_templates` has **no approval-status column** — `isPublished` is expert-controlled and self-settable. Fix:
-      a template is purchasable only after **admin approval**, via the **shared approval queue that is Phase 4's queue**
-      (D1a `draft → submitted → approved`) — **built once, drawn from by both** `provider_services` (structural Phase 4)
-      **and** `expert_templates` (this feature). **Do not fork a template-only approval path** (§4/§10 rule). The shared
-      queue is the next build, as its own clean piece; A2 (wire the marketplace gate) and A3 (re-review on material
-      change) depend on it and cannot land before it.
+    - **Gap 1 — approval gate: BUILT (migration 110 + shared queue).** `expert_templates` now carries the same approval
+      column set as `provider_services` (`approval_status` draft→submitted→approved/rejected, `submitted_at`/`reviewed_at`/
+      `reviewed_by`/`rejection_reason`), with a DB CHECK on the status set. The purchase gate (`routes.ts`) is now
+      **`approval_status === 'approved' AND isPublished === true`** — approval is the gate the expert cannot self-satisfy;
+      `isPublished` stays the expert's own visibility toggle (approved-but-unpublished respects the hide; published-but-
+      unapproved is not purchasable). Admin approve/reject endpoints (`/api/admin/expert-templates/:id/approve|reject`,
+      reject-reason required) ride the blanket `adminApiGuard` (§2). Experts submit via `POST /api/expert/templates/:id/submit`.
+      **A3 material-change re-review:** changing `price`/`currency` on an approved template drops it back to `submitted`.
+      **This is the shared queue = Phase 4's queue** — built once, **do not fork** a template-only path (§4/§10).
+      **Backfill effect (recorded, not silent):** existing `is_published=true` templates were backfilled to `submitted`,
+      so they need admin approval before they can sell — zero live impact today (purchase UI still orphaned, Gap 3).
+      **Phase 4's scope is now REDUCED** to: wire the `provider_services` read-gate to this existing queue + decide the
+      grandfather/backfill + born-`approved` default flip (`provider_services` was intentionally left untouched here —
+      it already has the columns, grandfathered `approved`). Phase 4 **wires, does not rebuild.**
     - **Gap 2 — mass-assignment.** BOTH the create (`routes.ts:4396`) and PATCH (`routes.ts:4420`) endpoints spread raw
       `req.body`, so `isPublished`/`approvalStatus`/`expertId`/earnings columns are self-settable. Fix (A1, landed on
       this branch, **decision-independent**): write only an explicit expert-editable allow-set on both paths; never raw

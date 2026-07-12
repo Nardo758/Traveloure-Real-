@@ -4444,7 +4444,24 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       // Field whitelist (Gap 2): only expert-editable content fields persist; isPublished /
       // approval / ownership / earning columns are ignored if present in the body.
-      const updated = await storage.updateExpertTemplate(req.params.id, pickExpertTemplateFields(req.body));
+      const fields = pickExpertTemplateFields(req.body);
+
+      // A3 material-change re-review: what admin approved INCLUDES the price. Changing price
+      // or currency on an ALREADY-approved template drops it back to 'submitted' (re-enters the
+      // queue) so it can't silently go live at a new, unreviewed price. Content-only edits keep
+      // their status. approvalStatus is never in `fields` (it's not whitelisted), so this is the
+      // only path that can move an approved template's approval state via a PATCH.
+      const changesPrice =
+        (fields.price !== undefined && String(fields.price) !== String(template.price)) ||
+        (fields.currency !== undefined && fields.currency !== template.currency);
+      if (template.approvalStatus === "approved" && changesPrice) {
+        (fields as any).approvalStatus = "submitted";
+        (fields as any).submittedAt = new Date();
+        (fields as any).reviewedAt = null;
+        (fields as any).reviewedBy = null;
+      }
+
+      const updated = await storage.updateExpertTemplate(req.params.id, fields);
       res.json(updated);
     } catch (err) {
       console.error("Error updating template:", err);
@@ -4473,6 +4490,82 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // Submit a template for admin review (owner only, draft/rejected → submitted).
+  // Experts can submit; only an admin can approve (see the /api/admin queue below).
+  app.post("/api/expert/templates/:id/submit", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const template = await storage.getExpertTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      if (template.expertId !== userId) {
+        return res.status(403).json({ message: "Not authorized to submit this template" });
+      }
+      if (template.approvalStatus === "approved") {
+        return res.status(400).json({ message: "Template is already approved" });
+      }
+      const submitted = await storage.submitExpertTemplate(req.params.id);
+      res.json(submitted);
+    } catch (err) {
+      console.error("Error submitting template:", err);
+      res.status(500).json({ message: "Failed to submit template" });
+    }
+  });
+
+  // ── Admin approval queue for expert templates (shared queue = Phase 4's queue) ──
+  // All /api/admin/* routes sit behind the blanket adminApiGuard (default-deny, §2) —
+  // no per-endpoint role opt-in. adminId is read for the reviewedBy stamp only.
+  app.get("/api/admin/expert-templates/pending", async (req, res) => {
+    try {
+      const pending = await storage.getSubmittedExpertTemplates();
+      res.json(pending);
+    } catch (err) {
+      console.error("Error listing pending templates:", err);
+      res.status(500).json({ message: "Failed to list pending templates" });
+    }
+  });
+
+  app.post("/api/admin/expert-templates/:id/approve", async (req, res) => {
+    try {
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const template = await storage.getExpertTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      if (template.approvalStatus !== "submitted") {
+        return res.status(400).json({ message: "Can only approve submitted templates" });
+      }
+      const approved = await storage.approveExpertTemplate(req.params.id, adminId);
+      res.json(approved);
+    } catch (err) {
+      console.error("Error approving template:", err);
+      res.status(500).json({ message: "Failed to approve template" });
+    }
+  });
+
+  app.post("/api/admin/expert-templates/:id/reject", async (req, res) => {
+    try {
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const reason = (req.body?.reason ?? "").toString().trim();
+      if (!reason) {
+        return res.status(400).json({ message: "A rejection reason is required" });
+      }
+      const template = await storage.getExpertTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      if (template.approvalStatus !== "submitted") {
+        return res.status(400).json({ message: "Can only reject submitted templates" });
+      }
+      const rejected = await storage.rejectExpertTemplate(req.params.id, adminId, reason);
+      res.json(rejected);
+    } catch (err) {
+      console.error("Error rejecting template:", err);
+      res.status(500).json({ message: "Failed to reject template" });
+    }
+  });
+
   // Purchase template (authenticated)
   // ── Step 1: create a pending purchase + return a Stripe PaymentIntent ────
   // The client must confirm payment via Stripe.js and then call /confirm below.
@@ -4485,7 +4578,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
       }
-      if (!template.isPublished) {
+      // Purchase gate (marketplace activation, A2): admin-approval is the gate the expert
+      // CANNOT self-satisfy; isPublished stays the expert's own visibility toggle. BOTH must
+      // hold — an approved-but-unpublished template respects the expert's choice to hide it,
+      // and a published-but-unapproved template is not purchasable (approval wins).
+      if (template.approvalStatus !== "approved" || !template.isPublished) {
         return res.status(400).json({ message: "Template is not available for purchase" });
       }
       if (template.expertId === userId) {
