@@ -1,12 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, authFile } from "../fixtures/roles";
 import { loginAsTestAccount } from "./helpers/auth";
 
 test.describe("Journey 7 — Event Coordination (Wedding)", () => {
+  // All tests in this describe block run as the seeded traveler account.
+  // global-setup logs in once and saves the session to e2e/auth/traveler.json;
+  // storageState restores the cookie for both `page` and `page.request`.
+  test.use({ storageState: authFile("traveler") });
+
   test("Concierge → Quote → Expert → Event Coordination surface", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
-    // ── Step 1: Sign in as traveler ──────────────────────────────────────
-    await loginAsTestAccount(page, "traveler");
+    // ── Step 1: Already authenticated via storageState — navigate directly ─
 
     // ── Step 2: Navigate to concierge with wedding event type ───────────
     await page.goto(`${BASE}/concierge?eventType=wedding`);
@@ -91,10 +95,9 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
   test("Coordination fee endpoint returns correct fee with credit", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
-    // /api/coordination-states is isAuthenticated (server/routes.ts:7788); authenticate and
-    // drive the calls through page.request so the session cookie rides along. A bare
-    // `request` fixture carries no session and the server correctly 401s.
-    await loginAsTestAccount(page, "traveler");
+    // storageState (set at the describe level) puts the traveler session cookie
+    // into page's browser context. page.request inherits that context, so every
+    // API call below is authenticated — no explicit login needed here.
 
     // Create a coordination state for a wedding
     const createRes = await page.request.post(`${BASE}/api/coordination-states`, {
@@ -119,7 +122,7 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     expect(fee.breakdown.percentOfBudget).toBe(2000_00);
   });
 
-  test("Event timeline endpoint returns wedding timeline", async ({ request }) => {
+  test("Event timeline endpoint returns wedding timeline", async ({ page }) => {
     const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
 
     // Create a trip with wedding type and a temporal anchor

@@ -1,0 +1,83 @@
+Fix the unauthenticated request fixture in 
+Journey 7 Playwright tests.
+
+PROBLEM:
+journey-7.spec.ts uses a { request } fixture
+that is NOT authenticated. When it hits
+POST /api/coordination-states, the 
+isAuthenticated middleware redirects to 
+the login HTML page instead of processing
+the request — causing JSON parse failure.
+
+The auth setup in the test file is 
+commented out and never implemented.
+
+TASK:
+Find journey-7.spec.ts around line 91-109.
+
+Fix the auth setup using one of these approaches:
+
+APPROACH A (recommended — use storageState):
+1. Create a global setup file if not exists:
+   playwright/global-setup.ts
+
+2. Login and save session:
+import { chromium } from "@playwright/test";
+
+async function globalSetup() {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  
+  await page.goto(
+    process.env.BASE_URL + "/login"
+  );
+  await page.fill(
+    '[name="email"]',
+    "traveler@traveloure-test.com"
+  );
+  await page.fill(
+    '[name="password"]',
+    "TestPass@1234"
+  );
+  await page.click('[type="submit"]');
+  await page.waitForURL("**/dashboard");
+  
+  await page.context().storageState({ 
+    path: "playwright/.auth/traveler.json" 
+  });
+  await browser.close();
+}
+
+export default globalSetup;
+
+3. In journey-7.spec.ts, use the saved session:
+import { test } from "@playwright/test";
+
+test.use({ 
+  storageState: "playwright/.auth/traveler.json" 
+});
+
+4. Replace the unauthenticated { request }
+   fixture calls with page-based requests
+   that carry the authenticated session cookie.
+
+APPROACH B (quick fix — add auth headers):
+In the test's request calls, manually add
+the session cookie:
+
+const response = await request.post(
+  "/api/coordination-states",
+  {
+    headers: {
+      Cookie: `session=${sessionToken}`
+    },
+    data: { ... }
+  }
+);
+
+Use Approach A — it's cleaner and reusable
+across all test journeys.
+
+Do NOT change any backend auth logic.
+Do NOT touch vite.config.ts.
+Show every file created or changed.
