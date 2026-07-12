@@ -93,13 +93,24 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     if (await startInput.isVisible().catch(() => false)) await startInput.fill(fmt(start));
     if (await endInput.isVisible().catch(() => false)) await endInput.fill(fmt(end));
 
+    // Arm the response interceptor BEFORE clicking so the promise is racing
+    // from the moment the request fires.  waitForResponse resolves with the
+    // first matching response regardless of whether the redirect has happened.
+    const generateResponsePromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes('/api/trips/generate-itinerary') && resp.request().method() === 'POST',
+      { timeout: 60_000 },
+    );
+
     await page.click(SELECTORS.generateBtn);
     // The redirect only happens when the AI service responds successfully.
     // If XAI_API_KEY is absent in the deployed app the endpoint may error or
     // stay on the loading state.  Catch the timeout and skip so the CI gate
     // stays green rather than burning 60 s and then failing.
+    let generateResponse: Awaited<typeof generateResponsePromise> | null = null;
     try {
       await page.waitForURL(/\/itinerary-comparison\/|\/trips\//, { timeout: 60_000 });
+      generateResponse = await generateResponsePromise;
     } catch {
       const isErrorPage = await page
         .locator('text=/error|unavailable|failed|unable to generate/i')
@@ -112,6 +123,23 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
       test.skip();
       return;
     }
+
+    // ── Smoke-assert the generate-itinerary response shape ───────────────
+    // Catches regressions in the stub/route (missing fields, wrong status)
+    // independently of whatever the UI renders after the redirect.
+    expect(generateResponse, 'generate-itinerary response was captured').not.toBeNull();
+    expect(generateResponse!.status(), 'generate-itinerary HTTP status').toBe(201);
+
+    const body = await generateResponse!.json();
+    expect(body, 'response body is an object').toBeTruthy();
+    expect(body.tripId, 'tripId is present').toBeTruthy();
+    expect(body.status, 'status field').toBe('generated');
+    expect(Array.isArray(body.itineraryData?.days), 'itineraryData.days is an array').toBe(true);
+    expect(body.itineraryData.days.length, 'at least one day returned').toBeGreaterThan(0);
+    const day1 = body.itineraryData.days[0];
+    expect(typeof day1.day, 'day.day is a number').toBe('number');
+    expect(Array.isArray(day1.activities), 'day.activities is an array').toBe(true);
+    expect(day1.activities.length, 'at least one activity on day 1').toBeGreaterThan(0);
 
     expect(filterJsErrors(consoleErrors), 'no JS errors in Journey 2A').toHaveLength(0);
   });
