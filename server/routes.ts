@@ -120,6 +120,7 @@ import {
   insertProviderAvailabilityScheduleSchema,
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
+  templatePurchases,
 } from "@shared/schema";
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
@@ -4446,11 +4447,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Purchase template (authenticated)
+  // ── Step 1: create a pending purchase + return a Stripe PaymentIntent ────
+  // The client must confirm payment via Stripe.js and then call /confirm below.
+  // Earning records are NOT created here — only after confirmed payment.
   app.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const template = await storage.getExpertTemplate(req.params.id);
-      
+
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
       }
@@ -4461,19 +4465,19 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "You cannot purchase your own template" });
       }
 
-      // Check if already purchased
+      // Already paid — return the existing completed purchase (idempotent)
       const alreadyPurchased = await storage.hasUserPurchasedTemplate(userId, req.params.id);
       if (alreadyPurchased) {
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Resolve commission rates from booking_fee_configs using template category (fallback: PLATFORM_FEE_RATE)
+      // Resolve commission rates from booking_fee_configs (fallback: PLATFORM_FEE_RATE)
       const templateRates = await resolveCommissionRates(template.category ?? null);
       const price = parseFloat(template.price as string);
       const platformFee = price * templateRates.platformFeeRate;
       const expertEarnings = price * templateRates.expertShareRate;
 
-      // Create purchase record
+      // Create a PENDING purchase — no earning created until Stripe confirms
       const purchase = await storage.createTemplatePurchase({
         templateId: req.params.id,
         buyerId: userId,
@@ -4482,26 +4486,124 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         currency: template.currency || 'USD',
         platformFee: platformFee.toFixed(2),
         expertEarnings: expertEarnings.toFixed(2),
-        status: 'completed',
+        status: 'pending_payment',
       });
 
-      // Record expert earning
+      // Create Stripe PaymentIntent; embed purchaseId in metadata so /confirm
+      // can verify it without an extra DB column.
+      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+      const currency = (template.currency || 'USD').toLowerCase();
+      const isZeroDecimal = currency === 'jpy';
+      const stripeAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
+
+      const paymentIntent = await stripeClient.paymentIntents.create({
+        amount: stripeAmount,
+        currency,
+        metadata: {
+          purchaseId: purchase.id,
+          templateId: req.params.id,
+          buyerId: userId,
+          expertId: template.expertId,
+        },
+        description: `Traveloure template: ${template.title}`,
+        automatic_payment_methods: { enabled: true },
+      });
+
+      // 202 Accepted — payment not yet captured; client must call /confirm
+      return res.status(202).json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        purchaseId: purchase.id,
+        template,
+        subtotal: price,
+        platformFee,
+        expertPayout: expertEarnings,
+        commissionRate: templateRates.platformFeeRate,
+      });
+    } catch (err) {
+      console.error("Error initiating template purchase:", err);
+      res.status(500).json({ message: "Failed to initiate template purchase" });
+    }
+  });
+
+  // ── Step 2: confirm payment and unlock the purchase ───────────────────────
+  // Called by the client after Stripe.js confirms the PaymentIntent.
+  // Verifies payment succeeded server-side, then marks the purchase complete
+  // and records the expert earning. Fully idempotent.
+  app.post("/api/expert-templates/:id/purchase/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { paymentIntentId, purchaseId } = req.body;
+
+      if (!paymentIntentId || !purchaseId) {
+        return res.status(400).json({ message: "paymentIntentId and purchaseId are required" });
+      }
+
+      // Retrieve intent from Stripe — never trust client-reported status
+      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+      const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
+
+      if (intent.status !== 'succeeded') {
+        return res.status(402).json({
+          message: `Payment not completed (status: ${intent.status}). Complete payment before confirming.`,
+          stripeStatus: intent.status,
+        });
+      }
+
+      // IDOR guard — the intent must reference this exact purchase
+      if (intent.metadata?.purchaseId !== purchaseId) {
+        return res.status(400).json({ message: "PaymentIntent does not match the specified purchase" });
+      }
+
+      // Load the purchase and verify ownership
+      const purchase = await storage.getTemplatePurchase(purchaseId);
+      if (!purchase) {
+        return res.status(404).json({ message: "Purchase not found" });
+      }
+      if (purchase.buyerId !== userId) {
+        return res.status(403).json({ message: "Not authorised to confirm this purchase" });
+      }
+
+      // Idempotent — already completed by a prior confirm call
+      if (purchase.status === 'completed') {
+        const template = await storage.getExpertTemplate(purchase.templateId);
+        return res.json({ purchase, template });
+      }
+
+      if (purchase.status !== 'pending_payment') {
+        return res.status(409).json({
+          message: `Purchase is in status '${purchase.status}' and cannot be confirmed`,
+        });
+      }
+
+      // Mark completed and record the expert earning atomically via drizzle
+      const [completed] = await db
+        .update(templatePurchases)
+        .set({ status: 'completed' })
+        .where(eq(templatePurchases.id, purchaseId))
+        .returning();
+
       await storage.createExpertEarning({
-        expertId: template.expertId,
+        expertId: purchase.expertId,
         type: 'template_sale',
-        amount: expertEarnings.toFixed(2),
-        currency: template.currency || 'USD',
+        amount: purchase.expertEarnings,
+        currency: purchase.currency || 'USD',
         referenceId: purchase.id,
         referenceType: 'template_purchase',
-        description: `Sale of template: ${template.title}`,
+        description: `Sale of template (confirmed payment ${paymentIntentId})`,
         status: 'available',
         availableAt: new Date(),
       });
 
-      res.json({ purchase, template });
+      const template = await storage.getExpertTemplate(purchase.templateId);
+      return res.json({ purchase: completed, template });
     } catch (err) {
-      console.error("Error purchasing template:", err);
-      res.status(500).json({ message: "Failed to purchase template" });
+      console.error("Error confirming template purchase:", err);
+      res.status(500).json({ message: "Failed to confirm template purchase" });
     }
   });
 
