@@ -2088,6 +2088,38 @@ export default function DiscoverPage() {
             </div>
           </div>
         </section>
+
+        {/* Earn on Traveloure — relocated from the hidden `packages` tab so the
+            Apply-to-Earn funnel is reachable on a visible surface (the packages
+            tab is not in VISIBLE_TABS). Role-gated: experts see "create a
+            template", everyone else sees "become an expert". */}
+        <section className="py-16 border-t">
+          <div className="container mx-auto px-4 max-w-4xl text-center">
+            <h2 className="text-3xl font-bold mb-4">
+              Share your local expertise — get paid
+            </h2>
+            <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+              Local experts publish ready-made itinerary packages and offer services to
+              travelers on Traveloure. Turn what you know into income.
+            </p>
+            <div className="flex flex-wrap justify-center gap-4">
+              {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
+                <Link href="/expert/templates">
+                  <Button size="lg" className="px-8" data-testid="button-create-first-template">
+                    Create your first template
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/expert-status">
+                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert">
+                    Become an expert
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
       <TripQueueIndicator />
     </>
