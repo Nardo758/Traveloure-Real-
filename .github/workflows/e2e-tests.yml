@@ -100,6 +100,42 @@ jobs:
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
+      - name: Verify service readiness (fast-fail on missing secrets)
+        # Hits /api/ready which reports service-key presence.  Any "fail" check
+        # (ai_xai, stripe, webhook) returns HTTP 503 so CI stops here with a
+        # clear diagnostic instead of burning time inside the test suite.
+        # WARN-only checks (ai_claude, email) do not block the gate.
+        run: |
+          echo "Checking /api/ready for service configuration..."
+          READY_CODE=$(curl -s -o /tmp/ready.json \
+            -w "%{http_code}" \
+            --connect-timeout 15 --max-time 20 \
+            "$E2E_BASE_URL/api/ready")
+          echo "HTTP $READY_CODE"
+          cat /tmp/ready.json | python3 -m json.tool || cat /tmp/ready.json
+          if [ "$READY_CODE" != "200" ]; then
+            echo "❌ Service readiness check failed (HTTP $READY_CODE)."
+            echo "Missing required secrets:"
+            cat /tmp/ready.json | node -e "
+              let d = '';
+              process.stdin.on('data', c => d += c);
+              process.stdin.on('end', () => {
+                try {
+                  const j = JSON.parse(d);
+                  Object.entries(j.checks || {}).forEach(([k, v]) => {
+                    if (v.status === 'fail') {
+                      process.stdout.write('  ✗ ' + k + ': ' + v.message + '\n');
+                    }
+                  });
+                } catch { process.stdout.write('  (could not parse response)\n'); }
+              });
+            "
+            exit 1
+          fi
+          echo "✅ All critical services ready"
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+
       - name: Run E2E deploy tests (journey-1 + Stage 1 gates)
         run: npm run test:e2e:deploy
         env:

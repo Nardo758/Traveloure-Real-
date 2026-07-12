@@ -137,14 +137,76 @@ export function getSeedingStatus(): { complete: boolean; durationMs: number | nu
   return { complete: seedingComplete, durationMs: seedingDurationMs };
 }
 
-// Readiness endpoint for checking if seeding is complete
+// Readiness endpoint — seeding gate + service-key presence checks.
+// CI uses this to fast-fail with a clear diagnostic when a required secret
+// is absent, instead of burning 60 s inside the test suite.
+// No auth required: CI hits it before login is possible.
 app.get("/api/ready", (_req: Request, res: Response) => {
-  const status = getSeedingStatus();
-  if (status.complete) {
-    res.json({ ready: true, seedingDurationMs: status.durationMs });
-  } else {
-    res.status(503).json({ ready: false, message: "Database seeding in progress" });
+  const seeding = getSeedingStatus();
+
+  if (!seeding.complete) {
+    return res.status(503).json({
+      ready: false,
+      status: "fail",
+      message: "Database seeding in progress",
+    });
   }
+
+  type CheckResult = { status: "ok" | "warn" | "fail"; message: string };
+  const checks: Record<string, CheckResult> = {};
+
+  const xaiPresent = Boolean(process.env.XAI_API_KEY);
+  checks.ai_xai = {
+    status: xaiPresent ? "ok" : "fail",
+    message: xaiPresent
+      ? "XAI_API_KEY present"
+      : "XAI_API_KEY missing — AI generation will fail. Set in GitHub Secrets → Actions.",
+  };
+
+  const claudePresent = Boolean(process.env.ANTHROPIC_API_KEY);
+  checks.ai_claude = {
+    status: claudePresent ? "ok" : "warn",
+    message: claudePresent
+      ? "ANTHROPIC_API_KEY present"
+      : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
+  };
+
+  const stripePresent = Boolean(process.env.STRIPE_SECRET_KEY);
+  checks.stripe = {
+    status: stripePresent ? "ok" : "fail",
+    message: stripePresent
+      ? "STRIPE_SECRET_KEY present"
+      : "STRIPE_SECRET_KEY missing — payments will fail",
+  };
+
+  const resendPresent = Boolean(process.env.RESEND_API_KEY);
+  checks.email = {
+    status: resendPresent ? "ok" : "warn",
+    message: resendPresent
+      ? "RESEND_API_KEY present"
+      : "RESEND_API_KEY missing — digest emails will not send",
+  };
+
+  const webhookPresent = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  checks.webhook = {
+    status: webhookPresent ? "ok" : "fail",
+    message: webhookPresent
+      ? "STRIPE_WEBHOOK_SECRET present"
+      : "STRIPE_WEBHOOK_SECRET missing — webhooks will be rejected",
+  };
+
+  const hasFail = Object.values(checks).some((c) => c.status === "fail");
+  const hasWarn = Object.values(checks).some((c) => c.status === "warn");
+  const overall = hasFail ? "fail" : hasWarn ? "warn" : "ok";
+
+  return res.status(hasFail ? 503 : 200).json({
+    ready: true,
+    status: overall,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV ?? "unknown",
+    seedingDurationMs: seeding.durationMs,
+    checks,
+  });
 });
 
 // Build-identity endpoint — lets CI confirm it is talking to the correct artifact.

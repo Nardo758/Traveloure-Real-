@@ -139,11 +139,28 @@ export function createHealthRouter(): Router {
 
   router.get("/health", async (_req: Request, res: Response) => {
     try {
+      // Service-key presence checks (synchronous — no network calls)
+      const serviceChecks: Record<string, HealthCheck> = {
+        ai_xai: {
+          status: process.env.XAI_API_KEY ? "healthy" : "degraded",
+          message: process.env.XAI_API_KEY ? "XAI_API_KEY present" : "XAI_API_KEY missing",
+        },
+        ai_claude: {
+          status: process.env.ANTHROPIC_API_KEY ? "healthy" : "degraded",
+          message: process.env.ANTHROPIC_API_KEY ? "ANTHROPIC_API_KEY present" : "ANTHROPIC_API_KEY missing",
+        },
+        stripe: {
+          status: process.env.STRIPE_SECRET_KEY ? "healthy" : "degraded",
+          message: process.env.STRIPE_SECRET_KEY ? "STRIPE_SECRET_KEY present" : "STRIPE_SECRET_KEY missing",
+        },
+      };
+
       const checks = {
         database: await checkDatabase(),
         database_pool: await checkDatabasePool(),
         memory: await checkMemory(),
         external_apis: await checkExternalAPIs(),
+        ...serviceChecks,
       };
 
       const allHealthy = Object.values(checks).every(
