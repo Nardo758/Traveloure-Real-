@@ -161,6 +161,17 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
+**CRITICAL: Drizzle push has TWO schema entry points — do not collapse to one**
+- `drizzle.config.ts` `schema` is an **array**: `["./shared/schema.ts", "./shared/guest-invites-schema.ts"]`.
+  Both are required. `shared/schema.ts` does **not** re-export `guest-invites-schema.ts` (that file imports *from*
+  `schema.ts`, so a re-export would be circular), so its 4 tables — `event_invites`, `guest_travel_plans`,
+  `invite_templates`, `invite_send_log` — are only reachable by push through the explicit second array entry.
+- **Do not "simplify" this back to a single `schema: "./shared/schema.ts"`.** Those 4 tables would silently vanish from
+  `drizzle-kit push`; because migration `001_guest_invite_system.sql` is bootstrap-stamped (001–050) it never re-creates
+  them, so a fresh push-canonical deploy would be missing them and `server/storage.ts` guest-invite code would throw
+  `relation "event_invites" does not exist`. If you add a **new** schema file with its own `pgTable`s that `schema.ts`
+  doesn't re-export, add it to this array too.
+
 **CRITICAL: Lockfile purity (do not remove these guards)**
 - `npm install` inside the Replit workspace resolves through Replit's package-firewall proxy and bakes
   unreachable `package-firewall.replit.local` URLs into `package-lock.json` — that breaks `npm ci` on every
