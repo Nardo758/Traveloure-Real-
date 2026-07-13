@@ -43,3 +43,36 @@ The endpoint (`bookings.ts:341` → `createRefund` `stripe-payment.service.ts:35
 
 ## Modeling gap
 No schema *custody* gap (types are distinguishable). The real architectural finding is the **two-parallel-on-platform-rails** split (`bookings` vs `service_bookings`) with divergent earning behavior, and a refund endpoint pointed at the rail that accrues no earnings. That's the fact A2's scoping must confront before writing a reversal.
+
+---
+
+# Addendum — Refund/reversal check on the REAL money paths (read-only)
+
+**Verified on `origin/main`.** This answers "does refunding real money leave a ledger stale?" — relocated from the `/api/bookings/refund`/`bookings` question to where earnings actually accrue.
+
+## Q1 — Is the legacy `bookings` table dead? **NO — it is LIVE. Not removable.**
+The premise that `bookings` is dead is **incorrect**. Evidence (standalone `bookings`, not `service_/booking_requests/*`):
+- **Write (INSERT):** `booking.service.ts:352` via `POST /api/bookings/process-cart` (mounted).
+- **Confirm/UPDATE:** webhook `handlePaymentSucceeded` (`stripe-payment.service.ts:212/222/275/300`), `confirmBookingPayment` (`booking.service.ts:573`), expiry scheduler (`booking-expiry-scheduler.service.ts:128`), webhook dispute/refund (`webhooks.routes.ts:406/464`).
+- **Reads for real decisions:** availability checks (`availability.service.ts:48/89/217`), admin queries (`admin.routes.ts:342/466`), reconciliation (`stripeReconciliation.ts:69`), traveler booking lookups (`storage.ts:4303/4316`).
+- It **captures real money** (Traveloure PI, `booking.service.ts:393`) but **mints no earnings** (`// TODO` `booking.service.ts:584`).
+→ **Do NOT remove `bookings` or `/api/bookings/refund`** — it's the active cart/`process-cart` rail. A2 was not "gating fictional money." The earnings-reversal aspect of A2 is moot *for this rail only* (it credits no ledger); the wrong-PI bug in `createRefund` remains real.
+
+## Q2/Q3 — Per real earning path: refund path? ledger reversal?
+
+| Purchase path | Refund/cancel path exists? | Ledger credited (mint) | Reverses on refund? | You-merchant? |
+|---|---|---|---|---|
+| **template_purchases** (marketplace) | **NONE** — no code writes `status='refunded'`; no refund endpoint (`'refunded'` is in the migration-110 CHECK but unwritten) | `expert_earnings` (`routes.ts:4714`) + `platform_revenue` (`storage.ts:2871`) | **N/A — no refund path** | Yes (Traveloure 2-step PI) |
+| **expert_requests** (concierge/advisory) | **NONE** — no cancel/refund status write, no refund endpoint | none minted at pay (`expert_service` PI; earning not booked) | **N/A — no refund path** | Yes (Traveloure PI) |
+| **coordination-states** | **NONE** | **fee never captured** — `GET /…/fee` is quote-only, no PI wired | N/A — nothing to refund | fee would be yours, but uncharged |
+| `bookings` (cart rail, for completeness) | `/api/bookings/refund` + `charge.refunded` webhook | **none** (TODO) | N/A — no earning minted | Yes |
+| `service_bookings` (service checkout) | no route through `/api/bookings/refund`; `status='refunded'` settable but earning mint gated on →`completed` only | `platform_revenue`+`provider_earnings`+`expert_earnings` | **would NOT reverse** *if* a refund fired — but no refund path routes here | Yes |
+
+**No earnings-reversal is implemented anywhere** (grep for `reverseEarning`/`clawback`/`deleteEarning`/negative-earning: none). Disputes deliberately don't auto-claw-back (`webhooks.routes.ts:424`).
+
+## BOTTOM LINE: "No refund system exists for live money" — no live integrity gap today
+None of the three real earning paths (`template_purchases`, `expert_requests`, coordination) has a refund/cancel path that fires. **Nothing reverses because nothing refunds.** No provider/expert is left credited after a customer refund, because customers can't get refunded on the earning-bearing paths at all. → The unified refund model is a **deliberate pre-launch feature**, not an urgent live fix. Build it once, deliberately, covering: Stripe refund (where Traveloure is merchant) + ledger reversal keyed by `referenceId`/`sourceId` + affiliate-commission reversal (client-direct, so no Stripe refund) + the dispute clawback decision.
+
+**The two real live bugs in this area (separate from the refund-system feature):**
+1. 🔴 `createRefund` wrong-PI resolution (`stripe-payment.service.ts:363-366`) — refunds an arbitrary PI of the user, not the booking's. Live on the `bookings` rail.
+2. `/api/bookings/refund` was ungated (**already fixed** on `claude/money-cluster-client-trusted-fix`: owner-or-admin + server-derived amount).
