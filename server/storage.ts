@@ -410,6 +410,10 @@ export interface IStorage {
   createExpertTemplate(template: InsertExpertTemplate): Promise<ExpertTemplate>;
   updateExpertTemplate(id: string, updates: Partial<InsertExpertTemplate>): Promise<ExpertTemplate | undefined>;
   deleteExpertTemplate(id: string): Promise<void>;
+  getSubmittedExpertTemplates(): Promise<ExpertTemplate[]>;
+  submitExpertTemplate(id: string): Promise<ExpertTemplate | undefined>;
+  approveExpertTemplate(id: string, reviewedBy: string): Promise<ExpertTemplate | undefined>;
+  rejectExpertTemplate(id: string, reviewedBy: string, reason: string): Promise<ExpertTemplate | undefined>;
   incrementTemplateView(id: string): Promise<void>;
   
   // Template Purchases
@@ -2782,6 +2786,37 @@ export class DatabaseStorage implements IStorage {
 
   async deleteExpertTemplate(id: string): Promise<void> {
     await db.delete(expertTemplates).where(eq(expertTemplates.id, id));
+  }
+
+  // ── Approval workflow (marketplace activation, shared queue = Phase 4's queue) ──
+  async getSubmittedExpertTemplates(): Promise<ExpertTemplate[]> {
+    return await db.select().from(expertTemplates)
+      .where(eq(expertTemplates.approvalStatus, "submitted"))
+      .orderBy(desc(expertTemplates.submittedAt));
+  }
+
+  async submitExpertTemplate(id: string): Promise<ExpertTemplate | undefined> {
+    const [row] = await db.update(expertTemplates)
+      .set({ approvalStatus: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+      .where(eq(expertTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async approveExpertTemplate(id: string, reviewedBy: string): Promise<ExpertTemplate | undefined> {
+    const [row] = await db.update(expertTemplates)
+      .set({ approvalStatus: "approved", reviewedAt: new Date(), reviewedBy, rejectionReason: null, updatedAt: new Date() })
+      .where(eq(expertTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async rejectExpertTemplate(id: string, reviewedBy: string, reason: string): Promise<ExpertTemplate | undefined> {
+    const [row] = await db.update(expertTemplates)
+      .set({ approvalStatus: "rejected", reviewedAt: new Date(), reviewedBy, rejectionReason: reason, updatedAt: new Date() })
+      .where(eq(expertTemplates.id, id))
+      .returning();
+    return row;
   }
 
   async incrementTemplateView(id: string): Promise<void> {
