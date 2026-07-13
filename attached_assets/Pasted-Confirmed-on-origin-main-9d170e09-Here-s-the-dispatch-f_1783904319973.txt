@@ -1,0 +1,69 @@
+Confirmed on `origin/main` (`9d170e09`). Here's the dispatch for Replit to ensure it all lands.
+
+---
+
+# DISPATCH — Land Marketplace Phase A on Replit (migration 110 + shared approval queue)
+
+**What merged (`9d170e09` on `main`):** expert-template field whitelist (A1), migration 110 (approval columns + two DB CHECKs + purchase-status default flip), the shared admin approval queue, and the `approved AND published` purchase gate. **Nothing is surfaced** — the purchase UI stays orphaned (Phase B). The job here is to confirm it applies cleanly in the Replit environment.
+
+## STEP 1 — Pull `main`
+```bash
+git fetch origin main && git checkout main && git pull origin main
+```
+Then confirm the lockfile stayed clean (Replit's `npm install` can inject `replit.local` URLs):
+```bash
+grep -c "replit.local" package-lock.json   # must be 0
+```
+If it's not 0, the post-merge/pre-commit guards should have scrubbed it — run `node scripts/scrub-lockfile.cjs package-lock.json` and don't commit a polluted lockfile.
+
+## STEP 2 — Apply migration 110 (runs at server startup)
+Restart the app (Replit **Run**). `runMigrations()` reads `server/migrations/migration-files.ts` (now includes `110_…`) and applies it. Watch the startup log for the `110` line and **no errors**. It's guarded/idempotent — safe if it somehow re-runs. Confirm it recorded:
+```sql
+SELECT migration_name FROM schema_migrations WHERE migration_name LIKE '110%';
+```
+
+## STEP 3 — Verify the schema landed (run against the Replit DB)
+```sql
+-- expert_templates: 5 approval columns present
+SELECT column_name FROM information_schema.columns
+ WHERE table_name='expert_templates'
+   AND column_name IN ('approval_status','submitted_at','reviewed_at','reviewed_by','rejection_reason');
+
+-- both CHECKs present
+SELECT conname FROM pg_constraint
+ WHERE conname IN ('expert_templates_approval_status_check','template_purchases_status_check');
+
+-- purchase-status default flipped to pending_payment
+SELECT column_default FROM information_schema.columns
+ WHERE table_name='template_purchases' AND column_name='status';   -- expect 'pending_payment'
+```
+
+## STEP 4 — ⚠️ Confirm the backfill effect (know it, don't be surprised)
+The migration backfills **`is_published=true` templates → `approval_status='submitted'`** (nothing grandfathered — the marketplace is new). Check what it touched:
+```sql
+SELECT approval_status, count(*) FROM expert_templates GROUP BY approval_status;
+```
+**Any real "published" template is now `submitted` and needs admin approval before it can sell.** This has **zero live impact today** — the purchase UI is orphaned, nothing reaches checkout — but if anyone was tracking "these were published," this is why they now show as pending review. This is intended.
+
+## STEP 5 — Behavioral spot-check (the approval flow)
+As an expert account: create a template → it's `draft`, `isPublished=false`. `POST /api/expert/templates/:id/submit` → `submitted`. As admin: it appears at `GET /api/admin/expert-templates/pending`; `POST /api/admin/expert-templates/:id/approve` → `approved`. Confirm the purchase gate: a non-`approved` **or** non-`published` template returns "not available for purchase"; only `approved AND published` passes. Admin approval page is at `/admin/template-approvals`.
+
+## STEP 6 — Gates
+```bash
+npx tsc --noEmit 2>&1 | grep -c "error TS"   # expect 295 (unchanged baseline)
+npm run build                                 # vite + esbuild bundle succeeds
+```
+
+## Rollback (only if needed)
+Migration 110's header has the exact reversal SQL (drop the two CHECKs, restore `status` default to `'completed'`; the `expert_templates` columns + backfill are additive). Don't drop columns unless fully reverting the feature.
+
+## What NOT to do
+- **Don't** run `drizzle-kit push` expecting it to create the CHECKs — the two CHECK constraints live in migration 110, not `schema.ts` (same as migration 109). Push creates the *columns* (they're in `schema.ts`) but **not** the CHECKs. The CHECKs come from `runMigrations()` at startup — let it run.
+- **Don't** re-add `refunded` to the status CHECK later — it's already allowed (forward-compat for the refund path).
+- **Don't** surface the marketplace (register `/expert-templates/:id`, un-hide the packages tab) — that's Phase B, deliberately held until Phase A is confirmed live.
+
+---
+
+**Report back:** the `schema_migrations` 110 row, the two CHECK names present, the `approval_status` distribution from Step 4, and tsc=295. That confirms it all landed.
+
+Once Replit confirms, Phase B (surfacing) is the next go on your word — its preflight will re-verify all three Phase-A gates are live on `main` before wiring the first reachable path.
