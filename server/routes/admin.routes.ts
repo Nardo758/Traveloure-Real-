@@ -2883,13 +2883,29 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             return res.status(500).json({ error: "Failed to check platform balance before transfer" });
           }
 
+          // Atomic claim BEFORE the transfer (money-safety idempotency): flip the row to
+          // 'processing' only if it isn't already completed/processing. If zero rows claim, another
+          // concurrent call / retry already owns this payout → do NOT transfer again. The DB
+          // transition is the guard (a check-then-transfer is the double-spend TOCTOU we're closing).
+          const claimed = requesterType === 'expert'
+            ? await storage.claimExpertPayoutForProcessing(id)
+            : await storage.claimProviderPayoutForProcessing(id);
+          if (!claimed) {
+            return res.status(409).json({
+              error: "Payout is already processing or completed — refusing to transfer again.",
+              payoutId: id,
+            });
+          }
+
           try {
             const transfer = await stripeConnectService.createTransfer(
               payoutAmountNum,
               'usd',
               recipientStripe.stripeAccountId,
               `Traveloure ${requesterType} payout`,
-              { payoutId: id, requesterType, recipientId }
+              { payoutId: id, requesterType, recipientId },
+              // Deterministic key so even a process-level retry of the SAME payout can't double-transfer at Stripe.
+              `payout-${requesterType}-${id}`,
             );
 
             if (requesterType === 'expert') {

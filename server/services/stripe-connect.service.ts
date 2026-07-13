@@ -106,15 +106,22 @@ class StripeConnectService {
     currency: string,
     connectedAccountId: string,
     description: string,
-    metadata: Record<string, string>
+    metadata: Record<string, string>,
+    idempotencyKey?: string
   ): Promise<{ transferId: string; amount: number }> {
-    const transfer = await stripe.transfers.create({
-      amount: Math.round(amount * 100),
-      currency: currency.toLowerCase(),
-      destination: connectedAccountId,
-      description,
-      metadata,
-    });
+    // Stripe idempotency key (money-safety): a replay of the SAME transfer (same key) returns the
+    // original transfer instead of creating a second one — the external-effect guard that pairs
+    // with the caller's atomic DB claim.
+    const transfer = await stripe.transfers.create(
+      {
+        amount: Math.round(amount * 100),
+        currency: currency.toLowerCase(),
+        destination: connectedAccountId,
+        description,
+        metadata,
+      },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
 
     return {
       transferId: transfer.id,
