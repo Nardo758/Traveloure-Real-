@@ -332,4 +332,14 @@ export const MIGRATION_FILES = [
   // Companion code change: CANONICAL_TEMPLATES seeder literals
   // 'document'→'pdf' so fresh environments seed CHECK-clean rows.
   "109_delivery_method_remap_and_check.sql",
+  // Migration 110 — Marketplace activation, Phase A (shared approval queue = Phase 4's
+  // queue). Adds the provider_services approval column set (approval_status draft→submitted
+  // →approved/rejected, submitted_at/reviewed_at/reviewed_by/rejection_reason) to
+  // expert_templates so ONE admin queue gates both tables; backfills is_published=true rows
+  // to 'submitted' (nothing grandfathered — see migration comment for the "published→needs
+  // approval" effect). Adds a CHECK on expert_templates.approval_status and on
+  // template_purchases.status (enumerated set: pending_payment, completed, refunded) and flips
+  // the purchase-status default off 'completed' → 'pending_payment'. provider_services untouched
+  // (already grandfathered 'approved'; Phase 4 wires its read-gate). Guarded/idempotent.
+  "110_expert_template_approval_and_purchase_status.sql",
 ] as const;

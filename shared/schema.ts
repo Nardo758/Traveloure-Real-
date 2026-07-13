@@ -3866,6 +3866,13 @@ export const expertTemplates = pgTable("expert_templates", {
   viewCount: integer("view_count").default(0),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
   reviewCount: integer("review_count").default(0),
+  // Approval workflow (marketplace activation, migration 110) — mirrors provider_services.
+  // Purchasable only when approval_status = 'approved' AND isPublished = true.
+  approvalStatus: varchar("approval_status", { length: 20 }).default("draft"), // draft, submitted, approved, rejected
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3880,7 +3887,7 @@ export const templatePurchases = pgTable("template_purchases", {
   currency: varchar("currency", { length: 10 }).default("USD"),
   platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).notNull(), // Traveloure's cut
   expertEarnings: decimal("expert_earnings", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 50 }).default("completed"), // pending, completed, refunded
+  status: varchar("status", { length: 50 }).default("pending_payment"), // pending_payment, completed, refunded (migration 110 CHECK) — never born 'completed'
   purchasedAt: timestamp("purchased_at").defaultNow(),
   refundedAt: timestamp("refunded_at"),
 });
