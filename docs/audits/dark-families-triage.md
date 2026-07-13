@@ -1,6 +1,6 @@
 # Dark-Families Triage — `server/routes/experts.routes.ts`
 
-**Status:** 🔶 **STAGE 1 — family inventory complete; awaiting checkpoint before per-endpoint classification.**
+**Status:** ✅ **COMPLETE — Stage 1 inventory + Stage 2 classification + Stage 3 lists (below).** 166 endpoints: 101 safe-delete (List A), 65 dark features (List B).
 **Type:** Read-only. Change nothing (not even "obviously dead" ones — removal is a separate go-ahead).
 **Subject:** `server/routes/experts.routes.ts` — **imported** (`server/routes.ts:104`) but **never mounted** (`app.use(expertsRoutes)` count = 0). Its endpoints return **200-HTML from the Vite catch-all**, not a 404 — so live vs dead is indistinguishable over HTTP (§9). Only the inline-twin + caller-trace tells the truth.
 
