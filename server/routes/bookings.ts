@@ -13,10 +13,18 @@ import { requireOwnership } from '../middleware/ownershipGuard';
 import { storage } from '../storage';
 import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import { getUserId } from '../utils/auth';
 import Stripe from 'stripe';
 
 const router = Router();
+
+// Owner of a legacy `bookings` row (for the refund authorization gate). Returns null if absent.
+async function getBookingOwnerId(bookingId: string): Promise<string | null> {
+  const r = await db.execute(sql`SELECT user_id FROM bookings WHERE id = ${bookingId} LIMIT 1`);
+  const row = r.rows?.[0] as any;
+  return row?.user_id != null ? String(row.user_id) : null;
+}
 
 /**
  * GET /api/bookings/:id
@@ -55,13 +63,18 @@ router.get(
  */
 router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
-    const { userId, cartItems, paymentMethod = 'full', bookingMetadata } = req.body;
+    // Acting user = session, NEVER the body. (Was: `userId` from req.body — an IDOR letting an
+    // authenticated user create trips/bookings under another user's id.)
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
-    if (!userId || !cartItems || !Array.isArray(cartItems)) {
+    const { cartItems, paymentMethod = 'full', bookingMetadata } = req.body;
+
+    if (!cartItems || !Array.isArray(cartItems)) {
       return res.status(400).json({ error: 'Invalid request' });
     }
 
-    const result = await bookingService.processCart(userId, cartItems, paymentMethod, bookingMetadata);
+    const result = await bookingService.processCart(sessionUserId, cartItems, paymentMethod, bookingMetadata);
 
     // If any item was rejected because the slot was taken (race-condition double-booking),
     // return 409 Conflict so the frontend can show a clear message and refresh the slot list.
@@ -273,13 +286,21 @@ router.post('/estimate-cost', isAuthenticated, async (req, res) => {
  */
 router.post('/apply-promo', isAuthenticated, async (req, res) => {
   try {
-    const { code, amount, userId } = req.body;
+    // userId from the session, never the body (was the same client-trusted-identity class as
+    // process-cart: a client could pass another user's id to probe/bypass the per-user promo
+    // limit). This is a discount PREVIEW only — no money moves and no usage is recorded here
+    // (recordPromoUsage runs at checkout); `amount` is the client subtotal to preview against and
+    // is not authoritative — the actual charge + promo are re-derived server-side at /api/checkout.
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
-    if (!code || !amount || !userId) {
+    const { code, amount } = req.body; // money-derive-ok: preview subtotal only; charge re-derives at /api/checkout
+
+    if (!code || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const result = await pricingService.applyPromoCode(code, amount, userId);
+    const result = await pricingService.applyPromoCode(code, amount, sessionUserId);
 
     if (result.valid) {
       res.json({
@@ -340,13 +361,32 @@ router.post('/webhooks/stripe', async (req, res) => {
  */
 router.post('/refund', isAuthenticated, async (req, res) => {
   try {
-    const { bookingId, amount, reason } = req.body;
+    // Was WORLD-WRITABLE: auth-only, any user could refund any bookingId for an arbitrary amount.
+    // Now: owner-or-admin gate, and the refund amount is server-derived from the booking record
+    // (client-sent `amount` is ignored). Acting user from the session, never the body.
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { bookingId, reason } = req.body; // NOTE: `amount` intentionally not read — server-derived.
 
     if (!bookingId) {
       return res.status(400).json({ error: 'Booking ID required' });
     }
 
-    const result = await stripePaymentService.createRefund(bookingId, amount, reason);
+    const ownerId = await getBookingOwnerId(bookingId);
+    if (ownerId === null) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    if (ownerId !== sessionUserId) {
+      const actor = await storage.getUser(sessionUserId);
+      if (actor?.role !== 'admin') {
+        return res.status(403).json({ error: 'Not authorized to refund this booking' });
+      }
+    }
+
+    // amount omitted → createRefund derives it from the booking's stored total_amount.
+    // Earnings-ledger reversal is a filed fast-follow (see CLAUDE.md money-endpoint note).
+    const result = await stripePaymentService.createRefund(bookingId, undefined, reason);
 
     res.json({
       success: true,
