@@ -99,6 +99,13 @@ This document captures architectural decisions to maintain consistency across co
     - **Price is locked at create** (`routes.ts` create reads `template.price` into the PaymentIntent + stores
       `expertEarnings` on the purchase row; `/confirm` records from the stored row, never re-reads `template.price`) —
       A3 adds "material `price`/`currency` change to an approved template re-enters review."
+    - **Filed follow-up — refund path (not built).** `'refunded'` is **already in the migration-110
+      `template_purchases_status_check`** as forward-compat (a status CHECK's failure mode is asymmetric: allowing an
+      unwritten value never 500s, omitting a written one does). When the refund path is built: **do not** re-add
+      `'refunded'` to the CHECK (it's already allowed — a second ADD would hit "constraint already allows this"); wire the
+      actual `status = 'refunded'` write **plus the earning reversal** (undo the `template_sale` `expert_earning`). No
+      `failed`/`cancelled`/`processing` were added — don't add a status nothing writes (a state with no transition in/out
+      is a trap); add one only with its write path.
 11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
     works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
 
