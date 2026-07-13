@@ -268,7 +268,7 @@ function Router() {
       
       {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
       <Route path="/discover">
-        <ConsoleAwareLayout title="Discover"><DiscoverPage /></ConsoleAwareLayout>
+        <Layout><DiscoverPage /></Layout>
       </Route>
       {/* Phase 3 LocationView — 9-section city marketplace (Decision #5 = Replace). */}
       <Route path="/discover/location/:city">
@@ -288,7 +288,7 @@ function Router() {
         <ServiceDetailPage />
       </Route>
       <Route path="/cart">
-        <ConsoleAwareLayout title="Cart"><CartPage /></ConsoleAwareLayout>
+        <Layout><CartPage /></Layout>
       </Route>
 
       <Route path="/itinerary-view/:token">
@@ -434,11 +434,11 @@ function Router() {
       
       {/* Consolidated Credits page */}
       <Route path="/credits">
-        {() => <ConsoleAwareLayout title="Credits"><ProtectedRoute component={CreditsBillingPage} /></ConsoleAwareLayout>}
+        {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
       </Route>
       
       <Route path="/notifications">
-        {() => <ConsoleAwareLayout title="Notifications"><ProtectedRoute component={Notifications} /></ConsoleAwareLayout>}
+        {() => <DashboardLayout><ProtectedRoute component={Notifications} /></DashboardLayout>}
       </Route>
       <Route path="/expert-status">
         {() => <ProtectedRoute component={ExpertStatusPage} />}
