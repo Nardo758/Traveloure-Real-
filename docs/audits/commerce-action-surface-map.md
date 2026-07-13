@@ -1,6 +1,6 @@
 # Commerce Action-Surface Map
 
-**Status:** 🔶 **STAGE 1 — inventory complete; awaiting checkpoint confirmation before Stage 2 deep trace.**
+**Status:** ✅ **COMPLETE — Stage 1 inventory + Stage 2 endpoint gate trace done.** Ranked findings at the bottom of this file.
 **Type:** Read-only audit. No code changed. Verified against current `main` (post-`9d170e09`, Marketplace Phase A merged).
 **Scope:** every user action that moves money, moves commerce/booking/approval state, or is a step in a purchase / booking / earn path — across traveler/buyer, expert, provider, admin. Pure account/settings/nav chrome excluded unless it is a commerce action.
 
@@ -272,3 +272,67 @@
 - `/booking-demo` (`PlanningWithBooking.tsx`) — appears demo-only, not production commerce.
 - Downstream `/experiences/:slug/new` wizard interior beyond the add-to-cart buttons captured in A12.
 - Chat/message surfaces (`/chat`) — contact entry points captured; the chat interior is not commerce.
+
+---
+
+# STAGE 2 — Endpoint gate trace & ranked findings
+
+**Status:** ✅ Stage 2 complete. Every 🔴/🟠 action point deep-traced to its server handler (three checks: exists+wired · endpoint gated? · UI-gate vs server-gate). Verified on `main` (post-`9d170e09`). Read-only — no code changed.
+
+> **Key framing:** an endpoint answers **any caller who meets its gate, regardless of the UI.** Several findings below are exploitable by a direct API call even where the button is hidden/orphaned — that is the "UI says one thing, endpoint allows another" class this whole audit exists to catch. "Reachable via UI" is noted, but the endpoint gate is the finding.
+
+## RANKED FINDINGS (most severe first)
+
+### 🔴 CRIT-1 — Amount-tampering: `POST /api/expert-requests/payment-intent` charges the client-sent `amount` verbatim
+`server/routes/booking-actions.ts:61-94` reads `amount` from `req.body` (:71) → `stripe-payment.service.ts:455` `Math.round(amount*100)` → Stripe. **No server re-derivation, no config/band lookup, no clamp.** The tier prices ($50 / +5% / +8% / $49.99) are computed **client-side** (`VariantActionButtons.tsx:95-102`) and sent as `amount`. A caller can POST `amount: 0.50` for a Full Concierge and pay 50¢. Also `userId` is taken from the body (:64), not the session. Gated only by `isAuthenticated`. **Live, exploitable by any authenticated caller.** *(Corroborated by two independent traces.)* Contrast: optimize-fee (`getFee`) and coordination (`resolveCoordinationFee`) both re-derive server-side — this path is the outlier.
+
+### 🔴 CRIT-2 — Ungated refund: `POST /api/bookings/refund` has no owner/admin gate
+`server/routes/bookings.ts:341-362` — `isAuthenticated` only. **Any logged-in user can refund any `bookingId` for an arbitrary `amount`.** `stripe-payment.service.ts:357` issues `stripe.refunds.create` and sets `bookings.status='refunded'` but **reverses no earning/payout ledger row.** It targets the legacy `bookings` table (real checkout writes `service_bookings`), so it mostly 404s on live bookings *today* — but the missing authorization gate + missing ledger reversal are real defects the moment that table is used.
+
+### 🔴 CRIT-3 — IDOR: `POST /api/bookings/process-cart` takes `userId` from the body
+`server/routes/bookings.ts:56-89` — `isAuthenticated` present but the **session user is never compared to `req.body.userId`** (:58). An authenticated user can create trips/bookings under another user's id. AI-generated cart items (no `providerId`) also trust `item.price` from the client (`booking.service.ts:304`) — real-provider items correctly re-read DB price.
+
+### 🔴 CRIT-4 — Expert-request creation decoupled from payment verification
+`POST /api/expert-requests` (`booking-actions.ts:118` → `booking.service.ts:674-686`) inserts `status='queued'` **hardcoded**, and **never reads `paymentStatus`/`paymentIntentId`** the client sends. Good: the client can't self-mark paid. Bad: **nothing verifies the PaymentIntent succeeded** before the request is created — the embedded PaymentIntent flow never triggers the `expert_service` webhook (which only fires on `checkout.session.completed`). The paid expert lead is created whether or not payment cleared. `expertFee` stored raw from body (informational).
+
+### 🔴 HIGH-1 — Payout execute has no idempotency → duplicate Stripe transfer
+`PATCH /api/admin/payouts/:id` completed-branch (`admin.routes.ts:2887`) calls `createTransfer` with **no `idempotencyKey`** (`stripe-connect.service.ts:104`) and the status update has **no `WHERE status<>'completed'` guard** (`storage.ts:3221`). A retry/double-click/replay on an already-completed payout **re-runs the real Stripe transfer.** Admin-only (behind `adminApiGuard`, so not a privilege issue) — a missing money-safety invariant, not an access hole.
+
+### 🟠 HIGH-2 — F2: LIVE born-approved approval/fee bypass (the pinned determination)
+**Determination: LIVE, not latent.** `/expert/services/new` renders the **legacy wizard** (`App.tsx:479-480`), not ServiceForm — the wizard is the mounted create surface, and several routes redirect *into* it. Both wizard write paths create **born-approved** `provider_services`: `POST /api/expert/services/from-template/:id` (`routes.ts:5837`) and `POST /api/provider/services` (`routes.ts:2052`) never set `approvalStatus`, and the column **defaults to `"approved"`** (`schema.ts:578`). This defeats the `draft→submitted→approved` gate ServiceForm's expert path enforces (`ServiceForm.tsx:572-577`). **Load-bearing hole = the server-side default** — retiring the wizard route alone would not close it, because `POST /api/provider/services` itself never sets `approvalStatus`. This is the D1a divergence (§1), confirmed reachable in production.
+
+### 🟠 HIGH-3 — IDOR: `PATCH /api/concierge/requests/:id` has no auth and no ownership
+`concierge.routes.ts:116-148` filters by `id` only (:134) — no auth middleware, no `userId` predicate. **Any guest/user can PATCH any concierge request's tier/status.** Low money-sensitivity (lead record, no charge) but a real cross-tenant write. (Create/quote being guest-open is intentional per D6; the unguarded mutation-by-id is the divergence.)
+
+### 🟠 MED — narrower-blast-radius gaps
+- **`POST /api/checkout` — no idempotency key** (`routes.ts:7350`): duplicate submits → duplicate bookings. *(Price/fees ARE re-derived server-side — the "12%" label is cosmetic — so not amount-tampering, just double-charge risk.)*
+- **`PATCH /api/transport-legs/:legId/mode`** (`trips.routes.ts:2454`): **no `isAuthenticated` middleware**; ownership check is conditional (`if(variantOwner)`) and skipped if the variant owner is falsy. Changes `estimatedCostUsd` (display cost, not a charge; new cost read from server-stored `alternativeModes`, not client).
+- **`PATCH /api/transport-booking-options/:id/status`**: no owner check — any auth user flips any option's booking-status label. No money.
+- **`POST /api/bookings/purchase/confirm` (marketplace)**: non-atomic status check→update, no `WHERE status='pending_payment'` — TOCTOU double-credit under concurrent confirm. **Orphaned UI (not reachable today).**
+- **Currency:** `POST /api/checkout` passes `req.body.currency` to Stripe **without FX conversion or whitelist** (`routes.ts:7442`) — a weak/zero-decimal code charges that currency's magnitude. Latent (single-USD intent); the expert-service path *does* whitelist currency, the cart path does not.
+
+### Ops gaps (money not unwound)
+- **No built refund path reverses the earnings ledger** — `/api/bookings/refund`, the `charge.refunded` webhook, and booking cancel all leave `provider_earnings`/`expert_earnings`/`platform_revenue` intact. The mint side-effect (`storage.ts:1360-1420` on `completed`) is never unwound.
+- **Booking cancel issues no Stripe refund** on a paid `confirmed` booking (`routes.ts:6268`) — money kept (owner-gated, so not a vuln; an ops gap).
+- **Template-purchase refund unbuilt** (as documented; `'refunded'` pre-allowed in the migration-110 CHECK).
+
+### Dead / orphaned / reachability
+- **F1 (PHASE-B BLOCKER) — marketplace purchase path double-dead:** `packages` tab hidden *and* `/expert-templates/:id` unregistered → 404, and **no buyer purchase-page component exists.** Purchase + `/confirm` endpoints are correctly gated (approval + IDOR + idempotent + server-price — verified sound) but **unreachable.** **This defines Phase B's first step: register the route + build the purchase page + un-hide the tab, filtered to approved.**
+- **Provider payout-request rail dark + UI inert:** `/api/provider/payouts/request` etc. live in the **unmounted** `experts.routes.ts` (§9 → return 200-HTML), and `/provider/payouts` buttons have no onClick/mutation. Providers **cannot submit payout requests**; `/admin/payouts` processes only admin-created rows.
+- **`/admin/revenue` "Process Payouts"**, `button-view-all-templates`, `button-view-all-creators`, `button-date-event-add`, `button-notify-me`, expert-detail Heart/Share2 — inert (no handler). `href="#"` fallbacks on gem Book/Reserve and Partnerize direct link.
+
+## GATES THAT HOLD (verified sound — do not "fix")
+- **Marketplace purchase + `/confirm`** — approval (`approved AND published`), self-purchase block, IDOR (`metadata.purchaseId`), buyer ownership, idempotent, price server-read, earning from stored row. (Only the TOCTOU hardening note above.)
+- **Expert-template create/PATCH** — `pickExpertTemplateFields` whitelist on both; `isPublished:false` forced at create; A3 price-change→re-review.
+- **Admin approve/reject/submit** + **all admin commerce** (payouts, fee-bands, platform-settings, category-fees, fee-config, reconciliation, revenue-export) — under the blanket `adminApiGuard` (mounted `routes.ts:523`, after guard `:275`); none outside it.
+- **Cart item-type boundary** — only `provider_services` IDs + owned custom venues; **no expert-template-into-cart path.**
+- **`/api/checkout`** re-derives subtotal + per-category commission from `fee_bands` config (client amount ignored).
+- **`optimization-payments`(+`/confirm`)** — ownership-gated, config fee, idempotent on `sourceId`, confirm verifies `pi.status==='succeeded'` + type/user binding. Best-gated money path.
+- **Transport `book`** — price server-side (`option.priceCentsLow`).
+- **Coordination-states** — IDOR-gated on every read/patch/delete/fee/bookings path; fee `resolveCoordinationFee` server-side.
+
+## BOTTOM LINE FOR PHASE B
+- **Marketplace surfacing is safe *as a mechanism*** — the purchase/confirm/create/approve gates are sound. **Phase B's first step is F1**: register `/expert-templates/:id`, build the buyer purchase page, un-hide the `packages` tab **filtered to `approved AND published`**. No new gate is needed for the marketplace path itself.
+- **But the surrounding commerce surface has LIVE money vulnerabilities independent of the marketplace** (CRIT-1..4, HIGH-1) that are exploitable at the endpoint level today. These are **not** Phase-B blockers (different surfaces) but are **higher-severity than Phase B** and should be triaged as their own remediation lane before/alongside surfacing — surfacing more commerce UI while `/api/expert-requests/payment-intent` and `/api/bookings/refund` are open would add reachable paths to an already-open surface.
+- **F2 (born-approved bypass)** is live and belongs to the D1a/Phase-3 lane — its root cause is the `provider_services.approvalStatus` default, which Phase 4's `provider_services` wiring must flip.
+- **Provider payout rail** is a real supply-side gap (providers can't get paid via UI) — its own fix lane, not Phase B.
