@@ -53,6 +53,7 @@ import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
+import { availableAtFor } from "./config/earnings-hold.config";
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
 import { cacheService } from "./services/cache.service";
@@ -4733,8 +4734,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         referenceId: purchase.id,
         referenceType: 'template_purchase',
         description: `Sale of template (confirmed payment ${paymentIntentId})`,
-        status: 'held', // escrow: born held; available_at=now preserves prior "immediately releasable" timing (migration 112)
-        availableAt: new Date(),
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor('template_sale'), // P2: template clearance window (was immediate; ratified per-surface window)
       });
 
       const template = await storage.getExpertTemplate(purchase.templateId);
