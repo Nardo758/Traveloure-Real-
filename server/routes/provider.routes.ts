@@ -36,7 +36,10 @@ async function requireProviderRole(req: any, res: any): Promise<string | null> {
     return null;
   }
   const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-  if (!row || (row.role !== "provider" && row.role !== "admin")) {
+  // Role vocabulary ground truth: provider approval writes role "service_provider"
+  // (routes.ts, admin approval path), NOT "provider" — same set as PROVIDER_ROLES in
+  // middleware/role-rbac.ts. Checking "provider" here locked out every real provider.
+  if (!row || (row.role !== "service_provider" && row.role !== "admin")) {
     res.status(403).json({ message: "Provider access required" });
     return null;
   }
