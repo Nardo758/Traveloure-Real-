@@ -2771,13 +2771,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expert Templates
-  async getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; category?: string; destination?: string }): Promise<ExpertTemplate[]> {
+  async getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; approvalStatus?: string; category?: string; destination?: string }): Promise<ExpertTemplate[]> {
     const conditions = [];
     if (filters?.expertId) {
       conditions.push(eq(expertTemplates.expertId, filters.expertId));
     }
     if (filters?.isPublished !== undefined) {
       conditions.push(eq(expertTemplates.isPublished, filters.isPublished));
+    }
+    // Marketplace read-gate (D1a / §10 "safety before surfacing"): public surfaces pass
+    // approvalStatus:'approved' so an unapproved (draft/submitted/rejected) template — even one the
+    // expert has self-published — never leaks into the public feed. The owner console and admin
+    // reads omit this filter intentionally (owner sees their own pipeline; admin sees the queue).
+    if (filters?.approvalStatus) {
+      conditions.push(eq(expertTemplates.approvalStatus, filters.approvalStatus));
     }
     if (filters?.category) {
       conditions.push(eq(expertTemplates.category, filters.category));

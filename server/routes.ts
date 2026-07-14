@@ -4374,8 +4374,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/expert-templates", async (req, res) => {
     try {
       const { category, destination, expertId } = req.query;
+      // PUBLIC marketplace feed — read-gate on approved (D1a / §10 "safety before surfacing").
+      // Only admin-approved AND expert-published templates surface. Matches the purchase gate
+      // (routes.ts purchase: approvalStatus==='approved' && isPublished) so nothing appears in the
+      // feed that couldn't be bought, and no unapproved listing leaks publicly. The expert's own
+      // pipeline is the ungated owner console at GET /api/expert/templates.
       const templates = await storage.getExpertTemplates({
         isPublished: true,
+        approvalStatus: "approved",
         category: category as string | undefined,
         destination: destination as string | undefined,
         expertId: expertId as string | undefined,
@@ -4394,8 +4400,28 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
       }
-      // Increment view count
-      await storage.incrementTemplateView(req.params.id);
+      // Read-gate (D1a / §10): the PUBLIC detail read only exposes an approved + published
+      // template — the same bar the feed and the purchase gate use — so an unapproved listing's
+      // detail page can't be loaded by a would-be buyer. The OWNER (previewing their own pipeline)
+      // and an ADMIN (reviewing the queue) are exempt. Route is unauthenticated, so req.user is
+      // read opportunistically (session middleware populates it when a cookie is present).
+      const isPublic = template.approvalStatus === "approved" && template.isPublished;
+      if (!isPublic) {
+        const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+        const isOwner = !!userId && template.expertId === userId;
+        let isAdmin = false;
+        if (userId && !isOwner) {
+          const actor = await storage.getUser(userId);
+          isAdmin = actor?.role === "admin";
+        }
+        if (!isOwner && !isAdmin) {
+          return res.status(404).json({ message: "Template not found" });
+        }
+      }
+      // Increment view count (only for genuinely public views — don't inflate on owner/admin preview)
+      if (isPublic) {
+        await storage.incrementTemplateView(req.params.id);
+      }
       res.json(template);
     } catch (err) {
       console.error("Error fetching template:", err);
@@ -6490,7 +6516,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
-      const templates = await storage.getExpertTemplates(userId);
+      const templates = await storage.getExpertTemplates({ expertId: userId });
       
       // Get expert's profile for selected services and specializations
       const expertProfile = await storage.getLocalExpertForm(userId);

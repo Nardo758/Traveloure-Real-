@@ -102,6 +102,20 @@ This document captures architectural decisions to maintain consistency across co
     - **Gap 3 — surfacing (Phase B, LAST).** Register `/expert-templates/:id`, un-dead the `packages` tab, integrate
       approved packages into Discover — **only admin-approved packages surface**, at the approved/locked price. Gated
       behind Phase A holding.
+      - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
+        path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
+        i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated
+        (`approvalStatus==='approved' && isPublished`), but the **public reads were not**: `GET /api/expert-templates`
+        filtered only `isPublished` (a self-published-but-`submitted`/`rejected` template surfaced in the feed) and
+        `GET /api/expert-templates/:id` had **no gate**. Both now require `approved` (+ `isPublished`); the owner console
+        (`GET /api/expert/templates`, expertId-scoped) and admin reads stay ungated — the **F2 `provider_services`
+        read-gate pattern**. So "only admin-approved packages surface" now holds at the API regardless of which client
+        renders it.
+      - **⚠️ Tree divergence (un-reconciled).** `origin/main` still has the surface **hidden/unregistered** (no public
+        `/expert-templates/:id` route in `App.tsx`; `packages` tab hidden in `discover.tsx`; no marketplace nav link),
+        while the ground-truth's "surfaced/reachable" finding reflects the **deploy tree**. Same pattern as the #164
+        Replit desync — **un-pushed Phase-B surfacing commits.** Reconcile by pushing that surfacing onto `origin/main`
+        (as we did for #164); the maps can't be finalized as fact until origin/main and the deploy agree on what's live.
     - **Currency (decision 2 = A):** validate against the single platform currency (USD) now + keep per-listing
       `price`/`currency`; whitelist the currency field to a known set. Conversion infra exists (`budgetService`) but is
       budget-scoped; **Stage-2 multi-currency layers on later** — do not build it here.
