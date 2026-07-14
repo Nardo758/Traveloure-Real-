@@ -171,10 +171,6 @@ export default function ExpertProfile() {
     queryKey: ["/api/expert/neighborhoods"],
   });
 
-  const { data: selectedServices, isLoading: servicesLoading } = useQuery({
-    queryKey: ["/api/expert/selected-services"],
-  });
-
   const { data: specializationData, isLoading: specializationsLoading } = useQuery({
     queryKey: ["/api/expert/specializations"],
   });
