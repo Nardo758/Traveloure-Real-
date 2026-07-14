@@ -135,9 +135,22 @@ This document captures architectural decisions to maintain consistency across co
       `req.body`, so `isPublished`/`approvalStatus`/`expertId`/earnings columns are self-settable. Fix (A1, landed on
       this branch, **decision-independent**): write only an explicit expert-editable allow-set on both paths; never raw
       `req.body`; force `isPublished` false at create.
-    - **Gap 3 — surfacing (Phase B, LAST).** Register `/expert-templates/:id`, un-dead the `packages` tab, integrate
-      approved packages into Discover — **only admin-approved packages surface**, at the approved/locked price. Gated
-      behind Phase A holding.
+    - **Gap 3 — surfacing (Phase B, LAST). 🔄 IN PROGRESS (Jul 14, 2026) — scope CORRECTED by the action-map pass.**
+      The full buy-loop action map (expert build → submit → approve → browse → view → purchase → **receive** → review)
+      was ground-truthed and found Phase B is **bigger than "register a route + un-hide a tab"** — three client surfaces
+      don't exist at all: ① the expert builder (`/expert/templates`, routed + working CRUD) had **no submit-for-review
+      action and didn't show `approvalStatus`** — the pipeline was dead at step 1 (nothing could ever reach the admin
+      queue from the UI); ② **no public detail page or purchase UI exists anywhere** (the earlier "page wired to Stripe"
+      claim was wrong — client grep finds zero callers of `/purchase` or `/purchase/confirm`); ③ **no buyer delivery
+      surface** — `GET /api/my-purchased-templates` (live, returns purchases + full template incl. `itineraryData`) has
+      zero client consumers, so a buyer would pay and have nowhere to see what they bought. Server needs ~nothing: all
+      12 endpoints live + gated; review-create is already purchase-gated. **Build order (safety: delivery before
+      surfacing):** B1 builder submit + status (landed on `claude/marketplace-phaseB-b1` — submit/resubmit button,
+      approval badges + rejection reason, publish toggle only post-approval, dead born-published switch removed, and the
+      fake client `80%`/`×0.8` earnings literals replaced with real per-purchase `expertEarnings` sums — §8: the real
+      split is config-resolved server-side via `resolveCommissionRates`); B2 public `/expert-templates/:id` detail page
+      + purchase flow; B3 buyer's purchased-packages view (the delivery); B4 un-hide the `packages` tab **last, only
+      when the loop closes end-to-end**. Only admin-approved packages surface, at the approved/locked price.
       - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
         path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
         i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated
