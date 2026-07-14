@@ -7,6 +7,7 @@ import {
   contentRegistry
 } from "@shared/schema";
 import { resolveCommissionRates, PROCESSING_FEE_RATE } from "./commission";
+import { availableAtFor } from "../config/earnings-hold.config";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
@@ -97,6 +98,7 @@ class RevenueTrackingService {
         referenceType: event.sourceType,
         description: event.description,
         status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
       });
     }
 
@@ -110,6 +112,7 @@ class RevenueTrackingService {
         trackingNumber: event.trackingNumber,
         description: event.description,
         status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
       });
     }
   }
@@ -154,7 +157,9 @@ class RevenueTrackingService {
 
   private async getExpertEarningsStats() {
     const allEarnings = await db.select().from(expertEarnings);
-    const pending = allEarnings.filter(e => e.status === 'pending');
+    // escrow vocab (migration 112): "pending" (owed, not yet paid out) = held + releasable, not the
+    // retired 'pending' status. 'reversed' is excluded from both buckets.
+    const pending = allEarnings.filter(e => e.status === 'held' || e.status === 'releasable');
     const paidOut = allEarnings.filter(e => e.status === 'paid_out');
     const uniqueExperts = new Set(allEarnings.map(e => e.expertId));
 
@@ -167,7 +172,8 @@ class RevenueTrackingService {
 
   private async getProviderEarningsStats() {
     const allEarnings = await db.select().from(providerEarnings);
-    const pending = allEarnings.filter(e => e.status === 'pending');
+    // escrow vocab (migration 112): "pending" (owed, not yet paid out) = held + releasable.
+    const pending = allEarnings.filter(e => e.status === 'held' || e.status === 'releasable');
     const paidOut = allEarnings.filter(e => e.status === 'paid_out');
     const uniqueProviders = new Set(allEarnings.map(e => e.providerId));
 
