@@ -71,6 +71,7 @@ const menuGroups = [
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
       { title: "Offering Types", href: "/admin/offering-types", icon: Layers },
       { title: "Expert Templates", href: "/admin/expert-templates", icon: LayoutTemplate },
+      { title: "Template Approvals", href: "/admin/template-approvals", icon: ShieldCheck },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
       { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
