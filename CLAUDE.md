@@ -75,7 +75,9 @@ This document captures architectural decisions to maintain consistency across co
    - **Ground-truth correction (Jul 14, 2026): the "mostly-dark supply side" headline was overstated.** Re-verified on
      `origin/main`, three surfaces the maps inferred were dark are actually **LIVE on origin/main** (not even
      deploy-only): the **recommender** (real `server/services/recommendation.service.ts` → `getExpertRecommendations`/
-     `getProviderRecommendations`, mounted at `/api/recommendations/expert|provider|user`), **provider discovery**
+     `getProviderRecommendations`, mounted at `/api/recommendations/expert|provider|user` — **mounted, but the endpoints
+     were 500ing on 13 stale dynamic-imports of the deleted pre-unification engine files; repointed to the unified service
+     in PR #174, so "live" holds post-#174**), **provider discovery**
      (`/service-providers` + the full `/provider/*` route set in `App.tsx`), and the **expert workspace**
      (`/expert/workspace/:tripId`, expert-gated). What IS genuinely dark stays the `experts.routes.ts` families above
      (import present, no `app.use`). The maps were **inference**; treat these four as re-verified fact. The remaining
