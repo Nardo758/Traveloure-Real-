@@ -157,7 +157,9 @@ class RevenueTrackingService {
 
   private async getExpertEarningsStats() {
     const allEarnings = await db.select().from(expertEarnings);
-    const pending = allEarnings.filter(e => e.status === 'pending');
+    // escrow vocab (migration 112): "pending" (owed, not yet paid out) = held + releasable, not the
+    // retired 'pending' status. 'reversed' is excluded from both buckets.
+    const pending = allEarnings.filter(e => e.status === 'held' || e.status === 'releasable');
     const paidOut = allEarnings.filter(e => e.status === 'paid_out');
     const uniqueExperts = new Set(allEarnings.map(e => e.expertId));
 
@@ -170,7 +172,8 @@ class RevenueTrackingService {
 
   private async getProviderEarningsStats() {
     const allEarnings = await db.select().from(providerEarnings);
-    const pending = allEarnings.filter(e => e.status === 'pending');
+    // escrow vocab (migration 112): "pending" (owed, not yet paid out) = held + releasable.
+    const pending = allEarnings.filter(e => e.status === 'held' || e.status === 'releasable');
     const paidOut = allEarnings.filter(e => e.status === 'paid_out');
     const uniqueProviders = new Set(allEarnings.map(e => e.providerId));
 
