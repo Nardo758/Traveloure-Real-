@@ -144,6 +144,19 @@ This document captures architectural decisions to maintain consistency across co
       is a trap); add one only with its write path.
 11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
     works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
+12. **Market wedge — RATIFIED Jul 14, 2026: ONE market, KYOTO.** The launch is a **single-market wedge**, not the
+    8-market breadth. Ground truth that informed it: the "8 launch markets" exist only as **content-source scaffolding**
+    (`server/content/providers/DMOSourceRegistry.ts` — DMO ingestion across 8 markets), while the **real depth** (seeded
+    vendor inventory + neighborhood density) is already concentrated on **Kyoto** (`phase-d-kyoto-vendors.seed.ts`,
+    `verify-phase-1b.ts` "Kyoto is the launch market", `city-neighborhoods.seed.ts`). So Kyoto is the de-facto wedge with
+    actual liquidity; the other 7 are thin. **This one decision resolves three coupled ones** (all point the same way):
+    (a) **liquidity** — concentrate density in Kyoto, don't spread; (b) **guild-vs-talent Knowledge-Bar** — talent-selection
+    (the strong, hard-to-disintermediate moat) is feasible in ONE market, so vet for deep local Kyoto talent rather than
+    fall back to the leakable guild-document model breadth would force; (c) **Knowledge-Bar standard + expertise gate** —
+    define the *Kyoto* standard and extend the existing local-expert Knowledge-Proof (essays + tenure) into a **scored**
+    expertise gate for Kyoto. **Roadmap consequence:** marketplace build sequences behind Kyoto density; the other-7-market
+    breadth is **paused, not built out**; surfaces should reflect Kyoto depth, not thin content for 7 near-empty markets.
+    Full roadmap in `docs/audits/marketplace-maps-groundtruthed.md`. Ratified by the decision-maker (one-wedge-Kyoto).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
