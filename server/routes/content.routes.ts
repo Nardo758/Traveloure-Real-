@@ -7378,7 +7378,7 @@ router.post("/api/track/search", async (req, res) => {
 
       // Feed zero-result searches back into demand signal layer as gap/opportunity signals (non-blocking)
       if (req.body.resultsCount === 0 && req.body.destination) {
-        const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+        const { serviceRecommendationEngine } = await import("../services/recommendation.service");
         serviceRecommendationEngine
           .recordNoResultsSignal(req.body.destination, req.body.searchType)
           .catch((err: any) =>
@@ -7440,7 +7440,7 @@ router.post("/api/track/funnel", async (req, res) => {
       });
 
       // Feed this funnel event back into the demand signal layer (non-blocking)
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       serviceRecommendationEngine
         .recordFunnelEventAsSignal({
           stage: req.body.stage,
