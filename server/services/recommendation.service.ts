@@ -794,7 +794,7 @@ class RecommendationService {
 
     // expert_selected_services table dropped in migration 013; approved services
     // now live in provider_services with approvalStatus = 'approved'.
-    const customServices = await db
+    const approvedListings = await db
       .select({ serviceName: providerServices.serviceName })
       .from(providerServices)
       .where(
@@ -804,7 +804,7 @@ class RecommendationService {
         )
       );
 
-    for (const service of customServices) {
+    for (const service of approvedListings) {
       const normalized = this.normalizeServiceType(service.serviceName);
       services.add(normalized);
     }
