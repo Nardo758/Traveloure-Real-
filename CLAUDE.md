@@ -12,11 +12,23 @@ This document captures architectural decisions to maintain consistency across co
 > repo alone can't convey. Where a "⚠️ current code" note appears, the code **diverges from intent**; that is a tracked
 > **bug**, not the design. Do not "fix" the doc to match a divergence — fix the code (or leave it flagged).
 
-1. **Approval lifecycle (D1a).** Offerings are born `draft`/`submitted`, **never born-approved**. A minimal admin
-   approve/reject queue runs on the real admin gate; recommendations/availability filter on `approved`.
-   Lifecycle: `draft → submitted → approved`. ⚠️ **Current code:** `provider_services.approval_status` defaults
-   `"approved"` (`shared/schema.ts:578`) and `GET /api/expert/services` has no approval gate (`server/routes.ts:5538`) —
-   both tracked by D1a/Phase 2.
+1. **Approval lifecycle (D1a) — CLOSED by F2 (migration 111).** Offerings are born `submitted`, **never born-approved**.
+   Lifecycle: `draft → submitted → approved`. The `provider_services` admin approve/reject/list queue already exists
+   (`GET /api/admin/provider-services/pending` + `POST …/:id/approve|reject`, all operating on `provider_services` via
+   `mapProviderServiceToListing` → `ProviderServiceListing`; these were **renamed from the misnamed `custom-services`
+   vocabulary** — endpoints, storage fns, and the `ExpertCustomService` DTO all now carry provider-service names). **F2
+   resolution (ratified Jul 14, 2026):** ① the born default is
+   flipped `approved → submitted` at BOTH the ORM (`shared/schema.ts:578`) and the DB column (migration 111
+   `ALTER COLUMN approval_status SET DEFAULT 'submitted'`, **future-inserts-only — NO backfill, existing rows grandfathered
+   `approved`**); ② `createProviderService` clamps the born state server-side to non-approved (`draft`/`submitted`, default
+   `submitted`) so a client can't self-approve via the still-open `insertProviderServiceSchema` (the mass-assign twin of
+   marketplace Gap 2), and the duplicate path resets `approvalStatus` (was inheriting the original's `approved`);
+   ③ the **read gate is completed on ALL public `provider_services` surfaces** (they filter `approval_status = 'approved'`)
+   so a `submitted` listing cannot leak publicly — while the **expert-own console and admin reads stay intentionally
+   ungated** (owner sees their own pipeline; admin sees the queue). Grandfather + full-read-gate = complete integrity with
+   zero catalog outage (grandfathered rows are `approved` → pass the gate → stay visible; new rows are `submitted` → hidden
+   publicly until approved). `GET /api/expert/services` (`server/routes.ts`) is the owner console — correctly ungated
+   (filters by `userId` + the active/paused `status` param, never approval).
 2. **Admin auth = default-deny.** `/api/admin/*` is protected by a **blanket `requireAdmin`** guard
    (`app.use("/api/admin", …)` in `server/routes.ts`, DB role lookup on the session; 401/403; no bypass) — **landed via
    #141**; the previously world-writable `POST /api/admin/fee-config` hole is **closed on `main`**. Do **not** reintroduce
@@ -119,6 +131,96 @@ This document captures architectural decisions to maintain consistency across co
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 
+### §14 — Money-endpoint server-derivation rule (client-trusted amount/identity cluster)
+
+**GOVERNING RULE (convention — enforce on every money/ownership endpoint):** a money endpoint derives the
+charge/refund **amount from the server-side catalog/record**, and the **acting user from the session** — **NEVER**
+from `req.body`. `req.body.amount` / `req.body.price` / `req.body.userId` must never reach a payment or ownership
+decision. This class appeared **seven times** (coordination-fee $0-budget, template mass-assignment $0.01 price,
+world-writable fee-config, then the four below); the rule closes the class so the eighth can't be written.
+
+**Closed (client-trusted money cluster, own security branch):**
+- **A1 🔴 `POST /api/expert-requests/payment-intent`** — was charging the client-sent `amount` verbatim (pay 1¢ for a
+  Full Concierge) with `userId` from body. Now: acting user from session; amount **server-derived** via
+  `resolveExpertReviewAmount(serviceType, variant.totalCost)` (`booking-actions.service.ts`) from the variant's stored
+  cost; ownership (IDOR) enforced against `getVariantOwnerAndCost`. The tier constants ($50/$50+5%/$100+8%) were
+  relocated **server-side** from the client (`fee-literal-ok`, pending migration to `fee_bands` — filed, same posture as
+  the §8 coordination constants).
+- **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
+  **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
+  **Filed fast-follow:** earnings-ledger reversal (a refund does not yet reverse `provider_earnings`/`expert_earnings`/
+  `platform_revenue`); the endpoint also targets the legacy `bookings` table (real bookings live in `service_bookings`).
+- **A3 🔴 `POST /api/bookings/process-cart`** — `userId` from body (IDOR). Now: session user. **Filed fast-follow:**
+  AI-generated cart items (no `providerId`) still trust `item.price` — server has no catalog price for them; low
+  severity (buyer's own charge, no payout theft; real-provider items already re-read DB price).
+- **A4 (found during the fix) `POST /api/bookings/apply-promo`** — `userId` from body (per-user promo-limit probe/bypass
+  class). Now: session user. Preview-only (no money moves, no usage recorded here — `recordPromoUsage` runs at checkout;
+  the real charge + promo re-derive server-side at `/api/checkout`).
+
+**Guard:** `scripts/check-money-endpoints.cjs` (grep gate) fails if a payment/ownership route reads
+`req.body.amount`/`price`/`userId` into a money decision — the cheapest durable catch for the next instance. Do not
+remove it. **Now operation-scoped (hardened Jul 14, 2026 — wired into CI via `.github/workflows/build.yml`):** it scans
+**every** `.ts` under `server/routes` + `server/services` **plus the `server/routes.ts` monolith**, and flags a
+body-sourced amount/price/userId when EITHER the file is money-named (original coverage, no regression) OR the **enclosing
+route handler performs a money operation** (Stripe call / transfer / refund / charge / payout / earning-or-revenue write /
+capture-confirm). Handler-scoping keeps the monolith from flagging unrelated reads. Escape hatch unchanged: a genuinely
+safe read (e.g. a server-capped payout *withdrawal* of the user's own balance, or a preview that never charges) carries a
+`money-derive-ok` comment on the line. (First catch on landing: the two dark `payouts/request` handlers in
+`experts.routes.ts` — a non-money-named file the old guard never scanned — reviewed as safe withdrawals, annotated.)
+**NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
+`provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
+`/checkout` dup-bookings — see §15); marketplace Phase B surfacing.
+
+### §15 — Money-safety idempotency invariant (double-spend on retry/race)
+
+**GOVERNING INVARIANT:** any endpoint that moves money or creates a purchase/booking must be **idempotent** — a
+retry / double-click / replay produces the **same single effect**, enforced by BOTH (a) a Stripe `idempotencyKey` on
+the external call and (b) an **atomic conditional DB update** (`UPDATE … WHERE status = <expected>`) so the state
+transition itself is the concurrency guard. A check-then-update (`if status==X { update }`) is the TOCTOU bug, **not**
+a guard. Claim the row atomically **first**, then make the external call — so a concurrent caller can't also pass.
+
+**Closed (money-safety idempotency cluster, own branch):**
+- **FIX 1 🔴 Payout double-transfer** (`PATCH /api/admin/payouts/:id`, `admin.routes.ts`): was no idempotency key +
+  no atomic guard → a retry/double-click re-ran a **real Stripe transfer**. Now: `storage.claim{Expert,Provider}PayoutForProcessing`
+  atomically flips `→'processing'` only if `status NOT IN ('completed','processing')` (returns undefined → 409, no
+  transfer); `createTransfer` takes a deterministic `idempotencyKey` (`payout-<type>-<id>`). Proven: 2nd invocation
+  claims 0 rows → one transfer.
+- **FIX 3 `/confirm` TOCTOU** (marketplace, `routes.ts`): the confirm now transitions via
+  `UPDATE template_purchases SET status='completed' WHERE id=:id AND status='pending_payment'` and records the earning
+  **only if a row was updated**; a concurrent/duplicate confirm updates 0 rows → returns `alreadyCompleted`, no double
+  credit. Proven at the DB. (Latent today — purchase UI orphaned — but race-safe before Phase B surfaces it.)
+- **FIX 2 `/checkout` — premise did NOT reproduce.** The live `/api/checkout` (`payments.routes.ts:283`, mounted before
+  the shadowed `routes.ts:7347` duplicate) **already dedups** on `service_bookings.idempotency_key`. Residual (filed,
+  not fixed here): the key is **optional** (`if (idempotencyKey)`) so a client omitting it bypasses dedup; and the
+  shadowed `routes.ts:7347` `/api/checkout` has no idempotency (dead/unreachable but a route-order landmine). Recommend:
+  require the key (or add a natural-key server dedup) + remove the dead duplicate — a small hardening, not "add idempotency."
+- **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
+  captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
+
+### Payout rail — model of record (decided Jul 14, 2026)
+
+**Admin-initiated payout is the current payout model.** An admin creates a payout for a provider/expert via
+`POST /api/admin/payouts` (amount **server-derived** from the recipient's available earnings, capped, $10 min) and
+processes it via `PATCH /api/admin/payouts/:id` (idempotency-safe Stripe transfer — §15 FIX 1). This path is live,
+mounted, and money-safe. The payout **storage layer** (`create{Provider,Expert}Payout`, `get{Provider,Expert}Payouts`,
+`claim…ForProcessing`, `getAll…Payouts`) stays — it backs the admin path + revenue-tracking.
+
+**Provider/expert SELF-SERVICE payout requests are RETIRED, not deferred-in-place.** The self-service surface was
+inert dead code — dark `POST /api/{provider,expert}/payouts/request` + `GET /api/{provider,expert}/payouts` (unmounted
+`experts.routes.ts`, **zero callers** — the buttons never even POSTed), an **unrouted** `provider/payouts.tsx`, and
+~4 **decorative** "Request Payout" buttons (no `onClick`) on live dashboards/earnings pages. All removed
+(proven-dead-then-remove, folded into the List-A dead-code lane). **Rationale (the important part):** payout is the
+*release* half of an **escrow/hold/release spine that has not been designed yet** (today's model credits earnings
+early, no hold). Building a self-service "Request Payout" flow now would build the release-request UI against a payout
+architecture that's about to change underneath it — the "reinvent the same logic separately" trap. So self-service
+payout requests are **deferred to the escrow-spine design**, where release (and any request UI it needs) gets built
+once, correctly. This is *not* "cut a feature" — it's declining to build the release UI before release is designed.
+Leaving admin-initiated as the honest model keeps the payout rail from constraining that future escrow decision.
+**Filed (belongs to escrow design, do NOT rebuild standalone):** provider/expert self-service payout requests.
+
+*(Orphaned-component observation, filed separately — not payout-scoped: `client/src/components/shared/earnings-card.tsx`
+has no importers; its "Request Payout →" span never renders. A dead-code-lane candidate, left untouched here.)*
+
 ---
 
 ## Service Model: Canonical Table
@@ -135,8 +237,8 @@ This document captures architectural decisions to maintain consistency across co
 - All **service** creation (expert custom, provider, and the `service_templates` seed catalog) writes to `provider_services`.
   **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — see Known Decisions & Divergences §10.
 - The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
-  ⚠️ **Intent vs. current code:** the intent (D1a) is that offerings are born `draft`/`submitted` and **never born-approved**. The live column
-  `provider_services.approval_status` **defaults `"approved"`** (`shared/schema.ts:578`) — a divergence tracked by D1a/Phase 2, not the intended behavior.
+  **F2-CLOSED (migration 111):** offerings are now born `submitted` — `provider_services.approval_status` defaults `"submitted"`
+  at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). See §1 (D1a).
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
@@ -164,10 +266,11 @@ This document captures architectural decisions to maintain consistency across co
 All service creation routes converge on one destination: `POST /api/provider/services` writes to `provider_services`.
 
 - Experts creating custom services use the same route/schema as providers
-- Role-based filtering happens at read time. ⚠️ **Intent vs. current code:** the intent is that `GET /api/expert/services`
-  gates on `approvalStatus`. The live handler (`server/routes.ts:5538` → `storage.getProviderServicesByStatus`) filters by
-  `userId` + an **arbitrary `status` query param** and **never consults `approvalStatus`** — the read-side approval gate does
-  not exist yet. Divergence tracked by D1a/Phase 2; do not treat the gate as implemented.
+- Role-based filtering happens at read time. **F2-CLOSED (migration 111):** the read-side approval gate is now implemented on
+  all **public** `provider_services` surfaces (they filter `approval_status = 'approved'`). `GET /api/expert/services`
+  (`server/routes.ts` → `storage.getProviderServicesByStatus`) is the **owner console** and stays **intentionally ungated**
+  — it filters by `userId` + the active/paused `status` param so an owner sees their own `submitted`/unapproved listings.
+  Admin reads (the review queue) are likewise ungated. Only public/non-owner reads gate on `approved`. See §1 (D1a).
 - No separate tables; no separate approval workflows
 
 ---
@@ -195,8 +298,10 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 ## Coordination Prevention
 
 **If you are making changes that affect:**
-- Service creation routes (`POST /api/provider/services`) — note `/api/expert/custom-services` and the `expert_custom_services`
-  table are **dropped/dead** (migration 013); do not re-add them
+- Service creation routes (`POST /api/provider/services`) — note the `expert_custom_services` **table** is **dropped**
+  (migration 013); do not re-add it. The former `/api/expert/custom-services` and `/api/admin/custom-services` **routes**
+  operated on `provider_services` (via the mapper) and were **renamed** to `/api/expert/service-listings` and
+  `/api/admin/provider-services` (the misnomer fix, Jul 14 2026) — the `custom-services` vocabulary is retired in code
 - Service schema (`provider_services`; `expert_service_offerings` = read-only catalog; `expert_templates` = marketplace)
 - The two offering catalogs (`expert_offering_types` / `service_offering_types`) — never merge them (see §4)
 - Approval workflows (status enums, submission logic)

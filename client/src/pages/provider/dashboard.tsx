@@ -268,9 +268,6 @@ export default function ProviderDashboard() {
                 <div className="h-1 bg-console-light rounded-full overflow-hidden">
                   <div className="h-full bg-green-500" style={{ width: "72%" }}></div>
                 </div>
-                <Button className="w-full bg-green-600 hover:bg-green-700" data-testid="button-request-payout">
-                  Request Payout
-                </Button>
               </CardContent>
             </Card>
 

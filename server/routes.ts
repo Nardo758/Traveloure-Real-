@@ -1999,8 +1999,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get all active provider services (public - for experience browsing)
   app.get("/api/provider-services", async (req, res) => {
+    // F2 public read-gate: this route is unauthenticated (public). getAllProviderServices is shared with
+    // admin (which must see all), so gate here at the call site — return approved listings only.
     const services = await storage.getAllProviderServices();
-    res.json(services);
+    res.json(services.filter((s) => s.approvalStatus === "approved"));
   });
   
   // Get provider's services
@@ -4007,7 +4009,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/experts/:id/services", async (req, res) => {
     try {
       const expertId = req.params.id;
-      const services = await storage.getExpertSelectedServices(expertId);
+      // F2 public read-gate: this is a public expert-profile surface — approved+active listings only.
+      const services = await storage.getApprovedServicesForExpert(expertId);
       res.json(services);
     } catch (err) {
       console.error("Error fetching expert services:", err);
@@ -4148,16 +4151,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // === Expert Custom Services (User-submitted offerings) ===
   
   // Get current expert's custom services (authenticated)
-  app.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
+  app.get("/api/expert/service-listings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const services = await storage.getExpertCustomServices(userId);
+    const services = await storage.getProviderServiceListings(userId);
     res.json(services);
   });
 
   // Get single custom service by ID (authenticated - owner only)
-  app.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const service = await storage.getExpertCustomServiceById(req.params.id);
+    const service = await storage.getProviderServiceListingById(req.params.id);
     if (!service) {
       return res.status(404).json({ message: "Custom service not found" });
     }
@@ -4168,7 +4171,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Create new custom service (authenticated - experts only)
-  app.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
+  app.post("/api/expert/service-listings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
@@ -4183,7 +4186,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      const service = await storage.createExpertCustomService(userId, {
+      const service = await storage.createProviderServiceListing(userId, {
         title,
         description,
         categoryName,
@@ -4206,10 +4209,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Update custom service (authenticated - owner only, draft status only)
-  app.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
@@ -4221,7 +4224,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      const updated = await storage.updateExpertCustomService(req.params.id, req.body);
+      const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
       res.json(updated);
     } catch (err) {
       console.error("Error updating custom service:", err);
@@ -4230,10 +4233,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Submit custom service for approval (authenticated - owner only)
-  app.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (req, res) => {
+  app.post("/api/expert/service-listings/:id/submit", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
@@ -4245,7 +4248,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only submit draft or rejected services" });
       }
 
-      const submitted = await storage.submitExpertCustomService(req.params.id);
+      const submitted = await storage.submitProviderServiceListing(req.params.id);
       res.json(submitted);
     } catch (err) {
       console.error("Error submitting custom service:", err);
@@ -4254,10 +4257,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Delete custom service (authenticated - owner only, draft/rejected status only)
-  app.delete("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
@@ -4269,7 +4272,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Cannot delete approved services. Deactivate instead." });
       }
 
-      await storage.deleteExpertCustomService(req.params.id);
+      await storage.deleteProviderServiceListing(req.params.id);
       res.json({ success: true });
     } catch (err) {
       console.error("Error deleting custom service:", err);
@@ -4278,17 +4281,17 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Admin: Get all custom services pending approval
-  app.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/provider-services/pending", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const services = await storage.getExpertCustomServicesByStatus("submitted");
+    const services = await storage.getProviderServiceListingsByStatus("submitted");
     res.json(services);
   });
 
   // Admin: Approve custom service
-  app.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
       const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
@@ -4296,7 +4299,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
@@ -4304,7 +4307,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
 
-      const approved = await storage.approveExpertCustomService(req.params.id, adminId);
+      const approved = await storage.approveProviderServiceListing(req.params.id, adminId);
       res.json(approved);
     } catch (err) {
       console.error("Error approving custom service:", err);
@@ -4313,7 +4316,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Admin: Reject custom service
-  app.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
       const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
@@ -4326,7 +4329,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Rejection reason is required" });
       }
 
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
@@ -4334,7 +4337,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only reject submitted services" });
       }
 
-      const rejected = await storage.rejectExpertCustomService(req.params.id, adminId, reason);
+      const rejected = await storage.rejectProviderServiceListing(req.params.id, adminId, reason);
       res.json(rejected);
     } catch (err) {
       console.error("Error rejecting custom service:", err);
@@ -4704,12 +4707,23 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         });
       }
 
-      // Mark completed and record the expert earning atomically via drizzle
+      // Idempotency guard (atomic transition, not check-then-update): the status flip IS the
+      // concurrency guard. Only the confirm that actually transitions pending_payment→completed
+      // records the earning. A concurrent/duplicate confirm updates zero rows and must NOT
+      // double-credit (the `!== pending_payment` check above is a fast-path, not the guard — two
+      // confirms can both pass it before either writes; the WHERE status='pending_payment' closes it).
       const [completed] = await db
         .update(templatePurchases)
         .set({ status: 'completed' })
-        .where(eq(templatePurchases.id, purchaseId))
+        .where(and(eq(templatePurchases.id, purchaseId), eq(templatePurchases.status, 'pending_payment')))
         .returning();
+
+      if (!completed) {
+        // Lost the race — another confirm already completed this purchase. Idempotent success,
+        // no second earning credited.
+        const template = await storage.getExpertTemplate(purchase.templateId);
+        return res.json({ purchase, template, alreadyCompleted: true });
+      }
 
       await storage.createExpertEarning({
         expertId: purchase.expertId,
@@ -4719,7 +4733,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         referenceId: purchase.id,
         referenceType: 'template_purchase',
         description: `Sale of template (confirmed payment ${paymentIntentId})`,
-        status: 'available',
+        status: 'held', // escrow: born held; available_at=now preserves prior "immediately releasable" timing (migration 112)
         availableAt: new Date(),
       });
 
@@ -5398,7 +5412,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get single service by ID (public - for booking page)
   app.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
-    if (!service || service.status !== "active") {
+    // F2 public read-gate: public detail surface — a non-approved listing must read as not-found
+    // (don't leak the existence of a submitted/draft listing). getProviderServiceById is shared with
+    // owner/booking/admin flows, so the gate lives here at the public call site, not in the storage fn.
+    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
     res.json(service);
@@ -6422,14 +6439,23 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
+      const form = await storage.getLocalExpertForm(userId);
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
       const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
       const completedBookings = bookings.filter(b => b.status === "completed");
       const pendingBookings = bookings.filter(b => b.status === "pending");
+      // Routing/payout eligibility flags — consumed by expert/dashboard.tsx (PayoutBanner) and the
+      // admin QA-checklist L3 assertion. Ported from the (now-removed) dark experts.routes.ts twin.
+      const approvalStatus = form?.status ?? null;
+      const stripeConnectStatus = (form as any)?.stripeConnectStatus ?? "not_started";
       res.json({
         summary: { totalRevenue, totalBookings, completedBookings: completedBookings.length, pendingBookings: pendingBookings.length },
         services: services.map(s => ({ id: s.id, serviceName: s.serviceName, status: s.status, bookingsCount: s.bookingsCount, totalRevenue: s.totalRevenue })),
         recentEarnings: earnings.slice(0, 10),
+        approvalStatus,
+        stripeConnectStatus,
+        isRoutingEligible: approvalStatus === "approved",
+        isPayable: stripeConnectStatus === "complete",
       });
     } catch (err) {
       console.error("Expert dashboard error:", err);
@@ -11714,7 +11740,12 @@ Respond with this exact JSON structure:
 
       // ── Platform providers (secondary) ──
       try {
-        const platformProviders = await storage.getProviderServices({ status: "active" });
+        // F2 public read-gate: approved listings only on this public search aggregation.
+        // (NOTE pre-existing bug, not fixed here: {status:"active"} is passed in the userId position —
+        //  getProviderServices(userId, filters) — so this call is effectively empty today; the filter
+        //  below keeps the gate correct if that arg bug is ever repaired.)
+        const platformProviders = (await storage.getProviderServices({ status: "active" } as any))
+          .filter((s) => s.approvalStatus === "approved");
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();

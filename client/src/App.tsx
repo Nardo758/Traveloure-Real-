@@ -485,7 +485,7 @@ function Router() {
       <Route path="/expert/services/templates">
         <Redirect to="/expert/services/new" />
       </Route>
-      <Route path="/expert/custom-services">
+      <Route path="/expert/service-listings">
         <Redirect to="/expert/services/new" />
       </Route>
       <Route path="/expert/earnings">

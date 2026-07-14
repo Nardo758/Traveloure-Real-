@@ -5425,7 +5425,10 @@ router.get("/api/search/experiences", async (req, res) => {
 
       // ── Platform providers (secondary) ──
       try {
-        const platformProviders = await storage.getProviderServices({ status: "active" } as any);
+        // F2 public read-gate: approved listings only (see the twin note in routes.ts — same pre-existing
+        // userId-position arg bug; the filter keeps the gate correct if that is ever repaired).
+        const platformProviders = (await storage.getProviderServices({ status: "active" } as any))
+          .filter((s: any) => s.approvalStatus === "approved");
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();

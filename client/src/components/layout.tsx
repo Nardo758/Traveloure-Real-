@@ -1,3 +1,4 @@
+import { type CSSProperties } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -161,10 +162,24 @@ const authNavItems = [
 
 function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [megaStyle, setMegaStyle] = useState<CSSProperties>({});
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const computeMegaPosition = () => {
+    if (!item.sections || item.sections.length <= 2 || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const dropdownWidth = Math.min(800, window.innerWidth - 16);
+    const buttonCenter = rect.left + rect.width / 2;
+    const idealLeft = buttonCenter - dropdownWidth / 2;
+    const clampedPageLeft = Math.max(8, Math.min(idealLeft, window.innerWidth - dropdownWidth - 8));
+    const offsetFromWrapper = clampedPageLeft - rect.left;
+    setMegaStyle({ left: `${offsetFromWrapper}px`, transform: "none", width: `${dropdownWidth}px` });
+  };
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    computeMegaPosition();
     setIsOpen(true);
   };
 
@@ -198,7 +213,8 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   }
 
   return (
-    <div 
+    <div
+      ref={wrapperRef}
       className="relative"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -223,10 +239,11 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             onMouseLeave={handleMouseLeave}
             className={cn(
               "absolute top-full mt-0 pt-1 bg-card border border-border rounded-lg shadow-xl z-50",
-              item.sections.length > 2 
-                ? "left-1/2 -translate-x-1/2 w-[800px]" 
+              item.sections.length > 2
+                ? "w-[800px]"
                 : "left-0 w-72"
             )}
+            style={item.sections.length > 2 ? megaStyle : {}}
           >
             <div className={cn(
               "py-3",

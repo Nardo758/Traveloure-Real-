@@ -53,7 +53,7 @@ import {
   type VendorAvailabilitySlot, type InsertVendorAvailabilitySlot,
   type CoordinationState, type InsertCoordinationState,
   type CoordinationBooking, type InsertCoordinationBooking,
-  type ExpertCustomService, type InsertExpertCustomService,
+  type ProviderServiceListing, type InsertProviderServiceListing,
   type DestinationEvent, type InsertDestinationEvent,
   type DestinationSeason, type InsertDestinationSeason,
   type LocationCache, type InsertLocationCache,
@@ -317,6 +317,7 @@ export interface IStorage {
   getExpertServiceOfferings(categoryId?: string): Promise<any[]>;
   getActiveExpertOfferingTypes(): Promise<any[]>;
   getExpertSelectedServices(expertId: string): Promise<any[]>;
+  getApprovedServicesForExpert(expertId: string): Promise<any[]>;
   addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any>;
   removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void>;
   
@@ -329,16 +330,16 @@ export interface IStorage {
   getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]>;
 
   // Expert Custom Services
-  getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]>;
-  getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined>;
-  getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]>;
-  createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService>;
-  updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined>;
-  submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined>;
-  approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined>;
-  rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined>;
-  deleteExpertCustomService(id: string): Promise<void>;
-  getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]>;
+  getProviderServiceListings(expertId: string): Promise<ProviderServiceListing[]>;
+  getProviderServiceListingById(id: string): Promise<ProviderServiceListing | undefined>;
+  getProviderServiceListingsByStatus(status: string): Promise<ProviderServiceListing[]>;
+  createProviderServiceListing(expertId: string, service: InsertProviderServiceListing): Promise<ProviderServiceListing>;
+  updateProviderServiceListing(id: string, updates: Partial<InsertProviderServiceListing>): Promise<ProviderServiceListing | undefined>;
+  submitProviderServiceListing(id: string): Promise<ProviderServiceListing | undefined>;
+  approveProviderServiceListing(id: string, reviewedBy: string): Promise<ProviderServiceListing | undefined>;
+  rejectProviderServiceListing(id: string, reviewedBy: string, reason: string): Promise<ProviderServiceListing | undefined>;
+  deleteProviderServiceListing(id: string): Promise<void>;
+  getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]>;
 
   // Custom Venues
   getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
@@ -469,6 +470,8 @@ export interface IStorage {
   getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]>;
   updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout>;
   updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
+  claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined>;
+  claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined>;
 
   // Stripe Connect
   updateUserStripeAccount(userId: string, stripeAccountId: string, status: string): Promise<void>;
@@ -970,7 +973,16 @@ export class DatabaseStorage implements IStorage {
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newService] = await db.insert(providerServices).values({ ...service, trackingNumber }).returning();
+    // F2 born-state clamp (approval lifecycle D1a): a create can NEVER produce an approved listing.
+    // The client-supplied approvalStatus (insertProviderServiceSchema still exposes it — the mass-assign
+    // twin of marketplace Gap 2) is clamped server-side to the non-approved born set: an explicit 'draft'
+    // (ServiceForm save-as-draft) is honored, everything else — including a client-sent 'approved'/'rejected'
+    // or an omitted value — is forced to 'submitted' (the review-queue entry state). Never trust the client
+    // for approval; approval only happens via the admin queue (/api/admin/provider-services approve/reject).
+    const bornApprovalStatus = (service as any).approvalStatus === 'draft' ? 'draft' : 'submitted';
+    const [newService] = await db.insert(providerServices)
+      .values({ ...service, approvalStatus: bornApprovalStatus, trackingNumber })
+      .returning();
     
     // Auto-register in content tracking system
     await this.registerContent({
@@ -1244,7 +1256,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]> {
-    let conditions = [eq(providerServices.status, "active")];
+    // F2 public read-gate: only approved listings surface to public browse (never a submitted/draft one).
+    let conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
     if (categoryId) {
       conditions.push(eq(providerServices.categoryId, categoryId));
     }
@@ -1273,6 +1286,13 @@ export class DatabaseStorage implements IStorage {
       ...serviceData,
       serviceName: `${original.serviceName} (Copy)`,
       status: "draft",
+      // F2: a duplicate must NOT inherit the original's approval_status — a copy of an approved
+      // listing would otherwise be born-approved. Reset the whole review lineage to a fresh submitted state.
+      approvalStatus: "submitted",
+      submittedAt: new Date(),
+      reviewedAt: null,
+      reviewedBy: null,
+      rejectionReason: null,
       bookingsCount: 0,
       totalRevenue: "0",
       averageRating: null,
@@ -1402,7 +1422,7 @@ export class DatabaseStorage implements IStorage {
           sourceId: updated.id,
           trackingNumber: updated.trackingNumber || undefined,
           description: `Earnings from booking ${updated.trackingNumber || id}`,
-          status: 'available',
+          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
           availableAt,
         });
 
@@ -1414,7 +1434,7 @@ export class DatabaseStorage implements IStorage {
           referenceId: updated.id,
           referenceType: 'service_booking',
           description: `Service booking earnings from ${updated.trackingNumber || id}`,
-          status: 'available',
+          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
           availableAt,
         });
       }
@@ -1498,8 +1518,9 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
   }): Promise<{ services: ProviderService[]; total: number }> {
-    const conditions = [eq(providerServices.status, "active")];
-    
+    // F2 public read-gate: unified search is a public surface — approved listings only.
+    const conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
+
     if (filters.query) {
       conditions.push(
         or(
@@ -2247,8 +2268,21 @@ export class DatabaseStorage implements IStorage {
   // expert_selected_services was dropped by migration 013.
   // Services are now stored in provider_services (canonical table).
   async getExpertSelectedServices(expertId: string): Promise<any[]> {
+    // OWNER view — returns the expert's own listings regardless of approval (their pipeline). NOT public.
     return await db.select().from(providerServices)
       .where(eq(providerServices.userId, expertId));
+  }
+
+  // F2 public read-gate variant: the approved+active subset of an expert's listings, for PUBLIC
+  // surfaces (the /api/experts/:id/services profile page and the experts-browse card embed). Keeps
+  // the owner view (above) ungated so an expert still sees their own submitted/draft listings.
+  async getApprovedServicesForExpert(expertId: string): Promise<any[]> {
+    return await db.select().from(providerServices)
+      .where(and(
+        eq(providerServices.userId, expertId),
+        eq(providerServices.approvalStatus, "approved"),
+        eq(providerServices.status, "active"),
+      ));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
@@ -2324,7 +2358,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(expertExperienceTypes.expertId, expert.id));
 
       // Get expert's services
-      const services = await this.getExpertSelectedServices(expert.id);
+      const services = await this.getApprovedServicesForExpert(expert.id); // F2: public browse embed — approved only
 
       // Get expert's specializations
       const specializations = await this.getExpertSpecializations(expert.id);
@@ -2371,9 +2405,9 @@ export class DatabaseStorage implements IStorage {
   // Consolidated in migration 0007: these now read/write provider_services
   // filtered by approval_status. The legacy expert_custom_services table is
   // retained (parallel-run) until 0008 drops it. Shape is mapped back to
-  // ExpertCustomService so route consumers don't change.
+  // ProviderServiceListing so route consumers don't change.
 
-  private mapProviderToExpertCustom(ps: ProviderService): ExpertCustomService {
+  private mapProviderServiceToListing(ps: ProviderService): ProviderServiceListing {
     return {
       id: ps.id,
       expertId: ps.userId,
@@ -2399,29 +2433,29 @@ export class DatabaseStorage implements IStorage {
       averageRating: ps.averageRating ?? "0",
       createdAt: ps.createdAt,
       updatedAt: ps.updatedAt,
-    } as ExpertCustomService;
+    } as ProviderServiceListing;
   }
 
-  async getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]> {
+  async getProviderServiceListings(expertId: string): Promise<ProviderServiceListing[]> {
     const rows = await db.select().from(providerServices)
       .where(eq(providerServices.userId, expertId))
       .orderBy(desc(providerServices.createdAt));
-    return rows.map(r => this.mapProviderToExpertCustom(r));
+    return rows.map(r => this.mapProviderServiceToListing(r));
   }
 
-  async getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined> {
+  async getProviderServiceListingById(id: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.select().from(providerServices).where(eq(providerServices.id, id));
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]> {
+  async getProviderServiceListingsByStatus(status: string): Promise<ProviderServiceListing[]> {
     const rows = await db.select().from(providerServices)
       .where(eq(providerServices.approvalStatus, status))
       .orderBy(desc(providerServices.submittedAt));
-    return rows.map(r => this.mapProviderToExpertCustom(r));
+    return rows.map(r => this.mapProviderServiceToListing(r));
   }
 
-  async createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService> {
+  async createProviderServiceListing(expertId: string, service: InsertProviderServiceListing): Promise<ProviderServiceListing> {
     // Single taxonomy: experts use service_categories directly (no mapping from expert_service_categories).
     // categoryId comes from the form as a service_categories.id, passed through as-is.
     const categoryId = (service as any).categoryId || null;
@@ -2459,10 +2493,10 @@ export class DatabaseStorage implements IStorage {
       metadata: { serviceType: newRow.serviceType, categoryId: newRow.categoryId, approvalStatus: 'draft' },
     });
 
-    return this.mapProviderToExpertCustom(newRow);
+    return this.mapProviderServiceToListing(newRow);
   }
 
-  async updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined> {
+  async updateProviderServiceListing(id: string, updates: Partial<InsertProviderServiceListing>): Promise<ProviderServiceListing | undefined> {
     const patch: any = { updatedAt: new Date() };
     if (updates.title !== undefined) patch.serviceName = updates.title;
     if (updates.description !== undefined) patch.description = updates.description;
@@ -2482,18 +2516,18 @@ export class DatabaseStorage implements IStorage {
       .set(patch)
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined> {
+  async submitProviderServiceListing(id: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({ approvalStatus: "submitted", submittedAt: new Date(), updatedAt: new Date() })
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined> {
+  async approveProviderServiceListing(id: string, reviewedBy: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({
         approvalStatus: "approved",
@@ -2505,10 +2539,10 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined> {
+  async rejectProviderServiceListing(id: string, reviewedBy: string, reason: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({
         approvalStatus: "rejected",
@@ -2519,14 +2553,14 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async deleteExpertCustomService(id: string): Promise<void> {
+  async deleteProviderServiceListing(id: string): Promise<void> {
     await db.delete(providerServices).where(eq(providerServices.id, id));
   }
 
-  async getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]> {
+  async getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]> {
     if (expertIds.length === 0) return [];
     const rows = await db.select().from(providerServices)
       .where(and(
@@ -2534,7 +2568,7 @@ export class DatabaseStorage implements IStorage {
         eq(providerServices.status, "active"),
         inArray(providerServices.userId, expertIds),
       ));
-    return rows.map(r => this.mapProviderToExpertCustom(r));
+    return rows.map(r => this.mapProviderServiceToListing(r));
   }
 
   // Destination Calendar Events
@@ -2893,7 +2927,7 @@ export class DatabaseStorage implements IStorage {
           referenceId: newPurchase.id,
           referenceType: 'template_purchase',
           description: `Template sale earnings`,
-          status: 'pending',
+          status: 'held', // escrow: born held (migration 112)
         });
       }
     }
@@ -2936,22 +2970,32 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(expertEarnings).where(eq(expertEarnings.expertId, expertId)).orderBy(desc(expertEarnings.createdAt));
   }
 
-  async getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
-    const earnings = await this.getExpertEarnings(expertId);
+  // Escrow earning summary (unified — migration 112 / docs/design/escrow-spine.md). ONE reducer for
+  // both expert_earnings and provider_earnings. Vocabulary: held / releasable / paid_out / reversed.
+  // Releasability is COMPUTED (Phase 1 has no release job yet): a 'releasable' row is payable; a 'held'
+  // row is payable once its available_at clears AND it isn't disputed. This reproduces the old
+  // status='available' && (available_at IS NULL|<=now) "ready" test exactly (the backfill mapped the old
+  // ready rows to 'releasable' and gives new held rows an available_at). Keys {total,pending,available,
+  // paidOut} are unchanged so callers don't break. 'reversed' is excluded from all buckets.
+  private summarizeEscrowEarnings(
+    earnings: Array<{ amount: string | null; status: string | null; availableAt: Date | null; disputeState?: string | null }>,
+  ): { total: number; pending: number; available: number; paidOut: number } {
     const now = new Date();
-    
-    // Earnings in hold period (status=available but availableAt is in the future) are shown as pending
-    const isHeld = (e: typeof earnings[0]) =>
-      e.status === 'available' && e.availableAt !== null && new Date(e.availableAt) > now;
-    const isReady = (e: typeof earnings[0]) =>
-      e.status === 'available' && (e.availableAt === null || new Date(e.availableAt) <= now);
-
+    const amt = (e: { amount: string | null }) => parseFloat(e.amount || '0');
+    const isReleasable = (e: { status: string | null; availableAt: Date | null; disputeState?: string | null }) =>
+      e.status === 'releasable' ||
+      (e.status === 'held' && e.availableAt !== null && new Date(e.availableAt) <= now && e.disputeState !== 'open');
+    const live = earnings.filter(e => e.status !== 'reversed');
     return {
-      total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      pending: earnings.filter(e => e.status === 'pending' || isHeld(e)).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      available: earnings.filter(isReady).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      total: live.reduce((sum, e) => sum + amt(e), 0),
+      pending: live.filter(e => e.status !== 'paid_out' && !isReleasable(e)).reduce((sum, e) => sum + amt(e), 0),
+      available: live.filter(isReleasable).reduce((sum, e) => sum + amt(e), 0),
+      paidOut: live.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + amt(e), 0),
     };
+  }
+
+  async getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
+    return this.summarizeEscrowEarnings(await this.getExpertEarnings(expertId) as any);
   }
 
   async createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning> {
@@ -3025,7 +3069,8 @@ export class DatabaseStorage implements IStorage {
         referenceId: newTip.id,
         referenceType: 'expert_tip',
         description: tip.message ? `Tip: ${tip.message.substring(0, 50)}` : 'Tip from traveler',
-        status: 'available',
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: new Date(), // tips clear immediately (preserves prior behavior); held+now = releasable
       });
     }
 
@@ -3092,7 +3137,8 @@ export class DatabaseStorage implements IStorage {
           referenceId: referral.id,
           referenceType: 'expert_referral',
           description: 'Referral bonus for new expert signup',
-          status: 'available',
+          status: 'held', // escrow: born held (migration 112)
+          availableAt: new Date(), // referral bonus clears immediately (preserves prior behavior)
         });
       }
     }
@@ -3116,7 +3162,7 @@ export class DatabaseStorage implements IStorage {
       referenceId: newEarning.id,
       referenceType: 'affiliate_earning',
       description: `Affiliate commission from booking`,
-      status: 'pending',
+      status: 'held', // escrow: born held (migration 112)
     });
 
     return newEarning;
@@ -3140,21 +3186,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
-    const earnings = await this.getProviderEarnings(providerId);
-    const now = new Date();
-    
-    // Earnings in hold period (status=available but availableAt is in the future) are shown as pending
-    const isHeld = (e: typeof earnings[0]) =>
-      e.status === 'available' && e.availableAt !== null && new Date(e.availableAt) > now;
-    const isReady = (e: typeof earnings[0]) =>
-      e.status === 'available' && (e.availableAt === null || new Date(e.availableAt) <= now);
-
-    return {
-      total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      pending: earnings.filter(e => e.status === 'pending' || isHeld(e)).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      available: earnings.filter(isReady).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-    };
+    return this.summarizeEscrowEarnings(await this.getProviderEarnings(providerId) as any);
   }
 
   async createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning> {
@@ -3225,6 +3257,25 @@ export class DatabaseStorage implements IStorage {
     if (transactionId) updates.transactionId = transactionId;
     const [updated] = await db.update(expertPayouts).set(updates).where(eq(expertPayouts.id, id)).returning();
     return updated;
+  }
+
+  // Atomic claim before a Stripe transfer (money-safety idempotency): flip to 'processing' ONLY
+  // if not already completed/processing. Returns undefined if another caller already claimed/
+  // completed it — the transition IS the concurrency guard, so a double-invocation transfers once.
+  async claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined> {
+    const [row] = await db.update(expertPayouts)
+      .set({ status: 'processing', processedAt: new Date() })
+      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing')`))
+      .returning();
+    return row;
+  }
+
+  async claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined> {
+    const [row] = await db.update(providerPayouts)
+      .set({ status: 'processing', processedAt: new Date() })
+      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing')`))
+      .returning();
+    return row;
   }
 
   async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout> {
@@ -4592,8 +4643,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getActiveProviderServices(limit = 100): Promise<any[]> {
+    // F2 public read-gate: these listings are offered to users (trip-builder / discover feed) — approved only.
     return await db.select().from(providerServices)
-      .where(eq(providerServices.status, "active"))
+      .where(and(eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")))
       .limit(limit);
   }
 

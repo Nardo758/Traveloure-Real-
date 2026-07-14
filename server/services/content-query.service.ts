@@ -334,9 +334,10 @@ export async function updateItineraryComparisonStatus(id: string, status: string
 }
 
 export async function getActiveProviderServices(limit = 30): Promise<any[]> {
+  // F2 public read-gate: content/discover surface — approved listings only.
   return db.select()
     .from(providerServices)
-    .where(eq(providerServices.status, "active"))
+    .where(and(eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")))
     .limit(limit);
 }
 

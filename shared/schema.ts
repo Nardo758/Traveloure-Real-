@@ -575,7 +575,7 @@ export const providerServices = pgTable("provider_services", {
   formStatus: varchar("form_status", { length: 50 }).default("pending"), // For approval workflow
 
   // Approval workflow (consolidated from expert_custom_services in 0007)
-  approvalStatus: varchar("approval_status", { length: 20 }).default("approved"), // draft, submitted, approved, rejected
+  approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"), // draft, submitted, approved, rejected — F2: born submitted, never born-approved (migration 111)
   cancellationPolicy: text("cancellation_policy"),
   leadTime: varchar("lead_time", { length: 50 }),
   deliverables: jsonb("deliverables").default([]),
@@ -1411,7 +1411,7 @@ export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializati
 
 // Expert Custom Services schemas and types
 // (table dropped in migration 013; type kept manually for storage adapter compatibility)
-export const insertExpertCustomServiceSchema = z.object({
+export const insertProviderServiceListingSchema = z.object({
   title: z.string(),
   description: z.string().nullable().optional(),
   categoryName: z.string().nullable().optional(),
@@ -1427,7 +1427,7 @@ export const insertExpertCustomServiceSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export type ExpertCustomService = {
+export type ProviderServiceListing = {
   id: string;
   expertId: string;
   title: string;
@@ -1453,7 +1453,7 @@ export type ExpertCustomService = {
   createdAt: Date | null;
   updatedAt: Date | null;
 };
-export type InsertExpertCustomService = z.infer<typeof insertExpertCustomServiceSchema>;
+export type InsertProviderServiceListing = z.infer<typeof insertProviderServiceListingSchema>;
 
 // Influencer schemas and types
 export const insertInfluencerReferralSchema = createInsertSchema(influencerReferrals).omit({ id: true, createdAt: true });
@@ -3915,8 +3915,9 @@ export const expertEarnings = pgTable("expert_earnings", {
   referenceId: varchar("reference_id"), // template_purchase_id, affiliate_click_id, etc.
   referenceType: varchar("reference_type", { length: 50 }),
   description: text("description"),
-  status: varchar("status", { length: 50 }).default("pending"), // pending, available, paid_out
-  availableAt: timestamp("available_at"), // when funds become available for payout
+  status: varchar("status", { length: 50 }).default("held"), // escrow: held, releasable, paid_out, reversed (migration 112)
+  disputeState: varchar("dispute_state", { length: 20 }).default("none"), // none, open (blocks release; admin-resolved) — escrow spine
+  availableAt: timestamp("available_at"), // clearance deadline: held → releasable when now >= available_at (Phase 2 job)
   paidOutAt: timestamp("paid_out_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -4115,8 +4116,9 @@ export const providerEarnings = pgTable("provider_earnings", {
   sourceId: varchar("source_id"), // Reference to booking or other source
   trackingNumber: varchar("tracking_number", { length: 20 }), // Link to content registry
   description: text("description"),
-  status: varchar("status", { length: 20 }).default("pending"), // pending, available, paid_out
-  availableAt: timestamp("available_at"), // When funds become available for payout
+  status: varchar("status", { length: 20 }).default("held"), // escrow: held, releasable, paid_out, reversed (migration 112)
+  disputeState: varchar("dispute_state", { length: 20 }).default("none"), // none, open (blocks release; admin-resolved) — escrow spine
+  availableAt: timestamp("available_at"), // clearance deadline: held → releasable when now >= available_at (Phase 2 job)
   paidAt: timestamp("paid_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),

@@ -342,4 +342,21 @@ export const MIGRATION_FILES = [
   // the purchase-status default off 'completed' → 'pending_payment'. provider_services untouched
   // (already grandfathered 'approved'; Phase 4 wires its read-gate). Guarded/idempotent.
   "110_expert_template_approval_and_purchase_status.sql",
+  // Migration 111 — F2 born-approved fix (approval lifecycle D1a CLOSED). Flips the
+  // provider_services.approval_status DB column default 'approved' → 'submitted' so new
+  // listings are born submitted (enter the existing /api/admin/provider-services admin review queue),
+  // never born-approved. FUTURE-INSERTS-ONLY: no UPDATE over existing rows — the live
+  // catalog is grandfathered 'approved' (zero outage). Pairs with the ORM default flip
+  // (shared/schema.ts:578), the createProviderService server-side clamp (never trust the
+  // client for 'approved'), and the completed public read-gate. Idempotent (SET DEFAULT is
+  // naturally idempotent); guarded no-op if the column is already 'submitted'.
+  "111_provider_services_born_submitted.sql",
+  // Migration 112 — Escrow spine Phase 1 (docs/design/escrow-spine.md): unify the earning ledger
+  // vocabulary across expert_earnings + provider_earnings to held/releasable/paid_out/reversed, add
+  // dispute_state, add a status CHECK, flip the default to 'held'. PURE unification — releasability
+  // stays computed from available_at in the summaries, so pre/post balances are identical (non-paid_out
+  // statuses remap to 'held'; 'available'+available_at<=now stays releasable via the summary, 'pending'
+  // stays non-releasable). 'releasable'/'reversed' are CHECK-allowed forward-compat for Phase 2/4.
+  // Guarded/idempotent; affiliate ledger untouched.
+  "112_escrow_earning_status_unify.sql",
 ] as const;

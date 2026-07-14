@@ -96,7 +96,7 @@ class RevenueTrackingService {
         referenceId: event.sourceId,
         referenceType: event.sourceType,
         description: event.description,
-        status: 'pending',
+        status: 'held', // escrow: born held (migration 112)
       });
     }
 
@@ -109,7 +109,7 @@ class RevenueTrackingService {
         sourceId: event.sourceId,
         trackingNumber: event.trackingNumber,
         description: event.description,
-        status: 'pending',
+        status: 'held', // escrow: born held (migration 112)
       });
     }
   }

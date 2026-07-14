@@ -7,7 +7,7 @@ import { serveStatic } from "./static";
 import { runMigrations } from "./migrations/run-migrations";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
-import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
+import { seedExpertServices, seedProviderServiceListings, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { seedTravelPulseData } from "./seed-travelpulse";
@@ -276,7 +276,7 @@ async function runDatabaseSeeding() {
   }
 
   try {
-    await seedCustomServices();
+    await seedProviderServiceListings();
   } catch (err) {
     logger.error({ err }, "Failed to seed custom services");
   }
