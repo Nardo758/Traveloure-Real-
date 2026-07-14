@@ -1422,7 +1422,7 @@ export class DatabaseStorage implements IStorage {
           sourceId: updated.id,
           trackingNumber: updated.trackingNumber || undefined,
           description: `Earnings from booking ${updated.trackingNumber || id}`,
-          status: 'available',
+          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
           availableAt,
         });
 
@@ -1434,7 +1434,7 @@ export class DatabaseStorage implements IStorage {
           referenceId: updated.id,
           referenceType: 'service_booking',
           description: `Service booking earnings from ${updated.trackingNumber || id}`,
-          status: 'available',
+          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
           availableAt,
         });
       }
@@ -2927,7 +2927,7 @@ export class DatabaseStorage implements IStorage {
           referenceId: newPurchase.id,
           referenceType: 'template_purchase',
           description: `Template sale earnings`,
-          status: 'pending',
+          status: 'held', // escrow: born held (migration 112)
         });
       }
     }
@@ -2970,22 +2970,32 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(expertEarnings).where(eq(expertEarnings.expertId, expertId)).orderBy(desc(expertEarnings.createdAt));
   }
 
-  async getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
-    const earnings = await this.getExpertEarnings(expertId);
+  // Escrow earning summary (unified — migration 112 / docs/design/escrow-spine.md). ONE reducer for
+  // both expert_earnings and provider_earnings. Vocabulary: held / releasable / paid_out / reversed.
+  // Releasability is COMPUTED (Phase 1 has no release job yet): a 'releasable' row is payable; a 'held'
+  // row is payable once its available_at clears AND it isn't disputed. This reproduces the old
+  // status='available' && (available_at IS NULL|<=now) "ready" test exactly (the backfill mapped the old
+  // ready rows to 'releasable' and gives new held rows an available_at). Keys {total,pending,available,
+  // paidOut} are unchanged so callers don't break. 'reversed' is excluded from all buckets.
+  private summarizeEscrowEarnings(
+    earnings: Array<{ amount: string | null; status: string | null; availableAt: Date | null; disputeState?: string | null }>,
+  ): { total: number; pending: number; available: number; paidOut: number } {
     const now = new Date();
-    
-    // Earnings in hold period (status=available but availableAt is in the future) are shown as pending
-    const isHeld = (e: typeof earnings[0]) =>
-      e.status === 'available' && e.availableAt !== null && new Date(e.availableAt) > now;
-    const isReady = (e: typeof earnings[0]) =>
-      e.status === 'available' && (e.availableAt === null || new Date(e.availableAt) <= now);
-
+    const amt = (e: { amount: string | null }) => parseFloat(e.amount || '0');
+    const isReleasable = (e: { status: string | null; availableAt: Date | null; disputeState?: string | null }) =>
+      e.status === 'releasable' ||
+      (e.status === 'held' && e.availableAt !== null && new Date(e.availableAt) <= now && e.disputeState !== 'open');
+    const live = earnings.filter(e => e.status !== 'reversed');
     return {
-      total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      pending: earnings.filter(e => e.status === 'pending' || isHeld(e)).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      available: earnings.filter(isReady).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      total: live.reduce((sum, e) => sum + amt(e), 0),
+      pending: live.filter(e => e.status !== 'paid_out' && !isReleasable(e)).reduce((sum, e) => sum + amt(e), 0),
+      available: live.filter(isReleasable).reduce((sum, e) => sum + amt(e), 0),
+      paidOut: live.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + amt(e), 0),
     };
+  }
+
+  async getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
+    return this.summarizeEscrowEarnings(await this.getExpertEarnings(expertId) as any);
   }
 
   async createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning> {
@@ -3059,7 +3069,8 @@ export class DatabaseStorage implements IStorage {
         referenceId: newTip.id,
         referenceType: 'expert_tip',
         description: tip.message ? `Tip: ${tip.message.substring(0, 50)}` : 'Tip from traveler',
-        status: 'available',
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: new Date(), // tips clear immediately (preserves prior behavior); held+now = releasable
       });
     }
 
@@ -3126,7 +3137,8 @@ export class DatabaseStorage implements IStorage {
           referenceId: referral.id,
           referenceType: 'expert_referral',
           description: 'Referral bonus for new expert signup',
-          status: 'available',
+          status: 'held', // escrow: born held (migration 112)
+          availableAt: new Date(), // referral bonus clears immediately (preserves prior behavior)
         });
       }
     }
@@ -3150,7 +3162,7 @@ export class DatabaseStorage implements IStorage {
       referenceId: newEarning.id,
       referenceType: 'affiliate_earning',
       description: `Affiliate commission from booking`,
-      status: 'pending',
+      status: 'held', // escrow: born held (migration 112)
     });
 
     return newEarning;
@@ -3174,21 +3186,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
-    const earnings = await this.getProviderEarnings(providerId);
-    const now = new Date();
-    
-    // Earnings in hold period (status=available but availableAt is in the future) are shown as pending
-    const isHeld = (e: typeof earnings[0]) =>
-      e.status === 'available' && e.availableAt !== null && new Date(e.availableAt) > now;
-    const isReady = (e: typeof earnings[0]) =>
-      e.status === 'available' && (e.availableAt === null || new Date(e.availableAt) <= now);
-
-    return {
-      total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      pending: earnings.filter(e => e.status === 'pending' || isHeld(e)).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      available: earnings.filter(isReady).reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-      paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
-    };
+    return this.summarizeEscrowEarnings(await this.getProviderEarnings(providerId) as any);
   }
 
   async createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning> {
