@@ -148,8 +148,16 @@ world-writable fee-config, then the four below); the rule closes the class so th
   the §8 coordination constants).
 - **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
   **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
-  **Filed fast-follow:** earnings-ledger reversal (a refund does not yet reverse `provider_earnings`/`expert_earnings`/
-  `platform_revenue`); the endpoint also targets the legacy `bookings` table (real bookings live in `service_bookings`).
+  **Earnings-reversal fast-follow — CLOSED by escrow Phase 4 (PR #170):** the refund now also calls
+  `storage.reverseEarningsForBooking` + `reversePlatformRevenueForBooking`, so a refunded booking no longer leaves the
+  provider/expert credited or the platform revenue recognised. Reversal is **held/releasable → `reversed` only**;
+  `paid_out` earnings are **never auto-clawed-back** (ratified "reversal only while in escrow") — surfaced as
+  `skippedPaidOut` for manual handling. Platform-revenue reversal is a **compensating negative `platform_revenue` row**
+  (double-entry — the summaries sum every row regardless of status, and also flow through the daily summary, so the net
+  is correct with no reader change); the original row is flipped `status='reversed'` as the idempotency guard. **Still
+  filed (separate):** the standalone endpoint's `createRefund` targets the legacy `bookings` table (real bookings live in
+  `service_bookings`) — Phase 4 added a correct **service-booking** refund (`stripePaymentService.refundServiceBooking`,
+  used by dispute-uphold) but did not re-point this legacy endpoint.
 - **A3 🔴 `POST /api/bookings/process-cart`** — `userId` from body (IDOR). Now: session user. **Filed fast-follow:**
   AI-generated cart items (no `providerId`) still trust `item.price` — server has no catalog price for them; low
   severity (buyer's own charge, no payout theft; real-provider items already re-read DB price).
@@ -196,6 +204,30 @@ a guard. Claim the row atomically **first**, then make the external call — so 
   require the key (or add a natural-key server dedup) + remove the dead duplicate — a small hardening, not "add idempotency."
 - **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
   captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
+
+### Escrow/hold/release spine — build status (design of record: `docs/design/escrow-spine.md`)
+
+The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
+`dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
+- **Phase 1 (#163, migration 112):** unified both `expert_earnings` + `provider_earnings` onto the one vocabulary
+  (`earning_status` CHECK = `held|releasable|paid_out|reversed`) + `dispute_state`; releasability-preserving backfill.
+- **Phase 2a (#167):** `releaseMaturedEarnings` job (`held → releasable` once the per-surface clearance window passes and
+  no dispute is open) + `server/config/earnings-hold.config.ts` windows (env-overridable) + hourly scheduler.
+- **Phase 2b (#169, migration 113):** retroactive `available_at` backfill for the Phase-1 `held`-NULL rows so they clear.
+- **Phase 3 (#168):** traveler `POST /api/bookings/:id/confirm-completion` (early release) + `/dispute` (block, pulls
+  `releasable → held+open`, enforcing "disputed ⟹ held") + admin `/api/admin/disputes/:id/reject`; owner-gated on
+  `service_bookings.traveler_id`; disputes list reads `service_bookings`.
+- **Phase 4 (#170) — reversal terminal.** `storage.reverseEarningsForBooking` (held/releasable → `reversed`; `paid_out`
+  **never auto-clawed-back** — ratified "reversal only while in escrow"; returns `skippedPaidOut` for manual handling) +
+  `reversePlatformRevenueForBooking` (compensating **negative** `platform_revenue` row — double-entry nets both the
+  summary and the daily rollup; original flipped `status='reversed'` as the idempotency guard). Admin
+  **`POST /api/admin/disputes/:bookingId/uphold`** reverses the ledger **then** refunds the traveler via
+  `stripePaymentService.refundServiceBooking` (service-booking-native refund off the row's own payment intent;
+  deterministic `idempotencyKey` + atomic status claim — §15). Ledger-first, Stripe-second, so a retry after a Stripe
+  failure re-runs cleanly. This closes **§14 A2**'s earnings-reversal gap (also wired into the standalone `/refund`).
+  **No migration** — `reversed` was already in the migration-112 CHECK; `platform_revenue`/`service_bookings` status have
+  no CHECK. **Filed (not built):** automated **post-payout** clawback (deliberately manual); re-pointing the legacy
+  `createRefund`/`/api/bookings/refund` off the `bookings` table onto `service_bookings`.
 
 ### Payout rail — model of record (decided Jul 14, 2026)
 
