@@ -464,7 +464,9 @@ export interface IStorage {
   releaseMaturedEarnings(now?: Date): Promise<{ expert: number; provider: number }>;
   releaseEarningsForBooking(bookingId: string, now?: Date): Promise<number>;
   setBookingEarningsDispute(bookingId: string, open: boolean, now?: Date): Promise<number>;
-  
+  reverseEarningsForBooking(bookingId: string, now?: Date): Promise<{ reversed: number; skippedPaidOut: number }>;
+  reversePlatformRevenueForBooking(bookingId: string, now?: Date): Promise<number>;
+
   // Provider Payouts
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
   createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout>;
@@ -3281,6 +3283,73 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(expertEarnings.referenceId, bookingId), eq(expertEarnings.disputeState, 'open')))
       .returning({ id: expertEarnings.id });
     return prov.length + exp.length;
+  }
+
+  // ── Escrow Phase 4: reversal (refund / dispute upheld) — docs/design/escrow-spine.md ──
+  //
+  // Reversal is only ever applied to money still in escrow (held OR releasable). paid_out earnings
+  // are NEVER auto-clawed-back (ratified: "reversal only while held/releasable") — a post-payout
+  // reversal is a manual admin action. reverseEarningsForBooking counts any paid_out earning it had
+  // to skip so the caller can surface "manual clawback needed" instead of silently under-reversing.
+
+  /**
+   * Reverse a booking's in-escrow earnings: flip held/releasable → 'reversed' on both ledgers.
+   * Atomic conditional UPDATE (the WHERE is the guard) → idempotent: a second call flips nothing.
+   * paid_out rows are counted (skippedPaidOut) but left untouched — no automated post-payout clawback.
+   */
+  async reverseEarningsForBooking(bookingId: string, now: Date = new Date()): Promise<{ reversed: number; skippedPaidOut: number }> {
+    const prov = await db.update(providerEarnings)
+      .set({ status: 'reversed', updatedAt: now })
+      .where(and(eq(providerEarnings.sourceId, bookingId), sqlOp`${providerEarnings.status} IN ('held','releasable')`))
+      .returning({ id: providerEarnings.id });
+    const exp = await db.update(expertEarnings)
+      .set({ status: 'reversed' })
+      .where(and(eq(expertEarnings.referenceId, bookingId), sqlOp`${expertEarnings.status} IN ('held','releasable')`))
+      .returning({ id: expertEarnings.id });
+    const paidProv = await db.select({ id: providerEarnings.id })
+      .from(providerEarnings)
+      .where(and(eq(providerEarnings.sourceId, bookingId), eq(providerEarnings.status, 'paid_out')));
+    const paidExp = await db.select({ id: expertEarnings.id })
+      .from(expertEarnings)
+      .where(and(eq(expertEarnings.referenceId, bookingId), eq(expertEarnings.status, 'paid_out')));
+    return { reversed: prov.length + exp.length, skippedPaidOut: paidProv.length + paidExp.length };
+  }
+
+  /**
+   * Reverse a booking's recognised platform revenue. platform_revenue totals sum every row
+   * regardless of status, so a reversal is a compensating NEGATIVE entry (double-entry) — that also
+   * flows through recordPlatformRevenue into the daily summary, keeping both nets correct without
+   * touching any reader. The original row's status is flipped to 'reversed' as the idempotency guard:
+   * an atomic claim (WHERE status <> 'reversed') means a second call finds nothing and inserts no
+   * second compensating row. Returns the number of original rows reversed.
+   */
+  async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date()): Promise<number> {
+    const originals = await db.update(platformRevenue)
+      .set({ status: 'reversed' })
+      .where(and(eq(platformRevenue.sourceId, bookingId), sqlOp`${platformRevenue.status} <> 'reversed'`))
+      .returning();
+    for (const o of originals) {
+      const neg = (v: string | null) => String(-parseFloat(v || '0'));
+      await this.recordPlatformRevenue({
+        sourceType: o.sourceType,
+        sourceId: o.sourceId,
+        trackingNumber: o.trackingNumber,
+        grossAmount: neg(o.grossAmount),
+        platformFee: neg(o.platformFee),
+        netAmount: neg(o.netAmount),
+        processingFees: neg(o.processingFees),
+        currency: o.currency,
+        expertId: o.expertId,
+        expertEarnings: neg(o.expertEarnings),
+        providerId: o.providerId,
+        providerEarnings: neg(o.providerEarnings),
+        description: `Reversal of platform revenue ${o.id} (booking ${bookingId})`,
+        metadata: { reversalOf: o.id, reason: 'escrow_reversal' },
+        status: 'reversed',
+        transactionDate: now,
+      } as any);
+    }
+    return originals.length;
   }
 
   async getProviderPayouts(providerId: string): Promise<ProviderPayout[]> {
