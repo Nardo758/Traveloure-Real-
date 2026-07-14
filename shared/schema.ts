@@ -343,6 +343,11 @@ export const localExpertForms = pgTable("local_expert_forms", {
   neighborhoods: jsonb("neighborhoods").default([]),
   localityProof: varchar("locality_proof", { length: 30 }),
   knowledgeProofAnswers: jsonb("knowledge_proof_answers").default([]),
+  // Kyoto Knowledge-Bar scored expertise gate (migration 114): AI-scored rubric result over the
+  // knowledge-proof answers ({ overall, verdict, perAnswer:[{dimensions, score, feedback}], market,
+  // model }). ADVISORY in v1 — surfaced to admin as decision support, does not auto-gate approval.
+  knowledgeScore: jsonb("knowledge_score"),
+  knowledgeScoredAt: timestamp("knowledge_scored_at"),
   localSpecialties: jsonb("local_specialties").default([]),
   // Experience
   yearsOfExperience: varchar("years_of_experience", { length: 50 }),

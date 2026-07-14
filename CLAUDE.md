@@ -157,6 +157,16 @@ This document captures architectural decisions to maintain consistency across co
     expertise gate for Kyoto. **Roadmap consequence:** marketplace build sequences behind Kyoto density; the other-7-market
     breadth is **paused, not built out**; surfaces should reflect Kyoto depth, not thin content for 7 near-empty markets.
     Full roadmap in `docs/audits/marketplace-maps-groundtruthed.md`. Ratified by the decision-maker (one-wedge-Kyoto).
+    - **Knowledge-Bar scored expertise gate — Phase 1 landed (migration 114).** The onboarding Knowledge-Proof (3
+      judgment-probing essays + `localityProof` tenure) is now **AI-scored** against a 4-dimension rubric (weighted /
+      current-local / negative-steer-away / personalization), Kyoto-tuned scoring context, result stored in
+      `local_expert_forms.knowledge_score` (jsonb) + `knowledge_scored_at`. Mechanism = **AI-scored + admin-confirm,
+      launched ADVISORY** (ratified): the score is decision support surfaced to the admin queue; it does **not** auto-gate
+      approval (approval still flows through `updateLocalExpertFormStatus`). Best-effort: no API key / API error /
+      unparseable output → `unscored` verdict, never blocks onboarding. Scoring is fire-and-forget after form create
+      (`server/services/expertise-scoring.service.ts`). **Filed follow-ups:** Phase 2 = surface the score in the admin
+      review queue; Phase 3 = calibrate the rubric on real Kyoto submissions, then decide whether to tighten from advisory
+      to a harder gate; refine the Kyoto scoring context (currently a first-draft seed).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
