@@ -164,8 +164,11 @@ This document captures architectural decisions to maintain consistency across co
       launched ADVISORY** (ratified): the score is decision support surfaced to the admin queue; it does **not** auto-gate
       approval (approval still flows through `updateLocalExpertFormStatus`). Best-effort: no API key / API error /
       unparseable output → `unscored` verdict, never blocks onboarding. Scoring is fire-and-forget after form create
-      (`server/services/expertise-scoring.service.ts`). **Filed follow-ups:** Phase 2 = surface the score in the admin
-      review queue; Phase 3 = calibrate the rubric on real Kyoto submissions, then decide whether to tighten from advisory
+      (`server/services/expertise-scoring.service.ts`). **Phase 2 landed:** the score + per-answer rubric breakdown is
+      surfaced in the admin review queue (`admin/experts.tsx`, `knowledge-score-<id>`), labelled advisory. **Phase 2 also
+      fixed a Phase-1 shape bug:** the scorer read `knowledgeProofAnswers` as `string[]`, but onboarding stores
+      `{question, answer}` objects — it now normalizes both, so scoring actually runs on real submissions. **Filed
+      follow-ups:** Phase 3 = calibrate the rubric on real Kyoto submissions, then decide whether to tighten from advisory
       to a harder gate; refine the Kyoto scoring context (currently a first-draft seed).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)

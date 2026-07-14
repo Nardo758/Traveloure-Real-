@@ -107,21 +107,31 @@ const MODEL = process.env.EXPERTISE_SCORING_MODEL || "claude-sonnet-5";
  * @param market         market key (e.g. "kyoto") selecting the scoring context
  */
 export async function scoreKnowledgeProof(
-  answers: string[],
+  // Accepts BOTH shapes the answers appear in: plain strings, or the stored
+  // { question, answer } objects the onboarding submits (travel-experts.tsx).
+  answers: Array<string | { question?: string; answer?: string }>,
   questions: string[],
   localityProof: string | null,
   market: string,
 ): Promise<KnowledgeScore> {
   const marketKey = (market || "").trim().toLowerCase();
-  const cleaned = (answers || []).map((a) => (typeof a === "string" ? a.trim() : "")).filter(Boolean);
-  if (cleaned.length === 0) return unscored(marketKey || "unknown", localityProof, "no answers to score");
+  // Normalize to { q, a } pairs — prefer a stored question over the positional default.
+  const pairs = (answers || [])
+    .map((item, i) => {
+      const a = typeof item === "string" ? item : (item?.answer ?? "");
+      const q = (typeof item === "object" && item?.question) ? item.question : (questions[i] ?? "(question)");
+      return { q, a: typeof a === "string" ? a.trim() : "" };
+    })
+    .filter((p) => p.a.length > 0);
+  if (pairs.length === 0) return unscored(marketKey || "unknown", localityProof, "no answers to score");
+  const cleaned = pairs.map((p) => p.a);
   if (!process.env.ANTHROPIC_API_KEY) {
     return unscored(marketKey || "unknown", localityProof, "scoring skipped — ANTHROPIC_API_KEY not configured");
   }
 
   const context = MARKET_CONTEXT[marketKey] || GENERIC_CONTEXT;
-  const qa = cleaned
-    .map((a, i) => `Q${i + 1}: ${questions[i] ?? "(question)"}\nA${i + 1}: ${a}`)
+  const qa = pairs
+    .map((p, i) => `Q${i + 1}: ${p.q}\nA${i + 1}: ${p.a}`)
     .join("\n\n");
 
   const prompt =
