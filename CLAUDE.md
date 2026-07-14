@@ -195,6 +195,30 @@ a guard. Claim the row atomically **first**, then make the external call — so 
 - **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
   captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
 
+### Payout rail — model of record (decided Jul 14, 2026)
+
+**Admin-initiated payout is the current payout model.** An admin creates a payout for a provider/expert via
+`POST /api/admin/payouts` (amount **server-derived** from the recipient's available earnings, capped, $10 min) and
+processes it via `PATCH /api/admin/payouts/:id` (idempotency-safe Stripe transfer — §15 FIX 1). This path is live,
+mounted, and money-safe. The payout **storage layer** (`create{Provider,Expert}Payout`, `get{Provider,Expert}Payouts`,
+`claim…ForProcessing`, `getAll…Payouts`) stays — it backs the admin path + revenue-tracking.
+
+**Provider/expert SELF-SERVICE payout requests are RETIRED, not deferred-in-place.** The self-service surface was
+inert dead code — dark `POST /api/{provider,expert}/payouts/request` + `GET /api/{provider,expert}/payouts` (unmounted
+`experts.routes.ts`, **zero callers** — the buttons never even POSTed), an **unrouted** `provider/payouts.tsx`, and
+~4 **decorative** "Request Payout" buttons (no `onClick`) on live dashboards/earnings pages. All removed
+(proven-dead-then-remove, folded into the List-A dead-code lane). **Rationale (the important part):** payout is the
+*release* half of an **escrow/hold/release spine that has not been designed yet** (today's model credits earnings
+early, no hold). Building a self-service "Request Payout" flow now would build the release-request UI against a payout
+architecture that's about to change underneath it — the "reinvent the same logic separately" trap. So self-service
+payout requests are **deferred to the escrow-spine design**, where release (and any request UI it needs) gets built
+once, correctly. This is *not* "cut a feature" — it's declining to build the release UI before release is designed.
+Leaving admin-initiated as the honest model keeps the payout rail from constraining that future escrow decision.
+**Filed (belongs to escrow design, do NOT rebuild standalone):** provider/expert self-service payout requests.
+
+*(Orphaned-component observation, filed separately — not payout-scoped: `client/src/components/shared/earnings-card.tsx`
+has no importers; its "Request Payout →" span never renders. A dead-code-lane candidate, left untouched here.)*
+
 ---
 
 ## Service Model: Canonical Table

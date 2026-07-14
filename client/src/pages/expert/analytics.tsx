@@ -1159,9 +1159,6 @@ export default function ExpertAnalytics() {
                         <CardContent className="p-4">
                           <p className="text-sm text-green-700">Available for Payout</p>
                           <p className="text-3xl font-bold text-green-700">${instantPayoutBalance.available.toLocaleString()}</p>
-                          <Button size="sm" className="mt-3 bg-green-600 text-white" data-testid="button-instant-payout">
-                            <Zap className="w-4 h-4 mr-2" /> Request Payout
-                          </Button>
                         </CardContent>
                       </Card>
                       <Card className="border" data-testid="card-pending-balance">
