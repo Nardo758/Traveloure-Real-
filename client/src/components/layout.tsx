@@ -1,5 +1,6 @@
 import { type CSSProperties } from "react";
 import { Link, useLocation } from "wouter";
+import { useRecentlyViewed } from "@/hooks/use-recently-viewed";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
@@ -163,6 +164,7 @@ const authNavItems = [
 function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [megaStyle, setMegaStyle] = useState<CSSProperties>({});
+  const recentCities = useRecentlyViewed();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -280,6 +282,28 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                 </div>
               ))}
             </div>
+
+            {item.name === "Experiences" && recentCities.length > 0 && (
+              <div className="border-t border-border mx-4 pt-3 pb-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">
+                  <Clock className="w-3 h-3" />
+                  Recently Viewed
+                </div>
+                <div className="flex gap-2">
+                  {recentCities.map((c) => (
+                    <Link
+                      key={c.slug}
+                      href={`/discover/location/${encodeURIComponent(c.slug)}`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-muted hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors hover-elevate"
+                      data-testid={`link-recent-city-${c.slug}`}
+                    >
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      {c.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
