@@ -167,6 +167,7 @@ export interface IStorage {
   getLocalExpertForms(status?: string): Promise<LocalExpertForm[]>;
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+  updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
@@ -899,6 +900,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(localExpertForms.id, id))
       .returning();
     return updated;
+  }
+
+  // Kyoto Knowledge-Bar scored expertise gate (migration 114): persist the AI-scored rubric result.
+  // Advisory — decision support for the admin queue; does not change status/approval.
+  async updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void> {
+    await db.update(localExpertForms)
+      .set({ knowledgeScore: knowledgeScore as any, knowledgeScoredAt: new Date() })
+      .where(eq(localExpertForms.id, id));
   }
 
   async updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void> {

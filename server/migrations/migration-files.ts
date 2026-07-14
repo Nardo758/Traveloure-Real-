@@ -365,4 +365,9 @@ export const MIGRATION_FILES = [
   // the Phase-2 release job can finally clear these real, owed earnings. Makes them ELIGIBLE, not
   // paid (payout is admin-initiated). Guarded/idempotent.
   "113_escrow_backfill_stuck_held.sql",
+  // Migration 114 — Kyoto Knowledge-Bar scored expertise gate (Phase 1). Adds nullable
+  // knowledge_score jsonb + knowledge_scored_at to local_expert_forms to hold the AI-scored rubric
+  // result over the knowledge-proof answers. ADVISORY: decision support for the admin queue, does
+  // not auto-gate approval. Nullable/no-default so existing rows are simply "unscored". Idempotent.
+  "114_kyoto_knowledge_score.sql",
 ] as const;
