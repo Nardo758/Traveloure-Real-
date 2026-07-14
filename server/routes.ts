@@ -105,6 +105,7 @@ import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplica
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
+import providerRoutes from "./routes/provider.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
@@ -527,6 +528,9 @@ export async function registerRoutes(
 
   // Executive-Assistant (EA) console — /api/ea/* namespace, guarded by isEA (RBAC)
   app.use(eaRoutes);
+
+  // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
+  app.use(providerRoutes);
 
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)

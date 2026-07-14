@@ -91,8 +91,23 @@ This document captures architectural decisions to maintain consistency across co
      (`router.use("/api/ea", isEA)` — executive_assistant OR admin, DB role lookup; §2-style default-deny for the
      namespace). No endpoint logic changed; the block was removed from the dark file (0 `/api/ea` remain there). This is
      a **surface-with-a-backend** activation (client already existed), not a new build. **Filed (not activated here):**
-     the remaining dark `experts.routes.ts` families (expert workspace/vendors, knowledge-nuggets, visa, role, provider
-     settings/earnings — the last two are the Kyoto-supply-tools next step) stay dark pending their own triage.
+     the remaining dark `experts.routes.ts` families (expert workspace/vendors, knowledge-nuggets, visa, role) stay dark
+     pending their own triage.
+   - **Kyoto supply tools — `GET/PATCH /api/provider/settings` ACTIVATED (Jul 14, 2026).** Same surface-without-a-backend
+     pattern: the provider settings page (`client/src/pages/provider/settings.tsx`, routed behind
+     `ProtectedRoute requiredRole="provider"`) GET/PATCHes `/api/provider/settings`, but those handlers were dark in
+     `experts.routes.ts` **and** referenced an **undefined `requireProviderRole`** (a latent bug — they'd have thrown even
+     if reached). Extracted into a new **mounted** `server/routes/provider.routes.ts` (`app.use(providerRoutes)`),
+     writing a real `requireProviderRole` (DB role lookup, provider-or-admin, mirroring `isEA`). **Not money-path:**
+     settings are self-scoped by `userId` (unique per user); PATCH is a **zod allow-list of the 7 editable fields**
+     (never raw `req.body`), so identity columns can't be mass-assigned. `payoutFrequency`/`minimumPayoutAmount` are
+     provider *preferences*, not a charge/transfer amount — no Stripe/earning write. The money-endpoint guard passes
+     (file is not money-named and the handler performs no money operation).
+   - **Provider earnings family — deliberately NOT mounted (scoping decision).** `GET /api/provider/earnings`,
+     `/earnings/summary`, `/earnings/details` and `/api/expert/earnings/details` are also dark, but **no client consumer
+     calls them** — the provider earnings page derives its numbers from the **live** `GET /api/provider/bookings`. Mounting
+     them would be a **backend without a surface** (the inverse of the settings bug). Left dark; **filed:** activate this
+     family only alongside a real consumer that needs the server-side earnings aggregate.
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
