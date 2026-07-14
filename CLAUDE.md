@@ -151,6 +151,16 @@ This document captures architectural decisions to maintain consistency across co
       split is config-resolved server-side via `resolveCommissionRates`); B2 public `/expert-templates/:id` detail page
       + purchase flow; B3 buyer's purchased-packages view (the delivery); B4 un-hide the `packages` tab **last, only
       when the loop closes end-to-end**. Only admin-approved packages surface, at the approved/locked price.
+      **B2 landed (+ a Gap 4 it found): the itinerary content-gate.** Both public reads (`GET /api/expert-templates`
+      + `/:id`) and the purchase 202 were returning the **full `itineraryData` — the entire paid product — to anyone,
+      unauthenticated**. Public reads now return a TEASER (`itineraryPreview`: day + title only, via
+      `redactTemplateContent`); the full content returns only to a **completed** purchaser
+      (`hasUserPurchasedTemplate` — proven behaviorally: `pending_payment` does NOT unlock), the owner, or an admin.
+      The buy surface is the new public `/expert-templates/:id` page (`expert-template-detail.tsx`, registered in
+      `App.tsx`): content-gated detail + reviews + the existing safe 2-step purchase (POST `/purchase` 202 →
+      Stripe Elements via the shared `StripeCheckout` → POST `/purchase/confirm`); the client never sends an amount
+      (§14). Proven against a local DB: anonymous list/detail leak-free; purchaser unlock; `/api/my-purchased-templates`
+      returns full content (B3's data source).
       - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
         path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
         i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated

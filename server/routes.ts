@@ -4444,6 +4444,21 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   };
 
   // Get all published templates (public)
+  // Content-gate (§10 Phase B): `itineraryData` IS the paid product — the full day-by-day
+  // content must never appear on a public read, or the product is free and the purchase is
+  // decorative. Public reads get a TEASER (day number + title only); the full content is
+  // returned only to a purchaser, the owner, or an admin (the full row also stays available
+  // via the owner console and /api/my-purchased-templates).
+  const redactTemplateContent = (template: any) => {
+    if (!template) return template;
+    const days: any[] = Array.isArray(template.itineraryData?.days) ? template.itineraryData.days : [];
+    const { itineraryData: _fullContent, ...publicFields } = template;
+    return {
+      ...publicFields,
+      itineraryPreview: days.map((d: any) => ({ day: d?.day, title: d?.title ?? null })),
+    };
+  };
+
   app.get("/api/expert-templates", async (req, res) => {
     try {
       const { category, destination, expertId } = req.query;
@@ -4459,7 +4474,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         destination: destination as string | undefined,
         expertId: expertId as string | undefined,
       });
-      res.json(templates);
+      // Feed never needs the paid content — always redacted.
+      res.json(templates.map(redactTemplateContent));
     } catch (err) {
       console.error("Error fetching templates:", err);
       res.status(500).json({ message: "Failed to fetch templates" });
@@ -4479,23 +4495,27 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       // and an ADMIN (reviewing the queue) are exempt. Route is unauthenticated, so req.user is
       // read opportunistically (session middleware populates it when a cookie is present).
       const isPublic = template.approvalStatus === "approved" && template.isPublished;
-      if (!isPublic) {
-        const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-        const isOwner = !!userId && template.expertId === userId;
-        let isAdmin = false;
-        if (userId && !isOwner) {
-          const actor = await storage.getUser(userId);
-          isAdmin = actor?.role === "admin";
-        }
-        if (!isOwner && !isAdmin) {
-          return res.status(404).json({ message: "Template not found" });
-        }
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const isOwner = !!userId && template.expertId === userId;
+      let isAdmin = false;
+      if (userId && !isOwner) {
+        const actor = await storage.getUser(userId);
+        isAdmin = actor?.role === "admin";
+      }
+      if (!isPublic && !isOwner && !isAdmin) {
+        return res.status(404).json({ message: "Template not found" });
       }
       // Increment view count (only for genuinely public views — don't inflate on owner/admin preview)
-      if (isPublic) {
+      if (isPublic && !isOwner && !isAdmin) {
         await storage.incrementTemplateView(req.params.id);
       }
-      res.json(template);
+      // Content-gate: full itineraryData only for purchaser / owner / admin; everyone else
+      // gets the teaser (see redactTemplateContent above).
+      const isPurchaser = !!userId && !isOwner && !isAdmin
+        ? await storage.hasUserPurchasedTemplate(userId, req.params.id)
+        : false;
+      const fullAccess = isOwner || isAdmin || isPurchaser;
+      res.json(fullAccess ? { ...template, hasPurchased: isPurchaser } : redactTemplateContent(template));
     } catch (err) {
       console.error("Error fetching template:", err);
       res.status(500).json({ message: "Failed to fetch template" });
@@ -4738,12 +4758,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         automatic_payment_methods: { enabled: true },
       });
 
-      // 202 Accepted — payment not yet captured; client must call /confirm
+      // 202 Accepted — payment not yet captured; client must call /confirm.
+      // Template is content-REDACTED here: payment hasn't succeeded yet, so the buyer
+      // doesn't get the paid itinerary until /confirm verifies the intent.
       return res.status(202).json({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
         purchaseId: purchase.id,
-        template,
+        template: redactTemplateContent(template),
         subtotal: price,
         platformFee,
         expertPayout: expertEarnings,
