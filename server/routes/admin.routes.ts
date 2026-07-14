@@ -7,6 +7,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -440,8 +441,15 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
 
 /**
  * GET /api/admin/disputes
- * Returns all bookings with status="disputed" or status="dispute_lost",
- * ordered by most recent first. Used by the admin reconciliation panel.
+ * Returns all SERVICE bookings with status="disputed", most recent first — the queue the
+ * POST /api/admin/disputes/:bookingId/reject action operates on.
+ *
+ * Reads `service_bookings` (NOT the legacy `bookings` table): the escrow dispute flow
+ * (POST /api/bookings/:id/dispute) marks service_bookings.status='disputed' and links the disputed
+ * earnings via provider_earnings.source_id / expert_earnings.reference_id. The old query read the
+ * legacy `bookings` table, so escrow disputes never appeared here and admins had no way to see the
+ * queue they were meant to resolve. The dispute reason is surfaced from booking_metadata (where the
+ * dispute endpoint persists it, since service_bookings has no dispute_reason column).
  */
 router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
@@ -451,21 +459,21 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   try {
     const result = await db.execute(sql`
       SELECT
-        id,
-        status,
-        dispute_id,
-        dispute_reason,
-        stripe_payment_intent_id,
-        total_amount,
-        user_id,
-        provider_id,
-        booking_type,
-        title,
-        created_at,
-        updated_at
-      FROM bookings
-      WHERE status IN ('disputed', 'dispute_lost')
-      ORDER BY updated_at DESC NULLS LAST
+        sb.id,
+        sb.status,
+        sb.booking_metadata->>'disputeReason' AS dispute_reason,
+        sb.stripe_payment_intent_id,
+        sb.total_amount,
+        sb.traveler_id AS user_id,
+        sb.provider_id,
+        sb.service_id,
+        ps.service_name AS title,
+        sb.created_at,
+        sb.updated_at
+      FROM service_bookings sb
+      LEFT JOIN provider_services ps ON ps.id = sb.service_id
+      WHERE sb.status = 'disputed'
+      ORDER BY sb.updated_at DESC NULLS LAST
       LIMIT 200
     `);
     res.json({
@@ -476,6 +484,73 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("Admin disputes error:", err);
     res.status(500).json({ message: "Failed to fetch disputed bookings" });
+  }
+});
+
+// Escrow Phase 3 (docs/design/escrow-spine.md): admin REJECTS a service-booking dispute (the
+// traveler's claim is not upheld) — clear the dispute flag so the earnings resume normal release,
+// and restore the booking to completed. Upholding a dispute (reversing the earning + refunding the
+// traveler) is the Phase-4 /uphold endpoint below. Operates on service_bookings + the linked
+// earnings — the GET /api/admin/disputes list above now reads service_bookings too, so the queue
+// and both actions operate on the same rows.
+router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { bookingId } = req.params;
+    const cleared = await storage.setBookingEarningsDispute(bookingId, false);
+    await storage.updateServiceBookingStatus(bookingId, "completed");
+    res.json({
+      success: true,
+      cleared,
+      note: "Dispute rejected; earnings resume release.",
+    });
+  } catch (err: any) {
+    console.error("Admin dispute reject error:", err);
+    res.status(500).json({ message: "Failed to reject dispute" });
+  }
+});
+
+// Escrow Phase 4 (docs/design/escrow-spine.md): admin UPHOLDS a service-booking dispute (the
+// traveler's claim IS valid). This is the reversal terminal: (1) reverse the in-escrow earnings
+// (held/releasable → 'reversed'; paid_out is NOT auto-clawed-back — surfaced as skippedPaidOut for
+// manual handling), (2) reverse the recognised platform revenue (compensating negative entry), and
+// (3) refund the traveler via Stripe against the service booking's own payment intent. Ledger
+// reversal runs FIRST (internal, idempotent) then the Stripe refund (idempotency-keyed) — so a
+// retry after a Stripe failure re-runs cleanly without double-reversing or double-refunding. Amount
+// is server-derived from the booking; the acting user is the admin session (§14/§15).
+router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { bookingId } = req.params;
+    const { reason } = req.body ?? {};
+
+    // 1+2: reverse the ledger (idempotent atomic flips). Runs before the external refund so a
+    // Stripe failure leaves a fully-reversed ledger that a retry simply re-confirms (no-ops).
+    const earnings = await storage.reverseEarningsForBooking(bookingId);
+    const revenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
+
+    // 3: refund the traveler (idempotency-keyed; also sets service_bookings.status='refunded').
+    const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld");
+
+    res.json({
+      success: true,
+      reversedEarnings: earnings.reversed,
+      skippedPaidOut: earnings.skippedPaidOut,
+      reversedRevenueRows: revenueRows,
+      refund,
+      note: earnings.skippedPaidOut > 0
+        ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
+        : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
+    });
+  } catch (err: any) {
+    console.error("Admin dispute uphold error:", err);
+    res.status(500).json({ message: `Failed to uphold dispute: ${err.message}` });
   }
 });
 

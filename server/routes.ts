@@ -52,8 +52,10 @@ import {
 import { db } from "./db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
+import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
+import { availableAtFor } from "./config/earnings-hold.config";
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
 import { cacheService } from "./services/cache.service";
@@ -103,6 +105,8 @@ import tripsRoutes from "./routes/trips.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
+import eaRoutes from "./routes/ea.routes";
+import providerRoutes from "./routes/provider.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
@@ -565,6 +569,12 @@ export async function registerRoutes(
   app.use("/api/webhooks", webhooksRoutes);
   // Admin routes — role-guarded endpoints for platform administration
   app.use(adminRoutes);
+
+  // Executive-Assistant (EA) console — /api/ea/* namespace, guarded by isEA (RBAC)
+  app.use(eaRoutes);
+
+  // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
+  app.use(providerRoutes);
 
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
@@ -1504,6 +1514,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const input = insertLocalExpertFormSchema.parse(req.body);
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
+      // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
+      void scoreKnowledgeProof(
+        (form.knowledgeProofAnswers as string[]) ?? [],
+        KNOWLEDGE_PROOF_QUESTIONS,
+        form.localityProof ?? null,
+        form.city ?? "",
+      )
+        .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
+        .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1524,6 +1544,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
+      // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
+      void scoreKnowledgeProof(
+        (form.knowledgeProofAnswers as string[]) ?? [],
+        KNOWLEDGE_PROOF_QUESTIONS,
+        form.localityProof ?? null,
+        form.city ?? "",
+      )
+        .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
+        .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4417,8 +4447,14 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/expert-templates", async (req, res) => {
     try {
       const { category, destination, expertId } = req.query;
+      // PUBLIC marketplace feed — read-gate on approved (D1a / §10 "safety before surfacing").
+      // Only admin-approved AND expert-published templates surface. Matches the purchase gate
+      // (routes.ts purchase: approvalStatus==='approved' && isPublished) so nothing appears in the
+      // feed that couldn't be bought, and no unapproved listing leaks publicly. The expert's own
+      // pipeline is the ungated owner console at GET /api/expert/templates.
       const templates = await storage.getExpertTemplates({
         isPublished: true,
+        approvalStatus: "approved",
         category: category as string | undefined,
         destination: destination as string | undefined,
         expertId: expertId as string | undefined,
@@ -4437,8 +4473,28 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
       }
-      // Increment view count
-      await storage.incrementTemplateView(req.params.id);
+      // Read-gate (D1a / §10): the PUBLIC detail read only exposes an approved + published
+      // template — the same bar the feed and the purchase gate use — so an unapproved listing's
+      // detail page can't be loaded by a would-be buyer. The OWNER (previewing their own pipeline)
+      // and an ADMIN (reviewing the queue) are exempt. Route is unauthenticated, so req.user is
+      // read opportunistically (session middleware populates it when a cookie is present).
+      const isPublic = template.approvalStatus === "approved" && template.isPublished;
+      if (!isPublic) {
+        const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+        const isOwner = !!userId && template.expertId === userId;
+        let isAdmin = false;
+        if (userId && !isOwner) {
+          const actor = await storage.getUser(userId);
+          isAdmin = actor?.role === "admin";
+        }
+        if (!isOwner && !isAdmin) {
+          return res.status(404).json({ message: "Template not found" });
+        }
+      }
+      // Increment view count (only for genuinely public views — don't inflate on owner/admin preview)
+      if (isPublic) {
+        await storage.incrementTemplateView(req.params.id);
+      }
       res.json(template);
     } catch (err) {
       console.error("Error fetching template:", err);
@@ -4777,8 +4833,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         referenceId: purchase.id,
         referenceType: 'template_purchase',
         description: `Sale of template (confirmed payment ${paymentIntentId})`,
-        status: 'held', // escrow: born held; available_at=now preserves prior "immediately releasable" timing (migration 112)
-        availableAt: new Date(),
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor('template_sale'), // P2: template clearance window (was immediate; ratified per-surface window)
       });
 
       const template = await storage.getExpertTemplate(purchase.templateId);
@@ -6533,7 +6589,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
-      const templates = await storage.getExpertTemplates(userId);
+      const templates = await storage.getExpertTemplates({ expertId: userId });
       
       // Get expert's profile for selected services and specializations
       const expertProfile = await storage.getLocalExpertForm(userId);
@@ -6803,7 +6859,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         });
       }
 
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       const recommendations = await serviceRecommendationEngine.getExpertRecommendations(userId, cities, limit);
       
       res.json({ recommendations });
@@ -6831,7 +6887,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         });
       }
 
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       const recommendations = await serviceRecommendationEngine.getProviderRecommendations(userId, location, limit);
       
       res.json({ recommendations, location });
@@ -6851,7 +6907,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const userId = (req.user as any)?.claims?.sub || "anonymous";
       
       // If no city provided, return trending destinations as recommendations
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       
       if (!city) {
         // Return general trending recommendations without city filter
@@ -6878,7 +6934,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const { city } = req.params;
       
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       const intelligence = await serviceRecommendationEngine.getMarketIntelligence(city);
       
       res.json(intelligence);
@@ -6894,7 +6950,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const { city } = req.params;
       const month = req.query.month ? parseInt(req.query.month as string) : undefined;
       
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       const opportunities = await serviceRecommendationEngine.getSeasonalOpportunities(city, month);
       
       res.json({ opportunities, city, month: month || new Date().getMonth() + 1 });
@@ -6910,7 +6966,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const { city } = req.params;
       const country = req.query.country as string;
       
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       const count = await serviceRecommendationEngine.refreshDemandSignalsForCity(city);
       
       res.json({ message: `Generated ${count} demand signals for ${city}`, count });
@@ -6940,7 +6996,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       
       const { conversionType, resultId, revenueGenerated } = validatedBody.data;
       
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       await serviceRecommendationEngine.recordConversion(id, userId, conversionType, resultId, revenueGenerated);
       
       res.json({ message: "Conversion recorded" });
@@ -6955,7 +7011,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const { id } = req.params;
       
-      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("./services/recommendation.service");
       await serviceRecommendationEngine.dismissRecommendation(id);
       
       res.json({ message: "Recommendation dismissed" });
@@ -11160,7 +11216,7 @@ Respond with this exact JSON structure:
       const { cityName, country } = req.params;
       const { month, budget, preferences, limit } = req.query;
       
-      const { aiRecommendationEngineService } = await import("./services/ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("./services/recommendation.service");
       
       const recommendations = await aiRecommendationEngineService.getAIEnhancedRecommendations({
         cityName,
@@ -11182,7 +11238,7 @@ Respond with this exact JSON structure:
     try {
       const { cityName, country, eventId } = req.params;
       
-      const { aiRecommendationEngineService } = await import("./services/ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("./services/recommendation.service");
       
       const recommendations = await aiRecommendationEngineService.getEventAlignedRecommendations(
         cityName,
@@ -11206,7 +11262,7 @@ Respond with this exact JSON structure:
     try {
       const { cityName, country } = req.params;
       
-      const { aiRecommendationEngineService } = await import("./services/ai-recommendation-engine.service");
+      const { aiRecommendationEngineService } = await import("./services/recommendation.service");
       
       const analysis = await aiRecommendationEngineService.getBestTimeRecommendations(cityName, country);
       

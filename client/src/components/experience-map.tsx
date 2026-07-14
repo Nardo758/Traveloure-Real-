@@ -36,12 +36,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// rating is null when the location has no real review aggregate yet (render "New").
 interface MapProvider {
   id: string;
   name: string;
   category: string;
   price: number;
-  rating: number;
+  rating: number | null;
   lat: number;
   lng: number;
   description?: string;
@@ -244,10 +245,14 @@ function MapContent({
               </Badge>
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
-              <span className="flex items-center gap-1">
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                {selectedProvider.rating.toFixed(1)}
-              </span>
+              {selectedProvider.rating != null ? (
+                <span className="flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  {selectedProvider.rating.toFixed(1)}
+                </span>
+              ) : (
+                <span className="text-gray-500">New</span>
+              )}
               <span className="font-medium">${selectedProvider.price}</span>
             </div>
             {selectedProvider.description && (

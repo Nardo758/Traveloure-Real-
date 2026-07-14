@@ -50,11 +50,11 @@ interface UnprocessedWebhook {
 interface DisputedBooking {
   id: string;
   status: string;
-  dispute_id: string | null;
+  dispute_id?: string | null;
   dispute_reason: string | null;
   stripe_payment_intent_id: string | null;
   total_amount: string | null;
-  booking_type: string | null;
+  service_id?: string | null;
   title: string | null;
   created_at: string;
   updated_at: string | null;
@@ -98,6 +98,46 @@ export default function AdminReconciliation() {
     },
     onError: () => {
       toast({ title: "Reconciliation failed", description: "Check server logs for details.", variant: "destructive" });
+    },
+  });
+
+  // Reject a service-booking dispute (traveler's claim not upheld): clears the dispute flag so the
+  // held earnings resume normal release and restores the booking to completed.
+  const rejectMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("POST", `/api/admin/disputes/${bookingId}/reject`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      refetchDisputes();
+      toast({
+        title: "Dispute rejected",
+        description: "Earnings resume release; booking restored to completed.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Could not reject dispute", description: "Check server logs for details.", variant: "destructive" });
+    },
+  });
+
+  // Uphold a dispute (traveler's claim valid — Phase 4): reverse the in-escrow earnings + platform
+  // revenue and refund the traveler. Money-moving + destructive, so it's confirmed before firing.
+  const upholdMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("POST", `/api/admin/disputes/${bookingId}/uphold`),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      refetchDisputes();
+      toast({
+        title: "Dispute upheld — traveler refunded",
+        description: data?.skippedPaidOut > 0
+          ? `Heads up: ${data.skippedPaidOut} earning(s) were already paid out and need a manual clawback.`
+          : "Earnings and platform revenue reversed; refund issued.",
+        variant: data?.skippedPaidOut > 0 ? "destructive" : "default",
+      });
+    },
+    onError: () => {
+      toast({ title: "Could not uphold dispute", description: "Check server logs for details.", variant: "destructive" });
     },
   });
 
@@ -309,17 +349,51 @@ export default function AdminReconciliation() {
                             : "—"}
                         </td>
                         <td className="py-2 px-3">
-                          {d.dispute_id && (
-                            <a
-                              href={`https://dashboard.stripe.com/disputes/${d.dispute_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                              data-testid={`link-dispute-stripe-${d.id}`}
-                            >
-                              Stripe <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {d.dispute_id && (
+                              <a
+                                href={`https://dashboard.stripe.com/disputes/${d.dispute_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                data-testid={`link-dispute-stripe-${d.id}`}
+                              >
+                                Stripe <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                            {d.status === "disputed" && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs border-gray-300 text-gray-700 hover:bg-gray-100"
+                                  disabled={rejectMutation.isPending || upholdMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm("Reject this dispute? The traveler's claim is not upheld — held earnings resume release and the booking returns to completed.")) {
+                                      rejectMutation.mutate(d.id);
+                                    }
+                                  }}
+                                  data-testid={`button-reject-dispute-${d.id}`}
+                                >
+                                  Reject
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-100"
+                                  disabled={rejectMutation.isPending || upholdMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm("Uphold this dispute? The traveler's claim IS valid — this reverses the provider/expert earnings and platform revenue and REFUNDS the traveler. This moves money and cannot be auto-undone.")) {
+                                      upholdMutation.mutate(d.id);
+                                    }
+                                  }}
+                                  data-testid={`button-uphold-dispute-${d.id}`}
+                                >
+                                  Uphold &amp; refund
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

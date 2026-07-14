@@ -419,7 +419,7 @@ export default function ExpertAnalytics() {
                   <p className="text-sm text-muted-foreground">Average Rating</p>
                   <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.avgRating?.value || "0"}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Benchmark: {analytics?.keyMetrics?.avgRating?.benchmark || "4.5"}
+                    Benchmark: {analytics?.keyMetrics?.avgRating?.benchmark || "—"}
                   </p>
                 </CardContent>
               </Card>

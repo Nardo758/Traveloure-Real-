@@ -359,4 +359,15 @@ export const MIGRATION_FILES = [
   // stays non-releasable). 'releasable'/'reversed' are CHECK-allowed forward-compat for Phase 2/4.
   // Guarded/idempotent; affiliate ledger untouched.
   "112_escrow_earning_status_unify.sql",
+  // Migration 113 — Escrow spine Phase 2b: unstick the held-NULL earnings that migration 112 left
+  // without a clearance date. Backfills available_at = created_at + per-surface window (matching
+  // config/earnings-hold.config.ts) on status='held' AND available_at IS NULL AND not disputed, so
+  // the Phase-2 release job can finally clear these real, owed earnings. Makes them ELIGIBLE, not
+  // paid (payout is admin-initiated). Guarded/idempotent.
+  "113_escrow_backfill_stuck_held.sql",
+  // Migration 114 — Kyoto Knowledge-Bar scored expertise gate (Phase 1). Adds nullable
+  // knowledge_score jsonb + knowledge_scored_at to local_expert_forms to hold the AI-scored rubric
+  // result over the knowledge-proof answers. ADVISORY: decision support for the admin queue, does
+  // not auto-gate approval. Nullable/no-default so existing rows are simply "unscored". Idempotent.
+  "114_kyoto_knowledge_score.sql",
 ] as const;
