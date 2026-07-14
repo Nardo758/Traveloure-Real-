@@ -1,4 +1,4 @@
-const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
+const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner", "executive_assistant"];
 const PROVIDER_ROLES = ["service_provider"];
 
 export function getRoleHomePath(role: string): string {
@@ -10,10 +10,9 @@ export function getRoleHomePath(role: string): string {
 }
 
 export function userHasRequiredRole(userRole: string, requiredRole: string): boolean {
-  // Admins can access everything
   if (userRole === "admin") return true;
-  // Any authenticated user may enter the three shared consoles
-  if (requiredRole === "expert" || requiredRole === "provider") return true;
-  // EA and other specialised roles still require an exact match
+  if (requiredRole === "expert") return EXPERT_ROLES.includes(userRole);
+  if (requiredRole === "provider") return PROVIDER_ROLES.includes(userRole);
+  if (requiredRole === "executive_assistant") return userRole === "executive_assistant";
   return userRole === requiredRole;
 }
