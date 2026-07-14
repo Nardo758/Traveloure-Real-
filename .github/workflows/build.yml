@@ -31,3 +31,16 @@ jobs:
       - run: npm ci
       - name: Production build (syntax/bundle gate — does NOT run tsc)
         run: npm run build
+
+  money-endpoint-guard:
+    name: money-endpoint-guard (CLAUDE.md §14)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Operation-scoped guard: fails if a money-operation handler (or a money-named file) sources
+      # amount/price/userId from req.body. Node built-ins only — no npm ci needed. See §14.
+      - name: Client-trusted amount/identity guard
+        run: node scripts/check-money-endpoints.cjs
