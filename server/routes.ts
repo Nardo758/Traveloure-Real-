@@ -51,6 +51,7 @@ import {
 import { db } from "./db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
+import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -1461,6 +1462,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const input = insertLocalExpertFormSchema.parse(req.body);
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
+      // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
+      void scoreKnowledgeProof(
+        (form.knowledgeProofAnswers as string[]) ?? [],
+        KNOWLEDGE_PROOF_QUESTIONS,
+        form.localityProof ?? null,
+        form.city ?? "",
+      )
+        .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
+        .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1481,6 +1492,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
+      // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
+      void scoreKnowledgeProof(
+        (form.knowledgeProofAnswers as string[]) ?? [],
+        KNOWLEDGE_PROOF_QUESTIONS,
+        form.localityProof ?? null,
+        form.city ?? "",
+      )
+        .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
+        .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
