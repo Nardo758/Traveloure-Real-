@@ -24,6 +24,7 @@ import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
+import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
@@ -483,6 +484,11 @@ async function runDatabaseSeeding() {
       // Start daily admin digest scheduler (payout-gap report + unresolved lead alerts)
       adminDigestScheduler.start();
       logger.info("Admin digest scheduler started");
+
+      // Start earnings release scheduler (escrow spine P2: flips held → releasable once the
+      // clearance window passes and no dispute is open)
+      earningsReleaseScheduler.start();
+      logger.info("Earnings release scheduler started");
 
       // Run digest job once on startup, then on interval
       runDailyAdminDigest();

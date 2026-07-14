@@ -7,6 +7,7 @@ import {
   contentRegistry
 } from "@shared/schema";
 import { resolveCommissionRates, PROCESSING_FEE_RATE } from "./commission";
+import { availableAtFor } from "../config/earnings-hold.config";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
@@ -97,6 +98,7 @@ class RevenueTrackingService {
         referenceType: event.sourceType,
         description: event.description,
         status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
       });
     }
 
@@ -110,6 +112,7 @@ class RevenueTrackingService {
         trackingNumber: event.trackingNumber,
         description: event.description,
         status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
       });
     }
   }
