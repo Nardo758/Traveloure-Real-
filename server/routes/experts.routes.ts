@@ -534,66 +534,12 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
   // === Provider: Availability Management ===
 
 
-router.get("/api/provider/availability", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
-        return res.status(403).json({ message: "Provider access required" });
-      }
-      const schedule = await storage.getProviderAvailability(userId);
-      const blackouts = await storage.getProviderBlackoutDates(userId);
-      res.json({ schedule, blackoutDates: blackouts });
-    } catch (error: any) {
-      res.status(500).json({ message: "Failed to load availability", error: error.message });
-    }
-  });
-
-
-router.post("/api/provider/availability", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
-        return res.status(403).json({ message: "Provider access required" });
-      }
-      const scheduleInput = z.object({
-        dayOfWeek: z.number().min(0).max(6),
-        startTime: z.string().min(1),
-        endTime: z.string().min(1),
-        isAvailable: z.boolean().optional(),
-      }).parse(req.body);
-      const entry = await storage.setProviderAvailability({
-        ...scheduleInput,
-        providerId: userId,
-      });
-      res.json(entry);
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to set availability", error: error.message });
-    }
-  });
-
-
-router.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
-        return res.status(403).json({ message: "Provider access required" });
-      }
-      await storage.deleteProviderAvailability(req.params.id);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ message: "Failed to delete availability", error: error.message });
-    }
-  });
-
+// [dead-dup removed] GET/POST/DELETE /api/provider/availability lived here on a weekly-schedule +
+// blackout model, but are DEAD: the mounted routes.ts already serves the same paths on a per-date
+// vendor-slot model (routes.ts:7999-8070), which wins (registered first; this router was never
+// mounted). Removed as duplicate code. NOTE (filed): the two impls diverge on the data model
+// (weekly-schedule+blackout vs vendor-slots) — the live one does NOT read blackout dates; the
+// blackout write endpoints below are consequently orphaned pending the availability-model decision.
 
 router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
