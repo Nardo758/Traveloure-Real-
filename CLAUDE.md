@@ -14,8 +14,10 @@ This document captures architectural decisions to maintain consistency across co
 
 1. **Approval lifecycle (D1a) — CLOSED by F2 (migration 111).** Offerings are born `submitted`, **never born-approved**.
    Lifecycle: `draft → submitted → approved`. The `provider_services` admin approve/reject/list queue already exists
-   (misnamed `custom-services`: `GET /api/admin/custom-services/pending` + `POST …/:id/approve|reject`, all operating on
-   `provider_services` via `mapProviderToExpertCustom`). **F2 resolution (ratified Jul 14, 2026):** ① the born default is
+   (`GET /api/admin/provider-services/pending` + `POST …/:id/approve|reject`, all operating on `provider_services` via
+   `mapProviderServiceToListing` → `ProviderServiceListing`; these were **renamed from the misnamed `custom-services`
+   vocabulary** — endpoints, storage fns, and the `ExpertCustomService` DTO all now carry provider-service names). **F2
+   resolution (ratified Jul 14, 2026):** ① the born default is
    flipped `approved → submitted` at BOTH the ORM (`shared/schema.ts:578`) and the DB column (migration 111
    `ALTER COLUMN approval_status SET DEFAULT 'submitted'`, **future-inserts-only — NO backfill, existing rows grandfathered
    `approved`**); ② `createProviderService` clamps the born state server-side to non-approved (`draft`/`submitted`, default
@@ -266,8 +268,10 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 ## Coordination Prevention
 
 **If you are making changes that affect:**
-- Service creation routes (`POST /api/provider/services`) — note `/api/expert/custom-services` and the `expert_custom_services`
-  table are **dropped/dead** (migration 013); do not re-add them
+- Service creation routes (`POST /api/provider/services`) — note the `expert_custom_services` **table** is **dropped**
+  (migration 013); do not re-add it. The former `/api/expert/custom-services` and `/api/admin/custom-services` **routes**
+  operated on `provider_services` (via the mapper) and were **renamed** to `/api/expert/service-listings` and
+  `/api/admin/provider-services` (the misnomer fix, Jul 14 2026) — the `custom-services` vocabulary is retired in code
 - Service schema (`provider_services`; `expert_service_offerings` = read-only catalog; `expert_templates` = marketplace)
 - The two offering catalogs (`expert_offering_types` / `service_offering_types`) — never merge them (see §4)
 - Approval workflows (status enums, submission logic)

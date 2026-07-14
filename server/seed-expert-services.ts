@@ -134,7 +134,7 @@ export async function seedExpertServices() {
 }
 
 // Mock custom services data for testing
-const mockCustomServices = [
+const mockProviderServiceListings = [
   {
     title: "Private Food Tour in Barcelona",
     description: "Experience the authentic flavors of Barcelona with a personalized culinary journey through the city's hidden gems. Includes tapas bars, local markets, and wine pairings.",
@@ -204,7 +204,7 @@ const mockCustomServices = [
   }
 ];
 
-export async function seedCustomServices() {
+export async function seedProviderServiceListings() {
   // Migration 013 dropped expert_id and all workflow columns from expert_service_offerings.
   // Expert-owned services are now managed via provider_services (migration 012).
   // This seed function is no longer applicable — skip gracefully.
