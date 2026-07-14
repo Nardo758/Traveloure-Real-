@@ -15,10 +15,6 @@ import {
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 
-interface ConnectStatus {
-  connected: boolean;
-  status: string;
-}
 
 interface EarningsData {
   earnings: Array<{
@@ -46,11 +42,6 @@ export default function ExpertEarnings() {
     queryKey: ["/api/expert/earnings"],
   });
 
-  const { data: connectStatus } = useQuery<ConnectStatus>({
-    queryKey: ["/api/stripe/connect/status"],
-  });
-
-  const canRequestPayout = connectStatus?.connected && connectStatus?.status === "active";
 
   const summary = data?.summary;
   const earnings = data?.earnings || [];
@@ -99,19 +90,6 @@ export default function ExpertEarnings() {
           <div>
             <h1 className="text-2xl font-bold text-console-darkest">Earnings Dashboard</h1>
             <p className="text-console-mid">Track your revenue and manage payouts</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {!canRequestPayout && (
-              <p className="text-sm text-amber-600">Connect Stripe to enable payouts</p>
-            )}
-            <Button
-              className="bg-[#FF385C] disabled:opacity-50"
-              disabled={!canRequestPayout}
-              data-testid="button-request-payout"
-            >
-              <DollarSign className="w-4 h-4 mr-2" />
-              Request Payout
-            </Button>
           </div>
         </div>
 
