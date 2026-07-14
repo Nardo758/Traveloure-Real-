@@ -104,6 +104,7 @@ import tripsRoutes from "./routes/trips.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
+import eaRoutes from "./routes/ea.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
@@ -523,6 +524,9 @@ export async function registerRoutes(
   app.use("/api/webhooks", webhooksRoutes);
   // Admin routes — role-guarded endpoints for platform administration
   app.use(adminRoutes);
+
+  // Executive-Assistant (EA) console — /api/ea/* namespace, guarded by isEA (RBAC)
+  app.use(eaRoutes);
 
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
