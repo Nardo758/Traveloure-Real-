@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
+import { isExpert, isProvider } from "./middleware/role-rbac";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -273,6 +274,49 @@ export async function registerRoutes(
     }
   };
   app.use("/api/admin", adminApiGuard);
+
+  // ─── Expert / Provider self-service RBAC backstop ──────────────────────────
+  // Mirrors the admin guard pattern above. Protects all /api/expert/* and
+  // /api/provider/* self-service endpoints so that a regular "user" role account
+  // cannot reach expert or provider data even by hitting the API directly.
+  //
+  // Public/application paths are explicitly excluded:
+  //   - /api/expert/application-status  — users checking their own application
+  //   - /api/expert/offering-types      — public catalog (no auth needed)
+  //   - /api/expert/:id/tip             — regular users tipping an expert
+  //   - /api/provider/application-status — users checking their provider application
+  //
+  // All other /api/expert/* and /api/provider/* routes require the matching role.
+  const EXPERT_SELF_SERVICE_PREFIXES = [
+    "/api/expert/neighborhoods",
+    "/api/expert/profile-notes",
+    "/api/expert/selected-services",
+    "/api/expert/specializations",
+    "/api/expert/service-listings",
+    "/api/expert/templates",
+    "/api/expert/earnings",
+    "/api/expert/template-sales",
+    "/api/expert/tips",
+    "/api/expert/referrals",
+    "/api/expert/affiliate-earnings",
+    "/api/expert/revenue-optimization",
+    "/api/expert/services",
+    "/api/expert/dashboard",
+  ];
+  const PROVIDER_SELF_SERVICE_PREFIXES = [
+    "/api/provider/services",
+    "/api/provider/verification-status",
+    "/api/provider/dashboard",
+  ];
+  app.use((req: any, res: any, next: any) => {
+    if (req.method === "OPTIONS") return next();
+    const p: string = req.path;
+    const matchesPrefix = (prefixes: string[]) =>
+      prefixes.some((prefix) => p === prefix || p.startsWith(prefix + "/"));
+    if (matchesPrefix(EXPERT_SELF_SERVICE_PREFIXES)) return isExpert(req, res, next);
+    if (matchesPrefix(PROVIDER_SELF_SERVICE_PREFIXES)) return isProvider(req, res, next);
+    next();
+  });
 
   // Chat / Conversations routes (GET/POST/PATCH/DELETE /api/conversations)
   registerChatRoutes(app);
