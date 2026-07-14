@@ -401,4 +401,55 @@ router.post('/refund', isAuthenticated, async (req, res) => {
   }
 });
 
+// ── Escrow Phase 3: traveler confirm-completion (early release) + dispute (block) ──
+// The provider marks a booking `completed` (which creates the held earning); the traveler then
+// either confirms — releasing the held earning early — or disputes, which blocks release until an
+// admin resolves it. Acting user is the session; only the booking's traveler may act.
+
+router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
+  try {
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const bookingId = req.params.id;
+
+    const ownerId = await getBookingOwnerId(bookingId);
+    if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
+    if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can confirm this booking' });
+
+    const [booking] = await db.select({ status: serviceBookings.status })
+      .from(serviceBookings).where(eq(serviceBookings.id, bookingId));
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.status !== 'completed') {
+      return res.status(400).json({ error: 'Only a completed booking can be confirmed' });
+    }
+
+    const released = await storage.releaseEarningsForBooking(bookingId);
+    res.json({ success: true, released });
+  } catch (error: any) {
+    console.error('Confirm-completion error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/:id/dispute', isAuthenticated, async (req, res) => {
+  try {
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const bookingId = req.params.id;
+    const { reason } = req.body;
+
+    const ownerId = await getBookingOwnerId(bookingId);
+    if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
+    if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // Block release: flag the booking's unpaid earnings disputed (pulled back to held), mark booking disputed.
+    const blocked = await storage.setBookingEarningsDispute(bookingId, true);
+    await storage.updateServiceBookingStatus(bookingId, 'disputed', reason);
+    res.json({ success: true, blocked });
+  } catch (error: any) {
+    console.error('Dispute error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;
