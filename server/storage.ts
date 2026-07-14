@@ -462,6 +462,8 @@ export interface IStorage {
   getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
   createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning>;
   releaseMaturedEarnings(now?: Date): Promise<{ expert: number; provider: number }>;
+  releaseEarningsForBooking(bookingId: string, now?: Date): Promise<number>;
+  setBookingEarningsDispute(bookingId: string, open: boolean, now?: Date): Promise<number>;
   
   // Provider Payouts
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
@@ -3222,6 +3224,63 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning({ id: providerEarnings.id });
     return { expert: expertRows.length, provider: providerRows.length };
+  }
+
+  // ── Escrow Phase 3: booking-linked traveler confirm / dispute (docs/design/escrow-spine.md) ──
+  // Earnings link to a booking via provider_earnings.source_id and expert_earnings.reference_id.
+
+  /** Traveler confirmed completion → early-release the booking's held, undisputed earnings. */
+  async releaseEarningsForBooking(bookingId: string, now: Date = new Date()): Promise<number> {
+    const prov = await db.update(providerEarnings)
+      .set({ status: 'releasable', availableAt: now, updatedAt: now })
+      .where(and(
+        eq(providerEarnings.sourceId, bookingId),
+        eq(providerEarnings.status, 'held'),
+        sqlOp`${providerEarnings.disputeState} IS DISTINCT FROM 'open'`,
+      ))
+      .returning({ id: providerEarnings.id });
+    const exp = await db.update(expertEarnings)
+      .set({ status: 'releasable', availableAt: now })
+      .where(and(
+        eq(expertEarnings.referenceId, bookingId),
+        eq(expertEarnings.status, 'held'),
+        sqlOp`${expertEarnings.disputeState} IS DISTINCT FROM 'open'`,
+      ))
+      .returning({ id: expertEarnings.id });
+    return prov.length + exp.length;
+  }
+
+  /**
+   * Set/clear the dispute flag on a booking's unpaid earnings.
+   * open=true: a dispute blocks release — pull any unpaid earning (held OR releasable) back to
+   *   `held` + `dispute_state='open'`, so the summary's held+dispute exclusion keeps it out of the
+   *   payable balance. (releasable rows are only dispute-checked once forced back to held; that's
+   *   the "disputed ⟹ held" invariant.) paid_out earnings are NOT touched — post-payout claw-back
+   *   is Phase 4, not the automated spine.
+   * open=false: dispute rejected — clear the flag; the earning stays held and re-clears via the
+   *   release job/summary once its availableAt passes (already past for a completed booking).
+   */
+  async setBookingEarningsDispute(bookingId: string, open: boolean, now: Date = new Date()): Promise<number> {
+    if (open) {
+      const prov = await db.update(providerEarnings)
+        .set({ status: 'held', disputeState: 'open', updatedAt: now })
+        .where(and(eq(providerEarnings.sourceId, bookingId), sqlOp`${providerEarnings.status} IN ('held','releasable')`))
+        .returning({ id: providerEarnings.id });
+      const exp = await db.update(expertEarnings)
+        .set({ status: 'held', disputeState: 'open' })
+        .where(and(eq(expertEarnings.referenceId, bookingId), sqlOp`${expertEarnings.status} IN ('held','releasable')`))
+        .returning({ id: expertEarnings.id });
+      return prov.length + exp.length;
+    }
+    const prov = await db.update(providerEarnings)
+      .set({ disputeState: 'none', updatedAt: now })
+      .where(and(eq(providerEarnings.sourceId, bookingId), eq(providerEarnings.disputeState, 'open')))
+      .returning({ id: providerEarnings.id });
+    const exp = await db.update(expertEarnings)
+      .set({ disputeState: 'none' })
+      .where(and(eq(expertEarnings.referenceId, bookingId), eq(expertEarnings.disputeState, 'open')))
+      .returning({ id: expertEarnings.id });
+    return prov.length + exp.length;
   }
 
   async getProviderPayouts(providerId: string): Promise<ProviderPayout[]> {

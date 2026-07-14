@@ -479,6 +479,32 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   }
 });
 
+// Escrow Phase 3 (docs/design/escrow-spine.md): admin REJECTS a service-booking dispute (the
+// traveler's claim is not upheld) — clear the dispute flag so the earnings resume normal release,
+// and restore the booking to completed. Upholding a dispute (reversing the earning) is Phase 4,
+// where the reversal mechanism lives. Operates on service_bookings + the linked earnings (the
+// GET /api/admin/disputes list above reads the legacy `bookings` table — a pre-existing
+// bookings-vs-service_bookings split, filed, not addressed here).
+router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { bookingId } = req.params;
+    const cleared = await storage.setBookingEarningsDispute(bookingId, false);
+    await storage.updateServiceBookingStatus(bookingId, "completed");
+    res.json({
+      success: true,
+      cleared,
+      note: "Dispute rejected; earnings resume release. Upholding (earning reversal) is not yet automated — Phase 4.",
+    });
+  } catch (err: any) {
+    console.error("Admin dispute reject error:", err);
+    res.status(500).json({ message: "Failed to reject dispute" });
+  }
+});
+
 /**
  * GET /api/admin/reconciliation/run-now
  * Triggers Stripe reconciliation immediately and returns the result.
