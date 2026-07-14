@@ -614,44 +614,10 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
   // Constraint Propagation & Workflow Services
   // ==========================================
 
-
-router.get("/api/provider/settings", isAuthenticated, async (req, res) => {
-    try {
-      const userId = await requireProviderRole(req, res);
-      if (!userId) return;
-      const settings = await storage.getProviderSettings(userId);
-      if (!settings) {
-        return res.json({
-          instantBooking: false,
-          autoResponse: true,
-          minimumLeadTimeDays: 7,
-          targetResponseTimeHours: 2,
-          payoutFrequency: "monthly",
-          minimumPayoutAmount: "100",
-          notificationsJson: { newBookings: true, bookingUpdates: true, messages: true, reviews: true, payouts: true, marketing: false },
-        });
-      }
-      res.json(settings);
-    } catch (err) {
-      console.error("[Provider] getSettings error:", err);
-      res.status(500).json({ message: "Failed to get settings" });
-    }
-  });
-
-
-router.patch("/api/provider/settings", isAuthenticated, async (req, res) => {
-    try {
-      const userId = await requireProviderRole(req, res);
-      if (!userId) return;
-      // Strip ownership/identity fields to prevent mass assignment
-      const { userId: _uid, id: _id, createdAt: _ca, updatedAt: _ua, providerId: _pid, ...safeSettings } = req.body as any;
-      const settings = await storage.upsertProviderSettings(userId, safeSettings);
-      res.json(settings);
-    } catch (err) {
-      console.error("[Provider] upsertSettings error:", err);
-      res.status(500).json({ message: "Failed to save settings" });
-    }
-  });
+  // NOTE: GET/PATCH /api/provider/settings were extracted to the MOUNTED
+  // server/routes/provider.routes.ts (Kyoto-supply activation). The copies here were dark
+  // (this file is imported-but-unmounted) and referenced an undefined `requireProviderRole`,
+  // so they would have thrown even if reached. See CLAUDE.md §9.
 
   // === Itinerary Items CRUD (PATCH + DELETE only; GET/POST defined at Itinerary Intelligence Routes) ===
   async function canAccessTripItems(tripId: string, userId: string): Promise<boolean> {
