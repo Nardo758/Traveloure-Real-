@@ -398,12 +398,20 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     }
 
     // amount omitted → createRefund derives it from the booking's stored total_amount.
-    // Earnings-ledger reversal is a filed fast-follow (see CLAUDE.md money-endpoint note).
     const result = await stripePaymentService.createRefund(bookingId, undefined, reason);
+
+    // Escrow Phase 4 (closes §14 A2): a refund now also reverses the linked earnings ledger + the
+    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert credited.
+    // Both are idempotent no-ops when the booking has no in-escrow earnings, so this is safe on any
+    // refund. paid_out earnings are left for manual clawback (surfaced via skippedPaidOut).
+    const reversal = await storage.reverseEarningsForBooking(bookingId);
+    await storage.reversePlatformRevenueForBooking(bookingId);
 
     res.json({
       success: true,
       ...result,
+      reversedEarnings: reversal.reversed,
+      skippedPaidOut: reversal.skippedPaidOut,
     });
   } catch (error: any) {
     console.error('Refund error:', error);

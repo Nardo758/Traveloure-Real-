@@ -102,8 +102,7 @@ export default function AdminReconciliation() {
   });
 
   // Reject a service-booking dispute (traveler's claim not upheld): clears the dispute flag so the
-  // held earnings resume normal release and restores the booking to completed. Upholding (earning
-  // reversal) is Phase 4 and is intentionally not offered here.
+  // held earnings resume normal release and restores the booking to completed.
   const rejectMutation = useMutation({
     mutationFn: (bookingId: string) =>
       apiRequest("POST", `/api/admin/disputes/${bookingId}/reject`),
@@ -117,6 +116,28 @@ export default function AdminReconciliation() {
     },
     onError: () => {
       toast({ title: "Could not reject dispute", description: "Check server logs for details.", variant: "destructive" });
+    },
+  });
+
+  // Uphold a dispute (traveler's claim valid — Phase 4): reverse the in-escrow earnings + platform
+  // revenue and refund the traveler. Money-moving + destructive, so it's confirmed before firing.
+  const upholdMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("POST", `/api/admin/disputes/${bookingId}/uphold`),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      refetchDisputes();
+      toast({
+        title: "Dispute upheld — traveler refunded",
+        description: data?.skippedPaidOut > 0
+          ? `Heads up: ${data.skippedPaidOut} earning(s) were already paid out and need a manual clawback.`
+          : "Earnings and platform revenue reversed; refund issued.",
+        variant: data?.skippedPaidOut > 0 ? "destructive" : "default",
+      });
+    },
+    onError: () => {
+      toast({ title: "Could not uphold dispute", description: "Check server logs for details.", variant: "destructive" });
     },
   });
 
@@ -341,20 +362,36 @@ export default function AdminReconciliation() {
                               </a>
                             )}
                             {d.status === "disputed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
-                                disabled={rejectMutation.isPending}
-                                onClick={() => {
-                                  if (window.confirm("Reject this dispute? The traveler's claim is not upheld — held earnings resume release and the booking returns to completed. (Upholding/refund is handled separately.)")) {
-                                    rejectMutation.mutate(d.id);
-                                  }
-                                }}
-                                data-testid={`button-reject-dispute-${d.id}`}
-                              >
-                                Reject
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs border-gray-300 text-gray-700 hover:bg-gray-100"
+                                  disabled={rejectMutation.isPending || upholdMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm("Reject this dispute? The traveler's claim is not upheld — held earnings resume release and the booking returns to completed.")) {
+                                      rejectMutation.mutate(d.id);
+                                    }
+                                  }}
+                                  data-testid={`button-reject-dispute-${d.id}`}
+                                >
+                                  Reject
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-100"
+                                  disabled={rejectMutation.isPending || upholdMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm("Uphold this dispute? The traveler's claim IS valid — this reverses the provider/expert earnings and platform revenue and REFUNDS the traveler. This moves money and cannot be auto-undone.")) {
+                                      upholdMutation.mutate(d.id);
+                                    }
+                                  }}
+                                  data-testid={`button-uphold-dispute-${d.id}`}
+                                >
+                                  Uphold &amp; refund
+                                </Button>
+                              </>
                             )}
                           </div>
                         </td>

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -488,10 +489,10 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
 
 // Escrow Phase 3 (docs/design/escrow-spine.md): admin REJECTS a service-booking dispute (the
 // traveler's claim is not upheld) — clear the dispute flag so the earnings resume normal release,
-// and restore the booking to completed. Upholding a dispute (reversing the earning) is Phase 4,
-// where the reversal mechanism lives. Operates on service_bookings + the linked earnings — the
-// GET /api/admin/disputes list above now reads service_bookings too, so the queue and this action
-// operate on the same rows.
+// and restore the booking to completed. Upholding a dispute (reversing the earning + refunding the
+// traveler) is the Phase-4 /uphold endpoint below. Operates on service_bookings + the linked
+// earnings — the GET /api/admin/disputes list above now reads service_bookings too, so the queue
+// and both actions operate on the same rows.
 router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") {
@@ -504,11 +505,52 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     res.json({
       success: true,
       cleared,
-      note: "Dispute rejected; earnings resume release. Upholding (earning reversal) is not yet automated — Phase 4.",
+      note: "Dispute rejected; earnings resume release.",
     });
   } catch (err: any) {
     console.error("Admin dispute reject error:", err);
     res.status(500).json({ message: "Failed to reject dispute" });
+  }
+});
+
+// Escrow Phase 4 (docs/design/escrow-spine.md): admin UPHOLDS a service-booking dispute (the
+// traveler's claim IS valid). This is the reversal terminal: (1) reverse the in-escrow earnings
+// (held/releasable → 'reversed'; paid_out is NOT auto-clawed-back — surfaced as skippedPaidOut for
+// manual handling), (2) reverse the recognised platform revenue (compensating negative entry), and
+// (3) refund the traveler via Stripe against the service booking's own payment intent. Ledger
+// reversal runs FIRST (internal, idempotent) then the Stripe refund (idempotency-keyed) — so a
+// retry after a Stripe failure re-runs cleanly without double-reversing or double-refunding. Amount
+// is server-derived from the booking; the acting user is the admin session (§14/§15).
+router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { bookingId } = req.params;
+    const { reason } = req.body ?? {};
+
+    // 1+2: reverse the ledger (idempotent atomic flips). Runs before the external refund so a
+    // Stripe failure leaves a fully-reversed ledger that a retry simply re-confirms (no-ops).
+    const earnings = await storage.reverseEarningsForBooking(bookingId);
+    const revenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
+
+    // 3: refund the traveler (idempotency-keyed; also sets service_bookings.status='refunded').
+    const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld");
+
+    res.json({
+      success: true,
+      reversedEarnings: earnings.reversed,
+      skippedPaidOut: earnings.skippedPaidOut,
+      reversedRevenueRows: revenueRows,
+      refund,
+      note: earnings.skippedPaidOut > 0
+        ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
+        : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
+    });
+  } catch (err: any) {
+    console.error("Admin dispute uphold error:", err);
+    res.status(500).json({ message: `Failed to uphold dispute: ${err.message}` });
   }
 });
 
