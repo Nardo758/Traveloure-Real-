@@ -130,7 +130,6 @@ export function ExpertMatchCard({
   const responseTime = expert.responseTime || expert.expertForm?.responseTime || null;
   const reviewsCount = expert.reviewsCount || null;
   const tripsCount = expert.tripsCount || null;
-  const rating = 4.9;
   const verified = expert.verified !== false;
   const superExpert = expert.superExpert || false;
 
@@ -225,11 +224,9 @@ export function ExpertMatchCard({
             <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
               <div className="flex items-center text-amber-500">
                 <Star className="w-3 h-3 fill-amber-500" />
-                <span className="ml-0.5 font-semibold">{rating.toFixed(1)}</span>
-                {reviewsCount !== null ? (
+                <span className="ml-0.5 font-semibold text-[#6B7280]">New</span>
+                {reviewsCount !== null && (
                   <span className="text-[#6B7280] ml-0.5">({reviewsCount})</span>
-                ) : (
-                  <span className="text-[#6B7280] ml-0.5">(New)</span>
                 )}
               </div>
 
