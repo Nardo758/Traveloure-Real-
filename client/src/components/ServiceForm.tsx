@@ -588,7 +588,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       if (role === "expert") {
-        queryClient.invalidateQueries({ queryKey: ["/api/expert/custom-services"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
       if (isEditMode) {
         toast({ title: "Service updated" });
