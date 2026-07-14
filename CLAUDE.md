@@ -72,6 +72,42 @@ This document captures architectural decisions to maintain consistency across co
 9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
    endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
+   - **Ground-truth correction (Jul 14, 2026): the "mostly-dark supply side" headline was overstated.** Re-verified on
+     `origin/main`, three surfaces the maps inferred were dark are actually **LIVE on origin/main** (not even
+     deploy-only): the **recommender** (real `server/services/recommendation.service.ts` → `getExpertRecommendations`/
+     `getProviderRecommendations`, mounted at `/api/recommendations/expert|provider|user` — **mounted, but the endpoints
+     were 500ing on 13 stale dynamic-imports of the deleted pre-unification engine files; repointed to the unified service
+     in PR #174, so "live" holds post-#174**), **provider discovery**
+     (`/service-providers` + the full `/provider/*` route set in `App.tsx`), and the **expert workspace**
+     (`/expert/workspace/:tripId`, expert-gated). What IS genuinely dark stays the `experts.routes.ts` families above
+     (import present, no `app.use`). The maps were **inference**; treat these four as re-verified fact. The remaining
+     demand/supply map claims still need reconciliation against the ground-truth corrections table.
+   - **EA console — ACTIVATED (Jul 14, 2026).** The ~32 `/api/ea/*` executive-assistant endpoints (client roster,
+     executives, events, travel, gifts, saved venues, communications, AI tasks + client push) were part of the dark
+     `experts.routes.ts` set — the **client console was fully routed** (`client/src/pages/ea/*` behind
+     `ProtectedRoute requiredRole="executive_assistant"` in `App.tsx`) but every call hit the Vite catch-all (200-HTML),
+     so the console rendered but held no real data. Extracted **verbatim** into a new **mounted** router
+     `server/routes/ea.routes.ts` (`app.use(eaRoutes)` in `routes.ts`), guarded by a **router-level `isEA` RBAC**
+     (`router.use("/api/ea", isEA)` — executive_assistant OR admin, DB role lookup; §2-style default-deny for the
+     namespace). No endpoint logic changed; the block was removed from the dark file (0 `/api/ea` remain there). This is
+     a **surface-with-a-backend** activation (client already existed), not a new build. **Filed (not activated here):**
+     the remaining dark `experts.routes.ts` families (expert workspace/vendors, knowledge-nuggets, visa, role) stay dark
+     pending their own triage.
+   - **Kyoto supply tools — `GET/PATCH /api/provider/settings` ACTIVATED (Jul 14, 2026).** Same surface-without-a-backend
+     pattern: the provider settings page (`client/src/pages/provider/settings.tsx`, routed behind
+     `ProtectedRoute requiredRole="provider"`) GET/PATCHes `/api/provider/settings`, but those handlers were dark in
+     `experts.routes.ts` **and** referenced an **undefined `requireProviderRole`** (a latent bug — they'd have thrown even
+     if reached). Extracted into a new **mounted** `server/routes/provider.routes.ts` (`app.use(providerRoutes)`),
+     writing a real `requireProviderRole` (DB role lookup, provider-or-admin, mirroring `isEA`). **Not money-path:**
+     settings are self-scoped by `userId` (unique per user); PATCH is a **zod allow-list of the 7 editable fields**
+     (never raw `req.body`), so identity columns can't be mass-assigned. `payoutFrequency`/`minimumPayoutAmount` are
+     provider *preferences*, not a charge/transfer amount — no Stripe/earning write. The money-endpoint guard passes
+     (file is not money-named and the handler performs no money operation).
+   - **Provider earnings family — deliberately NOT mounted (scoping decision).** `GET /api/provider/earnings`,
+     `/earnings/summary`, `/earnings/details` and `/api/expert/earnings/details` are also dark, but **no client consumer
+     calls them** — the provider earnings page derives its numbers from the **live** `GET /api/provider/bookings`. Mounting
+     them would be a **backend without a surface** (the inverse of the settings bug). Left dark; **filed:** activate this
+     family only alongside a real consumer that needs the server-side earnings aggregate.
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
@@ -102,6 +138,20 @@ This document captures architectural decisions to maintain consistency across co
     - **Gap 3 — surfacing (Phase B, LAST).** Register `/expert-templates/:id`, un-dead the `packages` tab, integrate
       approved packages into Discover — **only admin-approved packages surface**, at the approved/locked price. Gated
       behind Phase A holding.
+      - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
+        path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
+        i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated
+        (`approvalStatus==='approved' && isPublished`), but the **public reads were not**: `GET /api/expert-templates`
+        filtered only `isPublished` (a self-published-but-`submitted`/`rejected` template surfaced in the feed) and
+        `GET /api/expert-templates/:id` had **no gate**. Both now require `approved` (+ `isPublished`); the owner console
+        (`GET /api/expert/templates`, expertId-scoped) and admin reads stay ungated — the **F2 `provider_services`
+        read-gate pattern**. So "only admin-approved packages surface" now holds at the API regardless of which client
+        renders it.
+      - **⚠️ Tree divergence (un-reconciled).** `origin/main` still has the surface **hidden/unregistered** (no public
+        `/expert-templates/:id` route in `App.tsx`; `packages` tab hidden in `discover.tsx`; no marketplace nav link),
+        while the ground-truth's "surfaced/reachable" finding reflects the **deploy tree**. Same pattern as the #164
+        Replit desync — **un-pushed Phase-B surfacing commits.** Reconcile by pushing that surfacing onto `origin/main`
+        (as we did for #164); the maps can't be finalized as fact until origin/main and the deploy agree on what's live.
     - **Currency (decision 2 = A):** validate against the single platform currency (USD) now + keep per-listing
       `price`/`currency`; whitelist the currency field to a known set. Conversion infra exists (`budgetService`) but is
       budget-scoped; **Stage-2 multi-currency layers on later** — do not build it here.
@@ -120,14 +170,49 @@ This document captures architectural decisions to maintain consistency across co
       is a trap); add one only with its write path.
 11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
     works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
+12. **Market wedge — RATIFIED Jul 14, 2026: ONE market, KYOTO.** The launch is a **single-market wedge**, not the
+    8-market breadth. Ground truth that informed it: the "8 launch markets" exist only as **content-source scaffolding**
+    (`server/content/providers/DMOSourceRegistry.ts` — DMO ingestion across 8 markets), while the **real depth** (seeded
+    vendor inventory + neighborhood density) is already concentrated on **Kyoto** (`phase-d-kyoto-vendors.seed.ts`,
+    `verify-phase-1b.ts` "Kyoto is the launch market", `city-neighborhoods.seed.ts`). So Kyoto is the de-facto wedge with
+    actual liquidity; the other 7 are thin. **This one decision resolves three coupled ones** (all point the same way):
+    (a) **liquidity** — concentrate density in Kyoto, don't spread; (b) **guild-vs-talent Knowledge-Bar** — talent-selection
+    (the strong, hard-to-disintermediate moat) is feasible in ONE market, so vet for deep local Kyoto talent rather than
+    fall back to the leakable guild-document model breadth would force; (c) **Knowledge-Bar standard + expertise gate** —
+    define the *Kyoto* standard and extend the existing local-expert Knowledge-Proof (essays + tenure) into a **scored**
+    expertise gate for Kyoto. **Roadmap consequence:** marketplace build sequences behind Kyoto density; the other-7-market
+    breadth is **paused, not built out**; surfaces should reflect Kyoto depth, not thin content for 7 near-empty markets.
+    Full roadmap in `docs/audits/marketplace-maps-groundtruthed.md`. Ratified by the decision-maker (one-wedge-Kyoto).
+    - **Knowledge-Bar scored expertise gate — Phase 1 landed (migration 114).** The onboarding Knowledge-Proof (3
+      judgment-probing essays + `localityProof` tenure) is now **AI-scored** against a 4-dimension rubric (weighted /
+      current-local / negative-steer-away / personalization), Kyoto-tuned scoring context, result stored in
+      `local_expert_forms.knowledge_score` (jsonb) + `knowledge_scored_at`. Mechanism = **AI-scored + admin-confirm,
+      launched ADVISORY** (ratified): the score is decision support surfaced to the admin queue; it does **not** auto-gate
+      approval (approval still flows through `updateLocalExpertFormStatus`). Best-effort: no API key / API error /
+      unparseable output → `unscored` verdict, never blocks onboarding. Scoring is fire-and-forget after form create
+      (`server/services/expertise-scoring.service.ts`). **Phase 2 landed:** the score + per-answer rubric breakdown is
+      surfaced in the admin review queue (`admin/experts.tsx`, `knowledge-score-<id>`), labelled advisory. **Phase 2 also
+      fixed a Phase-1 shape bug:** the scorer read `knowledgeProofAnswers` as `string[]`, but onboarding stores
+      `{question, answer}` objects — it now normalizes both, so scoring actually runs on real submissions. **Filed
+      follow-ups:** Phase 3 = calibrate the rubric on real Kyoto submissions, then decide whether to tighten from advisory
+      to a harder gate; refine the Kyoto scoring context (currently a first-draft seed).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
-- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **One arm
-  FIXED:** the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
-  `expert-detail.tsx` now uses `verified === true`. **Still open:** fabricated `4.9`/`4.5` ratings, a `90/10` commission
-  **literal**, hardcoded "free cancellation / instant confirmation / 24-7 support" copy, and a 2-character-neighbourhood
-  empty-result trap. Do not mark §13 resolved — only the `verified` arm is done.
+- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **Two arms
+  FIXED:** ① the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
+  `expert-detail.tsx` now uses `verified === true`. ② **fabricated `4.9`/`4.5` ratings on LIVE surfaces — closed (PR #177).**
+  The server was already honest (review create is booking-gated; `provider_services.averageRating`/`reviewCount` are real
+  aggregates, `null`/`0` with no reviews). The fabrication was **client-side** — hardcoded `const rating = 4.9` in the
+  expert/match/provider cards + `avgRating ?? "4.9"` / `averageRating || "4.5"` fallbacks that invented a score over the
+  honest null. All live sites now show the **real** rating when `reviewCount > 0`, else an honest **"New"** (never a fake
+  number). **Still filed (separate, NOT the same as fabrication):** (a) a real **expert-level rating aggregate** doesn't
+  exist yet (experts have no rating source — service reviews are service-scoped), so expert cards honestly show "New";
+  (b) **mock-data demo arrays** (`chat.tsx`, `explore.tsx`, `help-me-decide` sample packages, `provider/profile`) still
+  carry placeholder `rating: 4.x` — those are fake sample *content*, a "wire real data" task, not the display-fabrication
+  bug. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
+  confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap. Do not mark §13 resolved — the
+  `verified` + live-ratings arms are done.
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 
@@ -148,8 +233,16 @@ world-writable fee-config, then the four below); the rule closes the class so th
   the §8 coordination constants).
 - **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
   **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
-  **Filed fast-follow:** earnings-ledger reversal (a refund does not yet reverse `provider_earnings`/`expert_earnings`/
-  `platform_revenue`); the endpoint also targets the legacy `bookings` table (real bookings live in `service_bookings`).
+  **Earnings-reversal fast-follow — CLOSED by escrow Phase 4 (PR #170):** the refund now also calls
+  `storage.reverseEarningsForBooking` + `reversePlatformRevenueForBooking`, so a refunded booking no longer leaves the
+  provider/expert credited or the platform revenue recognised. Reversal is **held/releasable → `reversed` only**;
+  `paid_out` earnings are **never auto-clawed-back** (ratified "reversal only while in escrow") — surfaced as
+  `skippedPaidOut` for manual handling. Platform-revenue reversal is a **compensating negative `platform_revenue` row**
+  (double-entry — the summaries sum every row regardless of status, and also flow through the daily summary, so the net
+  is correct with no reader change); the original row is flipped `status='reversed'` as the idempotency guard. **Still
+  filed (separate):** the standalone endpoint's `createRefund` targets the legacy `bookings` table (real bookings live in
+  `service_bookings`) — Phase 4 added a correct **service-booking** refund (`stripePaymentService.refundServiceBooking`,
+  used by dispute-uphold) but did not re-point this legacy endpoint.
 - **A3 🔴 `POST /api/bookings/process-cart`** — `userId` from body (IDOR). Now: session user. **Filed fast-follow:**
   AI-generated cart items (no `providerId`) still trust `item.price` — server has no catalog price for them; low
   severity (buyer's own charge, no payout theft; real-provider items already re-read DB price).
@@ -196,6 +289,30 @@ a guard. Claim the row atomically **first**, then make the external call — so 
   require the key (or add a natural-key server dedup) + remove the dead duplicate — a small hardening, not "add idempotency."
 - **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
   captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
+
+### Escrow/hold/release spine — build status (design of record: `docs/design/escrow-spine.md`)
+
+The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
+`dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
+- **Phase 1 (#163, migration 112):** unified both `expert_earnings` + `provider_earnings` onto the one vocabulary
+  (`earning_status` CHECK = `held|releasable|paid_out|reversed`) + `dispute_state`; releasability-preserving backfill.
+- **Phase 2a (#167):** `releaseMaturedEarnings` job (`held → releasable` once the per-surface clearance window passes and
+  no dispute is open) + `server/config/earnings-hold.config.ts` windows (env-overridable) + hourly scheduler.
+- **Phase 2b (#169, migration 113):** retroactive `available_at` backfill for the Phase-1 `held`-NULL rows so they clear.
+- **Phase 3 (#168):** traveler `POST /api/bookings/:id/confirm-completion` (early release) + `/dispute` (block, pulls
+  `releasable → held+open`, enforcing "disputed ⟹ held") + admin `/api/admin/disputes/:id/reject`; owner-gated on
+  `service_bookings.traveler_id`; disputes list reads `service_bookings`.
+- **Phase 4 (#170) — reversal terminal.** `storage.reverseEarningsForBooking` (held/releasable → `reversed`; `paid_out`
+  **never auto-clawed-back** — ratified "reversal only while in escrow"; returns `skippedPaidOut` for manual handling) +
+  `reversePlatformRevenueForBooking` (compensating **negative** `platform_revenue` row — double-entry nets both the
+  summary and the daily rollup; original flipped `status='reversed'` as the idempotency guard). Admin
+  **`POST /api/admin/disputes/:bookingId/uphold`** reverses the ledger **then** refunds the traveler via
+  `stripePaymentService.refundServiceBooking` (service-booking-native refund off the row's own payment intent;
+  deterministic `idempotencyKey` + atomic status claim — §15). Ledger-first, Stripe-second, so a retry after a Stripe
+  failure re-runs cleanly. This closes **§14 A2**'s earnings-reversal gap (also wired into the standalone `/refund`).
+  **No migration** — `reversed` was already in the migration-112 CHECK; `platform_revenue`/`service_bookings` status have
+  no CHECK. **Filed (not built):** automated **post-payout** clawback (deliberately manual); re-pointing the legacy
+  `createRefund`/`/api/bookings/refund` off the `bookings` table onto `service_bookings`.
 
 ### Payout rail — model of record (decided Jul 14, 2026)
 

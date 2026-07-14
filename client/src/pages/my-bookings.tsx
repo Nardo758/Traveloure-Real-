@@ -35,6 +35,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   AlertCircle,
+  AlertTriangle,
+  ShieldCheck,
   ListChecks,
   Copy,
   Check,
@@ -88,6 +90,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   confirmed: { label: "Confirmed", variant: "default", icon: CheckCircle2 },
   in_progress: { label: "In Progress", variant: "default", icon: Loader2 },
   completed: { label: "Completed", variant: "default", icon: CheckCircle2 },
+  disputed: { label: "Disputed", variant: "destructive", icon: AlertTriangle },
   cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
 };
@@ -287,7 +290,7 @@ export default function MyBookingsPage() {
 
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const activeBookings = bookings?.filter(b => ["confirmed", "in_progress"].includes(b.status)) || [];
-  const completedBookings = bookings?.filter(b => ["completed", "cancelled", "refunded"].includes(b.status)) || [];
+  const completedBookings = bookings?.filter(b => ["completed", "disputed", "cancelled", "refunded"].includes(b.status)) || [];
 
   const openReviewDialog = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -415,11 +418,43 @@ function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: s
 }
 
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
+  const { toast } = useToast();
+  const [disputeOpen, setDisputeOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
+  // Escrow Phase 3: once the provider marks the booking completed, the traveler can either confirm
+  // completion (early-releases the provider's held earnings) or dispute (blocks release for admin
+  // review). Both act on this service booking by id.
+  const canConfirmOrDispute = booking.status === "completed";
+  const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
   const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
+
+  const confirmMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/bookings/${booking.id}/confirm-completion`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      toast({ title: "Thanks for confirming", description: "We've released the booking to your provider." });
+    },
+    onError: () => {
+      toast({ title: "Could not confirm", description: "Please try again or contact support.", variant: "destructive" });
+    },
+  });
+
+  const disputeMutation = useMutation({
+    mutationFn: (reason: string) => apiRequest("POST", `/api/bookings/${booking.id}/dispute`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      setDisputeOpen(false);
+      setDisputeReason("");
+      toast({ title: "Dispute submitted", description: "Our team will review it and follow up with you." });
+    },
+    onError: () => {
+      toast({ title: "Could not submit dispute", description: "Please try again or contact support.", variant: "destructive" });
+    },
+  });
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
@@ -491,10 +526,40 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
+              {canConfirmOrDispute && (
+                <>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => confirmMutation.mutate()}
+                    disabled={confirmMutation.isPending}
+                    data-testid={`button-confirm-completion-${booking.id}`}
+                  >
+                    <ShieldCheck className="w-4 h-4 mr-1" />
+                    Confirm completion
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                    onClick={() => setDisputeOpen(true)}
+                    disabled={disputeMutation.isPending}
+                    data-testid={`button-dispute-${booking.id}`}
+                  >
+                    <AlertTriangle className="w-4 h-4 mr-1" />
+                    Dispute
+                  </Button>
+                </>
+              )}
+              {isDisputed && (
+                <span className="text-xs text-red-700 font-medium self-center" data-testid={`text-dispute-under-review-${booking.id}`}>
+                  Dispute under review
+                </span>
+              )}
               {canReview && (
-                <Button 
-                  variant="default" 
-                  size="sm" 
+                <Button
+                  variant="default"
+                  size="sm"
                   onClick={() => onReview(booking)}
                   data-testid={`button-review-${booking.id}`}
                 >
@@ -528,6 +593,38 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
           </div>
         </div>
       </CardContent>
+
+      <Dialog open={disputeOpen} onOpenChange={setDisputeOpen}>
+        <DialogContent data-testid={`dialog-dispute-${booking.id}`}>
+          <DialogHeader>
+            <DialogTitle>Dispute this booking</DialogTitle>
+            <DialogDescription>
+              Tell us what went wrong. Submitting a dispute pauses the payout to your provider while our
+              team reviews it — you don't need to contact your bank.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={disputeReason}
+            onChange={(e) => setDisputeReason(e.target.value)}
+            placeholder="Describe the issue (e.g. the service wasn't delivered as booked)…"
+            rows={4}
+            data-testid={`textarea-dispute-reason-${booking.id}`}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDisputeOpen(false)} data-testid={`button-dispute-cancel-${booking.id}`}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => disputeMutation.mutate(disputeReason.trim())}
+              disabled={disputeMutation.isPending || disputeReason.trim().length === 0}
+              data-testid={`button-dispute-submit-${booking.id}`}
+            >
+              Submit dispute
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

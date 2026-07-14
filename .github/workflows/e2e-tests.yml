@@ -1,10 +1,17 @@
 name: E2E Tests (Model B — deploy-only, no Actions DB)
 
+# NON-BLOCKING BY DESIGN — scheduled + manual only, NOT on push/PR.
+#
+# This suite drives the FULL journey specs against an EXTERNAL deployed app (E2E_BASE_URL) that
+# lags `main` during active development. On a PR it therefore reports the state of the *deploy*,
+# not the PR's diff, so it cannot gate a PR meaningfully — the app-in-Actions gates (Build Smoke,
+# Selection Controls, Service Offering Types, Upsell Trust Contract, E2E Deploy Smoke) do that.
+# Running it on every push/PR only posted a permanent, misleading red. It now runs on a daily
+# schedule + manual dispatch, matching the sibling e2e-deploy-smoke.yml's documented non-blocking
+# intent. Triage of the current failures (stale-deploy vs. drifted specs) and the per-test rehab
+# backlog live in docs/audits/e2e-model-b-triage.md.
+
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
   workflow_dispatch:
   schedule:
     # Run E2E tests daily at 2:23 UTC (off-peak, avoids top-of-hour congestion)
@@ -133,6 +140,27 @@ jobs:
             exit 1
           fi
           echo "✅ All critical services ready"
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+
+      - name: Annotate deploy freshness (warn-only)
+        # The deployed app exposes GET /api/version -> { sha }. If the Replit deploy injects
+        # GIT_COMMIT (it does not yet — falls back to "dev"), we can tell whether the target is
+        # running the commit under test. A stale (or "dev") deploy is the #1 cause of red here:
+        # a failing journey may just be testing older code. Warn-only — never fails the run.
+        run: |
+          DEPLOY_SHA=$(curl -s --connect-timeout 15 --max-time 20 "$E2E_BASE_URL/api/version" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(d).sha||'unknown')}catch{process.stdout.write('unknown')}})" \
+            || echo "unreachable")
+          echo "Deploy /api/version sha: $DEPLOY_SHA"
+          echo "Commit under test:       $GITHUB_SHA"
+          if [ "$DEPLOY_SHA" = "dev" ] || [ "$DEPLOY_SHA" = "unknown" ] || [ "$DEPLOY_SHA" = "unreachable" ]; then
+            echo "::warning::Deploy does not report a real commit (sha='$DEPLOY_SHA'; GIT_COMMIT not injected at deploy). Cannot verify the deploy matches this commit — failures may be stale-deploy, not code regressions."
+          elif [ "$DEPLOY_SHA" != "$GITHUB_SHA" ]; then
+            echo "::warning::STALE DEPLOY: app is running $DEPLOY_SHA but tests target $GITHUB_SHA. Redeploy before trusting failures as code regressions."
+          else
+            echo "✓ Deploy matches the commit under test."
+          fi
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 

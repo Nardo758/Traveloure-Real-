@@ -526,9 +526,15 @@ export default function HelpMeDecidePage() {
                             </p>
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-1">
-                                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                <span className="text-sm font-medium">{service.averageRating || "4.5"}</span>
-                                <span className="text-sm text-[#6B7280]">({service.reviewCount || 0})</span>
+                                {service.averageRating && (service.reviewCount ?? 0) > 0 ? (
+                                  <>
+                                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                    <span className="text-sm font-medium">{service.averageRating}</span>
+                                    <span className="text-sm text-[#6B7280]">({service.reviewCount})</span>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">New</span>
+                                )}
                               </div>
                               <span className="font-bold text-[#111827]">${service.price}</span>
                             </div>
