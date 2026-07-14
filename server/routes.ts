@@ -4151,16 +4151,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // === Expert Custom Services (User-submitted offerings) ===
   
   // Get current expert's custom services (authenticated)
-  app.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
+  app.get("/api/expert/service-listings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const services = await storage.getExpertCustomServices(userId);
+    const services = await storage.getProviderServiceListings(userId);
     res.json(services);
   });
 
   // Get single custom service by ID (authenticated - owner only)
-  app.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const service = await storage.getExpertCustomServiceById(req.params.id);
+    const service = await storage.getProviderServiceListingById(req.params.id);
     if (!service) {
       return res.status(404).json({ message: "Custom service not found" });
     }
@@ -4171,7 +4171,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Create new custom service (authenticated - experts only)
-  app.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
+  app.post("/api/expert/service-listings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
@@ -4186,7 +4186,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      const service = await storage.createExpertCustomService(userId, {
+      const service = await storage.createProviderServiceListing(userId, {
         title,
         description,
         categoryName,
@@ -4209,10 +4209,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Update custom service (authenticated - owner only, draft status only)
-  app.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
@@ -4224,7 +4224,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      const updated = await storage.updateExpertCustomService(req.params.id, req.body);
+      const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
       res.json(updated);
     } catch (err) {
       console.error("Error updating custom service:", err);
@@ -4233,10 +4233,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Submit custom service for approval (authenticated - owner only)
-  app.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (req, res) => {
+  app.post("/api/expert/service-listings/:id/submit", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
@@ -4248,7 +4248,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only submit draft or rejected services" });
       }
 
-      const submitted = await storage.submitExpertCustomService(req.params.id);
+      const submitted = await storage.submitProviderServiceListing(req.params.id);
       res.json(submitted);
     } catch (err) {
       console.error("Error submitting custom service:", err);
@@ -4257,10 +4257,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Delete custom service (authenticated - owner only, draft/rejected status only)
-  app.delete("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
@@ -4272,7 +4272,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Cannot delete approved services. Deactivate instead." });
       }
 
-      await storage.deleteExpertCustomService(req.params.id);
+      await storage.deleteProviderServiceListing(req.params.id);
       res.json({ success: true });
     } catch (err) {
       console.error("Error deleting custom service:", err);
@@ -4281,17 +4281,17 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Admin: Get all custom services pending approval
-  app.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/provider-services/pending", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const services = await storage.getExpertCustomServicesByStatus("submitted");
+    const services = await storage.getProviderServiceListingsByStatus("submitted");
     res.json(services);
   });
 
   // Admin: Approve custom service
-  app.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
       const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
@@ -4299,7 +4299,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
@@ -4307,7 +4307,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
 
-      const approved = await storage.approveExpertCustomService(req.params.id, adminId);
+      const approved = await storage.approveProviderServiceListing(req.params.id, adminId);
       res.json(approved);
     } catch (err) {
       console.error("Error approving custom service:", err);
@@ -4316,7 +4316,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Admin: Reject custom service
-  app.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
       const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
@@ -4329,7 +4329,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Rejection reason is required" });
       }
 
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
@@ -4337,7 +4337,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Can only reject submitted services" });
       }
 
-      const rejected = await storage.rejectExpertCustomService(req.params.id, adminId, reason);
+      const rejected = await storage.rejectProviderServiceListing(req.params.id, adminId, reason);
       res.json(rejected);
     } catch (err) {
       console.error("Error rejecting custom service:", err);

@@ -1411,7 +1411,7 @@ export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializati
 
 // Expert Custom Services schemas and types
 // (table dropped in migration 013; type kept manually for storage adapter compatibility)
-export const insertExpertCustomServiceSchema = z.object({
+export const insertProviderServiceListingSchema = z.object({
   title: z.string(),
   description: z.string().nullable().optional(),
   categoryName: z.string().nullable().optional(),
@@ -1427,7 +1427,7 @@ export const insertExpertCustomServiceSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export type ExpertCustomService = {
+export type ProviderServiceListing = {
   id: string;
   expertId: string;
   title: string;
@@ -1453,7 +1453,7 @@ export type ExpertCustomService = {
   createdAt: Date | null;
   updatedAt: Date | null;
 };
-export type InsertExpertCustomService = z.infer<typeof insertExpertCustomServiceSchema>;
+export type InsertProviderServiceListing = z.infer<typeof insertProviderServiceListingSchema>;
 
 // Influencer schemas and types
 export const insertInfluencerReferralSchema = createInsertSchema(influencerReferrals).omit({ id: true, createdAt: true });

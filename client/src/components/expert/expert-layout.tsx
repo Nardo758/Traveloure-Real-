@@ -14,7 +14,7 @@
  * /expert/services/:id/edit      Edit service (form)
  * /expert/services/templates     Service template library
  * /expert/service-wizard         Guided service creation wizard
- * /expert/custom-services        Custom service management
+ * /expert/service-listings       Provider service-listing management
  * /expert/earnings               Earnings + Stripe Connect payout
  * /expert/performance            Performance metrics
  * /expert/revenue-optimization   Revenue optimization dashboard

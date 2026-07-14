@@ -1319,18 +1319,18 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
 
   // Get all expert service categories with offerings (public)
 
-router.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
+router.get("/api/admin/provider-services/pending", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const services = await storage.getExpertCustomServicesByStatus("submitted");
+    const services = await storage.getProviderServiceListingsByStatus("submitted");
     res.json(services);
   });
 
   // Admin: Approve custom service
 
-router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
+router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
       const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
       const user = await getFullAdminUser(adminId);
@@ -1338,7 +1338,7 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
@@ -1346,7 +1346,7 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
 
-      const approved = await storage.approveExpertCustomService(req.params.id, adminId);
+      const approved = await storage.approveProviderServiceListing(req.params.id, adminId);
 
       // ESO promotion was using expert_id / external_id columns dropped in migration 013.
       // Expert-owned services now live in provider_services; no ESO write needed here.
@@ -1360,7 +1360,7 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
 
   // Admin: Reject custom service
 
-router.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
+router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
       const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
       const user = await getFullAdminUser(adminId);
@@ -1373,7 +1373,7 @@ router.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req
         return res.status(400).json({ message: "Rejection reason is required" });
       }
 
-      const service = await storage.getExpertCustomServiceById(req.params.id);
+      const service = await storage.getProviderServiceListingById(req.params.id);
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
@@ -1381,7 +1381,7 @@ router.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req
         return res.status(400).json({ message: "Can only reject submitted services" });
       }
 
-      const rejected = await storage.rejectExpertCustomService(req.params.id, adminId, reason);
+      const rejected = await storage.rejectProviderServiceListing(req.params.id, adminId, reason);
       res.json(rejected);
     } catch (err) {
       console.error("Error rejecting custom service:", err);

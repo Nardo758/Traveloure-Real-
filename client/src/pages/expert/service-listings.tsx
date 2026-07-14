@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-interface CustomService {
+interface ServiceListing {
   id: string;
   title: string;
   description: string | null;
@@ -63,10 +63,10 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700", icon: XCircle },
 };
 
-export default function ExpertCustomServicesPage() {
+export default function ExpertServiceListingsPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingService, setEditingService] = useState<CustomService | null>(null);
+  const [editingService, setEditingService] = useState<ServiceListing | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -79,8 +79,8 @@ export default function ExpertCustomServicesPage() {
   });
   const [newDeliverable, setNewDeliverable] = useState("");
 
-  const { data: customServices = [], isLoading } = useQuery<CustomService[]>({
-    queryKey: ["/api/expert/custom-services"],
+  const { data: serviceListings = [], isLoading } = useQuery<ServiceListing[]>({
+    queryKey: ["/api/expert/service-listings"],
   });
 
   const { data: serviceCategories = [] } = useQuery<any[]>({
@@ -89,10 +89,10 @@ export default function ExpertCustomServicesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest("POST", "/api/expert/custom-services", data);
+      return apiRequest("POST", "/api/expert/service-listings", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/custom-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       toast({ title: "Service created", description: "Your custom service has been saved as a draft." });
       resetForm();
       setIsDialogOpen(false);
@@ -104,10 +104,10 @@ export default function ExpertCustomServicesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      return apiRequest("PATCH", `/api/expert/custom-services/${id}`, data);
+      return apiRequest("PATCH", `/api/expert/service-listings/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/custom-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       toast({ title: "Service updated", description: "Your changes have been saved." });
       resetForm();
       setIsDialogOpen(false);
@@ -119,10 +119,10 @@ export default function ExpertCustomServicesPage() {
 
   const submitMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("POST", `/api/expert/custom-services/${id}/submit`);
+      return apiRequest("POST", `/api/expert/service-listings/${id}/submit`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/custom-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       toast({ title: "Service submitted", description: "Your service is now pending review by our team." });
     },
     onError: (error: any) => {
@@ -132,10 +132,10 @@ export default function ExpertCustomServicesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/expert/custom-services/${id}`);
+      return apiRequest("DELETE", `/api/expert/service-listings/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/custom-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       toast({ title: "Service deleted", description: "The service has been removed." });
     },
     onError: (error: any) => {
@@ -158,7 +158,7 @@ export default function ExpertCustomServicesPage() {
     setNewDeliverable("");
   };
 
-  const openEditDialog = (service: CustomService) => {
+  const openEditDialog = (service: ServiceListing) => {
     setEditingService(service);
     setFormData({
       title: service.title,
@@ -197,9 +197,9 @@ export default function ExpertCustomServicesPage() {
     setFormData(prev => ({ ...prev, deliverables: prev.deliverables.filter((_, i) => i !== index) }));
   };
 
-  const draftServices = customServices.filter(s => s.status === "draft" || s.status === "rejected");
-  const pendingServices = customServices.filter(s => s.status === "submitted");
-  const approvedServices = customServices.filter(s => s.status === "approved");
+  const draftServices = serviceListings.filter(s => s.status === "draft" || s.status === "rejected");
+  const pendingServices = serviceListings.filter(s => s.status === "submitted");
+  const approvedServices = serviceListings.filter(s => s.status === "approved");
 
   return (
     <ExpertLayout title="Custom Services">
@@ -372,7 +372,7 @@ export default function ExpertCustomServicesPage() {
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
           </div>
-        ) : customServices.length === 0 ? (
+        ) : serviceListings.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
               <Package className="w-12 h-12 mx-auto text-console-light mb-4" />
@@ -449,7 +449,7 @@ function ServiceCard({
   isSubmitting,
   isDeleting
 }: { 
-  service: CustomService; 
+  service: ServiceListing; 
   idx: number;
   onEdit?: () => void;
   onSubmit?: () => void;
