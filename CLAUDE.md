@@ -147,11 +147,15 @@ This document captures architectural decisions to maintain consistency across co
         (`GET /api/expert/templates`, expertId-scoped) and admin reads stay ungated — the **F2 `provider_services`
         read-gate pattern**. So "only admin-approved packages surface" now holds at the API regardless of which client
         renders it.
-      - **⚠️ Tree divergence (un-reconciled).** `origin/main` still has the surface **hidden/unregistered** (no public
-        `/expert-templates/:id` route in `App.tsx`; `packages` tab hidden in `discover.tsx`; no marketplace nav link),
-        while the ground-truth's "surfaced/reachable" finding reflects the **deploy tree**. Same pattern as the #164
-        Replit desync — **un-pushed Phase-B surfacing commits.** Reconcile by pushing that surfacing onto `origin/main`
-        (as we did for #164); the maps can't be finalized as fact until origin/main and the deploy agree on what's live.
+      - **Tree divergence — RECONCILED (Jul 14, 2026): the surfacing does NOT exist anywhere.** The Replit workspace and
+        `origin/main` were fully synced two-way (workspace pulled `main`, then pushed its local commits back —
+        `3fcf19c6..ee81ff05`). The workspace's un-pushed commits turned out to be the **role-RBAC backstop + UI tweaks**,
+        NOT Phase-B surfacing. Verified on reconciled main: no public `/expert-templates/:id` route in `App.tsx` (only
+        the admin route), `packages` tab still hidden in `discover.tsx` ("hidden in Phase 1a"). So the earlier
+        ground-truth claim that the purchase path was "reachable on the deployed tree" was **wrong** (or described a
+        stale deploy artifact) — the purchase UI is **unregistered everywhere**, which is *safer* than this doc assumed.
+        Once the workspace redeploys from the synced tree, deploy = main definitively. Phase B (Gap 3 surfacing) remains
+        genuinely un-built and stays gated behind Phase A holding.
     - **Currency (decision 2 = A):** validate against the single platform currency (USD) now + keep per-listing
       `price`/`currency`; whitelist the currency field to a known set. Conversion infra exists (`budgetService`) but is
       budget-scoped; **Stage-2 multi-currency layers on later** — do not build it here.
