@@ -6516,7 +6516,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
-      const templates = await storage.getExpertTemplates(userId);
+      const templates = await storage.getExpertTemplates({ expertId: userId });
       
       // Get expert's profile for selected services and specializations
       const expertProfile = await storage.getLocalExpertForm(userId);
