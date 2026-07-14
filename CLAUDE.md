@@ -82,6 +82,17 @@ This document captures architectural decisions to maintain consistency across co
      (`/expert/workspace/:tripId`, expert-gated). What IS genuinely dark stays the `experts.routes.ts` families above
      (import present, no `app.use`). The maps were **inference**; treat these four as re-verified fact. The remaining
      demand/supply map claims still need reconciliation against the ground-truth corrections table.
+   - **EA console — ACTIVATED (Jul 14, 2026).** The ~32 `/api/ea/*` executive-assistant endpoints (client roster,
+     executives, events, travel, gifts, saved venues, communications, AI tasks + client push) were part of the dark
+     `experts.routes.ts` set — the **client console was fully routed** (`client/src/pages/ea/*` behind
+     `ProtectedRoute requiredRole="executive_assistant"` in `App.tsx`) but every call hit the Vite catch-all (200-HTML),
+     so the console rendered but held no real data. Extracted **verbatim** into a new **mounted** router
+     `server/routes/ea.routes.ts` (`app.use(eaRoutes)` in `routes.ts`), guarded by a **router-level `isEA` RBAC**
+     (`router.use("/api/ea", isEA)` — executive_assistant OR admin, DB role lookup; §2-style default-deny for the
+     namespace). No endpoint logic changed; the block was removed from the dark file (0 `/api/ea` remain there). This is
+     a **surface-with-a-backend** activation (client already existed), not a new build. **Filed (not activated here):**
+     the remaining dark `experts.routes.ts` families (expert workspace/vendors, knowledge-nuggets, visa, role, provider
+     settings/earnings — the last two are the Kyoto-supply-tools next step) stay dark pending their own triage.
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
