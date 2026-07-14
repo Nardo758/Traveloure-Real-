@@ -26,6 +26,19 @@ async function getBookingOwnerId(bookingId: string): Promise<string | null> {
   return row?.user_id != null ? String(row.user_id) : null;
 }
 
+// Owner (traveler) of a `service_bookings` row. The escrow confirm/dispute endpoints operate on
+// service_bookings (that's where the earnings link and where /api/my-bookings reads), so their
+// ownership gate must resolve against service_bookings.traveler_id — NOT the legacy `bookings`
+// table (which would 404 every real service booking). Returns null if the booking is absent.
+async function getServiceBookingOwnerId(bookingId: string): Promise<string | null> {
+  const rows = await db
+    .select({ travelerId: serviceBookings.travelerId })
+    .from(serviceBookings)
+    .where(eq(serviceBookings.id, bookingId))
+    .limit(1);
+  return rows[0]?.travelerId ?? null;
+}
+
 /**
  * GET /api/bookings/:id
  * Fetch a single service booking by ID.
@@ -412,7 +425,7 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
     const bookingId = req.params.id;
 
-    const ownerId = await getBookingOwnerId(bookingId);
+    const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can confirm this booking' });
 
@@ -438,9 +451,20 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     const bookingId = req.params.id;
     const { reason } = req.body;
 
-    const ownerId = await getBookingOwnerId(bookingId);
+    const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // Persist the dispute reason into booking_metadata so the admin disputes list can surface it —
+    // service_bookings has no dispute_reason column, and updateServiceBookingStatus only records a
+    // reason for cancel/refund. jsonb-merge so other metadata (visa, etc.) is preserved.
+    await db.update(serviceBookings)
+      .set({
+        bookingMetadata: sql`COALESCE(${serviceBookings.bookingMetadata}, '{}'::jsonb) || ${JSON.stringify({
+          disputeReason: reason ?? null,
+        })}::jsonb`,
+      })
+      .where(eq(serviceBookings.id, bookingId));
 
     // Block release: flag the booking's unpaid earnings disputed (pulled back to held), mark booking disputed.
     const blocked = await storage.setBookingEarningsDispute(bookingId, true);
