@@ -196,25 +196,6 @@ export function UserMenu() {
           </>
         )}
 
-        {/* ── Application links for regular users ── */}
-        {!isExpert && !isProvider && !isEA && !isAdmin && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/expert-status" className="cursor-pointer" data-testid="link-user-expert-status">
-                <UserCheck className="w-4 h-4 mr-2" />
-                Expert Application
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/provider-status" className="cursor-pointer" data-testid="link-user-provider-status">
-                <Building2 className="w-4 h-4 mr-2" />
-                Provider Application
-              </Link>
-            </DropdownMenuItem>
-          </>
-        )}
-
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => logout()}
