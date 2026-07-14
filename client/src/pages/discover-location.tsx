@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
+import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
@@ -1211,6 +1212,10 @@ export default function DiscoverLocationPage() {
   const scheduledDate = searchParams.get("date");
   const cityRaw = params?.city ?? "";
   const city = decodeURIComponent(cityRaw);
+
+  useEffect(() => {
+    if (city) trackCityView(city, toTitleCase(city));
+  }, [city]);
 
   const handleDismissDate = () => {
     const next = new URLSearchParams(searchString);
