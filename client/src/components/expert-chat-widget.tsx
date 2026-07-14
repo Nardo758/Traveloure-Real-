@@ -294,7 +294,7 @@ export function ExpertSidebarCard({
             <h4 className="font-semibold text-sm">Sarah Edwards</h4>
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              4.9 (127 reviews)
+              New
             </div>
           </div>
         </div>
