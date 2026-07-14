@@ -64,10 +64,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
 import type { ExpertTemplate, InsertExpertTemplate } from "@shared/schema";
 
-// Form schema for template creation
+// Form schema for template creation. No isPublished here — templates are born draft
+// (server forces isPublished=false at create); selling requires submit → admin approval → publish.
 const templateFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(255),
   description: z.string().min(10, "Description must be at least 10 characters"),
@@ -77,7 +77,6 @@ const templateFormSchema = z.object({
   price: z.string().regex(/^\d+\.?\d*$/, "Please enter a valid price"),
   category: z.string().optional(),
   highlights: z.string().optional(),
-  isPublished: z.boolean().default(false),
 });
 
 type TemplateFormData = z.infer<typeof templateFormSchema>;
@@ -104,7 +103,6 @@ export default function ExpertTemplates() {
       price: "",
       category: "adventure",
       highlights: "",
-      isPublished: false,
     },
   });
 
@@ -174,9 +172,52 @@ export default function ExpertTemplates() {
     },
   });
 
+  const submitForReviewMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/expert/templates/${id}/submit`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/templates"] });
+      toast({
+        title: "Submitted for review",
+        description: "An admin will review your template. Once approved, publish it to make it purchasable.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to submit template for review. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: TemplateFormData) => {
     createTemplateMutation.mutate(data);
   };
+
+  // Lifecycle: draft → submitted (in review) → approved | rejected. Purchasable only
+  // when approved AND published — mirror the server gate, don't invent client state.
+  const approvalBadge = (status: string | null | undefined) => {
+    switch (status) {
+      case "approved":
+        return <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">Approved</Badge>;
+      case "submitted":
+        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">In review</Badge>;
+      case "rejected":
+        return <Badge variant="destructive">Rejected</Badge>;
+      default:
+        return <Badge variant="outline">Draft</Badge>;
+    }
+  };
+
+  // Real earnings for one template, from actual completed sales — never a client-side
+  // rate literal (the split is config-resolved server-side and stored per purchase).
+  const earnedForTemplate = (templateId: string) =>
+    (salesData ?? [])
+      .filter((s) => s.templateId === templateId && s.status === "completed")
+      .reduce((sum, s) => sum + (parseFloat(s.expertEarnings ?? "0") || 0), 0);
 
   const totalEarnings = earningsData?.summary?.total ?? 0;
   const totalSales = salesData?.length ?? 0;
@@ -308,7 +349,9 @@ export default function ExpertTemplates() {
                   <DialogHeader>
                     <DialogTitle>Create Itinerary Template</DialogTitle>
                     <DialogDescription>
-                      Create a ready-made travel itinerary that travelers can purchase. You'll earn 80% of the sale price.
+                      Create a ready-made travel itinerary that travelers can purchase. New templates start as
+                      drafts — submit for review, and once approved you can publish it for sale. You earn the
+                      expert share of every sale.
                     </DialogDescription>
                   </DialogHeader>
                   <Form {...form}>
@@ -467,24 +510,6 @@ export default function ExpertTemplates() {
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name="isPublished"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center gap-3 pt-2">
-                            <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                data-testid="switch-template-publish"
-                              />
-                            </FormControl>
-                            <FormLabel className="cursor-pointer !mt-0">
-                              Publish immediately (make available for purchase)
-                            </FormLabel>
-                          </FormItem>
-                        )}
-                      />
                       <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
                           Cancel
@@ -523,11 +548,14 @@ export default function ExpertTemplates() {
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-medium text-foreground">{template.title}</p>
-                            <Badge variant={template.isPublished ? 'default' : 'outline'}>
-                              {template.isPublished ? 'Published' : 'Draft'}
-                            </Badge>
+                            {approvalBadge(template.approvalStatus)}
+                            {template.approvalStatus === "approved" && (
+                              <Badge variant={template.isPublished ? 'default' : 'outline'}>
+                                {template.isPublished ? 'Published' : 'Hidden'}
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                             <MapPin className="w-3 h-3" /> {template.destination}
@@ -535,6 +563,11 @@ export default function ExpertTemplates() {
                         </div>
                         <p className="text-xl font-bold text-primary">${template.price}</p>
                       </div>
+                      {template.approvalStatus === "rejected" && template.rejectionReason && (
+                        <div className="p-2 rounded bg-destructive/10 text-sm text-destructive mb-3" data-testid={`rejection-${template.id}`}>
+                          Rejected: {template.rejectionReason}
+                        </div>
+                      )}
                       <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> {template.duration} days
@@ -551,21 +584,38 @@ export default function ExpertTemplates() {
                           </span>
                         )}
                       </div>
-                      {(template.salesCount ?? 0) > 0 && (
+                      {earnedForTemplate(template.id) > 0 && (
                         <div className="p-2 rounded bg-muted text-sm mb-3">
-                          Earned ${(((template.salesCount ?? 0) * parseFloat(template.price)) * 0.8).toFixed(2)} from this template
+                          Earned ${earnedForTemplate(template.id).toFixed(2)} from this template
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="flex-1"
-                          onClick={() => togglePublishMutation.mutate({ id: template.id, isPublished: !template.isPublished })}
-                          data-testid={`button-toggle-${template.id}`}
-                        >
-                          {template.isPublished ? "Unpublish" : "Publish"}
-                        </Button>
+                        {template.approvalStatus === "approved" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => togglePublishMutation.mutate({ id: template.id, isPublished: !template.isPublished })}
+                            data-testid={`button-toggle-${template.id}`}
+                          >
+                            {template.isPublished ? "Unpublish" : "Publish"}
+                          </Button>
+                        ) : template.approvalStatus === "submitted" ? (
+                          <Button size="sm" variant="outline" className="flex-1" disabled data-testid={`button-in-review-${template.id}`}>
+                            <Clock className="w-3 h-3 mr-1" /> In review
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => submitForReviewMutation.mutate(template.id)}
+                            disabled={submitForReviewMutation.isPending}
+                            data-testid={`button-submit-${template.id}`}
+                          >
+                            <Send className="w-3 h-3 mr-1" />
+                            {template.approvalStatus === "rejected" ? "Resubmit for review" : "Submit for review"}
+                          </Button>
+                        )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button size="icon" variant="ghost" data-testid={`button-menu-${template.id}`}>
