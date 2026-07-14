@@ -26,6 +26,19 @@ async function getBookingOwnerId(bookingId: string): Promise<string | null> {
   return row?.user_id != null ? String(row.user_id) : null;
 }
 
+// Owner (traveler) of a `service_bookings` row. The escrow confirm/dispute endpoints operate on
+// service_bookings (that's where the earnings link and where /api/my-bookings reads), so their
+// ownership gate must resolve against service_bookings.traveler_id — NOT the legacy `bookings`
+// table (which would 404 every real service booking). Returns null if the booking is absent.
+async function getServiceBookingOwnerId(bookingId: string): Promise<string | null> {
+  const rows = await db
+    .select({ travelerId: serviceBookings.travelerId })
+    .from(serviceBookings)
+    .where(eq(serviceBookings.id, bookingId))
+    .limit(1);
+  return rows[0]?.travelerId ?? null;
+}
+
 /**
  * GET /api/bookings/:id
  * Fetch a single service booking by ID.
@@ -398,6 +411,68 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+// ── Escrow Phase 3: traveler confirm-completion (early release) + dispute (block) ──
+// The provider marks a booking `completed` (which creates the held earning); the traveler then
+// either confirms — releasing the held earning early — or disputes, which blocks release until an
+// admin resolves it. Acting user is the session; only the booking's traveler may act.
+
+router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
+  try {
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const bookingId = req.params.id;
+
+    const ownerId = await getServiceBookingOwnerId(bookingId);
+    if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
+    if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can confirm this booking' });
+
+    const [booking] = await db.select({ status: serviceBookings.status })
+      .from(serviceBookings).where(eq(serviceBookings.id, bookingId));
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.status !== 'completed') {
+      return res.status(400).json({ error: 'Only a completed booking can be confirmed' });
+    }
+
+    const released = await storage.releaseEarningsForBooking(bookingId);
+    res.json({ success: true, released });
+  } catch (error: any) {
+    console.error('Confirm-completion error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/:id/dispute', isAuthenticated, async (req, res) => {
+  try {
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const bookingId = req.params.id;
+    const { reason } = req.body;
+
+    const ownerId = await getServiceBookingOwnerId(bookingId);
+    if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
+    if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // Persist the dispute reason into booking_metadata so the admin disputes list can surface it —
+    // service_bookings has no dispute_reason column, and updateServiceBookingStatus only records a
+    // reason for cancel/refund. jsonb-merge so other metadata (visa, etc.) is preserved.
+    await db.update(serviceBookings)
+      .set({
+        bookingMetadata: sql`COALESCE(${serviceBookings.bookingMetadata}, '{}'::jsonb) || ${JSON.stringify({
+          disputeReason: reason ?? null,
+        })}::jsonb`,
+      })
+      .where(eq(serviceBookings.id, bookingId));
+
+    // Block release: flag the booking's unpaid earnings disputed (pulled back to held), mark booking disputed.
+    const blocked = await storage.setBookingEarningsDispute(bookingId, true);
+    await storage.updateServiceBookingStatus(bookingId, 'disputed', reason);
+    res.json({ success: true, blocked });
+  } catch (error: any) {
+    console.error('Dispute error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

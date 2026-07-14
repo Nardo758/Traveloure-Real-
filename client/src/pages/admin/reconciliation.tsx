@@ -50,11 +50,11 @@ interface UnprocessedWebhook {
 interface DisputedBooking {
   id: string;
   status: string;
-  dispute_id: string | null;
+  dispute_id?: string | null;
   dispute_reason: string | null;
   stripe_payment_intent_id: string | null;
   total_amount: string | null;
-  booking_type: string | null;
+  service_id?: string | null;
   title: string | null;
   created_at: string;
   updated_at: string | null;
@@ -98,6 +98,25 @@ export default function AdminReconciliation() {
     },
     onError: () => {
       toast({ title: "Reconciliation failed", description: "Check server logs for details.", variant: "destructive" });
+    },
+  });
+
+  // Reject a service-booking dispute (traveler's claim not upheld): clears the dispute flag so the
+  // held earnings resume normal release and restores the booking to completed. Upholding (earning
+  // reversal) is Phase 4 and is intentionally not offered here.
+  const rejectMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("POST", `/api/admin/disputes/${bookingId}/reject`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      refetchDisputes();
+      toast({
+        title: "Dispute rejected",
+        description: "Earnings resume release; booking restored to completed.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Could not reject dispute", description: "Check server logs for details.", variant: "destructive" });
     },
   });
 
@@ -309,17 +328,35 @@ export default function AdminReconciliation() {
                             : "—"}
                         </td>
                         <td className="py-2 px-3">
-                          {d.dispute_id && (
-                            <a
-                              href={`https://dashboard.stripe.com/disputes/${d.dispute_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                              data-testid={`link-dispute-stripe-${d.id}`}
-                            >
-                              Stripe <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {d.dispute_id && (
+                              <a
+                                href={`https://dashboard.stripe.com/disputes/${d.dispute_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                data-testid={`link-dispute-stripe-${d.id}`}
+                              >
+                                Stripe <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                            {d.status === "disputed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
+                                disabled={rejectMutation.isPending}
+                                onClick={() => {
+                                  if (window.confirm("Reject this dispute? The traveler's claim is not upheld — held earnings resume release and the booking returns to completed. (Upholding/refund is handled separately.)")) {
+                                    rejectMutation.mutate(d.id);
+                                  }
+                                }}
+                                data-testid={`button-reject-dispute-${d.id}`}
+                              >
+                                Reject
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
