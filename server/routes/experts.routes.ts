@@ -388,7 +388,7 @@ router.post("/api/provider/payouts/request", isAuthenticated, async (req, res) =
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { payoutMethod } = req.body;
-      const amount = Number(req.body.amount);
+      const amount = Number(req.body.amount); // money-derive-ok: user-chosen withdrawal of their OWN balance, server-capped below at summary.available — a payout request, not a charge (§14 applies to charges/refunds priced from the catalog)
       if (!isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
@@ -426,7 +426,7 @@ router.post("/api/expert/payouts/request", isAuthenticated, async (req, res) => 
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { payoutMethod } = req.body;
-      const amount = Number(req.body.amount);
+      const amount = Number(req.body.amount); // money-derive-ok: user-chosen withdrawal of their OWN balance, server-capped below at summary.available — a payout request, not a charge (§14 applies to charges/refunds priced from the catalog)
       if (!isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
