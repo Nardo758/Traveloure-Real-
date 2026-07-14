@@ -12,11 +12,21 @@ This document captures architectural decisions to maintain consistency across co
 > repo alone can't convey. Where a "⚠️ current code" note appears, the code **diverges from intent**; that is a tracked
 > **bug**, not the design. Do not "fix" the doc to match a divergence — fix the code (or leave it flagged).
 
-1. **Approval lifecycle (D1a).** Offerings are born `draft`/`submitted`, **never born-approved**. A minimal admin
-   approve/reject queue runs on the real admin gate; recommendations/availability filter on `approved`.
-   Lifecycle: `draft → submitted → approved`. ⚠️ **Current code:** `provider_services.approval_status` defaults
-   `"approved"` (`shared/schema.ts:578`) and `GET /api/expert/services` has no approval gate (`server/routes.ts:5538`) —
-   both tracked by D1a/Phase 2.
+1. **Approval lifecycle (D1a) — CLOSED by F2 (migration 111).** Offerings are born `submitted`, **never born-approved**.
+   Lifecycle: `draft → submitted → approved`. The `provider_services` admin approve/reject/list queue already exists
+   (misnamed `custom-services`: `GET /api/admin/custom-services/pending` + `POST …/:id/approve|reject`, all operating on
+   `provider_services` via `mapProviderToExpertCustom`). **F2 resolution (ratified Jul 14, 2026):** ① the born default is
+   flipped `approved → submitted` at BOTH the ORM (`shared/schema.ts:578`) and the DB column (migration 111
+   `ALTER COLUMN approval_status SET DEFAULT 'submitted'`, **future-inserts-only — NO backfill, existing rows grandfathered
+   `approved`**); ② `createProviderService` clamps the born state server-side to non-approved (`draft`/`submitted`, default
+   `submitted`) so a client can't self-approve via the still-open `insertProviderServiceSchema` (the mass-assign twin of
+   marketplace Gap 2), and the duplicate path resets `approvalStatus` (was inheriting the original's `approved`);
+   ③ the **read gate is completed on ALL public `provider_services` surfaces** (they filter `approval_status = 'approved'`)
+   so a `submitted` listing cannot leak publicly — while the **expert-own console and admin reads stay intentionally
+   ungated** (owner sees their own pipeline; admin sees the queue). Grandfather + full-read-gate = complete integrity with
+   zero catalog outage (grandfathered rows are `approved` → pass the gate → stay visible; new rows are `submitted` → hidden
+   publicly until approved). `GET /api/expert/services` (`server/routes.ts`) is the owner console — correctly ungated
+   (filters by `userId` + the active/paused `status` param, never approval).
 2. **Admin auth = default-deny.** `/api/admin/*` is protected by a **blanket `requireAdmin`** guard
    (`app.use("/api/admin", …)` in `server/routes.ts`, DB role lookup on the session; 401/403; no bypass) — **landed via
    #141**; the previously world-writable `POST /api/admin/fee-config` hole is **closed on `main`**. Do **not** reintroduce
@@ -195,8 +205,8 @@ a guard. Claim the row atomically **first**, then make the external call — so 
 - All **service** creation (expert custom, provider, and the `service_templates` seed catalog) writes to `provider_services`.
   **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — see Known Decisions & Divergences §10.
 - The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
-  ⚠️ **Intent vs. current code:** the intent (D1a) is that offerings are born `draft`/`submitted` and **never born-approved**. The live column
-  `provider_services.approval_status` **defaults `"approved"`** (`shared/schema.ts:578`) — a divergence tracked by D1a/Phase 2, not the intended behavior.
+  **F2-CLOSED (migration 111):** offerings are now born `submitted` — `provider_services.approval_status` defaults `"submitted"`
+  at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). See §1 (D1a).
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
@@ -224,10 +234,11 @@ a guard. Claim the row atomically **first**, then make the external call — so 
 All service creation routes converge on one destination: `POST /api/provider/services` writes to `provider_services`.
 
 - Experts creating custom services use the same route/schema as providers
-- Role-based filtering happens at read time. ⚠️ **Intent vs. current code:** the intent is that `GET /api/expert/services`
-  gates on `approvalStatus`. The live handler (`server/routes.ts:5538` → `storage.getProviderServicesByStatus`) filters by
-  `userId` + an **arbitrary `status` query param** and **never consults `approvalStatus`** — the read-side approval gate does
-  not exist yet. Divergence tracked by D1a/Phase 2; do not treat the gate as implemented.
+- Role-based filtering happens at read time. **F2-CLOSED (migration 111):** the read-side approval gate is now implemented on
+  all **public** `provider_services` surfaces (they filter `approval_status = 'approved'`). `GET /api/expert/services`
+  (`server/routes.ts` → `storage.getProviderServicesByStatus`) is the **owner console** and stays **intentionally ungated**
+  — it filters by `userId` + the active/paused `status` param so an owner sees their own `submitted`/unapproved listings.
+  Admin reads (the review queue) are likewise ungated. Only public/non-owner reads gate on `approved`. See §1 (D1a).
 - No separate tables; no separate approval workflows
 
 ---

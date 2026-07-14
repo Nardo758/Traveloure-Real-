@@ -317,6 +317,7 @@ export interface IStorage {
   getExpertServiceOfferings(categoryId?: string): Promise<any[]>;
   getActiveExpertOfferingTypes(): Promise<any[]>;
   getExpertSelectedServices(expertId: string): Promise<any[]>;
+  getApprovedServicesForExpert(expertId: string): Promise<any[]>;
   addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any>;
   removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void>;
   
@@ -972,7 +973,16 @@ export class DatabaseStorage implements IStorage {
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newService] = await db.insert(providerServices).values({ ...service, trackingNumber }).returning();
+    // F2 born-state clamp (approval lifecycle D1a): a create can NEVER produce an approved listing.
+    // The client-supplied approvalStatus (insertProviderServiceSchema still exposes it — the mass-assign
+    // twin of marketplace Gap 2) is clamped server-side to the non-approved born set: an explicit 'draft'
+    // (ServiceForm save-as-draft) is honored, everything else — including a client-sent 'approved'/'rejected'
+    // or an omitted value — is forced to 'submitted' (the review-queue entry state). Never trust the client
+    // for approval; approval only happens via the admin queue (custom-services approve/reject).
+    const bornApprovalStatus = (service as any).approvalStatus === 'draft' ? 'draft' : 'submitted';
+    const [newService] = await db.insert(providerServices)
+      .values({ ...service, approvalStatus: bornApprovalStatus, trackingNumber })
+      .returning();
     
     // Auto-register in content tracking system
     await this.registerContent({
@@ -1246,7 +1256,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]> {
-    let conditions = [eq(providerServices.status, "active")];
+    // F2 public read-gate: only approved listings surface to public browse (never a submitted/draft one).
+    let conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
     if (categoryId) {
       conditions.push(eq(providerServices.categoryId, categoryId));
     }
@@ -1275,6 +1286,13 @@ export class DatabaseStorage implements IStorage {
       ...serviceData,
       serviceName: `${original.serviceName} (Copy)`,
       status: "draft",
+      // F2: a duplicate must NOT inherit the original's approval_status — a copy of an approved
+      // listing would otherwise be born-approved. Reset the whole review lineage to a fresh submitted state.
+      approvalStatus: "submitted",
+      submittedAt: new Date(),
+      reviewedAt: null,
+      reviewedBy: null,
+      rejectionReason: null,
       bookingsCount: 0,
       totalRevenue: "0",
       averageRating: null,
@@ -1500,8 +1518,9 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
   }): Promise<{ services: ProviderService[]; total: number }> {
-    const conditions = [eq(providerServices.status, "active")];
-    
+    // F2 public read-gate: unified search is a public surface — approved listings only.
+    const conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
+
     if (filters.query) {
       conditions.push(
         or(
@@ -2249,8 +2268,21 @@ export class DatabaseStorage implements IStorage {
   // expert_selected_services was dropped by migration 013.
   // Services are now stored in provider_services (canonical table).
   async getExpertSelectedServices(expertId: string): Promise<any[]> {
+    // OWNER view — returns the expert's own listings regardless of approval (their pipeline). NOT public.
     return await db.select().from(providerServices)
       .where(eq(providerServices.userId, expertId));
+  }
+
+  // F2 public read-gate variant: the approved+active subset of an expert's listings, for PUBLIC
+  // surfaces (the /api/experts/:id/services profile page and the experts-browse card embed). Keeps
+  // the owner view (above) ungated so an expert still sees their own submitted/draft listings.
+  async getApprovedServicesForExpert(expertId: string): Promise<any[]> {
+    return await db.select().from(providerServices)
+      .where(and(
+        eq(providerServices.userId, expertId),
+        eq(providerServices.approvalStatus, "approved"),
+        eq(providerServices.status, "active"),
+      ));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
@@ -2326,7 +2358,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(expertExperienceTypes.expertId, expert.id));
 
       // Get expert's services
-      const services = await this.getExpertSelectedServices(expert.id);
+      const services = await this.getApprovedServicesForExpert(expert.id); // F2: public browse embed — approved only
 
       // Get expert's specializations
       const specializations = await this.getExpertSpecializations(expert.id);
@@ -4613,8 +4645,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getActiveProviderServices(limit = 100): Promise<any[]> {
+    // F2 public read-gate: these listings are offered to users (trip-builder / discover feed) — approved only.
     return await db.select().from(providerServices)
-      .where(eq(providerServices.status, "active"))
+      .where(and(eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")))
       .limit(limit);
   }
 

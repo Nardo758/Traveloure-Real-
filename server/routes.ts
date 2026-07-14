@@ -1999,8 +1999,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   
   // Get all active provider services (public - for experience browsing)
   app.get("/api/provider-services", async (req, res) => {
+    // F2 public read-gate: this route is unauthenticated (public). getAllProviderServices is shared with
+    // admin (which must see all), so gate here at the call site — return approved listings only.
     const services = await storage.getAllProviderServices();
-    res.json(services);
+    res.json(services.filter((s) => s.approvalStatus === "approved"));
   });
   
   // Get provider's services
@@ -4007,7 +4009,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/experts/:id/services", async (req, res) => {
     try {
       const expertId = req.params.id;
-      const services = await storage.getExpertSelectedServices(expertId);
+      // F2 public read-gate: this is a public expert-profile surface — approved+active listings only.
+      const services = await storage.getApprovedServicesForExpert(expertId);
       res.json(services);
     } catch (err) {
       console.error("Error fetching expert services:", err);
@@ -5409,7 +5412,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get single service by ID (public - for booking page)
   app.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
-    if (!service || service.status !== "active") {
+    // F2 public read-gate: public detail surface — a non-approved listing must read as not-found
+    // (don't leak the existence of a submitted/draft listing). getProviderServiceById is shared with
+    // owner/booking/admin flows, so the gate lives here at the public call site, not in the storage fn.
+    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
     res.json(service);
@@ -11734,7 +11740,12 @@ Respond with this exact JSON structure:
 
       // ── Platform providers (secondary) ──
       try {
-        const platformProviders = await storage.getProviderServices({ status: "active" });
+        // F2 public read-gate: approved listings only on this public search aggregation.
+        // (NOTE pre-existing bug, not fixed here: {status:"active"} is passed in the userId position —
+        //  getProviderServices(userId, filters) — so this call is effectively empty today; the filter
+        //  below keeps the gate correct if that arg bug is ever repaired.)
+        const platformProviders = (await storage.getProviderServices({ status: "active" } as any))
+          .filter((s) => s.approvalStatus === "approved");
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();

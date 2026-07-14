@@ -575,7 +575,7 @@ export const providerServices = pgTable("provider_services", {
   formStatus: varchar("form_status", { length: 50 }).default("pending"), // For approval workflow
 
   // Approval workflow (consolidated from expert_custom_services in 0007)
-  approvalStatus: varchar("approval_status", { length: 20 }).default("approved"), // draft, submitted, approved, rejected
+  approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"), // draft, submitted, approved, rejected — F2: born submitted, never born-approved (migration 111)
   cancellationPolicy: text("cancellation_policy"),
   leadTime: varchar("lead_time", { length: 50 }),
   deliverables: jsonb("deliverables").default([]),
