@@ -182,7 +182,7 @@ router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const { userId, amount, description } = req.body;
+      const { userId, amount, description } = req.body; // money-derive-ok: admin-gated grant (above); userId is the target grantee, amount the admin-authorized credit — not a self-service charge
       if (!userId || !amount || amount <= 0) {
         return res.status(400).json({ message: "Invalid userId or amount" });
       }

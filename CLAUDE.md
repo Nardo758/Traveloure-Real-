@@ -119,6 +119,38 @@ This document captures architectural decisions to maintain consistency across co
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 
+### §14 — Money-endpoint server-derivation rule (client-trusted amount/identity cluster)
+
+**GOVERNING RULE (convention — enforce on every money/ownership endpoint):** a money endpoint derives the
+charge/refund **amount from the server-side catalog/record**, and the **acting user from the session** — **NEVER**
+from `req.body`. `req.body.amount` / `req.body.price` / `req.body.userId` must never reach a payment or ownership
+decision. This class appeared **seven times** (coordination-fee $0-budget, template mass-assignment $0.01 price,
+world-writable fee-config, then the four below); the rule closes the class so the eighth can't be written.
+
+**Closed (client-trusted money cluster, own security branch):**
+- **A1 🔴 `POST /api/expert-requests/payment-intent`** — was charging the client-sent `amount` verbatim (pay 1¢ for a
+  Full Concierge) with `userId` from body. Now: acting user from session; amount **server-derived** via
+  `resolveExpertReviewAmount(serviceType, variant.totalCost)` (`booking-actions.service.ts`) from the variant's stored
+  cost; ownership (IDOR) enforced against `getVariantOwnerAndCost`. The tier constants ($50/$50+5%/$100+8%) were
+  relocated **server-side** from the client (`fee-literal-ok`, pending migration to `fee_bands` — filed, same posture as
+  the §8 coordination constants).
+- **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
+  **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
+  **Filed fast-follow:** earnings-ledger reversal (a refund does not yet reverse `provider_earnings`/`expert_earnings`/
+  `platform_revenue`); the endpoint also targets the legacy `bookings` table (real bookings live in `service_bookings`).
+- **A3 🔴 `POST /api/bookings/process-cart`** — `userId` from body (IDOR). Now: session user. **Filed fast-follow:**
+  AI-generated cart items (no `providerId`) still trust `item.price` — server has no catalog price for them; low
+  severity (buyer's own charge, no payout theft; real-provider items already re-read DB price).
+- **A4 (found during the fix) `POST /api/bookings/apply-promo`** — `userId` from body (per-user promo-limit probe/bypass
+  class). Now: session user. Preview-only (no money moves, no usage recorded here — `recordPromoUsage` runs at checkout;
+  the real charge + promo re-derive server-side at `/api/checkout`).
+
+**Guard:** `scripts/check-money-endpoints.cjs` (grep gate) fails if a payment/ownership route reads
+`req.body.amount`/`price`/`userId` into a money decision — the cheapest durable catch for the next instance. Do not
+remove it. **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
+`provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
+`/checkout` dup-bookings); marketplace Phase B surfacing.
+
 ---
 
 ## Service Model: Canonical Table

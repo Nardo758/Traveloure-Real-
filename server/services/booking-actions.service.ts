@@ -95,6 +95,43 @@ export async function getVariantCost(variantId: string): Promise<number> {
   return Number(result.rows?.[0]?.total_cost) || 0;
 }
 
+// Owner + cost for a variant, in one query — used by the expert-service PaymentIntent path to
+// (a) enforce ownership (IDOR) and (b) derive the charge amount server-side. The variant's
+// totalCost is the server-side source of truth; the client must never send its own amount.
+export async function getVariantOwnerAndCost(
+  variantId: string,
+): Promise<{ ownerUserId: string; totalCost: number } | null> {
+  const result = await db.execute(sql`
+    SELECT c.user_id AS owner_user_id, v.total_cost
+    FROM itinerary_variants v
+    JOIN itinerary_comparisons c ON c.id = v.comparison_id
+    WHERE v.id = ${variantId}
+    LIMIT 1
+  `);
+  const row = result.rows?.[0];
+  if (!row) return null;
+  return { ownerUserId: String(row.owner_user_id), totalCost: Number(row.total_cost) || 0 };
+}
+
+// Expert-review service tiers — SERVER-SIDE source of truth for the charge amount. The client
+// previously computed these and sent `amount` in the body (a live amount-tampering hole: a caller
+// could POST amount:0.01). The price is a flat base + a percentage of the variant's stored
+// totalCost, resolved here and never from the request body.
+// fee-literal-ok: relocated verbatim from client VariantActionButtons; pending migration to
+// fee_bands/config (filed follow-up), same posture as the coordination-fee constants (§8).
+const EXPERT_REVIEW_TIERS: Record<string, { base: number; pct: number }> = {
+  review:          { base: 50,  pct: 0 },    // fee-literal-ok
+  review_and_book: { base: 50,  pct: 0.05 }, // fee-literal-ok
+  full_concierge:  { base: 100, pct: 0.08 }, // fee-literal-ok
+};
+
+export function resolveExpertReviewAmount(serviceType: string, variantTotalCost: number): number | null {
+  const tier = EXPERT_REVIEW_TIERS[serviceType];
+  if (!tier) return null;
+  const cost = Number.isFinite(variantTotalCost) && variantTotalCost > 0 ? variantTotalCost : 0;
+  return Math.round((tier.base + cost * tier.pct) * 100) / 100;
+}
+
 export async function insertSavedTrip(values: {
   userId: string;
   variantId: string;

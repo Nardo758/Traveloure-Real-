@@ -15,6 +15,8 @@ import {
   completeExpertRequest,
   getExpertRequestsByUser,
   getVariantCost,
+  getVariantOwnerAndCost,
+  resolveExpertReviewAmount,
   insertSavedTrip,
   getSavedTripsForUser,
   insertSharedTrip,
@@ -60,24 +62,30 @@ function generateToken(): string {
  */
 router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res) => {
   try {
-    const {
-      userId,
-      userEmail,
-      variantId,
-      comparisonId,
-      destination,
-      serviceType,
-      amount,
-      notes,
-    } = req.body;
+    // Acting user = session, NEVER the body. (Was: userId from req.body — an identity-spoof hole.)
+    const sessionUserId = getUserId(req);
+    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
-    if (!userId || !variantId || !comparisonId || !destination || !serviceType || !amount) {
+    // `amount` and `userId` are intentionally NOT read from the body. The charge amount is derived
+    // server-side from the variant's stored cost + the tier; a client-sent amount is ignored.
+    const { userEmail, variantId, comparisonId, destination, serviceType, notes } = req.body;
+
+    if (!variantId || !comparisonId || !destination || !serviceType) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Ownership (IDOR) + server-side price derivation from the variant record.
+    const ctx = await getVariantOwnerAndCost(variantId);
+    if (!ctx) return res.status(404).json({ error: 'Variant not found' });
+    if (ctx.ownerUserId !== sessionUserId) {
+      return res.status(403).json({ error: 'You do not own this itinerary' });
+    }
+    const amount = resolveExpertReviewAmount(serviceType, ctx.totalCost);
+    if (amount == null) return res.status(400).json({ error: 'Invalid service tier' });
+
     const paymentIntent = await stripePaymentService.createExpertServicePaymentIntent(
-      userId,
-      userEmail || `user${userId}@traveloure.com`,
+      sessionUserId,
+      userEmail || `user${sessionUserId}@traveloure.com`,
       variantId,
       comparisonId,
       destination,
