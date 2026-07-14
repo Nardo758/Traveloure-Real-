@@ -53,7 +53,7 @@ import {
   type VendorAvailabilitySlot, type InsertVendorAvailabilitySlot,
   type CoordinationState, type InsertCoordinationState,
   type CoordinationBooking, type InsertCoordinationBooking,
-  type ExpertCustomService, type InsertExpertCustomService,
+  type ProviderServiceListing, type InsertProviderServiceListing,
   type DestinationEvent, type InsertDestinationEvent,
   type DestinationSeason, type InsertDestinationSeason,
   type LocationCache, type InsertLocationCache,
@@ -330,16 +330,16 @@ export interface IStorage {
   getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]>;
 
   // Expert Custom Services
-  getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]>;
-  getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined>;
-  getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]>;
-  createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService>;
-  updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined>;
-  submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined>;
-  approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined>;
-  rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined>;
-  deleteExpertCustomService(id: string): Promise<void>;
-  getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]>;
+  getProviderServiceListings(expertId: string): Promise<ProviderServiceListing[]>;
+  getProviderServiceListingById(id: string): Promise<ProviderServiceListing | undefined>;
+  getProviderServiceListingsByStatus(status: string): Promise<ProviderServiceListing[]>;
+  createProviderServiceListing(expertId: string, service: InsertProviderServiceListing): Promise<ProviderServiceListing>;
+  updateProviderServiceListing(id: string, updates: Partial<InsertProviderServiceListing>): Promise<ProviderServiceListing | undefined>;
+  submitProviderServiceListing(id: string): Promise<ProviderServiceListing | undefined>;
+  approveProviderServiceListing(id: string, reviewedBy: string): Promise<ProviderServiceListing | undefined>;
+  rejectProviderServiceListing(id: string, reviewedBy: string, reason: string): Promise<ProviderServiceListing | undefined>;
+  deleteProviderServiceListing(id: string): Promise<void>;
+  getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]>;
 
   // Custom Venues
   getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
@@ -978,7 +978,7 @@ export class DatabaseStorage implements IStorage {
     // twin of marketplace Gap 2) is clamped server-side to the non-approved born set: an explicit 'draft'
     // (ServiceForm save-as-draft) is honored, everything else — including a client-sent 'approved'/'rejected'
     // or an omitted value — is forced to 'submitted' (the review-queue entry state). Never trust the client
-    // for approval; approval only happens via the admin queue (custom-services approve/reject).
+    // for approval; approval only happens via the admin queue (/api/admin/provider-services approve/reject).
     const bornApprovalStatus = (service as any).approvalStatus === 'draft' ? 'draft' : 'submitted';
     const [newService] = await db.insert(providerServices)
       .values({ ...service, approvalStatus: bornApprovalStatus, trackingNumber })
@@ -2405,9 +2405,9 @@ export class DatabaseStorage implements IStorage {
   // Consolidated in migration 0007: these now read/write provider_services
   // filtered by approval_status. The legacy expert_custom_services table is
   // retained (parallel-run) until 0008 drops it. Shape is mapped back to
-  // ExpertCustomService so route consumers don't change.
+  // ProviderServiceListing so route consumers don't change.
 
-  private mapProviderToExpertCustom(ps: ProviderService): ExpertCustomService {
+  private mapProviderServiceToListing(ps: ProviderService): ProviderServiceListing {
     return {
       id: ps.id,
       expertId: ps.userId,
@@ -2433,29 +2433,29 @@ export class DatabaseStorage implements IStorage {
       averageRating: ps.averageRating ?? "0",
       createdAt: ps.createdAt,
       updatedAt: ps.updatedAt,
-    } as ExpertCustomService;
+    } as ProviderServiceListing;
   }
 
-  async getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]> {
+  async getProviderServiceListings(expertId: string): Promise<ProviderServiceListing[]> {
     const rows = await db.select().from(providerServices)
       .where(eq(providerServices.userId, expertId))
       .orderBy(desc(providerServices.createdAt));
-    return rows.map(r => this.mapProviderToExpertCustom(r));
+    return rows.map(r => this.mapProviderServiceToListing(r));
   }
 
-  async getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined> {
+  async getProviderServiceListingById(id: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.select().from(providerServices).where(eq(providerServices.id, id));
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]> {
+  async getProviderServiceListingsByStatus(status: string): Promise<ProviderServiceListing[]> {
     const rows = await db.select().from(providerServices)
       .where(eq(providerServices.approvalStatus, status))
       .orderBy(desc(providerServices.submittedAt));
-    return rows.map(r => this.mapProviderToExpertCustom(r));
+    return rows.map(r => this.mapProviderServiceToListing(r));
   }
 
-  async createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService> {
+  async createProviderServiceListing(expertId: string, service: InsertProviderServiceListing): Promise<ProviderServiceListing> {
     // Single taxonomy: experts use service_categories directly (no mapping from expert_service_categories).
     // categoryId comes from the form as a service_categories.id, passed through as-is.
     const categoryId = (service as any).categoryId || null;
@@ -2493,10 +2493,10 @@ export class DatabaseStorage implements IStorage {
       metadata: { serviceType: newRow.serviceType, categoryId: newRow.categoryId, approvalStatus: 'draft' },
     });
 
-    return this.mapProviderToExpertCustom(newRow);
+    return this.mapProviderServiceToListing(newRow);
   }
 
-  async updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined> {
+  async updateProviderServiceListing(id: string, updates: Partial<InsertProviderServiceListing>): Promise<ProviderServiceListing | undefined> {
     const patch: any = { updatedAt: new Date() };
     if (updates.title !== undefined) patch.serviceName = updates.title;
     if (updates.description !== undefined) patch.description = updates.description;
@@ -2516,18 +2516,18 @@ export class DatabaseStorage implements IStorage {
       .set(patch)
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined> {
+  async submitProviderServiceListing(id: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({ approvalStatus: "submitted", submittedAt: new Date(), updatedAt: new Date() })
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined> {
+  async approveProviderServiceListing(id: string, reviewedBy: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({
         approvalStatus: "approved",
@@ -2539,10 +2539,10 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined> {
+  async rejectProviderServiceListing(id: string, reviewedBy: string, reason: string): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({
         approvalStatus: "rejected",
@@ -2553,14 +2553,14 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(providerServices.id, id))
       .returning();
-    return row ? this.mapProviderToExpertCustom(row) : undefined;
+    return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async deleteExpertCustomService(id: string): Promise<void> {
+  async deleteProviderServiceListing(id: string): Promise<void> {
     await db.delete(providerServices).where(eq(providerServices.id, id));
   }
 
-  async getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]> {
+  async getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]> {
     if (expertIds.length === 0) return [];
     const rows = await db.select().from(providerServices)
       .where(and(
@@ -2568,7 +2568,7 @@ export class DatabaseStorage implements IStorage {
         eq(providerServices.status, "active"),
         inArray(providerServices.userId, expertIds),
       ));
-    return rows.map(r => this.mapProviderToExpertCustom(r));
+    return rows.map(r => this.mapProviderServiceToListing(r));
   }
 
   // Destination Calendar Events
