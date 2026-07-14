@@ -87,8 +87,9 @@ things that are actually **built and live**. A handful were overstated the other
 | Decision | What the maps recommend | Why it's a decision, not a bug | Coupled to |
 |---|---|---|---|
 | **8 markets vs. one wedge** | Concentrate to one market (density > breadth) | Liquidity/strategy call; costs no code | Everything below |
-| **Guild-doc vs. talent-selection vs. hybrid** | Hybrid: guild doc = inputs, talent = judgment | Product/ops model, not a code fact | The market call (talent = slow, market-by-market) |
-| **Knowledge Bar standard** | Define what a Local Expert must know (comparative/current/local judgment), per market | Content/curation call | Market + guild/talent |
+| — **RESOLVED (Jul 14, 2026): ONE wedge — KYOTO** | ✅ ratified — Kyoto is the de-facto wedge (real inventory); other 7 are content-source scaffolding only. CLAUDE.md §12. | Made by the decision-maker | Unblocks talent/Knowledge-Bar + sequencing below |
+| **Guild-doc vs. talent-selection vs. hybrid** | Hybrid: guild doc = inputs, talent = judgment | Product/ops model, not a code fact | → resolved by the market call: **talent-selection feasible in one market**; vet deep Kyoto talent |
+| **Knowledge Bar standard** | Define what a Local Expert must know (comparative/current/local judgment), per market | Content/curation call | → **the Kyoto standard**; extend the local-expert Knowledge-Proof into a scored gate |
 | **Expertise-verification mechanism** | Scenario-based scored onboarding test | A gate to *build/decide* — note: a **Knowledge-Proof essay gate already exists** for local experts, but is unscored; the decision is whether to add scenario-scoring | Knowledge Bar standard |
 | **Anti-leakage strategy** | escrow + messaging + real reviews | Two of three now exist (escrow, messaging); decision is **reviews** (make them transaction-backed) + policy | Escrow (done), reviews (open) |
 | **Escrow model** | hold/release/dispute over Stripe Connect delayed payout | **Largely RESOLVED this session** — the spine is built; remaining calls are payout-rail evolution + per-path coverage | — |
