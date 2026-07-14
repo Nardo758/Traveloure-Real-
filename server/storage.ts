@@ -469,6 +469,8 @@ export interface IStorage {
   getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]>;
   updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout>;
   updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
+  claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined>;
+  claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined>;
 
   // Stripe Connect
   updateUserStripeAccount(userId: string, stripeAccountId: string, status: string): Promise<void>;
@@ -3225,6 +3227,25 @@ export class DatabaseStorage implements IStorage {
     if (transactionId) updates.transactionId = transactionId;
     const [updated] = await db.update(expertPayouts).set(updates).where(eq(expertPayouts.id, id)).returning();
     return updated;
+  }
+
+  // Atomic claim before a Stripe transfer (money-safety idempotency): flip to 'processing' ONLY
+  // if not already completed/processing. Returns undefined if another caller already claimed/
+  // completed it — the transition IS the concurrency guard, so a double-invocation transfers once.
+  async claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined> {
+    const [row] = await db.update(expertPayouts)
+      .set({ status: 'processing', processedAt: new Date() })
+      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing')`))
+      .returning();
+    return row;
+  }
+
+  async claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined> {
+    const [row] = await db.update(providerPayouts)
+      .set({ status: 'processing', processedAt: new Date() })
+      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing')`))
+      .returning();
+    return row;
   }
 
   async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout> {
