@@ -72,6 +72,14 @@ This document captures architectural decisions to maintain consistency across co
 9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
    endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
+   - **Ground-truth correction (Jul 14, 2026): the "mostly-dark supply side" headline was overstated.** Re-verified on
+     `origin/main`, three surfaces the maps inferred were dark are actually **LIVE on origin/main** (not even
+     deploy-only): the **recommender** (real `server/services/recommendation.service.ts` → `getExpertRecommendations`/
+     `getProviderRecommendations`, mounted at `/api/recommendations/expert|provider|user`), **provider discovery**
+     (`/service-providers` + the full `/provider/*` route set in `App.tsx`), and the **expert workspace**
+     (`/expert/workspace/:tripId`, expert-gated). What IS genuinely dark stays the `experts.routes.ts` families above
+     (import present, no `app.use`). The maps were **inference**; treat these four as re-verified fact. The remaining
+     demand/supply map claims still need reconciliation against the ground-truth corrections table.
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
