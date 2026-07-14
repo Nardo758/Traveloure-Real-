@@ -147,9 +147,15 @@ world-writable fee-config, then the four below); the rule closes the class so th
 
 **Guard:** `scripts/check-money-endpoints.cjs` (grep gate) fails if a payment/ownership route reads
 `req.body.amount`/`price`/`userId` into a money decision — the cheapest durable catch for the next instance. Do not
-remove it. *(Known limitation: the guard is filename-scoped — it flags money-suspect field reads in files whose name
-matches a money keyword; a money op in a non-matching filename is missed. Harden to operation-scope later.)* **NOT in
-this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
+remove it. **Now operation-scoped (hardened Jul 14, 2026 — wired into CI via `.github/workflows/build.yml`):** it scans
+**every** `.ts` under `server/routes` + `server/services` **plus the `server/routes.ts` monolith**, and flags a
+body-sourced amount/price/userId when EITHER the file is money-named (original coverage, no regression) OR the **enclosing
+route handler performs a money operation** (Stripe call / transfer / refund / charge / payout / earning-or-revenue write /
+capture-confirm). Handler-scoping keeps the monolith from flagging unrelated reads. Escape hatch unchanged: a genuinely
+safe read (e.g. a server-capped payout *withdrawal* of the user's own balance, or a preview that never charges) carries a
+`money-derive-ok` comment on the line. (First catch on landing: the two dark `payouts/request` handlers in
+`experts.routes.ts` — a non-money-named file the old guard never scanned — reviewed as safe withdrawals, annotated.)
+**NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
 `/checkout` dup-bookings — see §15); marketplace Phase B surfacing.
 
