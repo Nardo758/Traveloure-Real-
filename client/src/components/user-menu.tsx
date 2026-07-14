@@ -142,25 +142,33 @@ export function UserMenu() {
 
         <DropdownMenuSeparator />
 
-        {/* ── Shared consoles — visible to every logged-in user ── */}
+        {/* ── My Dashboard — visible to every logged-in user ── */}
         <DropdownMenuItem asChild>
           <Link href="/dashboard" className={consoleItemClass(inUserConsole)} data-testid="link-user-console">
             <User className="w-4 h-4 mr-2" />
-            User Console
+            My Dashboard
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/expert/dashboard" className={consoleItemClass(inExpertConsole)} data-testid="link-expert-console">
-            <UserCheck className="w-4 h-4 mr-2" />
-            Expert Console
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/provider/dashboard" className={consoleItemClass(inProviderConsole)} data-testid="link-provider-console">
-            <Briefcase className="w-4 h-4 mr-2" />
-            Provider Console
-          </Link>
-        </DropdownMenuItem>
+
+        {/* ── Expert Console — only for expert roles ── */}
+        {isExpert && (
+          <DropdownMenuItem asChild>
+            <Link href="/expert/dashboard" className={consoleItemClass(inExpertConsole)} data-testid="link-expert-console">
+              <UserCheck className="w-4 h-4 mr-2" />
+              Expert Console
+            </Link>
+          </DropdownMenuItem>
+        )}
+
+        {/* ── Provider Console — only for service_provider role ── */}
+        {isProvider && (
+          <DropdownMenuItem asChild>
+            <Link href="/provider/dashboard" className={consoleItemClass(inProviderConsole)} data-testid="link-provider-console">
+              <Briefcase className="w-4 h-4 mr-2" />
+              Provider Console
+            </Link>
+          </DropdownMenuItem>
+        )}
 
         {/* ── EA-specific ── */}
         {isEA && (
