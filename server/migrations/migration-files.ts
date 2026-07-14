@@ -342,4 +342,13 @@ export const MIGRATION_FILES = [
   // the purchase-status default off 'completed' → 'pending_payment'. provider_services untouched
   // (already grandfathered 'approved'; Phase 4 wires its read-gate). Guarded/idempotent.
   "110_expert_template_approval_and_purchase_status.sql",
+  // Migration 111 — F2 born-approved fix (approval lifecycle D1a CLOSED). Flips the
+  // provider_services.approval_status DB column default 'approved' → 'submitted' so new
+  // listings are born submitted (enter the existing custom-services admin review queue),
+  // never born-approved. FUTURE-INSERTS-ONLY: no UPDATE over existing rows — the live
+  // catalog is grandfathered 'approved' (zero outage). Pairs with the ORM default flip
+  // (shared/schema.ts:578), the createProviderService server-side clamp (never trust the
+  // client for 'approved'), and the completed public read-gate. Idempotent (SET DEFAULT is
+  // naturally idempotent); guarded no-op if the column is already 'submitted'.
+  "111_provider_services_born_submitted.sql",
 ] as const;
