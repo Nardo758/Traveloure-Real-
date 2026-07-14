@@ -160,11 +160,20 @@ This document captures architectural decisions to maintain consistency across co
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
-- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **One arm
-  FIXED:** the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
-  `expert-detail.tsx` now uses `verified === true`. **Still open:** fabricated `4.9`/`4.5` ratings, a `90/10` commission
-  **literal**, hardcoded "free cancellation / instant confirmation / 24-7 support" copy, and a 2-character-neighbourhood
-  empty-result trap. Do not mark §13 resolved — only the `verified` arm is done.
+- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **Two arms
+  FIXED:** ① the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
+  `expert-detail.tsx` now uses `verified === true`. ② **fabricated `4.9`/`4.5` ratings on LIVE surfaces — closed (PR #177).**
+  The server was already honest (review create is booking-gated; `provider_services.averageRating`/`reviewCount` are real
+  aggregates, `null`/`0` with no reviews). The fabrication was **client-side** — hardcoded `const rating = 4.9` in the
+  expert/match/provider cards + `avgRating ?? "4.9"` / `averageRating || "4.5"` fallbacks that invented a score over the
+  honest null. All live sites now show the **real** rating when `reviewCount > 0`, else an honest **"New"** (never a fake
+  number). **Still filed (separate, NOT the same as fabrication):** (a) a real **expert-level rating aggregate** doesn't
+  exist yet (experts have no rating source — service reviews are service-scoped), so expert cards honestly show "New";
+  (b) **mock-data demo arrays** (`chat.tsx`, `explore.tsx`, `help-me-decide` sample packages, `provider/profile`) still
+  carry placeholder `rating: 4.x` — those are fake sample *content*, a "wire real data" task, not the display-fabrication
+  bug. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
+  confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap. Do not mark §13 resolved — the
+  `verified` + live-ratings arms are done.
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 

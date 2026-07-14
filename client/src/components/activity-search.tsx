@@ -40,7 +40,7 @@ interface ActivityMapMarker {
   lng: number;
   category: string;
   price: number;
-  rating: number;
+  rating: number | null;
   description?: string;
 }
 
@@ -411,7 +411,7 @@ export function ActivitySearch({
           lng,
           category: filterType === "transport" ? "transportation" : "activities",
           price: activity.pricing?.summary?.fromPrice || 0,
-          rating: activity.reviews?.combinedAverageRating || 4.5,
+          rating: activity.reviews?.combinedAverageRating ?? null,
           description: activity.description?.substring(0, 100),
         } as ActivityMapMarker;
       })

@@ -1091,7 +1091,7 @@ export default function ExperienceTemplatePage() {
   
   // State for search result markers on map
   const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
-  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
+  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number | null; description?: string }>>([]);
 
   // Geocode destination using server-side Google Maps Geocoding API for accurate city coordinates
   const [destinationCenter, setDestinationCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -1538,7 +1538,7 @@ export default function ExperienceTemplatePage() {
             name: s.serviceName,
             category: s.serviceType || currentTabCategory || "venue",
             price: Number(s.price) || 0,
-            rating: Number(s.averageRating) || 4.5,
+            rating: Number(s.averageRating) || null,
             lat: baseLat + latOffset,
             lng: baseLng + lngOffset,
             description: s.shortDescription || s.description || undefined
@@ -2765,10 +2765,14 @@ export default function ExperienceTemplatePage() {
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between mb-2">
                             <h3 className="font-semibold text-lg">{service.serviceName}</h3>
-                            <Badge variant="secondary" className="text-xs">
-                              <Star className="w-3 h-3 mr-1 fill-amber-400 text-amber-400" />
-                              {service.averageRating || "4.8"}
-                            </Badge>
+                            {service.averageRating ? (
+                              <Badge variant="secondary" className="text-xs">
+                                <Star className="w-3 h-3 mr-1 fill-amber-400 text-amber-400" />
+                                {service.averageRating}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">New</Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                             {service.shortDescription || service.description}
