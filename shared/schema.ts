@@ -3915,8 +3915,9 @@ export const expertEarnings = pgTable("expert_earnings", {
   referenceId: varchar("reference_id"), // template_purchase_id, affiliate_click_id, etc.
   referenceType: varchar("reference_type", { length: 50 }),
   description: text("description"),
-  status: varchar("status", { length: 50 }).default("pending"), // pending, available, paid_out
-  availableAt: timestamp("available_at"), // when funds become available for payout
+  status: varchar("status", { length: 50 }).default("held"), // escrow: held, releasable, paid_out, reversed (migration 112)
+  disputeState: varchar("dispute_state", { length: 20 }).default("none"), // none, open (blocks release; admin-resolved) — escrow spine
+  availableAt: timestamp("available_at"), // clearance deadline: held → releasable when now >= available_at (Phase 2 job)
   paidOutAt: timestamp("paid_out_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -4115,8 +4116,9 @@ export const providerEarnings = pgTable("provider_earnings", {
   sourceId: varchar("source_id"), // Reference to booking or other source
   trackingNumber: varchar("tracking_number", { length: 20 }), // Link to content registry
   description: text("description"),
-  status: varchar("status", { length: 20 }).default("pending"), // pending, available, paid_out
-  availableAt: timestamp("available_at"), // When funds become available for payout
+  status: varchar("status", { length: 20 }).default("held"), // escrow: held, releasable, paid_out, reversed (migration 112)
+  disputeState: varchar("dispute_state", { length: 20 }).default("none"), // none, open (blocks release; admin-resolved) — escrow spine
+  availableAt: timestamp("available_at"), // clearance deadline: held → releasable when now >= available_at (Phase 2 job)
   paidAt: timestamp("paid_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),

@@ -4733,7 +4733,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         referenceId: purchase.id,
         referenceType: 'template_purchase',
         description: `Sale of template (confirmed payment ${paymentIntentId})`,
-        status: 'available',
+        status: 'held', // escrow: born held; available_at=now preserves prior "immediately releasable" timing (migration 112)
         availableAt: new Date(),
       });
 
