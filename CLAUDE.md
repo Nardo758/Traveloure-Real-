@@ -147,9 +147,37 @@ world-writable fee-config, then the four below); the rule closes the class so th
 
 **Guard:** `scripts/check-money-endpoints.cjs` (grep gate) fails if a payment/ownership route reads
 `req.body.amount`/`price`/`userId` into a money decision — the cheapest durable catch for the next instance. Do not
-remove it. **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
+remove it. *(Known limitation: the guard is filename-scoped — it flags money-suspect field reads in files whose name
+matches a money keyword; a money op in a non-matching filename is missed. Harden to operation-scope later.)* **NOT in
+this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
-`/checkout` dup-bookings); marketplace Phase B surfacing.
+`/checkout` dup-bookings — see §15); marketplace Phase B surfacing.
+
+### §15 — Money-safety idempotency invariant (double-spend on retry/race)
+
+**GOVERNING INVARIANT:** any endpoint that moves money or creates a purchase/booking must be **idempotent** — a
+retry / double-click / replay produces the **same single effect**, enforced by BOTH (a) a Stripe `idempotencyKey` on
+the external call and (b) an **atomic conditional DB update** (`UPDATE … WHERE status = <expected>`) so the state
+transition itself is the concurrency guard. A check-then-update (`if status==X { update }`) is the TOCTOU bug, **not**
+a guard. Claim the row atomically **first**, then make the external call — so a concurrent caller can't also pass.
+
+**Closed (money-safety idempotency cluster, own branch):**
+- **FIX 1 🔴 Payout double-transfer** (`PATCH /api/admin/payouts/:id`, `admin.routes.ts`): was no idempotency key +
+  no atomic guard → a retry/double-click re-ran a **real Stripe transfer**. Now: `storage.claim{Expert,Provider}PayoutForProcessing`
+  atomically flips `→'processing'` only if `status NOT IN ('completed','processing')` (returns undefined → 409, no
+  transfer); `createTransfer` takes a deterministic `idempotencyKey` (`payout-<type>-<id>`). Proven: 2nd invocation
+  claims 0 rows → one transfer.
+- **FIX 3 `/confirm` TOCTOU** (marketplace, `routes.ts`): the confirm now transitions via
+  `UPDATE template_purchases SET status='completed' WHERE id=:id AND status='pending_payment'` and records the earning
+  **only if a row was updated**; a concurrent/duplicate confirm updates 0 rows → returns `alreadyCompleted`, no double
+  credit. Proven at the DB. (Latent today — purchase UI orphaned — but race-safe before Phase B surfaces it.)
+- **FIX 2 `/checkout` — premise did NOT reproduce.** The live `/api/checkout` (`payments.routes.ts:283`, mounted before
+  the shadowed `routes.ts:7347` duplicate) **already dedups** on `service_bookings.idempotency_key`. Residual (filed,
+  not fixed here): the key is **optional** (`if (idempotencyKey)`) so a client omitting it bypasses dedup; and the
+  shadowed `routes.ts:7347` `/api/checkout` has no idempotency (dead/unreachable but a route-order landmine). Recommend:
+  require the key (or add a natural-key server dedup) + remove the dead duplicate — a small hardening, not "add idempotency."
+- **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
+  captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
 
 ---
 

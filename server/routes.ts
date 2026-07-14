@@ -4704,12 +4704,23 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         });
       }
 
-      // Mark completed and record the expert earning atomically via drizzle
+      // Idempotency guard (atomic transition, not check-then-update): the status flip IS the
+      // concurrency guard. Only the confirm that actually transitions pending_payment→completed
+      // records the earning. A concurrent/duplicate confirm updates zero rows and must NOT
+      // double-credit (the `!== pending_payment` check above is a fast-path, not the guard — two
+      // confirms can both pass it before either writes; the WHERE status='pending_payment' closes it).
       const [completed] = await db
         .update(templatePurchases)
         .set({ status: 'completed' })
-        .where(eq(templatePurchases.id, purchaseId))
+        .where(and(eq(templatePurchases.id, purchaseId), eq(templatePurchases.status, 'pending_payment')))
         .returning();
+
+      if (!completed) {
+        // Lost the race — another confirm already completed this purchase. Idempotent success,
+        // no second earning credited.
+        const template = await storage.getExpertTemplate(purchase.templateId);
+        return res.json({ purchase, template, alreadyCompleted: true });
+      }
 
       await storage.createExpertEarning({
         expertId: purchase.expertId,
