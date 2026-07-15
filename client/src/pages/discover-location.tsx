@@ -534,15 +534,15 @@ function RecommendationCard({
   useEffect(() => {
     if (!impressionFiredRef.current) {
       impressionFiredRef.current = true;
-      fetch("/api/feed/impression", {
+      // Repointed: /api/feed/impression never existed (all rec impressions were silently
+      // discarded). /api/upsell/impression is the real endpoint; it expects
+      // { surface, offeringIds } — the engine's own impression ledger.
+      fetch("/api/upsell/impression", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          offeringId: candidate.offeringId,
-          categoryKey: candidate.categoryKey,
-          position,
-          city,
-          sourceType: candidate.sourceType,
+          surface: "discover_location",
+          offeringIds: [candidate.offeringId],
         }),
       }).catch(() => {});
     }
@@ -929,9 +929,11 @@ function FlatFilteredFeed({
 function DateHighlightStrip({
   scheduledDate,
   cityIntel,
+  onAdd,
 }: {
   scheduledDate: string;
   cityIntel: any;
+  onAdd?: (item: any) => void;
 }) {
   const parsedDate = new Date(scheduledDate + "T12:00:00");
   const monthIndex = parsedDate.getMonth();
@@ -998,6 +1000,14 @@ function DateHighlightStrip({
                 size="sm"
                 variant="outline"
                 className="h-7 text-[12px] px-3"
+                onClick={() =>
+                  onAdd?.({
+                    title: eventTitle,
+                    description: cityIntel?.currentHighlight ?? null,
+                    type: "event",
+                    scheduledDate,
+                  })
+                }
                 data-testid="button-date-event-add"
               >
                 Add to {monthName} {dayOfMonth}
@@ -1570,6 +1580,7 @@ export default function DiscoverLocationPage() {
               <DateHighlightStrip
                 scheduledDate={scheduledDate}
                 cityIntel={data.hero?.data?.city}
+                onAdd={handleAdd}
               />
             )}
 
