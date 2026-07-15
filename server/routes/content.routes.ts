@@ -4933,18 +4933,20 @@ router.get("/api/travelpulse/ai/city/:cityName", requireAdmin, async (req, res) 
   });
 
   // Global Calendar - Get all cities ranked by seasonal rating for a given month
+  // NOTE: this is the LIVE handler (app.use(contentRoutes) mounts before the inline
+  // app.get copy in server/routes.ts, which is shadowed dead code — edit here only).
 
 router.get("/api/travelpulse/global-calendar", async (req, res) => {
     try {
       const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
       const vibeFilter = req.query.vibe as string;
       const limit = parseInt(req.query.limit as string) || 20;
-      
+
       // Get all cities with their seasonal data for the given month
       const cities = await travelPulseService.getAllCities();
-      
+
       // Get seasonal data for all cities for this month
-      const { destinationSeasons, destinationEvents } = await import("@shared/schema");
+      const { destinationSeasons, destinationEvents, expertTemplates, expertNeighborhoods } = await import("@shared/schema");
       const seasonsData = await db
         .select()
         .from(destinationSeasons)
@@ -4961,6 +4963,35 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
           )
         );
       
+      // D3 honest counts (§13): grouped queries across the whole city set — no N+1.
+      // Packages = approved + published expert templates whose destination mentions the city.
+      const approvedTemplateDestinations = await db
+        .select({ destination: expertTemplates.destination })
+        .from(expertTemplates)
+        .where(
+          and(
+            eq(expertTemplates.approvalStatus, "approved"),
+            eq(expertTemplates.isPublished, true)
+          )
+        );
+      const templateDestinationsLower = approvedTemplateDestinations
+        .map(t => (t.destination || "").toLowerCase())
+        .filter(d => d.length > 0);
+
+      // Local experts = DISTINCT experts with neighborhood coverage in the city.
+      const expertCountRows = await db
+        .select({
+          city: sql<string>`LOWER(${cityNeighborhoods.city})`,
+          expertCount: sql<number>`COUNT(DISTINCT ${expertNeighborhoods.expertId})::int`,
+        })
+        .from(expertNeighborhoods)
+        .innerJoin(cityNeighborhoods, eq(expertNeighborhoods.neighborhoodId, cityNeighborhoods.id))
+        .groupBy(sql`LOWER(${cityNeighborhoods.city})`);
+      const expertCountMap = new Map<string, number>();
+      for (const row of expertCountRows) {
+        expertCountMap.set(row.city, Number(row.expertCount) || 0);
+      }
+
       // Create a map of city+country to seasonal data
       const seasonMap = new Map<string, typeof seasonsData[0]>();
       for (const season of seasonsData) {
@@ -5015,7 +5046,13 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
               title: e.title,
               eventType: e.eventType,
               description: e.description,
+              specificDate: e.specificDate,
             })),
+            // D3 honest counts — real aggregates only (§13)
+            packagesCount: templateDestinationsLower.filter(d =>
+              d.includes(city.cityName.toLowerCase())
+            ).length,
+            expertsCount: expertCountMap.get(city.cityName.toLowerCase()) || 0,
             // AI data
             aiBestTimeToVisit: city.aiBestTimeToVisit,
             aiBudgetEstimate: city.aiBudgetEstimate as any,
@@ -5084,6 +5121,54 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
     } catch (error: any) {
       console.error("Error getting global calendar:", error);
       res.status(500).json({ message: "Failed to get global calendar", error: error.message });
+    }
+  });
+
+  // Year summary (D10) — best-time cities per month from destination_seasons.
+  // "Best" = rating best/excellent (the ratings that score >= 8 on the client's
+  // 10-point scale; the rating column is categorical, not numeric). ONE grouped
+  // query covers all 12 months — no per-month N+1. There was previously NO
+  // server handler at this path (the client computed year summaries itself).
+
+router.get("/api/travelpulse/year-summary", async (_req, res) => {
+    try {
+      const { destinationSeasons } = await import("@shared/schema");
+      const bestRows = await db
+        .select({
+          month: destinationSeasons.month,
+          city: destinationSeasons.city,
+          country: destinationSeasons.country,
+        })
+        .from(destinationSeasons)
+        .where(inArray(destinationSeasons.rating, ["best", "excellent"]))
+        .orderBy(asc(destinationSeasons.month), asc(destinationSeasons.city));
+
+      const byMonth = new Map<number, { cityName: string; country: string }[]>();
+      for (const row of bestRows) {
+        if (!row.city || !row.month) continue;
+        const list = byMonth.get(row.month) || [];
+        const dupe = list.some(
+          c =>
+            c.cityName.toLowerCase() === row.city!.toLowerCase() &&
+            c.country.toLowerCase() === row.country.toLowerCase()
+        );
+        if (!dupe) list.push({ cityName: row.city, country: row.country });
+        byMonth.set(row.month, list);
+      }
+
+      res.json({
+        months: Array.from({ length: 12 }, (_, i) => {
+          const list = byMonth.get(i + 1) || [];
+          return {
+            month: i + 1,
+            bestCities: list.slice(0, 2),
+            bestCitiesTotal: list.length,
+          };
+        }),
+      });
+    } catch (error: any) {
+      console.error("Error getting year summary:", error);
+      res.status(500).json({ message: "Failed to get year summary", error: error.message });
     }
   });
 

@@ -30,7 +30,16 @@ import {
   CalendarDays,
   Eye,
   EyeOff,
+  Info,
+  X,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { YearOverviewCalendar } from "./YearOverviewCalendar";
 import { MonthCalendarGrid } from "./MonthCalendarGrid";
@@ -59,9 +68,12 @@ interface GlobalCity {
   seasonCrowdLevel?: string | null;
   priceLevel?: string | null;
   highlights: string[];
-  events: { id: string; title: string; eventType: string | null; description?: string | null }[];
+  events: { id: string; title: string; eventType: string | null; description?: string | null; specificDate?: string | null }[];
   aiBestTimeToVisit?: string | null;
   aiBudgetEstimate?: { daily?: { min?: number; max?: number } } | null;
+  // D3 honest counts (real aggregates from the server; hidden when 0)
+  packagesCount?: number;
+  expertsCount?: number;
 }
 
 interface GlobalEvent {
@@ -130,6 +142,9 @@ interface MonthSummary {
   cityCount: number;
   eventDays?: number[];
   highlights?: EventHighlight[];
+  // D10: best-time cities for this month (top 2 + full count)
+  bestCities?: { cityName: string; country: string }[];
+  bestCitiesTotal?: number;
 }
 
 const vibeFilters = [
@@ -202,6 +217,7 @@ interface GlobalCalendarProps {
 
 export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const currentYear = new Date().getFullYear();
+  const currentMonthNum = new Date().getMonth() + 1;
   const [view, setView] = useState<CalendarView>("month-destinations");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedVibe, setSelectedVibe] = useState("all");
@@ -218,6 +234,21 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const { data: yearData } = useQuery<{ summaries: MonthSummary[] }>({
     queryKey: ["/api/travelpulse/year-summary", currentYear],
     queryFn: async () => {
+      // D10: best-time cities per month from the server year-summary endpoint
+      // (one grouped query server-side); merged into the per-month summaries below.
+      const bestByMonth = new Map<number, { bestCities: { cityName: string; country: string }[]; bestCitiesTotal: number }>();
+      try {
+        const bestRes = await fetch(`/api/travelpulse/year-summary`);
+        if (bestRes.ok) {
+          const bestData: { months?: { month: number; bestCities: { cityName: string; country: string }[]; bestCitiesTotal: number }[] } = await bestRes.json();
+          for (const entry of bestData.months || []) {
+            bestByMonth.set(entry.month, entry);
+          }
+        }
+      } catch {
+        // best-effort — mini-calendar city lines simply stay hidden
+      }
+
       const summaries: MonthSummary[] = [];
       for (let m = 1; m <= 12; m++) {
         const res = await fetch(`/api/travelpulse/global-calendar?month=${m}&limit=10`);
@@ -278,6 +309,8 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             cityCount: monthData.totalCities || allCities.length,
             eventDays: Array.from(new Set(eventDays)),
             highlights,
+            bestCities: bestByMonth.get(m)?.bestCities || [],
+            bestCitiesTotal: bestByMonth.get(m)?.bestCitiesTotal || 0,
           });
         }
       }
@@ -343,6 +376,15 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     setSelectedMonth((prev) => (prev === 12 ? 1 : prev + 1));
     setSelectedWeek(undefined);
     setSelectedDay(undefined);
+  };
+
+  // D5/D8: reset month + vibe filters back to the unfiltered default
+  const handleClearFilters = () => {
+    setSelectedVibe("all");
+    setSelectedMonth(currentMonthNum);
+    setSelectedWeek(undefined);
+    setSelectedDay(undefined);
+    setFilterMode("month");
   };
 
 
@@ -482,6 +524,17 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 
   const filteredEvents = filterEvents(allEvents);
 
+  // D5: a filter is "active" when the user moved off the unfiltered default
+  // (current month, all vibes). Match count is the server's post-filter total.
+  const isFilterActive = selectedVibe !== "all" || selectedMonth !== currentMonthNum;
+  const activeVibeLabel = vibeFilters.find((v) => v.id === selectedVibe)?.label ?? selectedVibe;
+  const matchCount = data?.totalCities ?? 0;
+  const hasNoDestinations =
+    grouped.best.length === 0 &&
+    grouped.good.length === 0 &&
+    grouped.average.length === 0 &&
+    grouped.eventsOnly.length === 0;
+
   return (
     <div data-testid="global-calendar" className="after:block after:clear-both after:content-['']">
       {/* Calendar container - only float when calendar is visible */}
@@ -601,6 +654,31 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
           </div>
         </div>
 
+          {/* D5: filter-state line — rendered only while a month/vibe filter is active */}
+          {isFilterActive && (
+            <div
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+              data-testid="filter-state-line"
+            >
+              <span>
+                Showing destinations best in {months[selectedMonth - 1]}
+                {selectedVibe !== "all" ? ` · ${activeVibeLabel}` : ""}
+                {" · "}
+                {matchCount} {matchCount === 1 ? "match" : "matches"}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground"
+                onClick={handleClearFilters}
+                data-testid="button-clear-filters"
+              >
+                Clear
+                <X className="h-3 w-3 ml-1" />
+              </Button>
+            </div>
+          )}
+
           {grouped.best.length > 0 && (
             <CitySection
               title="Best Time to Visit"
@@ -609,6 +687,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               rating="best"
               onCityClick={handleCityClick}
               calendarVisible={calendarVisible}
+              monthName={monthName || months[selectedMonth - 1]}
             />
           )}
 
@@ -620,6 +699,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               rating="good"
               onCityClick={handleCityClick}
               calendarVisible={calendarVisible}
+              monthName={monthName || months[selectedMonth - 1]}
             />
           )}
 
@@ -631,6 +711,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               rating="average"
               onCityClick={handleCityClick}
               calendarVisible={calendarVisible}
+              monthName={monthName || months[selectedMonth - 1]}
             />
           )}
 
@@ -642,6 +723,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               rating="events-only"
               onCityClick={handleCityClick}
               calendarVisible={calendarVisible}
+              monthName={monthName || months[selectedMonth - 1]}
             />
           )}
 
@@ -688,7 +770,28 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             </div>
           )}
 
-          {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && grouped.eventsOnly.length === 0 && (
+          {/* D8: honest empty state — a friendlier block when a vibe filter caused the
+              zero-result, with a clear-filters action; the original unfiltered block is kept */}
+          {hasNoDestinations && selectedVibe !== "all" && (
+            <Card className="p-8 text-center" data-testid="empty-filtered-state">
+              <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No {activeVibeLabel.toLowerCase()} data for {months[selectedMonth - 1]} yet — try
+                other months, or browse all destinations
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearFilters}
+                className="mt-4"
+                data-testid="button-clear-filters-empty"
+              >
+                Clear filters
+              </Button>
+            </Card>
+          )}
+
+          {hasNoDestinations && selectedVibe === "all" && (
             <Card className="p-8 text-center">
               <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No destination data available for {monthName}</p>
@@ -748,14 +851,25 @@ function getSeasonGuidance(city: GlobalCity): string {
 function CityCard({
   city,
   onCityClick,
+  monthName,
 }: {
   city: GlobalCity;
   onCityClick?: (cityName: string, country: string) => void;
+  monthName?: string;
 }) {
   const experienceSuggestions = getExperienceSuggestionsForCity(city);
   const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
   const seasonScore = getSeasonScore(city.seasonalRating);
   const seasonGuidance = getSeasonGuidance(city);
+  // D3 honest counts — real aggregates only; each segment hidden when 0 (§13)
+  const eventsCount = city.events.length;
+  const packagesCount = city.packagesCount ?? 0;
+  const expertsCount = city.expertsCount ?? 0;
+  const countSegments = [
+    eventsCount > 0 ? `🎆 ${eventsCount} ${eventsCount === 1 ? "event" : "events"}` : null,
+    packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "package" : "packages"}` : null,
+    expertsCount > 0 ? `🧭 ${expertsCount} local ${expertsCount === 1 ? "expert" : "experts"}` : null,
+  ].filter((segment): segment is string => segment !== null);
 
   return (
     <Card
@@ -843,6 +957,13 @@ function CityCard({
               ))}
             </div>
           )}
+
+          {/* D3: honest counts row — hidden entirely when everything is 0 (§13) */}
+          {countSegments.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground" data-testid={`city-counts-${city.id}`}>
+              {countSegments.join(" · ")}
+            </div>
+          )}
         </CardContent>
       </div>
 
@@ -865,6 +986,104 @@ function CityCard({
               </Button>
             </Link>
           ))}
+          {/* D9: More info modal — additive, does not displace the existing buttons */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => e.stopPropagation()}
+                data-testid={`button-more-info-${city.id}`}
+              >
+                <Info className="h-3 w-3 mr-1" />
+                More info
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md" onClick={(e) => e.stopPropagation()}>
+              <DialogHeader>
+                <DialogTitle>
+                  {city.cityName}{monthName ? ` in ${monthName}` : ""}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {/* Season summary: score + guidance */}
+                {city.seasonalRating && seasonScore > 0 && (
+                  <div className="p-2 rounded-lg bg-muted/50 border border-muted">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-bold">{seasonScore}</span>
+                        <span className="text-xs text-muted-foreground">/10</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">Ideal month</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{seasonGuidance}</p>
+                  </div>
+                )}
+
+                {/* Weather + crowds */}
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  {city.weatherDescription && (
+                    <span className="flex items-center gap-1">
+                      {getWeatherIcon(city.weatherDescription)}
+                      <span className="text-muted-foreground">
+                        {city.weatherDescription}
+                        {city.averageTemp ? ` · ${city.averageTemp}` : ""}
+                      </span>
+                    </span>
+                  )}
+                  {city.seasonCrowdLevel && (
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel} crowds</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Events this month */}
+                {city.events.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium mb-1">Events{monthName ? ` in ${monthName}` : ""}</p>
+                    <div className="space-y-1">
+                      {city.events.slice(0, 5).map((event) => (
+                        <div key={event.id} className="flex items-center gap-1 text-xs">
+                          <Ticket className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                          <span className="truncate">{event.title}</span>
+                          {event.specificDate && (
+                            <span className="text-muted-foreground flex-shrink-0">
+                              · {new Date(event.specificDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* D3 counts — real aggregates only; hidden when all 0 (§13) */}
+                {countSegments.length > 0 && (
+                  <p className="text-xs text-muted-foreground">{countSegments.join(" · ")}</p>
+                )}
+
+                {/* CTAs */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    onClick={() => onCityClick?.(city.cityName, city.country)}
+                    data-testid={`button-modal-see-city-${city.id}`}
+                  >
+                    <MapPin className="h-3 w-3 mr-1" />
+                    See {city.cityName}{monthName ? ` in ${monthName}` : ""}
+                  </Button>
+                  <Link href="/discover?tab=packages">
+                    <Button variant="outline" size="sm" data-testid={`button-modal-view-packages-${city.id}`}>
+                      <BookOpen className="h-3 w-3 mr-1" />
+                      View packages
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </Card>
@@ -936,6 +1155,7 @@ function CitySection({
   rating,
   onCityClick,
   calendarVisible = true,
+  monthName,
 }: {
   title: string;
   subtitle: string;
@@ -943,6 +1163,7 @@ function CitySection({
   rating: string;
   onCityClick?: (cityName: string, country: string) => void;
   calendarVisible?: boolean;
+  monthName?: string;
 }) {
   // Deduplicate cities by name, keeping first occurrence
   const seenNames = new Set<string>();
@@ -973,7 +1194,7 @@ function CitySection({
       {/* First row: 2 cards when calendar visible (beside 648px calendar), 4 cards when hidden */}
       <div className={`grid grid-cols-1 md:grid-cols-2 ${calendarVisible ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 mb-4`}>
         {firstRowCities.map((city) => (
-          <CityCard key={city.id} city={city} onCityClick={onCityClick} />
+          <CityCard key={city.id} city={city} onCityClick={onCityClick} monthName={monthName} />
         ))}
       </div>
       
@@ -981,7 +1202,7 @@ function CitySection({
       {secondRowCities.length > 0 && (
         <div className="clear-both grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {secondRowCities.map((city) => (
-            <CityCard key={city.id} city={city} onCityClick={onCityClick} />
+            <CityCard key={city.id} city={city} onCityClick={onCityClick} monthName={monthName} />
           ))}
         </div>
       )}
@@ -990,7 +1211,7 @@ function CitySection({
       {thirdRowCities.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           {thirdRowCities.map((city) => (
-            <CityCard key={city.id} city={city} onCityClick={onCityClick} />
+            <CityCard key={city.id} city={city} onCityClick={onCityClick} monthName={monthName} />
           ))}
         </div>
       )}
