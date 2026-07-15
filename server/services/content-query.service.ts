@@ -6,7 +6,7 @@
 
 import { db } from "../db";
 import {
-  eq, and, or, inArray, ilike, count, sql,
+  eq, and, or, inArray, ilike, count, sql, gte,
 } from "drizzle-orm";
 import {
   users, contactSubmissions, userAndExpertChats, notifications,
@@ -498,6 +498,98 @@ export async function getPlatformStats(): Promise<{
 }
 
 // ─── Analytics Tracking ───────────────────────────────────────────────────────
+
+/**
+ * Record a feed content impression (analytics-only, fire-and-forget semantics).
+ * Deduped by the migration-116 unique index on (session_id, content_type, content_id):
+ * on a duplicate the INSERT is a no-op and the EXISTING impression id is returned,
+ * so click attribution stays stable across remount races. Returns the impression id.
+ */
+export async function insertContentImpression(values: {
+  contentType: string;
+  contentId: string;
+  city?: string | null;
+  cardPosition?: number | null;
+  sessionId: string;
+  userId?: string | null;
+}): Promise<string> {
+  const { contentImpressions } = await import("@shared/schema");
+  const [inserted] = await db
+    .insert(contentImpressions)
+    .values({
+      contentType: values.contentType,
+      contentId: values.contentId,
+      city: values.city ?? null,
+      cardPosition: values.cardPosition ?? null,
+      sessionId: values.sessionId,
+      userId: values.userId ?? null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: contentImpressions.id });
+  if (inserted) return inserted.id;
+
+  // Duplicate (session, contentType, contentId) — return the existing impression's id.
+  const [existing] = await db
+    .select({ id: contentImpressions.id })
+    .from(contentImpressions)
+    .where(
+      and(
+        eq(contentImpressions.sessionId, values.sessionId),
+        eq(contentImpressions.contentType, values.contentType),
+        eq(contentImpressions.contentId, values.contentId),
+      ),
+    )
+    .limit(1);
+  if (!existing) throw new Error("Impression insert conflicted but no existing row found");
+  return existing.id;
+}
+
+/**
+ * Demand counts for the wanted-slot recruitment cards ("N travellers want this").
+ * Counts UNEXPIRED service_demand_signals rows (expires_at >= now, or >= dateRangeStart
+ * when a future date filter is active) for the city, per requested offering key —
+ * matched case-insensitively against service_type OR category_slug. REAL counts only
+ * (§13: never fabricate) — a key with no matching signals returns 0.
+ */
+export async function getDemandCountsForCity(
+  city: string,
+  offeringTypeKeys: string[],
+  dateRangeStart?: string,
+): Promise<Record<string, number>> {
+  const { serviceDemandSignals } = await import("@shared/schema");
+
+  // Signals must still be valid now; a future date filter tightens the window
+  // (demand must still be unexpired at that date). Invalid dates are ignored.
+  let cutoff = new Date();
+  if (dateRangeStart) {
+    const parsed = Date.parse(dateRangeStart);
+    if (!Number.isNaN(parsed) && parsed > cutoff.getTime()) cutoff = new Date(parsed);
+  }
+
+  const rows = await db
+    .select({
+      serviceType: serviceDemandSignals.serviceType,
+      categorySlug: serviceDemandSignals.categorySlug,
+    })
+    .from(serviceDemandSignals)
+    .where(
+      and(
+        ilike(serviceDemandSignals.city, city), // stored lowercase; exact case-insensitive match
+        gte(serviceDemandSignals.expiresAt, cutoff),
+      ),
+    );
+
+  const counts: Record<string, number> = {};
+  for (const key of offeringTypeKeys) {
+    const keyLower = key.toLowerCase();
+    counts[key] = rows.filter(
+      (r) =>
+        r.serviceType?.toLowerCase() === keyLower ||
+        r.categorySlug?.toLowerCase() === keyLower,
+    ).length;
+  }
+  return counts;
+}
 
 export async function insertSearchAnalytics(values: Record<string, any>): Promise<void> {
   const { searchAnalytics } = await import("@shared/schema");

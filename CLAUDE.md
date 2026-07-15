@@ -583,6 +583,22 @@ Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a�
 `provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
 both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
 
+**Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
+analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by
+migration 082 but **never had a writer** — the client feed's impression tracker
+(`client/src/hooks/use-impression-tracker.ts`) POSTed to `/api/tracking/impression`, an endpoint that did not exist,
+so every card's `sourceImpressionId` was null (impression→click attribution severed). Companion code adds the
+endpoint (`content.routes.ts`, public — the feed is public; `userId` opportunistic from session; zod-validated body;
+single insert returning `{impressionId}`). 116 completes the table: `session_id` NOT NULL (guarded — skips, never
+fails, if NULL rows exist), the UNIQUE dedup index `(session_id, content_type, content_id)` the client hook's
+contract promises (duplicate POST returns the EXISTING impression id; falls back to a non-unique index + NOTICE if
+dupes pre-exist), and a `created_at` index. `(content_type, content_id)` reads ride 082's `idx_ci_content` prefix —
+no duplicate index. Same lane (no migration): `GET /api/services/demand` (real counts of unexpired
+`service_demand_signals` per offering key for the wanted-slot cards — §13: empty = empty, never fabricated;
+registered BEFORE `/api/services/:id` in `content.routes.ts` so the literal path wins), and the daily demand-signal
+generator is un-starved (scheduler primes `travel_pulse_trending` via `getTrendingDestinations` before
+`generateDemandSignals`, best-effort per city).
+
 **Migration 067 (Jun 11, 2026; registered in `migration-files.ts`) — Discover Feed Composition admin rows:**
 data-seed only, no schema change. Inserts the five `feed_*` `platform_settings` rows read by the public
 `GET /api/feed-composition-config` (Discover Feed Composition Brief): `feed_rec_cadence` ('4'),

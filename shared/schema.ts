@@ -4405,6 +4405,21 @@ export const contentAnalytics = pgTable("content_analytics", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Content Impressions - one row per card scrolled into view on the feed
+// (analytics-only, fire-and-forget writes; written by POST /api/tracking/impression).
+// Table created by migration 082, completed by migration 116 (session_id NOT NULL +
+// unique dedup index on (session_id, content_type, content_id)).
+export const contentImpressions = pgTable("content_impressions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  contentType: varchar("content_type", { length: 50 }).notNull(), // gem | expert | provider_service | affiliate_product | event | ...
+  contentId: varchar("content_id", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  cardPosition: integer("card_position"), // slot position in the feed/grid (1-indexed)
+  sessionId: varchar("session_id", { length: 255 }).notNull(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }), // opportunistic — feed is public
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // AI Usage Logs - Track API calls and costs for all AI providers
 export const aiUsageLogs = pgTable("ai_usage_logs", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -4482,6 +4497,11 @@ export const insertContentAnalyticsSchema = createInsertSchema(contentAnalytics)
   createdAt: true,
 });
 
+export const insertContentImpressionSchema = createInsertSchema(contentImpressions).omit({
+  id: true,
+  createdAt: true,
+});
+
 // AI Usage schema exports
 export const insertAiUsageLogSchema = createInsertSchema(aiUsageLogs).omit({
   id: true,
@@ -4499,6 +4519,8 @@ export type ContentFlag = typeof contentFlags.$inferSelect;
 export type InsertContentFlag = z.infer<typeof insertContentFlagSchema>;
 export type ContentAnalytics = typeof contentAnalytics.$inferSelect;
 export type InsertContentAnalytics = z.infer<typeof insertContentAnalyticsSchema>;
+export type ContentImpression = typeof contentImpressions.$inferSelect;
+export type InsertContentImpression = z.infer<typeof insertContentImpressionSchema>;
 export type TrackingSequence = typeof trackingSequences.$inferSelect;
 export type AiUsageLog = typeof aiUsageLogs.$inferSelect;
 export type InsertAiUsageLog = z.infer<typeof insertAiUsageLogSchema>;
