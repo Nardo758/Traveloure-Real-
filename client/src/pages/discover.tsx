@@ -1255,7 +1255,17 @@ export default function DiscoverPage() {
                     TravelPulse
                   </TabsTrigger>
                   {/* Influencer Curated tab hidden in Phase 1a — returns in Phase 5 with real DB-backed content */}
-                  {/* Trip Packages tab hidden in Phase 1a — converts to "Plan from here" CTA inside the location view in Phase 3 */}
+                  {/* Packages tab UN-HIDDEN in marketplace Phase B4 — the buy loop is closed end-to-end
+                      (B1 submit → admin approve → B2 gated detail + purchase → B3 buyer delivery), and the
+                      feed is server-gated (approved+published only) + content-redacted (teaser only). */}
+                  <TabsTrigger
+                    value="packages"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-packages"
+                  >
+                    <Award className="w-4 h-4 mr-2" />
+                    Packages
+                  </TabsTrigger>
                   <TabsTrigger
                     value="events"
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
@@ -1584,13 +1594,13 @@ export default function DiscoverPage() {
 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
-                {/* Expert Itinerary Templates Section */}
+                {/* Expert Packages Section (traveler-facing label = "Packages"; seller console keeps "templates") */}
                 <div className="mb-10">
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Award className="w-5 h-5 text-primary" />
-                        Expert Itinerary Templates
+                        Expert Packages
                       </h2>
                       <p className="text-sm text-muted-foreground mt-1">
                         Purchase ready-made travel plans crafted by verified local experts
@@ -1606,7 +1616,7 @@ export default function DiscoverPage() {
                   {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
                     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
                       <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <h3 className="font-semibold text-gray-700 mb-1">No templates published yet</h3>
+                      <h3 className="font-semibold text-gray-700 mb-1">No packages published yet</h3>
                       <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
                         Verified experts can publish ready-made itinerary packages here for travelers to purchase.
                       </p>

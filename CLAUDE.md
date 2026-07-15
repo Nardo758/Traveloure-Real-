@@ -169,8 +169,12 @@ This document captures architectural decisions to maintain consistency across co
       expert-profile packages section (`/experts/:id`, via the existing `?expertId=` filter); service-detail
       same-owner cross-sell. Filed (not B4): search doesn't index templates; recommender doesn't rank them;
       `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
-      category/destination/duration are structured. Product-type label is currently mixed ("Itinerary Templates" vs
-      "packages") — user-facing standardization pending the decision-maker's call.
+      category/destination/duration are structured. **Label standard (ratified): traveler-facing = "Packages"**
+      (Discover tab/header, my-bookings tab, detail page); the seller console keeps "Itinerary Templates" (same
+      product, seller-side vocabulary — the Airbnb listings/homes split). **B4 LANDED (Phase B complete):** Discover
+      `packages` TabsTrigger restored (feed is server-gated + teaser-redacted); `/experts/:id` gains a Packages tab
+      (`?expertId=` filter, hidden when the expert has none); `/services/:id` gains a "Packages by this expert"
+      same-owner cross-sell (top 3, hidden when none). All three link into the B2 detail page.
       - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
         path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
         i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated

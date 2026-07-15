@@ -61,6 +61,18 @@ export default function ExpertDetailPage() {
     enabled: !!expertId,
   });
 
+  // This expert's purchasable packages (marketplace Phase B4). Server-gated:
+  // only approved + published templates return, content-redacted to a teaser.
+  const { data: packages = [] } = useQuery<any[]>({
+    queryKey: ["/api/expert-templates", { expertId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/expert-templates?expertId=${expertId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!expertId,
+  });
+
   const handleContactExpert = () => {
     if (!isAuthenticated) {
       openSignInModal();
@@ -302,8 +314,56 @@ export default function ExpertDetailPage() {
                   <TabsList className="mb-6">
                     <TabsTrigger value="about">About</TabsTrigger>
                     <TabsTrigger value="services">Services</TabsTrigger>
+                    {packages.length > 0 && (
+                      <TabsTrigger value="packages" data-testid="tab-expert-packages">
+                        Packages ({packages.length})
+                      </TabsTrigger>
+                    )}
                     <TabsTrigger value="reviews">Reviews ({totalReviews})</TabsTrigger>
                   </TabsList>
+
+                  {/* Packages Tab — purchasable itinerary packages by this expert (Phase B4) */}
+                  {packages.length > 0 && (
+                    <TabsContent value="packages">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {packages.map((pkg: any) => (
+                          <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
+                            <Card className="hover-elevate cursor-pointer h-full" data-testid={`expert-package-${pkg.id}`}>
+                              <CardContent className="p-4">
+                                {pkg.coverImage && (
+                                  <img
+                                    src={pkg.coverImage}
+                                    alt={pkg.title}
+                                    className="w-full h-32 object-cover rounded-lg mb-3"
+                                  />
+                                )}
+                                <div className="flex items-start justify-between gap-2">
+                                  <h3 className="font-semibold line-clamp-2">{pkg.title}</h3>
+                                  <p className="font-bold text-primary whitespace-nowrap">${pkg.price}</p>
+                                </div>
+                                <div className="flex items-center gap-3 text-sm text-muted-foreground mt-2 flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="w-3 h-3" /> {pkg.destination}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" /> {pkg.duration} days
+                                  </span>
+                                  {pkg.averageRating && parseFloat(pkg.averageRating) > 0 && (
+                                    <span className="flex items-center gap-1 text-amber-600">
+                                      <Star className="w-3 h-3 fill-current" /> {parseFloat(pkg.averageRating).toFixed(1)}
+                                    </span>
+                                  )}
+                                </div>
+                                {pkg.shortDescription && (
+                                  <p className="text-sm text-muted-foreground line-clamp-2 mt-2">{pkg.shortDescription}</p>
+                                )}
+                              </CardContent>
+                            </Card>
+                          </Link>
+                        ))}
+                      </div>
+                    </TabsContent>
+                  )}
 
                   {/* About Tab */}
                   <TabsContent value="about">
