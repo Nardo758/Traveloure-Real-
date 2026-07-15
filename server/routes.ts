@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
+import { redactTemplateContent } from "./utils/template-content-gate";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
@@ -4444,20 +4445,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   };
 
   // Get all published templates (public)
-  // Content-gate (§10 Phase B): `itineraryData` IS the paid product — the full day-by-day
-  // content must never appear on a public read, or the product is free and the purchase is
-  // decorative. Public reads get a TEASER (day number + title only); the full content is
-  // returned only to a purchaser, the owner, or an admin (the full row also stays available
-  // via the owner console and /api/my-purchased-templates).
-  const redactTemplateContent = (template: any) => {
-    if (!template) return template;
-    const days: any[] = Array.isArray(template.itineraryData?.days) ? template.itineraryData.days : [];
-    const { itineraryData: _fullContent, ...publicFields } = template;
-    return {
-      ...publicFields,
-      itineraryPreview: days.map((d: any) => ({ day: d?.day, title: d?.title ?? null })),
-    };
-  };
+  // Content-gate (§10 Phase B): shared helper — see server/utils/template-content-gate.ts.
+  // Public template reads return a teaser only; full itineraryData is purchaser/owner/admin-only.
 
   app.get("/api/expert-templates", async (req, res) => {
     try {
@@ -5584,6 +5573,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
     };
     const result = await storage.unifiedSearch(filters);
+    // Content-gate (§10): packages in search results are teaser-redacted like every public read.
+    const gatedResult = { ...result, packages: (result.packages ?? []).map(redactTemplateContent) };
 
     // Track search pattern for trend analytics (non-blocking)
     if (filters.query || filters.location) {
@@ -5600,7 +5591,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       }).catch(err => console.error("Failed to track search pattern:", err));
     }
 
-    res.json(result);
+    res.json(gatedResult);
   });
 
   // Analytics: Get destination search trends
