@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { availableAtFor } from "./config/earnings-hold.config";
 import { PROCESSING_FEE_RATE, resolveCommissionRates } from "./services/commission";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
@@ -105,7 +106,7 @@ import {
   aiGeneratedItineraries,
   tripAnalyticsEnhanced,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, sql as sqlOp } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 import {
@@ -166,6 +167,7 @@ export interface IStorage {
   getLocalExpertForms(status?: string): Promise<LocalExpertForm[]>;
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+  updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
@@ -256,7 +258,7 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; total: number }>;
+  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }>;
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
@@ -460,7 +462,12 @@ export interface IStorage {
   getProviderEarnings(providerId: string): Promise<ProviderEarning[]>;
   getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
   createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning>;
-  
+  releaseMaturedEarnings(now?: Date): Promise<{ expert: number; provider: number }>;
+  releaseEarningsForBooking(bookingId: string, now?: Date): Promise<number>;
+  setBookingEarningsDispute(bookingId: string, open: boolean, now?: Date): Promise<number>;
+  reverseEarningsForBooking(bookingId: string, now?: Date): Promise<{ reversed: number; skippedPaidOut: number }>;
+  reversePlatformRevenueForBooking(bookingId: string, now?: Date): Promise<number>;
+
   // Provider Payouts
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
   createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout>;
@@ -893,6 +900,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(localExpertForms.id, id))
       .returning();
     return updated;
+  }
+
+  // Kyoto Knowledge-Bar scored expertise gate (migration 114): persist the AI-scored rubric result.
+  // Advisory — decision support for the admin queue; does not change status/approval.
+  async updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void> {
+    await db.update(localExpertForms)
+      .set({ knowledgeScore: knowledgeScore as any, knowledgeScoredAt: new Date() })
+      .where(eq(localExpertForms.id, id));
   }
 
   async updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void> {
@@ -1410,8 +1425,7 @@ export class DatabaseStorage implements IStorage {
       
       // Create earnings ledger entries only if amount > 0
       // Earnings become available after the configurable hold period (default 7 days)
-      const EARNINGS_HOLD_DAYS = parseInt(process.env.EARNINGS_HOLD_DAYS || '7', 10);
-      const availableAt = new Date(Date.now() + EARNINGS_HOLD_DAYS * 24 * 60 * 60 * 1000);
+      const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
 
       if (providerEarningsAmount > 0) {
         await this.createProviderEarning({
@@ -1517,7 +1531,7 @@ export class DatabaseStorage implements IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; total: number }> {
+  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }> {
     // F2 public read-gate: unified search is a public surface — approved listings only.
     const conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
 
@@ -1574,9 +1588,51 @@ export class DatabaseStorage implements IStorage {
     
     const limit = filters.limit || 20;
     const offset = filters.offset || 0;
-    
+
+    // Packages (expert_templates) — discovery parity with services: search the SAME public set
+    // the packages feed shows (approved + published only). Content is redacted at the route
+    // layer (teaser only). Category-locked browses are services-only (template categories are a
+    // different vocabulary than service_categories), so skip packages when categoryId is set.
+    let packages: ExpertTemplate[] = [];
+    if (!filters.categoryId) {
+      const pkgConditions = [
+        eq(expertTemplates.approvalStatus, "approved"),
+        eq(expertTemplates.isPublished, true),
+      ];
+      if (filters.query) {
+        pkgConditions.push(
+          or(
+            ilike(expertTemplates.title, `%${filters.query}%`),
+            ilike(expertTemplates.description, `%${filters.query}%`),
+            ilike(expertTemplates.destination, `%${filters.query}%`)
+          )!
+        );
+      }
+      if (filters.location) {
+        pkgConditions.push(ilike(expertTemplates.destination, `%${filters.location}%`));
+      }
+      const pkgRows = await db
+        .select()
+        .from(expertTemplates)
+        .where(and(...pkgConditions))
+        .orderBy(
+          desc(expertTemplates.isFeatured),
+          desc(expertTemplates.salesCount),
+          desc(expertTemplates.createdAt)
+        )
+        .limit(6);
+      // Price filters in memory (decimal stored as string), mirroring the services handling.
+      packages = pkgRows.filter((t) => {
+        const price = parseFloat(t.price || "0") || 0;
+        if (filters.minPrice && price < filters.minPrice) return false;
+        if (filters.maxPrice && price > filters.maxPrice) return false;
+        return true;
+      });
+    }
+
     return {
       services: filtered.slice(offset, offset + limit),
+      packages,
       total: filtered.length
     };
   }
@@ -2766,13 +2822,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expert Templates
-  async getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; category?: string; destination?: string }): Promise<ExpertTemplate[]> {
+  async getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; approvalStatus?: string; category?: string; destination?: string }): Promise<ExpertTemplate[]> {
     const conditions = [];
     if (filters?.expertId) {
       conditions.push(eq(expertTemplates.expertId, filters.expertId));
     }
     if (filters?.isPublished !== undefined) {
       conditions.push(eq(expertTemplates.isPublished, filters.isPublished));
+    }
+    // Marketplace read-gate (D1a / §10 "safety before surfacing"): public surfaces pass
+    // approvalStatus:'approved' so an unapproved (draft/submitted/rejected) template — even one the
+    // expert has self-published — never leaks into the public feed. The owner console and admin
+    // reads omit this filter intentionally (owner sees their own pipeline; admin sees the queue).
+    if (filters?.approvalStatus) {
+      conditions.push(eq(expertTemplates.approvalStatus, filters.approvalStatus));
     }
     if (filters?.category) {
       conditions.push(eq(expertTemplates.category, filters.category));
@@ -2781,10 +2844,19 @@ export class DatabaseStorage implements IStorage {
       conditions.push(ilike(expertTemplates.destination, `%${filters.destination}%`));
     }
     
+    // Quality ordering (packages-in-discovery): featured first, then proven sellers, then rating,
+    // then recency — so the public feed and B4 surfaces lead with the strongest packages instead
+    // of raw insertion order. Owner/admin reads share the ordering harmlessly.
+    const ordering = [
+      desc(expertTemplates.isFeatured),
+      desc(expertTemplates.salesCount),
+      desc(expertTemplates.averageRating),
+      desc(expertTemplates.createdAt),
+    ];
     if (conditions.length > 0) {
-      return await db.select().from(expertTemplates).where(and(...conditions)).orderBy(desc(expertTemplates.createdAt));
+      return await db.select().from(expertTemplates).where(and(...conditions)).orderBy(...ordering);
     }
-    return await db.select().from(expertTemplates).orderBy(desc(expertTemplates.createdAt));
+    return await db.select().from(expertTemplates).orderBy(...ordering);
   }
 
   async getExpertTemplate(id: string): Promise<ExpertTemplate | undefined> {
@@ -2928,6 +3000,7 @@ export class DatabaseStorage implements IStorage {
           referenceType: 'template_purchase',
           description: `Template sale earnings`,
           status: 'held', // escrow: born held (migration 112)
+          availableAt: availableAtFor('template_sale'), // P2: real (gated on completed purchase) — clears after template window
         });
       }
     }
@@ -3070,7 +3143,7 @@ export class DatabaseStorage implements IStorage {
         referenceType: 'expert_tip',
         description: tip.message ? `Tip: ${tip.message.substring(0, 50)}` : 'Tip from traveler',
         status: 'held', // escrow: born held (migration 112)
-        availableAt: new Date(), // tips clear immediately (preserves prior behavior); held+now = releasable
+        availableAt: availableAtFor('tip'), // P2: tip window (default 0 = immediate)
       });
     }
 
@@ -3138,7 +3211,7 @@ export class DatabaseStorage implements IStorage {
           referenceType: 'expert_referral',
           description: 'Referral bonus for new expert signup',
           status: 'held', // escrow: born held (migration 112)
-          availableAt: new Date(), // referral bonus clears immediately (preserves prior behavior)
+          availableAt: availableAtFor('referral_bonus'), // P2: referral window (default 0 = immediate)
         });
       }
     }
@@ -3163,6 +3236,7 @@ export class DatabaseStorage implements IStorage {
       referenceType: 'affiliate_earning',
       description: `Affiliate commission from booking`,
       status: 'held', // escrow: born held (migration 112)
+      availableAt: availableAtFor('affiliate_commission'), // P2: clears after affiliate window
     });
 
     return newEarning;
@@ -3192,6 +3266,157 @@ export class DatabaseStorage implements IStorage {
   async createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning> {
     const [newEarning] = await db.insert(providerEarnings).values(earning).returning();
     return newEarning;
+  }
+
+  // Escrow release (spine Phase 2 / docs/design/escrow-spine.md): flip held → releasable once the
+  // clearance window has passed and no dispute is open. Atomic conditional UPDATE (the WHERE is the
+  // guard) on both ledgers; idempotent — a second run matches nothing. NULL availableAt is never
+  // released here (stuck-held rows stay held until an explicit backfill decision — Phase 2b). The
+  // dispute check uses IS DISTINCT FROM so a NULL dispute_state still releases.
+  async releaseMaturedEarnings(now: Date = new Date()): Promise<{ expert: number; provider: number }> {
+    const expertRows = await db.update(expertEarnings)
+      .set({ status: 'releasable' })
+      .where(and(
+        eq(expertEarnings.status, 'held'),
+        isNotNull(expertEarnings.availableAt),
+        lte(expertEarnings.availableAt, now),
+        sqlOp`${expertEarnings.disputeState} IS DISTINCT FROM 'open'`,
+      ))
+      .returning({ id: expertEarnings.id });
+    const providerRows = await db.update(providerEarnings)
+      .set({ status: 'releasable', updatedAt: now })
+      .where(and(
+        eq(providerEarnings.status, 'held'),
+        isNotNull(providerEarnings.availableAt),
+        lte(providerEarnings.availableAt, now),
+        sqlOp`${providerEarnings.disputeState} IS DISTINCT FROM 'open'`,
+      ))
+      .returning({ id: providerEarnings.id });
+    return { expert: expertRows.length, provider: providerRows.length };
+  }
+
+  // ── Escrow Phase 3: booking-linked traveler confirm / dispute (docs/design/escrow-spine.md) ──
+  // Earnings link to a booking via provider_earnings.source_id and expert_earnings.reference_id.
+
+  /** Traveler confirmed completion → early-release the booking's held, undisputed earnings. */
+  async releaseEarningsForBooking(bookingId: string, now: Date = new Date()): Promise<number> {
+    const prov = await db.update(providerEarnings)
+      .set({ status: 'releasable', availableAt: now, updatedAt: now })
+      .where(and(
+        eq(providerEarnings.sourceId, bookingId),
+        eq(providerEarnings.status, 'held'),
+        sqlOp`${providerEarnings.disputeState} IS DISTINCT FROM 'open'`,
+      ))
+      .returning({ id: providerEarnings.id });
+    const exp = await db.update(expertEarnings)
+      .set({ status: 'releasable', availableAt: now })
+      .where(and(
+        eq(expertEarnings.referenceId, bookingId),
+        eq(expertEarnings.status, 'held'),
+        sqlOp`${expertEarnings.disputeState} IS DISTINCT FROM 'open'`,
+      ))
+      .returning({ id: expertEarnings.id });
+    return prov.length + exp.length;
+  }
+
+  /**
+   * Set/clear the dispute flag on a booking's unpaid earnings.
+   * open=true: a dispute blocks release — pull any unpaid earning (held OR releasable) back to
+   *   `held` + `dispute_state='open'`, so the summary's held+dispute exclusion keeps it out of the
+   *   payable balance. (releasable rows are only dispute-checked once forced back to held; that's
+   *   the "disputed ⟹ held" invariant.) paid_out earnings are NOT touched — post-payout claw-back
+   *   is Phase 4, not the automated spine.
+   * open=false: dispute rejected — clear the flag; the earning stays held and re-clears via the
+   *   release job/summary once its availableAt passes (already past for a completed booking).
+   */
+  async setBookingEarningsDispute(bookingId: string, open: boolean, now: Date = new Date()): Promise<number> {
+    if (open) {
+      const prov = await db.update(providerEarnings)
+        .set({ status: 'held', disputeState: 'open', updatedAt: now })
+        .where(and(eq(providerEarnings.sourceId, bookingId), sqlOp`${providerEarnings.status} IN ('held','releasable')`))
+        .returning({ id: providerEarnings.id });
+      const exp = await db.update(expertEarnings)
+        .set({ status: 'held', disputeState: 'open' })
+        .where(and(eq(expertEarnings.referenceId, bookingId), sqlOp`${expertEarnings.status} IN ('held','releasable')`))
+        .returning({ id: expertEarnings.id });
+      return prov.length + exp.length;
+    }
+    const prov = await db.update(providerEarnings)
+      .set({ disputeState: 'none', updatedAt: now })
+      .where(and(eq(providerEarnings.sourceId, bookingId), eq(providerEarnings.disputeState, 'open')))
+      .returning({ id: providerEarnings.id });
+    const exp = await db.update(expertEarnings)
+      .set({ disputeState: 'none' })
+      .where(and(eq(expertEarnings.referenceId, bookingId), eq(expertEarnings.disputeState, 'open')))
+      .returning({ id: expertEarnings.id });
+    return prov.length + exp.length;
+  }
+
+  // ── Escrow Phase 4: reversal (refund / dispute upheld) — docs/design/escrow-spine.md ──
+  //
+  // Reversal is only ever applied to money still in escrow (held OR releasable). paid_out earnings
+  // are NEVER auto-clawed-back (ratified: "reversal only while held/releasable") — a post-payout
+  // reversal is a manual admin action. reverseEarningsForBooking counts any paid_out earning it had
+  // to skip so the caller can surface "manual clawback needed" instead of silently under-reversing.
+
+  /**
+   * Reverse a booking's in-escrow earnings: flip held/releasable → 'reversed' on both ledgers.
+   * Atomic conditional UPDATE (the WHERE is the guard) → idempotent: a second call flips nothing.
+   * paid_out rows are counted (skippedPaidOut) but left untouched — no automated post-payout clawback.
+   */
+  async reverseEarningsForBooking(bookingId: string, now: Date = new Date()): Promise<{ reversed: number; skippedPaidOut: number }> {
+    const prov = await db.update(providerEarnings)
+      .set({ status: 'reversed', updatedAt: now })
+      .where(and(eq(providerEarnings.sourceId, bookingId), sqlOp`${providerEarnings.status} IN ('held','releasable')`))
+      .returning({ id: providerEarnings.id });
+    const exp = await db.update(expertEarnings)
+      .set({ status: 'reversed' })
+      .where(and(eq(expertEarnings.referenceId, bookingId), sqlOp`${expertEarnings.status} IN ('held','releasable')`))
+      .returning({ id: expertEarnings.id });
+    const paidProv = await db.select({ id: providerEarnings.id })
+      .from(providerEarnings)
+      .where(and(eq(providerEarnings.sourceId, bookingId), eq(providerEarnings.status, 'paid_out')));
+    const paidExp = await db.select({ id: expertEarnings.id })
+      .from(expertEarnings)
+      .where(and(eq(expertEarnings.referenceId, bookingId), eq(expertEarnings.status, 'paid_out')));
+    return { reversed: prov.length + exp.length, skippedPaidOut: paidProv.length + paidExp.length };
+  }
+
+  /**
+   * Reverse a booking's recognised platform revenue. platform_revenue totals sum every row
+   * regardless of status, so a reversal is a compensating NEGATIVE entry (double-entry) — that also
+   * flows through recordPlatformRevenue into the daily summary, keeping both nets correct without
+   * touching any reader. The original row's status is flipped to 'reversed' as the idempotency guard:
+   * an atomic claim (WHERE status <> 'reversed') means a second call finds nothing and inserts no
+   * second compensating row. Returns the number of original rows reversed.
+   */
+  async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date()): Promise<number> {
+    const originals = await db.update(platformRevenue)
+      .set({ status: 'reversed' })
+      .where(and(eq(platformRevenue.sourceId, bookingId), sqlOp`${platformRevenue.status} <> 'reversed'`))
+      .returning();
+    for (const o of originals) {
+      const neg = (v: string | null) => String(-parseFloat(v || '0'));
+      await this.recordPlatformRevenue({
+        sourceType: o.sourceType,
+        sourceId: o.sourceId,
+        trackingNumber: o.trackingNumber,
+        grossAmount: neg(o.grossAmount),
+        platformFee: neg(o.platformFee),
+        netAmount: neg(o.netAmount),
+        processingFees: neg(o.processingFees),
+        currency: o.currency,
+        expertId: o.expertId,
+        expertEarnings: neg(o.expertEarnings),
+        providerId: o.providerId,
+        providerEarnings: neg(o.providerEarnings),
+        description: `Reversal of platform revenue ${o.id} (booking ${bookingId})`,
+        metadata: { reversalOf: o.id, reason: 'escrow_reversal' },
+        status: 'reversed',
+        transactionDate: now,
+      } as any);
+    }
+    return originals.length;
   }
 
   async getProviderPayouts(providerId: string): Promise<ProviderPayout[]> {

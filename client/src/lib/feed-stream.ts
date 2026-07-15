@@ -24,7 +24,11 @@ export type FeedItemKind =
   // produced by buildFeedStream itself:
   | "recommendation"
   | "wanted-slot"
-  | "lead-expert";
+  | "lead-expert"
+  // Injected by the discover page AFTER composition (insert, never replace —
+  // rec cadence and wanted-slot spacing stay meaning-bearing):
+  | "earn-card"
+  | "package";
 
 export interface FeedItem {
   kind: FeedItemKind;

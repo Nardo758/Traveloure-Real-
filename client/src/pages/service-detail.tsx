@@ -8,12 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Clock, 
-  Star, 
-  DollarSign, 
+import {
+  ArrowLeft,
+  MapPin,
+  Clock,
+  Star,
+  DollarSign,
   ShoppingCart,
   MessageSquare,
   CheckCircle,
@@ -23,6 +23,8 @@ import {
   ShieldCheck,
   Building2,
   Flag,
+  Calendar,
+  BookOpen,
 } from "lucide-react";
 import {
   Dialog,
@@ -104,6 +106,18 @@ export default function ServiceDetailPage() {
 
   const { data: providerVerification } = useQuery<ProviderVerification>({
     queryKey: ["/api/providers", service?.userId, "public-verification"],
+    enabled: !!service?.userId,
+  });
+
+  // Same-owner cross-sell (marketplace Phase B4): purchasable packages by this service's
+  // owner, if they're an expert with approved+published templates. Server-gated + teaser-only.
+  const { data: ownerPackages = [] } = useQuery<any[]>({
+    queryKey: ["/api/expert-templates", { expertId: service?.userId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/expert-templates?expertId=${service!.userId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!service?.userId,
   });
 
@@ -279,6 +293,40 @@ export default function ServiceDetailPage() {
                       </li>
                     ))}
                   </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Same-owner cross-sell — packages by this expert (Phase B4) */}
+            {ownerPackages.length > 0 && (
+              <Card data-testid="card-owner-packages">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-primary" /> Packages by this expert
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {ownerPackages.slice(0, 3).map((pkg: any) => (
+                    <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
+                      <div
+                        className="flex items-center justify-between gap-3 p-3 rounded-lg border hover-elevate cursor-pointer"
+                        data-testid={`owner-package-${pkg.id}`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{pkg.title}</p>
+                          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3" /> {pkg.destination}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> {pkg.duration} days
+                            </span>
+                          </div>
+                        </div>
+                        <p className="font-bold text-primary whitespace-nowrap">${pkg.price}</p>
+                      </div>
+                    </Link>
+                  ))}
                 </CardContent>
               </Card>
             )}

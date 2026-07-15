@@ -839,7 +839,7 @@ export default function LandingPage() {
             data-testid="platform-stats-bar"
           >
             <div className="text-center" data-testid="stat-avg-rating">
-              <p className="text-2xl font-bold text-[#FF385C]">{platformStats?.avgRating ?? "4.9"}/5</p>
+              <p className="text-2xl font-bold text-[#FF385C]">{platformStats?.avgRating != null ? `${platformStats.avgRating}/5` : "New"}</p>
               <p className="text-xs text-muted-foreground">Average Rating</p>
             </div>
             <div className="text-center" data-testid="stat-reviews">

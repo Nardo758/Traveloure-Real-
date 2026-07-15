@@ -7,7 +7,14 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
@@ -173,6 +180,16 @@ function HeroSection({
                 style={{ background: "rgba(255,255,255,0.2)", color: "#A7F3D0" }}
               >
                 📅 {datePillLabel}
+                {/* D7 date-continuity: back to the By-Date calendar
+                    (/discover?tab=events) to pick a different date. Additive —
+                    the ✕ dismiss below is untouched. */}
+                <a
+                  href="/discover?tab=events"
+                  className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+                  data-testid="link-change-date"
+                >
+                  Change date
+                </a>
                 <button
                   onClick={onDismissDate}
                   className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
@@ -220,6 +237,16 @@ function HeroSection({
               style={{ background: "rgba(255,255,255,0.55)", color: "#0F6E56" }}
             >
               📅 {datePillLabel}
+              {/* D7 date-continuity: back to the By-Date calendar
+                  (/discover?tab=events) to pick a different date. Additive —
+                  the ✕ dismiss below is untouched. */}
+              <a
+                href="/discover?tab=events"
+                className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+                data-testid="link-change-date"
+              >
+                Change date
+              </a>
               <button
                 onClick={onDismissDate}
                 className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
@@ -438,9 +465,10 @@ function SpineFilterBar({
 
 /** Featured lead expert — placed once, near the top, by composeFeedStream. */
 function LeadExpertCard({ expert }: { expert: any }) {
+  const packagesCount = Number(expert.packagesCount ?? 0);
   return (
     <div
-      className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
+      className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 h-full"
       data-testid="section-lead-expert"
     >
       <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -453,6 +481,11 @@ function LeadExpertCard({ expert }: { expert: any }) {
         <p className="text-[11px] text-muted-foreground truncate">
           {expert.headline ?? expert.bio?.slice(0, 60) ?? "Featured local expert"}
         </p>
+        {packagesCount > 0 && (
+          <p className="text-[11px] text-muted-foreground truncate" data-testid="lead-expert-packages">
+            📔 {packagesCount} {packagesCount === 1 ? "package" : "packages"}
+          </p>
+        )}
       </div>
       <a
         href={`/experts/${expert.id}`}
@@ -471,7 +504,7 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
   const isHighDemand = (demandCount ?? 0) >= 5;
   return (
     <div
-      className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3"
+      className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3 h-full"
       data-testid={`section-recruitment-${neighborhoodId}`}
     >
       <div className="min-w-0">
@@ -496,6 +529,210 @@ function WantedSlotCard({ item }: { item: FeedItem }) {
       >
         Apply <ChevronRight className="w-3 h-3" />
       </a>
+    </div>
+  );
+}
+
+/** Ways-to-Earn card — injected exactly once per feed (after composition, insert-only). */
+function EarnCard({ city }: { city: string }) {
+  const displayCity = toTitleCase(city);
+  return (
+    <div
+      className="rounded-xl border border-primary/40 bg-primary/5 p-3 flex flex-col gap-1.5 h-full"
+      data-testid="feed-card-earn"
+    >
+      <span className="text-[10px] text-primary font-semibold uppercase tracking-widest">
+        EARN ON TRAVELOURE
+      </span>
+      <h3 className="font-semibold text-[15px] leading-tight tracking-tight">
+        Know {displayCity} like a local? Offer a service here?
+      </h3>
+      <p className="text-[12px] text-muted-foreground">
+        Local experts share their knowledge; providers list bookable services — both earn on Traveloure.
+      </p>
+      <div className="flex gap-1.5 pt-1 flex-wrap mt-auto">
+        <Button size="sm" className="h-7 text-xs px-3" asChild data-testid="btn-earn-expert">
+          <a href="/earn">Become an expert</a>
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs px-3" asChild data-testid="btn-earn-provider">
+          <a href="/earn">List a service</a>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Package (expert itinerary template) feed card — data from the already-gated
+ * public GET /api/expert-templates (approved+published, teaser-redacted).
+ * Works in both column and marquee/row form like RecommendationCard.
+ */
+function PackageCard({
+  template,
+  layout = "column",
+}: {
+  template: any;
+  layout?: "column" | "row";
+}) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const isRow = layout === "row";
+
+  const priceNum = Number(template.price);
+  const priceDisplay = !isNaN(priceNum)
+    ? `$${priceNum % 1 === 0 ? priceNum : priceNum.toFixed(2)}`
+    : null;
+
+  // §13 honesty: real rating only when reviewCount > 0 — otherwise "New", never a fake number.
+  const reviewCount = Number(template.reviewCount ?? 0);
+  const rating = reviewCount > 0 && template.averageRating ? Number(template.averageRating) : null;
+  const salesCount = Number(template.salesCount ?? 0);
+
+  // The teaser payload carries no expert name — show destination · duration instead.
+  const expertName = template.expertName ?? null;
+  const destDuration = [template.destination, template.duration ? `${template.duration} days` : null]
+    .filter(Boolean)
+    .join(" · ");
+  const byline = expertName ? `by ${expertName}` : destDuration;
+
+  const photoArea = (
+    <div
+      className={cn(
+        "relative overflow-hidden flex-shrink-0 flex items-center justify-center bg-muted text-muted-foreground",
+        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
+      )}
+    >
+      {template.coverImage ? (
+        <img
+          src={template.coverImage}
+          alt={template.title}
+          loading="lazy"
+          onLoad={() => setImgLoaded(true)}
+          className={cn(
+            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+            imgLoaded ? "opacity-100" : "opacity-0",
+          )}
+        />
+      ) : (
+        <span className="text-2xl">📔</span>
+      )}
+    </div>
+  );
+
+  const cardBody = (
+    <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-primary/10 text-primary">
+          Package
+        </span>
+        {rating === null && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-muted text-muted-foreground">
+            New
+          </span>
+        )}
+      </div>
+
+      <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
+        {template.title}
+      </h3>
+
+      {byline && <p className="text-[12px] text-muted-foreground line-clamp-1">{byline}</p>}
+
+      <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+        {priceDisplay && <span className="text-sm font-bold text-foreground">{priceDisplay}</span>}
+        {rating !== null && (
+          <span data-testid={`package-rating-${template.id}`}>
+            ★ {rating.toFixed(1)} ({reviewCount})
+          </span>
+        )}
+        {salesCount > 0 && <span data-testid={`package-sold-${template.id}`}>{salesCount} sold</span>}
+      </div>
+
+      <div className="flex gap-1.5 pt-0.5 flex-wrap mt-auto">
+        <Button size="sm" className="h-7 text-xs px-3" asChild data-testid={`btn-view-package-${template.id}`}>
+          <a href={`/expert-templates/${template.id}`}>View itinerary</a>
+        </Button>
+
+        {/* D9: More info modal — additive, "View itinerary" above is untouched.
+            Shows the TEASER day list only (itineraryPreview: day + title from
+            the server's content gate) — full content stays purchase-gated. */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              data-testid={`button-more-info-package-${template.id}`}
+            >
+              <Info className="w-3 h-3 mr-1" />
+              More info
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{template.title}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {destDuration && <p className="text-sm text-muted-foreground">{destDuration}</p>}
+              {expertName && <p className="text-xs text-muted-foreground">by {expertName}</p>}
+
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                {priceDisplay && (
+                  <span className="text-base font-bold text-foreground">{priceDisplay}</span>
+                )}
+                {/* §13: real rating only when review-backed; otherwise an honest "New" */}
+                {rating !== null ? (
+                  <span data-testid={`modal-package-rating-${template.id}`}>
+                    ★ {rating.toFixed(1)} ({reviewCount})
+                  </span>
+                ) : (
+                  <span className="font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    New
+                  </span>
+                )}
+                {salesCount > 0 && <span>{salesCount} sold</span>}
+              </div>
+
+              {Array.isArray(template.itineraryPreview) && template.itineraryPreview.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium mb-1">What's inside (preview)</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {template.itineraryPreview.map((d: any, i: number) => (
+                      <div key={i} className="flex items-baseline gap-2 text-xs">
+                        <span className="text-muted-foreground flex-shrink-0 font-medium">
+                          Day {d.day ?? i + 1}
+                        </span>
+                        <span className="truncate">{d.title ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1.5">
+                    Full day-by-day details unlock after purchase.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button size="sm" asChild data-testid={`modal-view-itinerary-${template.id}`}>
+                  <a href={`/expert-templates/${template.id}`}>View itinerary</a>
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl overflow-hidden border border-primary/40 bg-card shadow-sm hover:shadow-md transition-shadow h-full",
+        isRow ? "flex flex-row" : "flex flex-col",
+      )}
+      data-testid={`feed-card-package-${template.id}`}
+    >
+      {photoArea}
+      {cardBody}
     </div>
   );
 }
@@ -534,15 +771,17 @@ function RecommendationCard({
   useEffect(() => {
     if (!impressionFiredRef.current) {
       impressionFiredRef.current = true;
-      fetch("/api/feed/impression", {
+      // Repointed: /api/feed/impression never existed (all rec impressions were silently
+      // discarded). /api/upsell/impression is the real endpoint; it expects
+      // { surface, offeringIds } — the engine's own impression ledger.
+      // D1: in date mode the candidates came from the discover_date surface, so
+      // the impression ref must carry the same surface the ranking ran on.
+      fetch("/api/upsell/impression", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          offeringId: candidate.offeringId,
-          categoryKey: candidate.categoryKey,
-          position,
-          city,
-          sourceType: candidate.sourceType,
+          surface: scheduledDate ? "discover_date" : "discover_location",
+          offeringIds: [candidate.offeringId],
         }),
       }).catch(() => {});
     }
@@ -654,6 +893,92 @@ function RecommendationCard({
         <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
           <a href="/local-experts">💬 Ask</a>
         </Button>
+
+        {/* D9: More info modal — additive; Book/Add/Ask above are untouched.
+            "Why recommended" is built ONLY from fields actually on the wire
+            candidate (offeringId/categoryKey/displayName/tagline/reason/
+            sourceType/expertEndorsed): the server's own `reason` string
+            (which encodes template REQ/REC, neighborhood/date proximity and
+            endorsement) plus the `expertEndorsed` boolean. templateStrength/
+            matchType/price never reach the client, so they are not shown —
+            §13: real data or nothing. */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              data-testid={`button-more-info-rec-${position}`}
+            >
+              <Info className="w-3 h-3 mr-1" />
+              More info
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {/* The engine-source disclosure stays visible in the dialog —
+                  affiliate candidates keep their "Paid partner" label here too. */}
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
+                  isAffiliate ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700",
+                )}
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+                {isAffiliate ? affiliateLabel : recommendedLabel}
+              </span>
+
+              {candidate.tagline && (
+                <p className="text-sm text-muted-foreground">{candidate.tagline}</p>
+              )}
+
+              {(candidate.reason || candidate.expertEndorsed) && (
+                <div className="p-2 rounded-lg bg-muted/50 border border-muted">
+                  <p className="text-xs font-medium mb-1">Why you're seeing this</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {candidate.reason && <p data-testid={`modal-rec-reason-${position}`}>{candidate.reason}</p>}
+                    {candidate.expertEndorsed === true && (
+                      <p data-testid={`modal-rec-endorsed-${position}`}>✓ Endorsed by a local expert</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Same handlers as the card's existing Book/Add buttons */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {onBook && (
+                  <Button
+                    size="sm"
+                    onClick={() => onBook(candidate)}
+                    data-testid={`modal-book-rec-${position}`}
+                  >
+                    Book
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    onAdd?.({
+                      title: name,
+                      description: candidate.tagline,
+                      city,
+                      type: "recommendation",
+                      scheduledDate,
+                    })
+                  }
+                  data-testid={`modal-add-rec-${position}`}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  {addLabel}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -661,7 +986,7 @@ function RecommendationCard({
   return (
     <div
       className={cn(
-        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full",
         isRow ? "flex flex-row" : "flex flex-col",
       )}
       data-testid={`feed-card-rec-${position}`}
@@ -761,10 +1086,29 @@ function FillerCard({
       return <WantedSlotCard item={item} />;
     case "lead-expert":
       return <LeadExpertCard expert={item.data} />;
+    case "earn-card":
+      return <EarnCard city={city} />;
+    case "package":
+      return <PackageCard template={item.data} layout={isMarquee ? "row" : "column"} />;
     default:
       return null;
   }
 }
+
+/** The kinds FillerCard can actually render — grid math must only see these (F1: no empty cells). */
+const FILLER_KINDS = new Set<FeedItem["kind"]>([
+  "loose-gem",
+  "expert",
+  "event",
+  "supply-hotel",
+  "supply-activity",
+  "vendor-service",
+  "recommendation",
+  "wanted-slot",
+  "lead-expert",
+  "earn-card",
+  "package",
+]);
 
 // ─── Bento feed renderer ──────────────────────────────────────────────────────
 
@@ -780,6 +1124,7 @@ function FeedRenderer({
   onAdd,
   onBookRec,
   recLabels,
+  upcomingEvents,
 }: {
   items: FeedItem[];
   city: string;
@@ -787,8 +1132,19 @@ function FeedRenderer({
   onAdd: (item: any) => void;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
+  upcomingEvents?: Array<{ date: string; title: string }>;
 }) {
-  if (items.length === 0) {
+  // F1: grid math must only see renderable items — an unrenderable kind would
+  // occupy a bento cell and render as an empty hole. Neighborhoods and
+  // city-separators are section-level (not FillerCard) kinds, so they stay.
+  const renderableItems = items.filter(
+    (item) =>
+      item.kind === "neighborhood" ||
+      item.kind === "city-separator" ||
+      FILLER_KINDS.has(item.kind),
+  );
+
+  if (renderableItems.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty">
         No items to show yet for {toTitleCase(city)}. Check back soon!
@@ -811,13 +1167,19 @@ function FeedRenderer({
     }
   };
 
-  for (const item of items) {
+  for (const item of renderableItems) {
     if (item.kind === "neighborhood") {
       flushGroup();
       sections.push({ type: "neighborhood", item });
     } else if (item.kind === "city-separator") {
       flushGroup();
       sections.push({ type: "city-separator", item });
+    } else if (item.kind === "package") {
+      // Packages always render as full-width marquee rows: each is its own
+      // single-item group (the approved mockup treatment). Order is preserved —
+      // this only affects visual arrangement, never composition.
+      flushGroup();
+      sections.push({ type: "group", items: [item] });
     } else {
       currentGroup.push(item);
     }
@@ -835,6 +1197,7 @@ function FeedRenderer({
               city={city}
               scheduledDate={scheduledDate}
               onAdd={onAdd}
+              upcomingEvents={upcomingEvents}
             />
           );
         }
@@ -857,26 +1220,33 @@ function FeedRenderer({
 
         // Bento group: first item is span-2 (marquee), rest pair into half-width cells.
         // All items — including lead-expert and wanted-slot — participate in the
-        // 2-col grid so the rhythm stays intact. Only idx===0 gets the marquee span.
+        // 2-col grid so the rhythm stays intact. Odd-tail rule (F3): of the items
+        // AFTER the marquee, an odd count means the LAST one also spans the full
+        // row so groups always end flush. Single column on mobile (F10), order preserved.
+        const restCount = section.items.length - 1;
+        const oddTailIdx = restCount > 0 && restCount % 2 === 1 ? section.items.length - 1 : -1;
         return (
-          <div key={`group-${si}`} className="grid grid-cols-2 gap-3">
-            {section.items.map((item, itemIdx) => (
-              <div
-                key={item.id}
-                className={itemIdx === 0 ? "col-span-2" : ""}
-              >
-                <FillerCard
-                  item={item}
-                  city={city}
-                  scheduledDate={scheduledDate}
-                  onAdd={onAdd}
-                  isMarquee={itemIdx === 0}
-                  cardPosition={itemIdx}
-                  onBookRec={onBookRec}
-                  recLabels={recLabels}
-                />
-              </div>
-            ))}
+          <div key={`group-${si}`} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {section.items.map((item, itemIdx) => {
+              const isMarquee = itemIdx === 0 || itemIdx === oddTailIdx;
+              return (
+                <div
+                  key={item.id}
+                  className={cn("h-full", isMarquee && "sm:col-span-2")}
+                >
+                  <FillerCard
+                    item={item}
+                    city={city}
+                    scheduledDate={scheduledDate}
+                    onAdd={onAdd}
+                    isMarquee={isMarquee}
+                    cardPosition={itemIdx}
+                    onBookRec={onBookRec}
+                    recLabels={recLabels}
+                  />
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -929,9 +1299,11 @@ function FlatFilteredFeed({
 function DateHighlightStrip({
   scheduledDate,
   cityIntel,
+  onAdd,
 }: {
   scheduledDate: string;
   cityIntel: any;
+  onAdd?: (item: any) => void;
 }) {
   const parsedDate = new Date(scheduledDate + "T12:00:00");
   const monthIndex = parsedDate.getMonth();
@@ -948,15 +1320,22 @@ function DateHighlightStrip({
   const eventTitle = seasonalEntry?.highlight ?? cityIntel?.currentHighlight ?? "Seasonal highlight";
 
   type ServiceAddon = { icon: string; label: string; price: string; href: string };
+  // D2 honest links: the old `/experiences/photo` and `/experiences/gear` hrefs
+  // resolved to the /experiences/:slug route but matched NO real experience
+  // template — dead-ish destinations. The companion object carries no service
+  // id, so each "Book" now goes to `/discover?tab=services` — the live Browse
+  // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
+  // are actually searchable. `/local-experts` (festival guide) was already a
+  // real routed page and stays.
   const companionService: ServiceAddon | null = (() => {
     if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
-      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/experiences/photo" };
+      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/discover?tab=services" };
     if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
-      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/experiences/gear" };
+      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/discover?tab=services" };
     if (highlight.includes("festival") || highlight.includes("matsuri"))
       return { icon: "🎋", label: "Festival guide", price: "from ¥8,000", href: "/local-experts" };
     if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
-      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/experiences/photo" };
+      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/discover?tab=services" };
     return null;
   })();
 
@@ -992,12 +1371,25 @@ function DateHighlightStrip({
                 data-testid="button-date-event-tickets"
                 asChild
               >
-                <a href="/experiences/events">Tickets</a>
+                {/* D2 honest link: was /experiences/events — a slug that resolved to
+                    the /experiences/:slug route but matched no real experience
+                    template. Now points at /discover?tab=events, the live By-Date
+                    calendar tab (in discover.tsx's VISIBLE_TABS), where dated
+                    events are actually browsable. */}
+                <a href="/discover?tab=events">Tickets</a>
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="h-7 text-[12px] px-3"
+                onClick={() =>
+                  onAdd?.({
+                    title: eventTitle,
+                    description: cityIntel?.currentHighlight ?? null,
+                    type: "event",
+                    scheduledDate,
+                  })
+                }
                 data-testid="button-date-event-add"
               >
                 Add to {monthName} {dayOfMonth}
@@ -1300,6 +1692,19 @@ export default function DiscoverLocationPage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Packages (expert itinerary templates) for this city — the already-gated
+  // public feed (approved+published only, teaser-redacted, quality-ordered).
+  const { data: packagesData } = useQuery<any[]>({
+    queryKey: ["/api/expert-templates", { destination: city }],
+    queryFn: async () => {
+      const res = await fetch(`/api/expert-templates?destination=${encodeURIComponent(city)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!city,
+    staleTime: 10 * 60 * 1000,
+  });
+
   // Unsplash download tracking (API compliance)
   const trackedDownloadsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1331,24 +1736,44 @@ export default function DiscoverLocationPage() {
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
 
-  // ── Engine recommendations (discover_location upsell surface) ──────────
+  // ── Engine recommendations (discover_location / discover_date surface) ──
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
   // endorsed by those experts — the authoritative endorsement signal driving
   // both the slot ranking and the lead-expert pick. Candidates arrive in the
   // engine's ranked order; this page renders them natively, it does not rank.
-  const discoverySlotResult = useUpsellSlot("discover_location", {
-    contextPayload: {
-      ...(neighborhoods[0]?.id
-        ? { neighborhoodId: String(neighborhoods[0].id) }
-        : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
-      expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
-    },
+  //
+  // D1 (date mode): when the traveler arrived with a ?date=, the slot switches
+  // to the discover_date surface (POST /api/upsell/discover-date), where
+  // dateRange is a HARD availability filter, not a ranking weight — offerings
+  // whose category needs date-specific inventory with none on the requested
+  // date are dropped server-side. Contract (discoverDateBodySchema):
+  // { city: string (required, market scope), dateRange: { start: ISO, end?: ISO }
+  //   (required), cartItems?, userProfile?, expertEndorsedKeys?, tripId?, … } —
+  // city-scoped, NOT neighborhoodId-scoped like discover_location. The response
+  // is the same ranked-candidates shape, so rendering below is unchanged.
+  // Without a date, the neighborhood-focused discover_location call is
+  // exactly as before.
+  const upsellSurface = scheduledDate ? ("discover_date" as const) : ("discover_location" as const);
+  const expertEndorsedKeys = experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean);
+  const discoverySlotResult = useUpsellSlot(upsellSurface, {
+    contextPayload: scheduledDate
+      ? {
+          city,
+          dateRange: { start: scheduledDate },
+          expertEndorsedKeys,
+        }
+      : {
+          ...(neighborhoods[0]?.id
+            ? { neighborhoodId: String(neighborhoods[0].id) }
+            : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
+          expertEndorsedKeys,
+        },
     enabled: !!data,
   });
 
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
-    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=discover_location`);
+    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
   };
 
   // ── Injected-element payloads for the composition layer ────────────────
@@ -1448,7 +1873,7 @@ export default function DiscoverLocationPage() {
   // stream (admin-configured cadence/cap/spacing); it consumes the engine's
   // ranked order as-is and never re-ranks. Filtered views are deliberate
   // searches — they show organic results only.
-  const filteredItems =
+  const composedItems =
     activeFilter === "all"
       ? composeDiscoverFeed(
           feedItems,
@@ -1459,6 +1884,46 @@ export default function DiscoverLocationPage() {
           defaultIsRelated,
         )
       : filterFeedStream(feedItems, activeFilter);
+
+  // Post-composition INSERTIONS (F7/F9): packages at ~4/~16 and exactly ONE
+  // earn-card at ~9. These are splice-inserts into the composed stream —
+  // nothing is replaced, re-sorted, or dropped, so the engine's rec cadence
+  // and wanted-slot spacing stay intact (they only shift down by the inserts).
+  const cityPackages = (packagesData ?? []).slice(0, 2);
+  const filteredItems: FeedItem[] = (() => {
+    if (activeFilter !== "all") return composedItems;
+    const out = [...composedItems];
+    if (cityPackages[0]) {
+      out.splice(Math.min(4, out.length), 0, {
+        kind: "package",
+        id: `package-${cityPackages[0].id}`,
+        data: cityPackages[0],
+      });
+    }
+    out.splice(Math.min(9, out.length), 0, { kind: "earn-card", id: "earn-card", data: { city } });
+    if (cityPackages[1]) {
+      out.splice(Math.min(16, out.length), 0, {
+        kind: "package",
+        id: `package-${cityPackages[1].id}`,
+        data: cityPackages[1],
+      });
+    }
+    return out;
+  })();
+
+  // Two soonest future-dated city events — the neighborhood header mini-list (F8).
+  const upcomingEvents: Array<{ date: string; title: string }> = (() => {
+    const now = new Date();
+    return (events as any[])
+      .filter((e) => {
+        if (!e?.date) return false;
+        const d = new Date(e.date);
+        return !isNaN(d.getTime()) && d >= now;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 2)
+      .map((e) => ({ date: e.date as string, title: (e.title || e.name || "") as string }));
+  })();
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
@@ -1570,6 +2035,7 @@ export default function DiscoverLocationPage() {
               <DateHighlightStrip
                 scheduledDate={scheduledDate}
                 cityIntel={data.hero?.data?.city}
+                onAdd={handleAdd}
               />
             )}
 
@@ -1615,6 +2081,7 @@ export default function DiscoverLocationPage() {
                     recommendedLabel: feedConfig.recommendedLabel,
                     affiliateLabel: feedConfig.affiliateLabel,
                   }}
+                  upcomingEvents={upcomingEvents}
                 />
                 <TripComplementsStrip city={city} highlight={currentHighlight} />
               </>

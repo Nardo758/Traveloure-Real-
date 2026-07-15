@@ -35,9 +35,13 @@ import {
   ThumbsUp,
   ThumbsDown,
   AlertCircle,
+  AlertTriangle,
+  ShieldCheck,
   ListChecks,
   Copy,
   Check,
+  MapPin,
+  BookOpen,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
@@ -88,6 +92,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   confirmed: { label: "Confirmed", variant: "default", icon: CheckCircle2 },
   in_progress: { label: "In Progress", variant: "default", icon: Loader2 },
   completed: { label: "Completed", variant: "default", icon: CheckCircle2 },
+  disputed: { label: "Disputed", variant: "destructive", icon: AlertTriangle },
   cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
 };
@@ -250,6 +255,71 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
   );
 }
 
+// Purchased expert package (template) — Marketplace Phase B3 (the delivery surface).
+// Full itinerary lives on /expert-templates/:id, which unlocks for purchasers (B2 content-gate).
+interface PurchasedPackage {
+  id: string;
+  templateId: string;
+  status: string;
+  price: string;
+  purchasedAt: string | null;
+  template: {
+    id: string;
+    title: string;
+    destination: string;
+    duration: number;
+    coverImage?: string | null;
+  } | null;
+}
+
+function PurchasedPackageCard({ purchase }: { purchase: PurchasedPackage }) {
+  const t = purchase.template;
+  return (
+    <Card data-testid={`package-${purchase.id}`}>
+      <CardContent className="p-4 flex items-center gap-4">
+        {t?.coverImage ? (
+          <img src={t.coverImage} alt={t.title} className="w-20 h-20 object-cover rounded-lg shrink-0" />
+        ) : (
+          <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <BookOpen className="w-8 h-8 text-primary/40" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold truncate">{t?.title ?? "Package unavailable"}</p>
+            {purchase.status === "completed" ? (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">Purchased</Badge>
+            ) : purchase.status === "refunded" ? (
+              <Badge variant="destructive">Refunded</Badge>
+            ) : (
+              <Badge variant="outline">Payment pending</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1 flex-wrap">
+            {t && (
+              <>
+                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {t.destination}</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {t.duration} days</span>
+              </>
+            )}
+            <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" /> ${purchase.price}</span>
+            {purchase.purchasedAt && (
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" /> {format(new Date(purchase.purchasedAt), "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
+        </div>
+        {t && purchase.status === "completed" && (
+          <Button asChild size="sm" data-testid={`button-view-package-${purchase.id}`}>
+            <Link href={`/expert-templates/${t.id}`}>View itinerary</Link>
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { openSignInModal } = useSignInModal();
@@ -258,6 +328,11 @@ export default function MyBookingsPage() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/my-bookings"],
+    enabled: !!user,
+  });
+
+  const { data: purchasedPackages } = useQuery<PurchasedPackage[]>({
+    queryKey: ["/api/my-purchased-templates"],
     enabled: !!user,
   });
 
@@ -287,7 +362,7 @@ export default function MyBookingsPage() {
 
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const activeBookings = bookings?.filter(b => ["confirmed", "in_progress"].includes(b.status)) || [];
-  const completedBookings = bookings?.filter(b => ["completed", "cancelled", "refunded"].includes(b.status)) || [];
+  const completedBookings = bookings?.filter(b => ["completed", "disputed", "cancelled", "refunded"].includes(b.status)) || [];
 
   const openReviewDialog = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -304,7 +379,7 @@ export default function MyBookingsPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : !bookings || bookings.length === 0 ? (
+        ) : (!bookings || bookings.length === 0) && (purchasedPackages?.length ?? 0) === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -316,10 +391,13 @@ export default function MyBookingsPage() {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="all" className="space-y-4">
+          <Tabs
+            defaultValue={(bookings?.length ?? 0) === 0 && (purchasedPackages?.length ?? 0) > 0 ? "packages" : "all"}
+            className="space-y-4"
+          >
             <TabsList data-testid="tabs-booking-status">
               <TabsTrigger value="all" data-testid="tab-all">
-                All ({bookings.length})
+                All ({bookings?.length ?? 0})
               </TabsTrigger>
               <TabsTrigger value="pending" data-testid="tab-pending">
                 Pending ({pendingBookings.length})
@@ -330,10 +408,15 @@ export default function MyBookingsPage() {
               <TabsTrigger value="completed" data-testid="tab-completed">
                 Completed ({completedBookings.length})
               </TabsTrigger>
+              {(purchasedPackages?.length ?? 0) > 0 && (
+                <TabsTrigger value="packages" data-testid="tab-packages">
+                  Packages ({purchasedPackages!.length})
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="all" className="space-y-4">
-              {bookings.map((booking) => (
+              {(bookings ?? []).map((booking) => (
                 <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
               ))}
             </TabsContent>
@@ -364,6 +447,17 @@ export default function MyBookingsPage() {
               ) : (
                 completedBookings.map((booking) => (
                   <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
+                ))
+              )}
+            </TabsContent>
+
+            {/* Purchased expert packages — Phase B3 delivery surface */}
+            <TabsContent value="packages" className="space-y-4">
+              {(purchasedPackages ?? []).length === 0 ? (
+                <EmptyState message="No purchased packages" />
+              ) : (
+                (purchasedPackages ?? []).map((purchase) => (
+                  <PurchasedPackageCard key={purchase.id} purchase={purchase} />
                 ))
               )}
             </TabsContent>
@@ -415,11 +509,43 @@ function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: s
 }
 
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
+  const { toast } = useToast();
+  const [disputeOpen, setDisputeOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
+  // Escrow Phase 3: once the provider marks the booking completed, the traveler can either confirm
+  // completion (early-releases the provider's held earnings) or dispute (blocks release for admin
+  // review). Both act on this service booking by id.
+  const canConfirmOrDispute = booking.status === "completed";
+  const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
   const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
+
+  const confirmMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/bookings/${booking.id}/confirm-completion`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      toast({ title: "Thanks for confirming", description: "We've released the booking to your provider." });
+    },
+    onError: () => {
+      toast({ title: "Could not confirm", description: "Please try again or contact support.", variant: "destructive" });
+    },
+  });
+
+  const disputeMutation = useMutation({
+    mutationFn: (reason: string) => apiRequest("POST", `/api/bookings/${booking.id}/dispute`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      setDisputeOpen(false);
+      setDisputeReason("");
+      toast({ title: "Dispute submitted", description: "Our team will review it and follow up with you." });
+    },
+    onError: () => {
+      toast({ title: "Could not submit dispute", description: "Please try again or contact support.", variant: "destructive" });
+    },
+  });
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
@@ -491,10 +617,40 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
+              {canConfirmOrDispute && (
+                <>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => confirmMutation.mutate()}
+                    disabled={confirmMutation.isPending}
+                    data-testid={`button-confirm-completion-${booking.id}`}
+                  >
+                    <ShieldCheck className="w-4 h-4 mr-1" />
+                    Confirm completion
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                    onClick={() => setDisputeOpen(true)}
+                    disabled={disputeMutation.isPending}
+                    data-testid={`button-dispute-${booking.id}`}
+                  >
+                    <AlertTriangle className="w-4 h-4 mr-1" />
+                    Dispute
+                  </Button>
+                </>
+              )}
+              {isDisputed && (
+                <span className="text-xs text-red-700 font-medium self-center" data-testid={`text-dispute-under-review-${booking.id}`}>
+                  Dispute under review
+                </span>
+              )}
               {canReview && (
-                <Button 
-                  variant="default" 
-                  size="sm" 
+                <Button
+                  variant="default"
+                  size="sm"
                   onClick={() => onReview(booking)}
                   data-testid={`button-review-${booking.id}`}
                 >
@@ -528,6 +684,38 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
           </div>
         </div>
       </CardContent>
+
+      <Dialog open={disputeOpen} onOpenChange={setDisputeOpen}>
+        <DialogContent data-testid={`dialog-dispute-${booking.id}`}>
+          <DialogHeader>
+            <DialogTitle>Dispute this booking</DialogTitle>
+            <DialogDescription>
+              Tell us what went wrong. Submitting a dispute pauses the payout to your provider while our
+              team reviews it — you don't need to contact your bank.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={disputeReason}
+            onChange={(e) => setDisputeReason(e.target.value)}
+            placeholder="Describe the issue (e.g. the service wasn't delivered as booked)…"
+            rows={4}
+            data-testid={`textarea-dispute-reason-${booking.id}`}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDisputeOpen(false)} data-testid={`button-dispute-cancel-${booking.id}`}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => disputeMutation.mutate(disputeReason.trim())}
+              disabled={disputeMutation.isPending || disputeReason.trim().length === 0}
+              data-testid={`button-dispute-submit-${booking.id}`}
+            >
+              Submit dispute
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

@@ -151,6 +151,7 @@ import BlogPage from "@/pages/blog";
 import PressPage from "@/pages/press";
 import HelpPage from "@/pages/help";
 import ExpertDetailPage from "@/pages/expert-detail";
+import ExpertTemplateDetail from "@/pages/expert-template-detail";
 import QuickStartItinerary from "@/pages/quick-start-itinerary";
 import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
@@ -255,6 +256,10 @@ function Router() {
       </Route>
       <Route path="/experts/:id">
         <ExpertDetailPage />
+      </Route>
+      {/* Marketplace Phase B2: public package detail + purchase (content-gated server-side) */}
+      <Route path="/expert-templates/:id">
+        <ExpertTemplateDetail />
       </Route>
       <Route path="/local-experts">
         <Layout><ExpertsPage /></Layout>

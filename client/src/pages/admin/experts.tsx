@@ -45,6 +45,12 @@ interface ExpertApplication {
   neighborhoods?: string[];
   localityProof?: string;
   knowledgeProofAnswers?: Array<{ question: string; answer: string }>;
+  knowledgeScore?: {
+    overall: number | null;
+    verdict: "strong" | "adequate" | "weak" | "unscored";
+    perAnswer?: Array<{ dimensions: Record<string, number>; score: number; feedback: string }>;
+    note?: string;
+  } | null;
   localSpecialties?: string[];
 }
 
@@ -350,6 +356,38 @@ export default function AdminExperts() {
                         </div>
                       </div>
                     )}
+
+                    {/* Kyoto Knowledge-Bar expertise score (ADVISORY — decision support, not an auto-gate). */}
+                    {app.expertType === "local_expert" && app.knowledgeScore && (() => {
+                      const ks = app.knowledgeScore!;
+                      const DIM_LABEL: Record<string, string> = { weighted: "Weighted", current_local: "Current/local", negative: "Steer-away", personalization: "For-whom" };
+                      const badge = ks.verdict === "strong" ? "bg-green-100 text-green-800 border-green-200"
+                        : ks.verdict === "adequate" ? "bg-amber-100 text-amber-800 border-amber-200"
+                        : ks.verdict === "weak" ? "bg-red-100 text-red-800 border-red-200"
+                        : "bg-gray-100 text-gray-600 border-gray-200";
+                      return (
+                        <div className="text-sm space-y-1.5 rounded border border-gray-200 bg-gray-50 p-2.5" data-testid={`knowledge-score-${app.id}`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500 font-medium">Expertise score</span>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded border capitalize ${badge}`}>
+                              {ks.overall != null ? `${ks.overall}/100 · ${ks.verdict}` : "not scored"}
+                            </span>
+                            <span className="text-[10px] text-gray-400">advisory — you decide</span>
+                          </div>
+                          {ks.overall == null && ks.note && (
+                            <p className="text-xs text-gray-500 italic">{ks.note}</p>
+                          )}
+                          {(ks.perAnswer ?? []).map((pa, i) => (
+                            <div key={i} className="text-xs text-gray-600">
+                              <span className="font-medium">A{i + 1} · {pa.score}/12</span>
+                              {" — "}
+                              {Object.entries(pa.dimensions ?? {}).map(([k, v]) => `${DIM_LABEL[k] ?? k} ${v}`).join(" · ")}
+                              {pa.feedback && <span className="block text-gray-500 italic">{pa.feedback}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
 
                     {app.expertType === "local_expert" && (app.knowledgeProofAnswers ?? []).length > 0 && (
                       <div className="text-sm space-y-2">

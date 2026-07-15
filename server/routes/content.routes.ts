@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { Router } from "express";
@@ -30,6 +31,7 @@ import {
   getTripAnalyticsEnhancedByTripId, updateTripAnalyticsEnhanced,
   getAdminUserByEmail, insertUser, getFirstUser,
   getAllDestinationEvents, insertHelpGuideTrips, insertTouristPlacesSearch,
+  insertContentImpression, getDemandCountsForCity,
 } from "../services/content-query.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
@@ -79,7 +81,7 @@ import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from 
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
-import { feverCacheService } from "../services/fever-cache.service";
+import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
@@ -708,9 +710,12 @@ router.get("/api/discover/location/:city", async (req, res) => {
       const month = req.query.month ? Number(req.query.month) : undefined;
       const year = req.query.year ? Number(req.query.year) : undefined;
       const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      // date passthrough harvested from the routes.ts shadow copy — the service's
+      // LocationViewOptions.date exists for this route (no behavior change server-side yet).
+      const date = typeof req.query.date === "string" ? req.query.date : undefined;
 
       const { locationViewService } = await import("../services/location-view.service");
-      const payload = await locationViewService.getLocationView(city, country, { month, year, limit });
+      const payload = await locationViewService.getLocationView(city, country, { month, year, limit, date });
       res.set("Cache-Control", "public, max-age=300");
       res.json(payload);
     } catch (err: any) {
@@ -837,6 +842,16 @@ router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
 
 router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
+      // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f
+      // applied this fix to the dead duplicate; see docs/audits/shadow-route-sweep.md).
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const venue = await storage.getCustomVenue(req.params.id);
+      if (!venue) {
+        return res.status(404).json({ message: "Custom venue not found" });
+      }
+      if (venue.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const input = insertCustomVenueSchema.partial().parse(req.body);
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
@@ -854,8 +869,21 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
   // Delete custom venue
 
 router.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
-    await storage.deleteCustomVenue(req.params.id);
-    res.status(204).send();
+    try {
+      // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f).
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const venue = await storage.getCustomVenue(req.params.id);
+      if (!venue) {
+        return res.status(404).json({ message: "Custom venue not found" });
+      }
+      if (venue.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteCustomVenue(req.params.id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete custom venue" });
+    }
   });
 
   // === Experience Types Routes ===
@@ -1875,9 +1903,37 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
 
   // Admin: Get pending destination events
 
+// Demand counts for wanted-slot recruitment cards on the Discover feed.
+  // ROUTE ORDER: MUST be registered BEFORE /api/services/:id below (same router) —
+  // otherwise "demand" is captured as :id and 404s. This router (content.routes.ts) is
+  // mounted before routes.ts registers its own /api/services/:id, so this wins globally.
+  // Response shape: Record<offeringTypeKey, number> (discover-location.tsx:1415).
+  router.get("/api/services/demand", async (req, res) => {
+    try {
+      const city = typeof req.query.city === "string" ? req.query.city.trim() : "";
+      const keysRaw = typeof req.query.offeringTypeKeys === "string" ? req.query.offeringTypeKeys : "";
+      const offeringTypeKeys = Array.from(
+        new Set(keysRaw.split(",").map((k) => k.trim()).filter(Boolean)),
+      ).slice(0, 50);
+      if (!city || offeringTypeKeys.length === 0) {
+        return res.json({});
+      }
+      const dateRangeStart =
+        typeof req.query.dateRangeStart === "string" ? req.query.dateRangeStart : undefined;
+
+      const counts = await getDemandCountsForCity(city, offeringTypeKeys, dateRangeStart);
+      res.json(counts);
+    } catch (err) {
+      console.error("Error fetching service demand counts:", err);
+      res.status(500).json({ error: "Failed to fetch demand counts" });
+    }
+  });
+
 router.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
-    if (!service || service.status !== "active") {
+    // Public surface: F2 read-gate (approval_status = 'approved') — harvested from the
+    // routes.ts shadow copy, where 23ece804 applied the gate to the dead duplicate.
+    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
     res.json(service);
@@ -1923,7 +1979,8 @@ router.get("/api/discover", async (req, res) => {
       }).catch(err => console.error("Failed to track search pattern:", err));
     }
 
-    res.json(result);
+    // Content-gate (§10): packages in search results are teaser-redacted like every public read.
+    res.json({ ...result, packages: (result.packages ?? []).map(redactTemplateContent) });
   });
 
   // Analytics: Get destination search trends
@@ -4931,18 +4988,20 @@ router.get("/api/travelpulse/ai/city/:cityName", requireAdmin, async (req, res) 
   });
 
   // Global Calendar - Get all cities ranked by seasonal rating for a given month
+  // NOTE: this is the LIVE handler (app.use(contentRoutes) mounts before the inline
+  // app.get copy in server/routes.ts, which is shadowed dead code — edit here only).
 
 router.get("/api/travelpulse/global-calendar", async (req, res) => {
     try {
       const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
       const vibeFilter = req.query.vibe as string;
       const limit = parseInt(req.query.limit as string) || 20;
-      
+
       // Get all cities with their seasonal data for the given month
       const cities = await travelPulseService.getAllCities();
-      
+
       // Get seasonal data for all cities for this month
-      const { destinationSeasons, destinationEvents } = await import("@shared/schema");
+      const { destinationSeasons, destinationEvents, expertTemplates, expertNeighborhoods } = await import("@shared/schema");
       const seasonsData = await db
         .select()
         .from(destinationSeasons)
@@ -4959,33 +5018,82 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
           )
         );
       
-      // Create a map of city+country to seasonal data
+      // D3 honest counts (§13): grouped queries across the whole city set — no N+1.
+      // Packages = approved + published expert templates whose destination mentions the city.
+      const approvedTemplateDestinations = await db
+        .select({ destination: expertTemplates.destination })
+        .from(expertTemplates)
+        .where(
+          and(
+            eq(expertTemplates.approvalStatus, "approved"),
+            eq(expertTemplates.isPublished, true)
+          )
+        );
+      const templateDestinationsLower = approvedTemplateDestinations
+        .map(t => (t.destination || "").toLowerCase())
+        .filter(d => d.length > 0);
+
+      // Local experts = DISTINCT experts with neighborhood coverage in the city.
+      const expertCountRows = await db
+        .select({
+          city: sql<string>`LOWER(${cityNeighborhoods.city})`,
+          expertCount: sql<number>`COUNT(DISTINCT ${expertNeighborhoods.expertId})::int`,
+        })
+        .from(expertNeighborhoods)
+        .innerJoin(cityNeighborhoods, eq(expertNeighborhoods.neighborhoodId, cityNeighborhoods.id))
+        .groupBy(sql`LOWER(${cityNeighborhoods.city})`);
+      const expertCountMap = new Map<string, number>();
+      for (const row of expertCountRows) {
+        expertCountMap.set(row.city, Number(row.expertCount) || 0);
+      }
+
+      // Create a map of city+country to seasonal data, with a country-level fallback.
+      // destination_seasons rows are seeded COUNTRY-level (city = NULL, see
+      // server/seed-destination-calendar.ts), so a strict city+country join matches
+      // nothing and every city gets dropped. Fix bf93f45e ("match seasons by country
+      // with city-level override") was applied to the routes.ts shadow copy and lost
+      // in the defrag — harvested back here (docs/audits/shadow-route-sweep.md).
       const seasonMap = new Map<string, typeof seasonsData[0]>();
+      const countrySeasonMap = new Map<string, typeof seasonsData[0]>();
       for (const season of seasonsData) {
-        const key = `${season.city || ""}-${season.country}`.toLowerCase();
-        seasonMap.set(key, season);
-      }
-      
-      // Create a map of city to events
-      const eventMap = new Map<string, typeof eventsData>();
-      for (const event of eventsData) {
-        const key = `${event.city || ""}-${event.country}`.toLowerCase();
-        if (!eventMap.has(key)) {
-          eventMap.set(key, []);
+        if (season.city) {
+          const key = `${season.city}-${season.country}`.toLowerCase();
+          seasonMap.set(key, season);
+        } else {
+          const key = season.country.toLowerCase();
+          if (!countrySeasonMap.has(key)) countrySeasonMap.set(key, season);
         }
-        eventMap.get(key)!.push(event);
       }
-      
-      // Combine cities with seasonal data - ONLY include cities that have seasonal data for this month
+
+      // Create a map of city to events (country-level events fall back the same way)
+      const eventMap = new Map<string, typeof eventsData>();
+      const countryEventMap = new Map<string, typeof eventsData>();
+      for (const event of eventsData) {
+        if (event.city) {
+          const key = `${event.city}-${event.country}`.toLowerCase();
+          if (!eventMap.has(key)) eventMap.set(key, []);
+          eventMap.get(key)!.push(event);
+        } else {
+          const key = event.country.toLowerCase();
+          if (!countryEventMap.has(key)) countryEventMap.set(key, []);
+          countryEventMap.get(key)!.push(event);
+        }
+      }
+
+      // Combine cities with seasonal data — city-level season wins, else country-level;
+      // keep cities with no season but events this month (events-only bucket).
       const citiesWithSeasons = cities
         .map(city => {
-          const key = `${city.cityName}-${city.country}`.toLowerCase();
-          const season = seasonMap.get(key);
-          const events = eventMap.get(key) || [];
-          
-          // Skip cities without seasonal data for this month
-          if (!season) return null;
-          
+          const cityKey = `${city.cityName}-${city.country}`.toLowerCase();
+          const countryKey = city.country.toLowerCase();
+          const season = seasonMap.get(cityKey) ?? countrySeasonMap.get(countryKey) ?? null;
+          const cityEvents = eventMap.get(cityKey) || [];
+          const countryEvents = countryEventMap.get(countryKey) || [];
+          const events = [...cityEvents, ...countryEvents];
+
+          // Skip cities with neither seasonal data nor events for this month
+          if (!season && events.length === 0) return null;
+
           return {
             id: city.id,
             cityName: city.cityName,
@@ -4999,21 +5107,27 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             crowdLevel: city.crowdLevel,
             currentHighlight: city.currentHighlight,
             highlightEmoji: city.highlightEmoji,
-            // Seasonal data for this month
-            seasonalRating: season.rating,
-            weatherDescription: season.weatherDescription,
-            averageTemp: season.averageTemp,
-            rainfall: season.rainfall,
-            seasonCrowdLevel: season.crowdLevel,
-            priceLevel: season.priceLevel,
-            highlights: season.highlights || [],
+            // Seasonal data for this month (null when the city is events-only)
+            seasonalRating: season?.rating || null,
+            weatherDescription: season?.weatherDescription || null,
+            averageTemp: season?.averageTemp || null,
+            rainfall: season?.rainfall || null,
+            seasonCrowdLevel: season?.crowdLevel || null,
+            priceLevel: season?.priceLevel || null,
+            highlights: season?.highlights || [],
             // Events this month
             events: events.map(e => ({
               id: e.id,
               title: e.title,
               eventType: e.eventType,
               description: e.description,
+              specificDate: e.specificDate,
             })),
+            // D3 honest counts — real aggregates only (§13)
+            packagesCount: templateDestinationsLower.filter(d =>
+              d.includes(city.cityName.toLowerCase())
+            ).length,
+            expertsCount: expertCountMap.get(city.cityName.toLowerCase()) || 0,
             // AI data
             aiBestTimeToVisit: city.aiBestTimeToVisit,
             aiBudgetEstimate: city.aiBudgetEstimate as any,
@@ -5043,8 +5157,8 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       };
       
       filteredCities.sort((a: typeof citiesWithSeasons[0], b: typeof citiesWithSeasons[0]) => {
-        const aRating = ratingOrder[a.seasonalRating] ?? 2;
-        const bRating = ratingOrder[b.seasonalRating] ?? 2;
+        const aRating = a.seasonalRating ? ratingOrder[a.seasonalRating] ?? 2 : 2;
+        const bRating = b.seasonalRating ? ratingOrder[b.seasonalRating] ?? 2 : 2;
         if (aRating !== bRating) return aRating - bRating;
         // Secondary sort by pulse score
         return (b.pulseScore || 0) - (a.pulseScore || 0);
@@ -5055,8 +5169,9 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       const grouped = {
         best: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "best" || c.seasonalRating === "excellent"),
         good: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "good"),
-        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average" || !c.seasonalRating),
-        eventsOnly: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "events-only"),
+        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average"),
+        // events-only: explicit rating value, or a city surfaced with events but no season row
+        eventsOnly: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "events-only" || !c.seasonalRating),
         avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
       };
       
@@ -5082,6 +5197,54 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
     } catch (error: any) {
       console.error("Error getting global calendar:", error);
       res.status(500).json({ message: "Failed to get global calendar", error: error.message });
+    }
+  });
+
+  // Year summary (D10) — best-time cities per month from destination_seasons.
+  // "Best" = rating best/excellent (the ratings that score >= 8 on the client's
+  // 10-point scale; the rating column is categorical, not numeric). ONE grouped
+  // query covers all 12 months — no per-month N+1. There was previously NO
+  // server handler at this path (the client computed year summaries itself).
+
+router.get("/api/travelpulse/year-summary", async (_req, res) => {
+    try {
+      const { destinationSeasons } = await import("@shared/schema");
+      const bestRows = await db
+        .select({
+          month: destinationSeasons.month,
+          city: destinationSeasons.city,
+          country: destinationSeasons.country,
+        })
+        .from(destinationSeasons)
+        .where(inArray(destinationSeasons.rating, ["best", "excellent"]))
+        .orderBy(asc(destinationSeasons.month), asc(destinationSeasons.city));
+
+      const byMonth = new Map<number, { cityName: string; country: string }[]>();
+      for (const row of bestRows) {
+        if (!row.city || !row.month) continue;
+        const list = byMonth.get(row.month) || [];
+        const dupe = list.some(
+          c =>
+            c.cityName.toLowerCase() === row.city!.toLowerCase() &&
+            c.country.toLowerCase() === row.country.toLowerCase()
+        );
+        if (!dupe) list.push({ cityName: row.city, country: row.country });
+        byMonth.set(row.month, list);
+      }
+
+      res.json({
+        months: Array.from({ length: 12 }, (_, i) => {
+          const list = byMonth.get(i + 1) || [];
+          return {
+            month: i + 1,
+            bestCities: list.slice(0, 2),
+            bestCitiesTotal: list.length,
+          };
+        }),
+      });
+    } catch (error: any) {
+      console.error("Error getting year summary:", error);
+      res.status(500).json({ message: "Failed to get year summary", error: error.message });
     }
   });
 
@@ -5820,7 +5983,7 @@ router.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
 
 router.get("/api/fever/cache/status", async (_req, res) => {
     try {
-      const status = await feverCacheService.getCacheStatus();
+      const status = await partnerEventsCacheService.getCacheStatus();
       res.json({
         ...status,
         supportedCities: feverService.getSupportedCities().length,
@@ -5838,7 +6001,7 @@ router.get("/api/fever/cache/status", async (_req, res) => {
 router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
     try {
       const { cityCode } = req.params;
-      const events = await feverCacheService.getEventsOrRefresh(cityCode);
+      const events = await partnerEventsCacheService.getEventsOrRefresh(cityCode);
       
       res.json({
         events,
@@ -5862,7 +6025,7 @@ router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, r
       }
 
       const { cityCode } = req.params;
-      const result = await feverCacheService.refreshCityCache(cityCode);
+      const result = await partnerEventsCacheService.refreshCityCache(cityCode);
       
       res.json({
         message: `Refreshed ${result.refreshed} events for ${cityCode}`,
@@ -5883,7 +6046,7 @@ router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) =>
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const result = await feverCacheService.refreshAllCities();
+      const result = await partnerEventsCacheService.refreshAllCities();
       
       res.json({
         message: `Refreshed ${result.totalRefreshed} events across all cities`,
@@ -7355,6 +7518,43 @@ router.get("/api/platform/stats", async (_req, res) => {
 
   // === Admin Notifications (admin-specific) ===
 
+// Feed content-impression tracking (public — the feed is public; userId is
+  // opportunistic). Contract of use-impression-tracker.ts: one POST per card scrolled
+  // into view, expects { impressionId } back so clicks can carry sourceImpressionId.
+  // Deduped server-side by the migration-116 unique index — a duplicate returns the
+  // EXISTING impression id. Analytics-only, fire-and-forget: single insert, no auth.
+  const impressionBodySchema = z.object({
+    contentType: z.string().min(1).max(40),
+    contentId: z.string().min(1),
+    city: z.string().nullable().optional(),
+    cardPosition: z.number().int().nullable().optional(),
+    sessionId: z.string().min(1),
+  });
+
+  router.post("/api/tracking/impression", async (req, res) => {
+    try {
+      const parsed = impressionBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid impression payload" });
+      }
+      const userId =
+        (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+
+      const impressionId = await insertContentImpression({
+        contentType: parsed.data.contentType,
+        contentId: parsed.data.contentId,
+        city: parsed.data.city ?? null,
+        cardPosition: parsed.data.cardPosition ?? null,
+        sessionId: parsed.data.sessionId,
+        userId,
+      });
+      res.json({ impressionId });
+    } catch (err) {
+      console.error("Error recording content impression:", err);
+      res.status(500).json({ error: "Failed to record impression" });
+    }
+  });
+
 router.post("/api/track/search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
@@ -7378,7 +7578,7 @@ router.post("/api/track/search", async (req, res) => {
 
       // Feed zero-result searches back into demand signal layer as gap/opportunity signals (non-blocking)
       if (req.body.resultsCount === 0 && req.body.destination) {
-        const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+        const { serviceRecommendationEngine } = await import("../services/recommendation.service");
         serviceRecommendationEngine
           .recordNoResultsSignal(req.body.destination, req.body.searchType)
           .catch((err: any) =>
@@ -7440,7 +7640,7 @@ router.post("/api/track/funnel", async (req, res) => {
       });
 
       // Feed this funnel event back into the demand signal layer (non-blocking)
-      const { serviceRecommendationEngine } = await import("../services/service-recommendation-engine.service");
+      const { serviceRecommendationEngine } = await import("../services/recommendation.service");
       serviceRecommendationEngine
         .recordFunnelEventAsSignal({
           stage: req.body.stage,

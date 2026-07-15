@@ -49,7 +49,7 @@ export function ProviderLayout({ children, title }: ProviderLayoutProps) {
               >
                 <Star className="w-3.5 h-3.5 fill-[#F59E0B]" style={{ color: "#F59E0B" }} />
                 <span className="text-[11px] font-medium" style={{ color: "#B45309" }}>
-                  4.9 Rating
+                  New
                 </span>
               </div>
               <Link href="/notifications">

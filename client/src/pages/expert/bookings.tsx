@@ -37,6 +37,7 @@ import {
   Plus,
   X,
   ListChecks,
+  DollarSign,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
@@ -511,6 +512,39 @@ export default function ExpertBookings() {
                         {booking.notes && (
                           <p className="text-sm text-console-mid mt-2 italic">Note: {booking.notes}</p>
                         )}
+                        {(() => {
+                          // Two-sided fee disclosure: show the expert their cut BEFORE they accept
+                          // (the traveler already sees the fee at checkout). Fields ride the booking
+                          // payload (sanitizeBookingForExpert keeps totalAmount/platformFee/providerEarnings).
+                          const total = booking.totalAmount != null ? Number(booking.totalAmount) : null;
+                          const fee = booking.platformFee != null ? Number(booking.platformFee) : null;
+                          const payout = booking.providerEarnings != null
+                            ? Number(booking.providerEarnings)
+                            : (total != null ? total - (fee ?? 0) : null);
+                          if (payout == null && total == null) return null;
+                          return (
+                            <div
+                              className="mt-3 rounded-md bg-green-50 border border-green-200 px-3 py-2"
+                              data-testid={`booking-payout-${booking.id}`}
+                            >
+                              {payout != null && (
+                                <div className="flex items-center gap-1.5 text-sm font-semibold text-green-800">
+                                  <DollarSign className="w-4 h-4" />
+                                  You earn ${payout.toFixed(2)}
+                                  {booking.status === "pending" && (
+                                    <span className="font-normal text-green-700">if you accept</span>
+                                  )}
+                                </div>
+                              )}
+                              {total != null && (
+                                <p className="text-xs text-green-700 mt-0.5">
+                                  Booking total ${total.toFixed(2)}
+                                  {fee != null && <> · platform fee ${fee.toFixed(2)}</>}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="flex flex-col gap-2 ml-4">
                         {booking.status === "pending" ? (

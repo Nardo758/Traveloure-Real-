@@ -412,6 +412,72 @@ class StripePaymentService {
   }
 
   /**
+   * Refund a SERVICE booking (escrow Phase 4 / docs/design/escrow-spine.md).
+   *
+   * Unlike createRefund (which reads the legacy `bookings` table), this refunds against
+   * service_bookings' OWN stripe_payment_intent_id + total_amount — the real booking rail where
+   * disputes live. Amount is server-derived from the row (never client-supplied — §14).
+   *
+   * Idempotent (§15) on BOTH layers: (a) an atomic status claim (WHERE status <> 'refunded') so two
+   * concurrent callers can't both proceed — reverted if the Stripe call then fails; (b) a
+   * deterministic Stripe idempotencyKey so even a cross-process retry returns the same refund rather
+   * than issuing a second one.
+   */
+  async refundServiceBooking(bookingId: string, reason?: string) {
+    const rows = await db.execute(sql`
+      SELECT id, total_amount, stripe_payment_intent_id, status
+      FROM service_bookings WHERE id = ${bookingId} LIMIT 1
+    `);
+    const row = rows.rows?.[0] as any;
+    if (!row) throw new Error('Service booking not found');
+
+    const amount = parseFloat(row.total_amount || '0');
+    if (row.status === 'refunded') {
+      return { alreadyRefunded: true, amount, status: 'refunded' as const };
+    }
+    const paymentIntentId = row.stripe_payment_intent_id;
+    if (!paymentIntentId) throw new Error('Booking has no payment intent to refund');
+
+    // Atomic claim: flip to 'refunded' only if it isn't already. A concurrent caller claims 0 rows.
+    const claim = await db.execute(sql`
+      UPDATE service_bookings SET status = 'refunded', updated_at = NOW()
+      WHERE id = ${bookingId} AND status <> 'refunded'
+      RETURNING id
+    `);
+    if (!claim.rows || claim.rows.length === 0) {
+      return { alreadyRefunded: true, amount, status: 'refunded' as const };
+    }
+
+    const priorStatus = row.status;
+    let refund: Stripe.Refund;
+    try {
+      refund = await stripe.refunds.create(
+        {
+          payment_intent: paymentIntentId,
+          amount: Math.round(amount * 100),
+          reason: (reason as Stripe.RefundCreateParams.Reason) || 'requested_by_customer',
+          metadata: { bookingId, source: 'service_booking' },
+        },
+        { idempotencyKey: `refund-sb-${bookingId}` },
+      );
+    } catch (err: any) {
+      // Stripe failed — revert the optimistic status claim so a later retry can proceed cleanly.
+      await db.execute(sql`UPDATE service_bookings SET status = ${priorStatus}, updated_at = NOW() WHERE id = ${bookingId}`);
+      console.error('Service-booking refund error:', err);
+      throw new Error(`Refund failed: ${err.message}`);
+    }
+
+    await db.execute(sql`
+      INSERT INTO refunds (
+        booking_id, stripe_refund_id, stripe_payment_intent_id,
+        amount, currency, status, reason, created_at
+      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${reason || 'requested_by_customer'}, NOW())
+    `);
+
+    return { refundId: refund.id, amount, status: refund.status };
+  }
+
+  /**
    * Get payment intent status
    */
   async getPaymentIntentStatus(paymentIntentId: string) {
