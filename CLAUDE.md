@@ -284,9 +284,15 @@ This document captures architectural decisions to maintain consistency across co
   cache-scheduler tick wrote them into `destination_events` **born-`approved`** (ids `mock-<city>-<n>`, fake dates/
   ratings), which the public By-Date calendar served as real. Fix: `fever-cache.service` now skips entirely when
   `feverService.isReady()` is false (the Booking.com/OpenTable "skipping live fetch" sibling pattern); migration 115
-  purges the already-written `mock-%` rows. **Still open (same audit, decision pending):** AI (Grok) and real-Fever
-  events are **born-`approved`** with no review — only user-submitted events pass the admin queue (the D1a
-  born-approved lesson applied to machine content). Full pipeline audit verdicts in the data-capture report
+  purges the already-written `mock-%` rows. **CLOSED (Jul 15, 2026 — decision ratified):** AI (Grok) and Fever events
+  are now **born-`pending`**, not `approved` — the D1a born-approved lesson applied to machine content (AI can
+  hallucinate events, so it doesn't self-publish to the public By-Date calendar). Both machine insert sites flipped
+  (`travelpulse.service.ts` AI arm, `partner-events-cache.service.ts` Fever arm); they land in the **existing**
+  `getPendingDestinationEvents` admin queue alongside user-submitted events. The queue was **headless** (approve/reject
+  endpoints existed, zero client consumer) — built the admin UI (`client/src/pages/admin/destination-events.tsx`,
+  "Event Review", source-badged AI/Partner/User, approve + reject-with-reason). Grandfather: existing `approved` rows
+  untouched (no calendar outage). Proven behaviorally: born-pending → hidden from the public calendar, visible in the
+  queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
   (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
@@ -513,6 +519,19 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   repair note below). Registry order is authoritative; numeric filename order is not.
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
+
+**CRITICAL: Replit deploy-push vs. our migrations (the "publish-time CHECK failure" trap)**
+- Replit's Autoscale deploy runs an **automatic drizzle-kit schema-push** from `shared/schema.ts` at publish —
+  and it enforces the schema's CHECK constraints **WITHOUT** running our migrations' value-remap steps first.
+  So a migration that adds a CHECK over a column still holding legacy values on prod fails the deploy mid-push
+  (`check constraint … violated by some row`) and offers the **DESTRUCTIVE** "copy dev database over production"
+  option. **Never accept that option** — it overwrites prod with dev. This bit us twice on the Jul 15 publish
+  (`expert_earnings.status='pending'`, `service_templates.delivery_method='document'`).
+- Guard: **before publishing any migration that adds/changes a CHECK**, run
+  `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
+  declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK
+  migration, add its column to that script's `CONSTRAINT_MANIFEST`. The real fix (disable the deploy-push so
+  `runMigrations()` is authoritative) is a Replit deployment setting, filed.
 
 **CRITICAL: Drizzle push has TWO schema entry points — do not collapse to one**
 - `drizzle.config.ts` `schema` is an **array**: `["./shared/schema.ts", "./shared/guest-invites-schema.ts"]`.
