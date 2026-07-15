@@ -21,6 +21,7 @@ import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVen
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
+import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   composeDiscoverFeed,
   defaultIsRelated,
@@ -763,6 +764,7 @@ function RecommendationCard({
   cardPosition?: number;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const askExpert = useAskExpert();
   const name = candidate.displayName || candidate.categoryKey?.replace(/_/g, " ");
   const isAffiliate = candidate.sourceType === "affiliate";
   const isRow = layout === "row";
@@ -890,8 +892,14 @@ function RecommendationCard({
           <Plus className="w-3 h-3 mr-1" />
           {addLabel}
         </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
-          <a href="/local-experts">💬 Ask</a>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs px-2.5"
+          onClick={() => askExpert({ city, subject: name })}
+          data-testid={`btn-ask-rec-${position}`}
+        >
+          💬 Ask
         </Button>
 
         {/* D9: More info modal — additive; Book/Add/Ask above are untouched.

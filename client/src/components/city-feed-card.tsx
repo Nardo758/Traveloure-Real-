@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
+import { useAskExpert } from "@/lib/use-ask-expert";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -553,6 +554,7 @@ export function CityFeedCardGem({
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const askExpert = useAskExpert();
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
@@ -748,10 +750,10 @@ export function CityFeedCardGem({
             size="sm"
             variant="outline"
             className="h-7 text-xs px-2.5"
-            asChild
+            onClick={() => askExpert({ city, subject: gem.placeName })}
             data-testid={`btn-ask-gem-${gem.id}`}
           >
-            <a href="/local-experts">💬 Ask</a>
+            💬 Ask
           </Button>
           <button
             onClick={() => setSheetOpen(true)}
@@ -798,6 +800,7 @@ interface CityFeedCardEventProps {
 export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const askExpert = useAskExpert();
   const dbImageUrl = event.image || event.imageUrl || null;
   const eventName = event.title || event.name || "";
   const { photoUrl, loading } = useGemPhoto(
@@ -934,8 +937,14 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               <Plus className="w-3 h-3 mr-1" />
               {addLabel}
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
-              <a href="/local-experts">💬 Ask</a>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={() => askExpert({ city, subject: eventName })}
+              data-testid={`btn-ask-event-${event.id}`}
+            >
+              💬 Ask
             </Button>
             <button
               onClick={() => setSheetOpen(true)}
@@ -964,6 +973,7 @@ interface CityFeedCardVendorServiceProps {
 export function CityFeedCardVendorService({ service, city, className, cardPosition }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const askExpert = useAskExpert();
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
   const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
   const { ref: impressionRefVendor, getImpressionId: getImpIdVendor } = useImpressionTracker(
@@ -1116,8 +1126,14 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 <Globe className="w-3 h-3" />
               </Button>
             )}
-            <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
-              <a href="/local-experts">💬 Ask</a>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={() => askExpert({ city, subject: service.serviceName })}
+              data-testid={`btn-ask-svc-${service.id}`}
+            >
+              💬 Ask
             </Button>
             <button
               onClick={() => setSheetOpen(true)}
@@ -1149,6 +1165,7 @@ interface CityFeedCardSupplyProps {
 export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const askExpert = useAskExpert();
   const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
   const itemName = item.name || item.title || "";
   const isHotel = kind === "supply-hotel";
@@ -1302,8 +1319,14 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             >
               Details
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
-              <a href="/local-experts">💬 Ask</a>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={() => askExpert({ city, subject: itemName })}
+              data-testid={`btn-ask-supply-${item.id}`}
+            >
+              💬 Ask
             </Button>
           </div>
         </div>
