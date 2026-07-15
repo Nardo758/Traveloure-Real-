@@ -78,6 +78,16 @@ This document captures architectural decisions to maintain consistency across co
 9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
    endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
+   - **Route-shadow class — SWEPT (Jul 15, 2026).** The 237 inline `routes.ts` registrations that duplicated a path
+     already served by an earlier-mounted router (202 content.routes, 29 admin.routes, 6 payments.routes — including
+     the §10 `/api/discover` and §15 `/api/checkout` landmines) were **diffed pair-by-pair and deleted**; 6 superior
+     deltas found only on the dead copies were **harvested into the live copies first** (custom-venues IDOR ownership
+     ×2, the `/api/services/:id` F2 read-gate, the global-calendar country-season fallback, the admin-notifications DB
+     role lookup, the discover-location `date` passthrough). Full pair table + unresolved remainders in
+     `docs/audits/shadow-route-sweep.md`. **Rule going forward: never register a path inline in `routes.ts` that a
+     mounted router already serves** — the router copy wins on mount order and the inline copy is born dead (this class
+     ate at least three real fixes: bf93f45e, 571b593f, 23ece804 all landed on dead copies). New endpoints belong in
+     the appropriate `server/routes/*.ts` router.
    - **Ground-truth correction (Jul 14, 2026): the "mostly-dark supply side" headline was overstated.** Re-verified on
      `origin/main`, three surfaces the maps inferred were dark are actually **LIVE on origin/main** (not even
      deploy-only): the **recommender** (real `server/services/recommendation.service.ts` → `getExpertRecommendations`/
@@ -178,10 +188,10 @@ This document captures architectural decisions to maintain consistency across co
       destination; price filters; skipped on category-locked browses — template categories ≠ `service_categories`),
       rendered as a strip in `ServiceBrowser`, and the public packages feed is **quality-ordered** (featured →
       salesCount → rating → recency, was raw insertion order). Route-shadow catch #2 (same class as the §15
-      `/api/checkout` landmine): `/api/discover` is duplicated — `content.routes.ts` is the LIVE one (mount order),
-      `routes.ts`'s copy is shadowed dead code; the content-gate redaction now lives in the shared
-      `server/utils/template-content-gate.ts` and BOTH copies apply it (proven behaviorally: search results carry
-      teaser only, no `itineraryData`). **Still filed:** recommender doesn't rank packages — and note the engine is
+      `/api/checkout` landmine): `/api/discover` was duplicated — `content.routes.ts` is the LIVE one (mount order);
+      the shadowed `routes.ts` copy is **deleted by the §9 shadow-route sweep (Jul 15, 2026)**. The content-gate
+      redaction lives in the shared `server/utils/template-content-gate.ts` and the live copy applies it (proven
+      behaviorally: search results carry teaser only, no `itineraryData`). **Still filed:** recommender doesn't rank packages — and note the engine is
       **demand-signal-typed** (recommends service *types*), not a catalog ranker, so this is a design task, not a
       bolt-on; `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
       category/destination/duration are structured. **Label standard (ratified): traveler-facing = "Packages"**
@@ -347,11 +357,11 @@ a guard. Claim the row atomically **first**, then make the external call — so 
   `UPDATE template_purchases SET status='completed' WHERE id=:id AND status='pending_payment'` and records the earning
   **only if a row was updated**; a concurrent/duplicate confirm updates 0 rows → returns `alreadyCompleted`, no double
   credit. Proven at the DB. (Latent today — purchase UI orphaned — but race-safe before Phase B surfaces it.)
-- **FIX 2 `/checkout` — premise did NOT reproduce.** The live `/api/checkout` (`payments.routes.ts:283`, mounted before
-  the shadowed `routes.ts:7347` duplicate) **already dedups** on `service_bookings.idempotency_key`. Residual (filed,
-  not fixed here): the key is **optional** (`if (idempotencyKey)`) so a client omitting it bypasses dedup; and the
-  shadowed `routes.ts:7347` `/api/checkout` has no idempotency (dead/unreachable but a route-order landmine). Recommend:
-  require the key (or add a natural-key server dedup) + remove the dead duplicate — a small hardening, not "add idempotency."
+- **FIX 2 `/checkout` — premise did NOT reproduce.** The live `/api/checkout` (`payments.routes.ts:283`) **already
+  dedups** on `service_bookings.idempotency_key`. The shadowed `routes.ts` `/api/checkout` duplicate (the route-order
+  landmine with no idempotency) is **deleted by the §9 shadow-route sweep (Jul 15, 2026)**. Residual (filed, not fixed):
+  the key is **optional** (`if (idempotencyKey)`) so a client omitting it bypasses dedup. Recommend: require the key
+  (or add a natural-key server dedup) — a small hardening, not "add idempotency."
 - **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
   captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
 
