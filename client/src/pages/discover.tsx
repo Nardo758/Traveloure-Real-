@@ -633,8 +633,11 @@ export default function DiscoverPage() {
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
   // Tab navigation state (read from URL).
-  // articles/packages tabs hidden in Phase 1a — fall back to travelpulse.
-  const VISIBLE_TABS = new Set(["travelpulse", "events", "services"]);
+  // articles tab hidden in Phase 1a — fall back to travelpulse.
+  // "packages" added to the URL-addressable set alongside the B4 un-hide of its
+  // TabsTrigger (the trigger + TabsContent already render; this only lets
+  // ?tab=packages deep-link to it, e.g. from the calendar "More info" modal).
+  const VISIBLE_TABS = new Set(["travelpulse", "packages", "events", "services"]);
   const rawUrlTab = urlParams.get("tab") || "travelpulse";
   const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
   const urlCity = urlParams.get("city") || "";
