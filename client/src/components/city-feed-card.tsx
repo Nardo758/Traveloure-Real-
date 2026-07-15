@@ -1098,13 +1098,16 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
           )}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
+            {/* Native on-site booking: the card is badged "Book on Traveloure", so the
+                primary CTA is a real Book that lands on the service detail page (date/time
+                picker → cart → the audited /api/checkout rail), not an "Inquire". */}
             <Button
               size="sm"
               className="h-7 text-xs px-3"
               onClick={() => (window.location.href = `/services/${service.id}`)}
-              data-testid={`btn-inquire-svc-${service.id}`}
+              data-testid={`btn-book-svc-${service.id}`}
             >
-              Inquire
+              Book
             </Button>
             {externalUrl && (
               <Button
