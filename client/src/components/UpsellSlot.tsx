@@ -25,7 +25,8 @@ export type UpsellSurface =
   | "plancard_ontrip"
   | "cart"
   | "checkout"
-  | "discover_location";
+  | "discover_location"
+  | "discover_date";
 
 export interface UpsellCandidate {
   offeringId: string;
@@ -80,6 +81,10 @@ const ENDPOINT: Record<UpsellSurface, string> = {
   cart: "/api/upsell/cart",
   checkout: "/api/upsell/checkout",
   discover_location: "/api/upsell/discover-location",
+  // Date-mode discover: dateRange is a HARD availability filter server-side
+  // (discoverDateBodySchema requires { city, dateRange: { start, end? } } in
+  // the contextPayload — city-scoped, not neighborhoodId-scoped).
+  discover_date: "/api/upsell/discover-date",
 };
 
 const DEFAULT_HEADING: Record<UpsellSurface, string> = {
@@ -88,6 +93,7 @@ const DEFAULT_HEADING: Record<UpsellSurface, string> = {
   cart: "Frequently booked together",
   checkout: "Add to your trip",
   discover_location: "Recommended for you",
+  discover_date: "Available on your date",
 };
 
 export interface UseUpsellSlotResult {
