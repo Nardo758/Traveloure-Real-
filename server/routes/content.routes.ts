@@ -45,7 +45,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -736,14 +736,27 @@ router.get("/api/service-categories", async (req, res) => {
 
 router.get("/api/service-categories/provider-counts", async (_req, res) => {
     try {
+      // Providers don't carry a category column directly — they pick an offering
+      // type on /earn (service_provider_forms.offering_type_key), which maps to a
+      // service category via service_offering_types.category_key → service_categories.
+      // The old query grouped by a NON-EXISTENT service_provider_forms.category_id,
+      // so it always threw and the endpoint silently returned {} (empty counts).
       const counts = await db
         .select({
-          categoryId: sql<string | null>`category_id`,
+          categoryId: serviceCategories.id,
           count: sql<number>`count(*)::int`,
         })
         .from(serviceProviderForms)
-        .where(sql`category_id is not null`)
-        .groupBy(sql`category_id`);
+        .innerJoin(
+          serviceOfferingTypes,
+          eq(serviceOfferingTypes.offeringTypeKey, serviceProviderForms.offeringTypeKey),
+        )
+        .innerJoin(
+          serviceCategories,
+          eq(serviceCategories.categoryKey, serviceOfferingTypes.categoryKey),
+        )
+        .where(eq(serviceProviderForms.status, "approved"))
+        .groupBy(serviceCategories.id);
       const map: Record<string, number> = {};
       counts.forEach(c => { if (c.categoryId) map[c.categoryId] = c.count; });
       res.json(map);

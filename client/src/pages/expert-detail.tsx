@@ -581,18 +581,19 @@ export default function ExpertDetailPage() {
                       Schedule Consultation
                     </Button>
 
+                    {/* §13 honesty: the old "free cancellation / instant confirmation /
+                        24-7 support" claims were fabricated (no per-expert cancellation
+                        policy exists; bookings go through a request/confirm flow, not
+                        instant). Replaced with statements that are actually true of the
+                        platform: Stripe checkout + the escrow hold/dispute protection. */}
                     <div className="pt-4 border-t space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span>Free cancellation up to 24h</span>
+                        <span>Secure checkout via Stripe</span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span>Instant confirmation</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span>24/7 support</span>
+                        <span>Payment protected until the service is delivered</span>
                       </div>
                     </div>
                   </CardContent>
