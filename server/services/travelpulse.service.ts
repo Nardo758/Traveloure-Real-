@@ -1413,7 +1413,11 @@ Return JSON:
           eventType: event.type,
           seasonRating: event.significance,
           sourceType: "ai",
-          status: "approved",
+          // Born PENDING → admin review queue, NOT auto-published (D1a lesson applied to
+          // machine content: AI can hallucinate events, so it doesn't self-approve onto the
+          // public calendar). getPendingDestinationEvents() surfaces these; the public
+          // By-Date calendar shows only status='approved'. Existing approved rows grandfathered.
+          status: "pending",
         });
       }
     }

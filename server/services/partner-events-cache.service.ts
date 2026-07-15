@@ -247,7 +247,9 @@ class PartnerEventsCacheService {
         isRecurring: false,
         sourceType: "fever",
         sourceId: event.id,
-        status: "approved",
+        // Born PENDING → admin review queue, not auto-published (same as the AI arm; machine
+        // content is reviewed for accuracy before the public By-Date calendar shows it).
+        status: "pending",
         metadata: {
           imageUrl: event.imageUrl || null,
           thumbnailUrl: event.thumbnailUrl || null,
