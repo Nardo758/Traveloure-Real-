@@ -376,4 +376,14 @@ export const MIGRATION_FILES = [
   // (fabricated-content class, §13 family). Companion code guard: fever-cache.service skips
   // entirely when unconfigured (sibling-provider pattern). Real Fever rows untouched. Idempotent.
   "115_purge_fever_mock_events.sql",
+  // Migration 116 — content_impressions completion for the feed-measurement endpoint.
+  // The table itself was created by 082 but NEVER had a writer (the client impression
+  // tracker POSTed to a nonexistent /api/tracking/impression — every card's
+  // sourceImpressionId was null). Companion code change adds the endpoint; this migration
+  // completes the table: session_id NOT NULL (guarded), the UNIQUE dedup index
+  // (session_id, content_type, content_id) the client hook's contract promises (falls back
+  // to non-unique + NOTICE if dupes pre-exist), and a created_at index. (content_type,
+  // content_id) reads ride 082's idx_ci_content prefix. Analytics-only — no money
+  // semantics, fire-and-forget writes. Guarded/idempotent.
+  "116_content_impressions_tracking.sql",
 ] as const;
