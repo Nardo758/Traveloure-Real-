@@ -22,6 +22,7 @@ import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { rankPackagesByRelevance } from "@/lib/package-relevance";
 import {
   composeDiscoverFeed,
   defaultIsRelated,
@@ -1897,7 +1898,15 @@ export default function DiscoverLocationPage() {
   // earn-card at ~9. These are splice-inserts into the composed stream —
   // nothing is replaced, re-sorted, or dropped, so the engine's rec cadence
   // and wanted-slot spacing stay intact (they only shift down by the inserts).
-  const cityPackages = (packagesData ?? []).slice(0, 2);
+  // Rank the city's packages by relevance to what the traveler is browsing (active
+  // category filter + quality) instead of splicing the server's global top-2. The
+  // packages are already destination-filtered + approval-gated + teaser-redacted by the
+  // /api/expert-templates feed; this only re-orders which two surface.
+  const cityPackages = rankPackagesByRelevance(packagesData ?? [], {
+    city,
+    category: activeFilter,
+    scheduledDate,
+  }).slice(0, 2);
   const filteredItems: FeedItem[] = (() => {
     if (activeFilter !== "all") return composedItems;
     const out = [...composedItems];
