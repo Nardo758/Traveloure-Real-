@@ -161,6 +161,16 @@ This document captures architectural decisions to maintain consistency across co
       Stripe Elements via the shared `StripeCheckout` → POST `/purchase/confirm`); the client never sends an amount
       (§14). Proven against a local DB: anonymous list/detail leak-free; purchaser unlock; `/api/my-purchased-templates`
       returns full content (B3's data source).
+      **B3 landed (same branch): the delivery surface.** `/my-bookings` gains a **Packages** tab (first consumer of
+      `/api/my-purchased-templates`): purchase status (Purchased / Payment pending / Refunded) + "View itinerary" →
+      the B2 detail page, which unlocks full content for the purchaser. A buyer with only package purchases (no
+      bookings) now lands on the Packages tab instead of the "No bookings yet" dead-end. **B4 (three surfaces, scoped
+      by the surface map):** un-hide the Discover `packages` tab (cards already built, already link to the B2 page);
+      expert-profile packages section (`/experts/:id`, via the existing `?expertId=` filter); service-detail
+      same-owner cross-sell. Filed (not B4): search doesn't index templates; recommender doesn't rank them;
+      `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
+      category/destination/duration are structured. Product-type label is currently mixed ("Itinerary Templates" vs
+      "packages") — user-facing standardization pending the decision-maker's call.
       - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
         path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
         i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated
