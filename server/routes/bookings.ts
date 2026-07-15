@@ -19,13 +19,6 @@ import Stripe from 'stripe';
 
 const router = Router();
 
-// Owner of a legacy `bookings` row (for the refund authorization gate). Returns null if absent.
-async function getBookingOwnerId(bookingId: string): Promise<string | null> {
-  const r = await db.execute(sql`SELECT user_id FROM bookings WHERE id = ${bookingId} LIMIT 1`);
-  const row = r.rows?.[0] as any;
-  return row?.user_id != null ? String(row.user_id) : null;
-}
-
 // Owner (traveler) of a `service_bookings` row. The escrow confirm/dispute endpoints operate on
 // service_bookings (that's where the earnings link and where /api/my-bookings reads), so their
 // ownership gate must resolve against service_bookings.traveler_id — NOT the legacy `bookings`
@@ -386,7 +379,12 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'Booking ID required' });
     }
 
-    const ownerId = await getBookingOwnerId(bookingId);
+    // Re-pointed onto service_bookings (the canonical booking rail). The old code gated on
+    // and refunded against the legacy `bookings` table (getBookingOwnerId + createRefund),
+    // so it 404'd every real booking — refunds live in service_bookings, where disputes and
+    // the earnings link already are. Uses the same service-booking-native owner gate + refund
+    // as the admin dispute-uphold path (§14 amount server-derived, §15 idempotent).
+    const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) {
       return res.status(404).json({ error: 'Booking not found' });
     }
@@ -397,8 +395,9 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
-    // amount omitted → createRefund derives it from the booking's stored total_amount.
-    const result = await stripePaymentService.createRefund(bookingId, undefined, reason);
+    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
+    // claim + deterministic Stripe idempotencyKey).
+    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
 
     // Escrow Phase 4 (closes §14 A2): a refund now also reverses the linked earnings ledger + the
     // recognised platform revenue, so a refunded booking doesn't leave the provider/expert credited.
