@@ -18,8 +18,8 @@
  */
 
 import { db } from "../db";
-import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories } from "@shared/schema";
-import { eq, sql, and, ilike } from "drizzle-orm";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users } from "@shared/schema";
+import { eq, sql, and, ilike, inArray, asc } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
@@ -27,6 +27,15 @@ import { resolveBookability } from "@shared/bookability";
 export interface SectionResult<T> {
   data: T | null;
   error: string | null;
+}
+
+export interface NeighborhoodLocalExpert {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  /** Approved + published expert_templates count for this expert (public packages). */
+  packagesCount: number;
 }
 
 export interface Neighborhood {
@@ -46,6 +55,8 @@ export interface Neighborhood {
   serviceCount: number;
   /** Top gems (up to 6) pre-fetched for the city feed bento grid. */
   gems: any[];
+  /** One local expert covering this neighborhood (expert_neighborhoods, deterministic pick), or null. */
+  localExpert: NeighborhoodLocalExpert | null;
 }
 
 export interface LocationViewPayload {
@@ -124,7 +135,8 @@ class LocationViewService {
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
-    const cacheKey = `v3|${cityName}:${country ?? ""}`;
+    // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
+    const cacheKey = `v4|${cityName}:${country ?? ""}`;
     const cached = locationViewCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
@@ -229,15 +241,75 @@ class LocationViewService {
         }
       }
 
-      return neighborhoods.map((n) => ({
-        ...n,
-        gemCount: gemCountMap.get(n.slug) ?? 0,
-        serviceCount: svcCountMap.get(n.slug) ?? 0,
-        // bookability is DERIVED (never stored) via the single shared resolver.
-        gems: (gemsBySlug.get(n.slug) ?? [])
-          .slice(0, 6)
-          .map((gem) => ({ ...gem, bookability: resolveBookability(gem) })),
-      }));
+      // Local expert per neighborhood (Feed v2 F8): one deterministic pick from
+      // expert_neighborhoods (lead first, then earliest created), enriched with a
+      // packagesCount from expert_templates — approved + published only (the same
+      // gate as the public /api/expert-templates feed; §10 read-gate). One row
+      // query + one grouped count query for the whole neighborhood set — no N+1.
+      const neighborhoodIds = neighborhoods.map((n) => n.id);
+      const localExpertByNeighborhood = new Map<string, { expertId: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null }>();
+      const packagesCountByExpert = new Map<string, number>();
+      if (neighborhoodIds.length > 0) {
+        const expertRows = await db
+          .select({
+            neighborhoodId: expertNeighborhoods.neighborhoodId,
+            expertId: expertNeighborhoods.expertId,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            profileImageUrl: users.profileImageUrl,
+          })
+          .from(expertNeighborhoods)
+          .innerJoin(users, eq(users.id, expertNeighborhoods.expertId))
+          .where(inArray(expertNeighborhoods.neighborhoodId, neighborhoodIds))
+          .orderBy(sql`${expertNeighborhoods.isLead} DESC`, asc(expertNeighborhoods.createdAt), asc(expertNeighborhoods.id));
+        for (const row of expertRows) {
+          if (!localExpertByNeighborhood.has(row.neighborhoodId)) {
+            localExpertByNeighborhood.set(row.neighborhoodId, row);
+          }
+        }
+        const pickedExpertIds = Array.from(new Set(Array.from(localExpertByNeighborhood.values()).map((r) => r.expertId)));
+        if (pickedExpertIds.length > 0) {
+          const countRows = await db
+            .select({
+              expertId: expertTemplates.expertId,
+              count: sql<number>`cast(count(*) as int)`,
+            })
+            .from(expertTemplates)
+            .where(
+              and(
+                inArray(expertTemplates.expertId, pickedExpertIds),
+                eq(expertTemplates.approvalStatus, "approved"),
+                eq(expertTemplates.isPublished, true),
+              ),
+            )
+            .groupBy(expertTemplates.expertId);
+          for (const row of countRows) {
+            packagesCountByExpert.set(row.expertId, row.count);
+          }
+        }
+      }
+
+      return neighborhoods.map((n) => {
+        const expertRow = localExpertByNeighborhood.get(n.id) ?? null;
+        return {
+          ...n,
+          gemCount: gemCountMap.get(n.slug) ?? 0,
+          serviceCount: svcCountMap.get(n.slug) ?? 0,
+          // bookability is DERIVED (never stored) via the single shared resolver.
+          gems: (gemsBySlug.get(n.slug) ?? [])
+            .slice(0, 6)
+            .map((gem) => ({ ...gem, bookability: resolveBookability(gem) })),
+          localExpert: expertRow
+            ? {
+                id: expertRow.expertId,
+                firstName: expertRow.firstName,
+                lastName: expertRow.lastName,
+                profileImageUrl: expertRow.profileImageUrl,
+                packagesCount: packagesCountByExpert.get(expertRow.expertId) ?? 0,
+              }
+            : null,
+        };
+      });
     })();
 
     // DB hidden gems for the city — all placeTypes, all neighborhoods
