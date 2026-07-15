@@ -23,41 +23,43 @@ interface RealtimeMessage {
   timestamp: string;
 }
 
-const sampleExperts = [
-  {
-    id: 1,
-    name: "Yuki Tanaka",
-    location: "Tokyo, Japan",
-    avatar: "https://picsum.photos/seed/expert-1/200/200",
-    rating: 4.9,
-    reviews: 127,
-    specialties: ["Culture", "Food", "Nightlife"],
-    languages: ["Japanese", "English"],
-    responseTime: "< 1 hour"
-  },
-  {
-    id: 2,
-    name: "Marie Dubois",
-    location: "Paris, France",
-    avatar: "https://picsum.photos/seed/expert-2/200/200",
-    rating: 4.8,
-    reviews: 89,
-    specialties: ["Art", "Wine", "Fashion"],
-    languages: ["French", "English"],
-    responseTime: "< 2 hours"
-  },
-  {
-    id: 3,
-    name: "Made Surya",
-    location: "Bali, Indonesia",
-    avatar: "https://picsum.photos/seed/expert-3/200/200",
-    rating: 4.9,
-    reviews: 156,
-    specialties: ["Nature", "Wellness", "Adventure"],
-    languages: ["Indonesian", "English"],
-    responseTime: "< 30 min"
-  },
-];
+interface DisplayExpert {
+  id: string | number;
+  name: string;
+  location: string;
+  avatar: string;
+  /** Real review-backed rating, or null when the expert has no reviews (§13: never a fabricated number). */
+  rating: number | null;
+  reviews: number;
+  specialties: string[];
+  languages: string[];
+  responseTime: string;
+}
+
+/** Map a raw /api/experts row to the chat display shape. Ratings stay honest —
+ *  a score renders only when reviewCount > 0, else null (shown as "New"). */
+function mapExpertToDisplay(data: any): DisplayExpert {
+  const reviews = Number(data.reviewCount ?? 0);
+  const rawRating = data.averageRating ?? data.rating;
+  return {
+    id: data.id,
+    name: `${data.firstName ?? ""} ${data.lastName ?? ""}`.trim() || data.name || "Local Expert",
+    location:
+      data.expertForm?.city ||
+      data.destinations?.[0] ||
+      data.location ||
+      "Trip Planner",
+    avatar: data.profileImage || data.profileImageUrl || "",
+    rating: reviews > 0 && rawRating ? Number(rawRating) : null,
+    reviews,
+    specialties:
+      data.expertForm?.primarySpecialty
+        ? [data.expertForm.primarySpecialty, ...(data.specialties ?? [])]
+        : data.specialties ?? [],
+    languages: data.languages ?? ["English"],
+    responseTime: data.responseTime || "< 2 hours",
+  };
+}
 
 export default function Chat() {
   const { user } = useAuth();
@@ -73,23 +75,23 @@ export default function Chat() {
   // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
   const aboutFromUrl = urlParams.get("about");
 
-  const { data: linkedExpert } = useQuery<any>({
+  // Real experts for the browse sidebar (replaces the old hardcoded sample list).
+  const { data: expertList = [] } = useQuery<DisplayExpert[]>({
+    queryKey: ["/api/experts"],
+    queryFn: async () => {
+      const res = await fetch("/api/experts", { credentials: "include" });
+      if (!res.ok) return [];
+      const rows = await res.json();
+      return Array.isArray(rows) ? rows.map(mapExpertToDisplay) : [];
+    },
+  });
+
+  const { data: linkedExpert } = useQuery<DisplayExpert | null>({
     queryKey: ["/api/experts", expertIdFromUrl],
     queryFn: async () => {
       const res = await fetch(`/api/experts/${expertIdFromUrl}`);
       if (!res.ok) return null;
-      const data = await res.json();
-      return {
-        id: data.id,
-        name: `${data.firstName} ${data.lastName}`,
-        location: data.destinations?.[0] || data.location || "Trip Planner",
-        avatar: data.profileImage || "",
-        rating: data.rating || 5.0,
-        reviews: data.reviewCount || 0,
-        specialties: data.specialties || [],
-        languages: data.languages || ["English"],
-        responseTime: data.responseTime || "< 2 hours",
-      };
+      return mapExpertToDisplay(await res.json());
     },
     enabled: !!expertIdFromUrl,
   });
@@ -107,14 +109,14 @@ export default function Chat() {
 
   const allExperts = useMemo(() => {
     if (linkedExpert) {
-      const exists = sampleExperts.some(e => String(e.id) === String(linkedExpert.id));
-      if (!exists) return [linkedExpert, ...sampleExperts];
+      const exists = expertList.some(e => String(e.id) === String(linkedExpert.id));
+      if (!exists) return [linkedExpert, ...expertList];
     }
-    return sampleExperts;
-  }, [linkedExpert]);
+    return expertList;
+  }, [linkedExpert, expertList]);
 
   const [message, setMessage] = useState("");
-  const [selectedExpert, setSelectedExpert] = useState<typeof sampleExperts[0] | null>(null);
+  const [selectedExpert, setSelectedExpert] = useState<DisplayExpert | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Pre-fill message when arriving from "Ask expert" on a gem/activity card
@@ -303,10 +305,14 @@ export default function Chat() {
                               <h3 className="font-semibold text-slate-900 dark:text-white truncate">
                                 {expert.name}
                               </h3>
-                              <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
-                                <Star className="w-3 h-3 fill-current" />
-                                {expert.rating}
-                              </div>
+                              {expert.rating !== null ? (
+                                <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
+                                  <Star className="w-3 h-3 fill-current" />
+                                  {expert.rating.toFixed(1)}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground shrink-0">New</span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                               <MapPin className="w-3 h-3" />
@@ -369,8 +375,12 @@ export default function Chat() {
                               <Clock className="w-3 h-3" />
                               Responds {selectedExpert.responseTime}
                             </span>
-                            <span>|</span>
-                            <span>{selectedExpert.reviews} reviews</span>
+                            {selectedExpert.reviews > 0 && (
+                              <>
+                                <span>|</span>
+                                <span>{selectedExpert.reviews} reviews</span>
+                              </>
+                            )}
                           </>
                         )}
                       </div>
