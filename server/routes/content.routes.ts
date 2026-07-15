@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { Router } from "express";
@@ -1923,7 +1924,8 @@ router.get("/api/discover", async (req, res) => {
       }).catch(err => console.error("Failed to track search pattern:", err));
     }
 
-    res.json(result);
+    // Content-gate (§10): packages in search results are teaser-redacted like every public read.
+    res.json({ ...result, packages: (result.packages ?? []).map(redactTemplateContent) });
   });
 
   // Analytics: Get destination search trends
