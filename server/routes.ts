@@ -67,7 +67,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -4065,6 +4065,34 @@ Provide a comprehensive optimization analysis in JSON format with this structure
           t.experienceType?.slug?.toLowerCase().includes(et)
         )
       );
+    }
+
+    // Feed v2: attach packagesCount (approved + published expert_templates — the same
+    // gate as the public /api/expert-templates feed, §10 read-gate) via ONE grouped
+    // COUNT query so expert cards can show a real package count, never a fabricated one.
+    try {
+      const expertIds = Array.from(new Set(filtered.map((e: any) => String(e.id)).filter(Boolean)));
+      if (expertIds.length > 0) {
+        const countRows = await db
+          .select({
+            expertId: expertTemplates.expertId,
+            count: sql<number>`cast(count(*) as int)`,
+          })
+          .from(expertTemplates)
+          .where(
+            and(
+              inArray(expertTemplates.expertId, expertIds),
+              eq(expertTemplates.approvalStatus, "approved"),
+              eq(expertTemplates.isPublished, true),
+            ),
+          )
+          .groupBy(expertTemplates.expertId);
+        const countMap = new Map(countRows.map((r) => [r.expertId, r.count]));
+        filtered = filtered.map((e: any) => ({ ...e, packagesCount: countMap.get(String(e.id)) ?? 0 }));
+      }
+    } catch (err) {
+      console.error("Error attaching expert packagesCount:", err);
+      // Non-fatal: experts list still returns without counts.
     }
 
     res.json(filtered);

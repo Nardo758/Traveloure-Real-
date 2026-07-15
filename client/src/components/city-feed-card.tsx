@@ -474,6 +474,29 @@ function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
             </span>
           </div>
         )}
+
+        {/* Secondary outbound link (F6): bookings stay on-site — the external partner
+            link is available here, not on the card face. Keeps the affiliate track. */}
+        {(data.bookingLink || data.externalUrl || data.url) && (
+          <a
+            href={data.bookingLink || data.externalUrl || data.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              const impId = typeof data._getImpressionId === "function" ? data._getImpressionId() : undefined;
+              fetch("/api/affiliates/track", {
+                method: "POST",
+                keepalive: true,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ partner: "discover-supply", destination: data._city ?? "", contentType: data._kind, contentId: String(data.id ?? ""), impressionId: impId }),
+              }).catch(() => {});
+            }}
+            className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+            data-testid={`link-partner-site-${data.id}`}
+          >
+            Partner site <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
       </div>
     );
   };
@@ -512,6 +535,8 @@ interface CityFeedCardGemProps {
   layout?: "column" | "row";
   className?: string;
   cardPosition?: number;
+  /** Marquee gem inside a neighborhood container — renders a "Top pick" chip on the image. */
+  topPick?: boolean;
 }
 
 export function CityFeedCardGem({
@@ -524,6 +549,7 @@ export function CityFeedCardGem({
   layout = "column",
   className,
   cardPosition,
+  topPick = false,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -574,9 +600,8 @@ export function CityFeedCardGem({
   const photoArea = (
     <div
       className={cn(
-        "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
-        typeMeta.phBg,
-        typeMeta.phText,
+        // Neutral placeholder band (F4 palette unification) — kind color lives in the badge only.
+        "relative overflow-hidden flex-shrink-0 flex items-center justify-center bg-muted text-muted-foreground",
         isRow ? "w-36 self-stretch" : "h-[104px] w-full",
       )}
     >
@@ -601,6 +626,14 @@ export function CityFeedCardGem({
       {gem.isSecret && (
         <span className="absolute bottom-1.5 left-1.5 bg-purple-600/90 text-white text-[9px] font-medium rounded px-1.5 py-0.5">
           Hidden Gem
+        </span>
+      )}
+      {topPick && (
+        <span
+          className="absolute top-2 left-2 bg-primary/90 text-primary-foreground text-[10px] font-medium rounded-full px-2 py-0.5"
+          data-testid={`gem-top-pick-${gem.id}`}
+        >
+          Top pick
         </span>
       )}
     </div>
@@ -737,7 +770,7 @@ export function CityFeedCardGem({
       <div
         ref={impressionRef}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full",
           isRow ? "flex flex-row" : "flex flex-col",
           className,
         )}
@@ -805,12 +838,13 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
       <div
         ref={impressionRefEvt}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
           className,
         )}
         data-testid={`feed-card-event-${event.id ?? event.eventId}`}
       >
-        <div className="h-[104px] relative overflow-hidden bg-pink-50 flex items-center justify-center text-pink-600 flex-shrink-0">
+        {/* Neutral placeholder band (F4) — kind color lives in the badge only. */}
+        <div className="h-[104px] relative overflow-hidden bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0">
           {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
           {photoUrl && (
             <img
@@ -968,12 +1002,13 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
       <div
         ref={impressionRefVendor}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
           className,
         )}
         data-testid={`feed-card-vendor-svc-${service.id}`}
       >
-        <div className="h-[104px] relative overflow-hidden bg-teal-50 flex items-center justify-center text-teal-600 flex-shrink-0">
+        {/* Neutral placeholder band (F4) — kind color lives in the badge only. */}
+        <div className="h-[104px] relative overflow-hidden bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0">
           {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
           {photoUrl && (
             <img
@@ -1159,17 +1194,13 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
       <div
         ref={impressionRefSupply}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
           className,
         )}
         data-testid={`feed-card-${kind}-${item.id}`}
       >
-        <div
-          className={cn(
-            "h-[104px] relative overflow-hidden flex items-center justify-center text-2xl flex-shrink-0",
-            isHotel ? "bg-blue-50 text-blue-600" : "bg-amber-50 text-amber-700",
-          )}
-        >
+        {/* Neutral placeholder band (F4) — kind color lives in the badge only. */}
+        <div className="h-[104px] relative overflow-hidden flex items-center justify-center text-2xl flex-shrink-0 bg-muted text-muted-foreground">
           {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
           {photoUrl && (
             <img
@@ -1193,9 +1224,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             )}>
               {isHotel ? "Hotel" : "Activity"}
             </span>
-            {/* Honest badge: supply cards open an EXTERNAL partner link — never claim
-                "Book on Traveloure" (native). No link → "Not bookable". */}
-            <BookingBadge level={(item.bookingLink || item.externalUrl || item.url) ? "deeplink" : "info_only"} />
+            {/* No BookingBadge on the supply card face: no native vendor-inventory booking
+                rail exists yet (filed) — the badge returns when it does. The partner link
+                lives inside the Details sheet as a secondary outbound action. */}
             {priceText && (
               <span
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-gray-100 text-gray-600"
@@ -1243,29 +1274,11 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           )}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-            {/* Book renders only when a real destination exists — a URL-less supply item
-                previously showed a Book button that logged a click and did nothing. */}
-            {(item.bookingLink || item.externalUrl || item.url) && (
-              <Button
-                size="sm"
-                className="h-7 text-xs px-3"
-                onClick={() => {
-                  const impId = getImpIdSupply();
-                  fetch("/api/affiliates/track", {
-                    method: "POST",
-                    keepalive: true,
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ partner: "discover-supply", destination: city, contentType: kind, contentId: String(item.id ?? ""), impressionId: impId }),
-                  }).catch(() => {});
-                  const bookUrl = item.bookingLink || item.externalUrl || item.url;
-                  if (bookUrl) window.open(bookUrl, "_blank", "noopener");
-                }}
-                data-testid={`btn-book-supply-${item.id}`}
-              >Book</Button>
-            )}
+            {/* Keep bookings on-site (F6): no external "Book" button on the card face.
+                Add is the primary action; the outbound partner link lives inside the
+                Details sheet as a small secondary action. */}
             <Button
               size="sm"
-              variant="outline"
               className="h-7 text-xs px-3"
               onClick={() => onAdd?.({
                 title: itemName,
@@ -1280,16 +1293,18 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
               <Plus className="w-3 h-3 mr-1" />
               {addLabel}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-3"
+              onClick={() => setSheetOpen(true)}
+              data-testid={`btn-details-supply-${item.id}`}
+            >
+              Details
+            </Button>
             <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
               <a href="/local-experts">💬 Ask</a>
             </Button>
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="ml-auto text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              data-testid={`btn-more-info-supply-${item.id}`}
-            >
-              More info
-            </button>
           </div>
         </div>
       </div>
@@ -1297,7 +1312,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         cardType="supply"
-        data={{ ...item, _kind: kind }}
+        data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
       />
     </>
   );
