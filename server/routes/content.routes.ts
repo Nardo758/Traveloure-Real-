@@ -31,6 +31,7 @@ import {
   getTripAnalyticsEnhancedByTripId, updateTripAnalyticsEnhanced,
   getAdminUserByEmail, insertUser, getFirstUser,
   getAllDestinationEvents, insertHelpGuideTrips, insertTouristPlacesSearch,
+  insertContentImpression, getDemandCountsForCity,
 } from "../services/content-query.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
@@ -1875,6 +1876,32 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
   });
 
   // Admin: Get pending destination events
+
+// Demand counts for wanted-slot recruitment cards on the Discover feed.
+  // ROUTE ORDER: MUST be registered BEFORE /api/services/:id below (same router) —
+  // otherwise "demand" is captured as :id and 404s. This router (content.routes.ts) is
+  // mounted before routes.ts registers its own /api/services/:id, so this wins globally.
+  // Response shape: Record<offeringTypeKey, number> (discover-location.tsx:1415).
+  router.get("/api/services/demand", async (req, res) => {
+    try {
+      const city = typeof req.query.city === "string" ? req.query.city.trim() : "";
+      const keysRaw = typeof req.query.offeringTypeKeys === "string" ? req.query.offeringTypeKeys : "";
+      const offeringTypeKeys = Array.from(
+        new Set(keysRaw.split(",").map((k) => k.trim()).filter(Boolean)),
+      ).slice(0, 50);
+      if (!city || offeringTypeKeys.length === 0) {
+        return res.json({});
+      }
+      const dateRangeStart =
+        typeof req.query.dateRangeStart === "string" ? req.query.dateRangeStart : undefined;
+
+      const counts = await getDemandCountsForCity(city, offeringTypeKeys, dateRangeStart);
+      res.json(counts);
+    } catch (err) {
+      console.error("Error fetching service demand counts:", err);
+      res.status(500).json({ error: "Failed to fetch demand counts" });
+    }
+  });
 
 router.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
@@ -7441,6 +7468,43 @@ router.get("/api/platform/stats", async (_req, res) => {
   });
 
   // === Admin Notifications (admin-specific) ===
+
+// Feed content-impression tracking (public — the feed is public; userId is
+  // opportunistic). Contract of use-impression-tracker.ts: one POST per card scrolled
+  // into view, expects { impressionId } back so clicks can carry sourceImpressionId.
+  // Deduped server-side by the migration-116 unique index — a duplicate returns the
+  // EXISTING impression id. Analytics-only, fire-and-forget: single insert, no auth.
+  const impressionBodySchema = z.object({
+    contentType: z.string().min(1).max(40),
+    contentId: z.string().min(1),
+    city: z.string().nullable().optional(),
+    cardPosition: z.number().int().nullable().optional(),
+    sessionId: z.string().min(1),
+  });
+
+  router.post("/api/tracking/impression", async (req, res) => {
+    try {
+      const parsed = impressionBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid impression payload" });
+      }
+      const userId =
+        (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+
+      const impressionId = await insertContentImpression({
+        contentType: parsed.data.contentType,
+        contentId: parsed.data.contentId,
+        city: parsed.data.city ?? null,
+        cardPosition: parsed.data.cardPosition ?? null,
+        sessionId: parsed.data.sessionId,
+        userId,
+      });
+      res.json({ impressionId });
+    } catch (err) {
+      console.error("Error recording content impression:", err);
+      res.status(500).json({ error: "Failed to record impression" });
+    }
+  });
 
 router.post("/api/track/search", async (req, res) => {
     try {
