@@ -80,7 +80,10 @@ export async function loadCoveringInventory(opts: {
       ) AS provider_verified
     FROM provider_neighborhood_coverage c
     JOIN city_neighborhoods cn ON cn.id = c.neighborhood_id
-    JOIN provider_services ps  ON ps.user_id = c.provider_id AND ps.status = 'active'
+    -- F2 read-gate (§1/D1a): the engine's inventory is a public surface — only APPROVED
+    -- listings count as covering supply. status defaults 'active' while approval_status is
+    -- born 'submitted', so without this filter an unapproved listing unlocks recommendations.
+    JOIN provider_services ps  ON ps.user_id = c.provider_id AND ps.status = 'active' AND ps.approval_status = 'approved'
     JOIN service_categories sc ON sc.id = ps.category_id AND sc.category_key = c.category_key
     JOIN users u ON u.id = c.provider_id
     WHERE ${scopeFilter}
@@ -397,6 +400,9 @@ export async function resolveEndorsedKeysFromProviders(expertUserIds: string[]):
       JOIN service_offering_types sot ON sot.category_key = sc.category_key
       WHERE ps.user_id = ANY(ARRAY[${sql.raw(expertUserIds.map(k => `'${k.replace(/'/g, "''")}'`).join(","))}]::text[])
         AND ps.status = 'active'
+        -- F2 read-gate: an endorsement is a public ranking boost — only an APPROVED
+        -- listing may power it (unapproved services must not influence public ranking).
+        AND ps.approval_status = 'approved'
         AND sot.is_active = true
     `);
     return (resolved.rows ?? []).map((r: any) => String(r.offering_type_key));

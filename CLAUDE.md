@@ -25,7 +25,13 @@ This document captures architectural decisions to maintain consistency across co
    marketplace Gap 2), and the duplicate path resets `approvalStatus` (was inheriting the original's `approved`);
    ③ the **read gate is completed on ALL public `provider_services` surfaces** (they filter `approval_status = 'approved'`)
    so a `submitted` listing cannot leak publicly — while the **expert-own console and admin reads stay intentionally
-   ungated** (owner sees their own pipeline; admin sees the queue). Grandfather + full-read-gate = complete integrity with
+   ungated** (owner sees their own pipeline; admin sees the queue). **F2 extension (Jul 15, 2026): the upsell engine's
+   two INDIRECT reads were missed surfaces, now gated** — `loadCoveringInventory` (a born-`submitted`-but-`active`
+   service counted as covering inventory, unlocking public recommendations + feeding price into the earnings calc) and
+   `resolveEndorsedKeysFromProviders` (an unapproved listing could power an expert-endorsement ranking boost). Both now
+   require `approval_status = 'approved'`; proven behaviorally both directions (submitted excluded, approved+verified
+   included). The supply→engine pipeline is otherwise automatic: ServiceForm create/update writes
+   `provider_neighborhood_coverage` rows inline, and the engine reads them per-request — no batch step. Grandfather + full-read-gate = complete integrity with
    zero catalog outage (grandfathered rows are `approved` → pass the gate → stay visible; new rows are `submitted` → hidden
    publicly until approved). `GET /api/expert/services` (`server/routes.ts`) is the owner console — correctly ungated
    (filters by `userId` + the active/paused `status` param, never approval).
