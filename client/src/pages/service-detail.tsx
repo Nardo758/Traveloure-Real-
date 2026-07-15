@@ -424,10 +424,15 @@ export default function ServiceDetailPage() {
                   </Button>
                 </div>
 
-                {/* Provider commission transparency */}
+                {/* Provider commission transparency. §8: no hardcoded rate literal —
+                    the real split is config-resolved server-side (fee_bands /
+                    resolveCommissionRates), so the old "90% / 10%" numbers were both a
+                    fee-literal violation and potentially wrong. State the model without
+                    a fabricated number. */}
                 <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
                   <p className="text-xs text-muted-foreground text-center">
-                    Provider earns 90% of booking. Platform fee: 10%.
+                    A platform service fee is deducted from each booking; the provider
+                    receives the remainder.
                   </p>
                 </div>
               </CardContent>

@@ -286,9 +286,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       const { tripId, notes, idempotencyKey } = req.body;
 
       // ── Idempotency guard (DB level) ────────────────────────────────────────
+      // §15: the key is now REQUIRED. Previously the dedup only ran `if (idempotencyKey)`,
+      // so a client that omitted it bypassed dedup entirely — a retry/double-click could
+      // create duplicate bookings + Stripe charges. The real client always sends a UUID
+      // (cart.tsx), so requiring it only blocks the replay-bypass path.
+      if (!idempotencyKey || typeof idempotencyKey !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: "idempotencyKey is required",
+        });
+      }
       // If this exact checkout request was already processed, return the original
       // result without creating duplicate bookings or Stripe charges.
-      if (idempotencyKey) {
+      {
         const existing = await db.execute(sql`
           SELECT id FROM service_bookings
           WHERE idempotency_key = ${idempotencyKey}
