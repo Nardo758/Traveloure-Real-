@@ -514,6 +514,19 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
 
+**CRITICAL: Replit deploy-push vs. our migrations (the "publish-time CHECK failure" trap)**
+- Replit's Autoscale deploy runs an **automatic drizzle-kit schema-push** from `shared/schema.ts` at publish —
+  and it enforces the schema's CHECK constraints **WITHOUT** running our migrations' value-remap steps first.
+  So a migration that adds a CHECK over a column still holding legacy values on prod fails the deploy mid-push
+  (`check constraint … violated by some row`) and offers the **DESTRUCTIVE** "copy dev database over production"
+  option. **Never accept that option** — it overwrites prod with dev. This bit us twice on the Jul 15 publish
+  (`expert_earnings.status='pending'`, `service_templates.delivery_method='document'`).
+- Guard: **before publishing any migration that adds/changes a CHECK**, run
+  `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
+  declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK
+  migration, add its column to that script's `CONSTRAINT_MANIFEST`. The real fix (disable the deploy-push so
+  `runMigrations()` is authoritative) is a Replit deployment setting, filed.
+
 **CRITICAL: Drizzle push has TWO schema entry points — do not collapse to one**
 - `drizzle.config.ts` `schema` is an **array**: `["./shared/schema.ts", "./shared/guest-invites-schema.ts"]`.
   Both are required. `shared/schema.ts` does **not** re-export `guest-invites-schema.ts` (that file imports *from*
