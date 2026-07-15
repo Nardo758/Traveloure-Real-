@@ -80,7 +80,7 @@ import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from 
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
-import { feverCacheService } from "../services/fever-cache.service";
+import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
@@ -5907,7 +5907,7 @@ router.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
 
 router.get("/api/fever/cache/status", async (_req, res) => {
     try {
-      const status = await feverCacheService.getCacheStatus();
+      const status = await partnerEventsCacheService.getCacheStatus();
       res.json({
         ...status,
         supportedCities: feverService.getSupportedCities().length,
@@ -5925,7 +5925,7 @@ router.get("/api/fever/cache/status", async (_req, res) => {
 router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
     try {
       const { cityCode } = req.params;
-      const events = await feverCacheService.getEventsOrRefresh(cityCode);
+      const events = await partnerEventsCacheService.getEventsOrRefresh(cityCode);
       
       res.json({
         events,
@@ -5949,7 +5949,7 @@ router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, r
       }
 
       const { cityCode } = req.params;
-      const result = await feverCacheService.refreshCityCache(cityCode);
+      const result = await partnerEventsCacheService.refreshCityCache(cityCode);
       
       res.json({
         message: `Refreshed ${result.refreshed} events for ${cityCode}`,
@@ -5970,7 +5970,7 @@ router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) =>
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const result = await feverCacheService.refreshAllCities();
+      const result = await partnerEventsCacheService.refreshAllCities();
       
       res.json({
         message: `Refreshed ${result.totalRefreshed} events across all cities`,

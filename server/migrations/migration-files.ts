@@ -370,4 +370,10 @@ export const MIGRATION_FILES = [
   // result over the knowledge-proof answers. ADVISORY: decision support for the admin queue, does
   // not auto-gate approval. Nullable/no-default so existing rows are simply "unscored". Idempotent.
   "114_kyoto_knowledge_score.sql",
+  // Migration 115 — purge fabricated Fever MOCK events (source_type='fever' AND source_id LIKE
+  // 'mock-%') from destination_events. Without API credentials the Fever refresher generated
+  // fake events and wrote them born-'approved' onto the public By-Date calendar daily
+  // (fabricated-content class, §13 family). Companion code guard: fever-cache.service skips
+  // entirely when unconfigured (sibling-provider pattern). Real Fever rows untouched. Idempotent.
+  "115_purge_fever_mock_events.sql",
 ] as const;
