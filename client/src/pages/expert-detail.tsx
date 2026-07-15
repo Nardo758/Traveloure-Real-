@@ -232,10 +232,20 @@ export default function ExpertDetailPage() {
 
                 {/* Stats */}
                 <div className="flex flex-wrap gap-6 mb-6">
+                  {/* §13 honesty: the expert rating is a review-count-weighted mean of the
+                      expert's own services' reviews (server: getExpertsWithProfiles), null
+                      until they have any. Show a star + score only when review-backed; else
+                      an honest "New" — never "0.0 (0 reviews)". */}
                   <div className="flex items-center gap-2">
-                    <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                    <span className="font-semibold">{averageRating.toFixed(1)}</span>
-                    <span className="text-muted-foreground">({totalReviews} reviews)</span>
+                    {totalReviews > 0 ? (
+                      <>
+                        <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                        <span className="font-semibold">{averageRating.toFixed(1)}</span>
+                        <span className="text-muted-foreground">({totalReviews} reviews)</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">New expert · no reviews yet</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Briefcase className="w-5 h-5" />
