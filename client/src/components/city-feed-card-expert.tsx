@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Star, MapPin, MessageCircle, UserCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAskExpert } from "@/lib/use-ask-expert";
 
 interface CityFeedCardExpertProps {
   expert: any;
@@ -22,6 +23,7 @@ interface CityFeedCardExpertProps {
  */
 export function CityFeedCardExpert({ expert, city, className, cardPosition }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const askExpert = useAskExpert();
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
 
   const name = [expert.firstName, expert.lastName].filter(Boolean).join(" ") || expert.name || "Expert";
@@ -184,11 +186,11 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
                   >
                     View profile
                   </Button>
-                  {/* "Ask" starts on the profile page too — chat begins there */}
+                  {/* "Ask" goes straight into chat with this expert, pre-filled with the city */}
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
+                    onClick={() => askExpert({ expertId: expert.id, city, subject: expertCity || city })}
                     data-testid={`modal-ask-expert-${expert.id}`}
                   >
                     <MessageCircle className="w-3 h-3 mr-1" />
