@@ -2150,7 +2150,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (neighbourhood) {
       const nbh = neighbourhood.toLowerCase().trim();
       filtered = filtered.filter((expert: any) => {
-        if (nbh.length < 3) return false;
+        // A too-short term used to `return false` for EVERY expert — silently nuking
+        // all results (the §13 "2-char neighbourhood empty-result trap"). Now a 1-char
+        // term is a no-op filter (include), and 2-char+ terms match normally.
+        if (nbh.length < 2) return true;
         const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
         return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
       });
@@ -2199,7 +2202,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (neighbourhood) {
       const nbh = neighbourhood.toLowerCase().trim();
       filtered = filtered.filter((expert: any) => {
-        if (nbh.length < 3) return false;
+        // A too-short term used to `return false` for EVERY expert — silently nuking
+        // all results (the §13 "2-char neighbourhood empty-result trap"). Now a 1-char
+        // term is a no-op filter (include), and 2-char+ terms match normally.
+        if (nbh.length < 2) return true;
         const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
         return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
       });
