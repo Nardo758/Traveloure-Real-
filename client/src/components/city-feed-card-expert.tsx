@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Star, MapPin, MessageCircle, UserCircle } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Star, MapPin, MessageCircle, UserCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CityFeedCardExpertProps {
@@ -21,6 +28,14 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
   const rating = expert.averageRating || expert.rating;
   const specialty = expert.expertForm?.primarySpecialty || expert.specialties?.[0] || "Local Expert";
   const packagesCount = Number(expert.packagesCount ?? 0);
+  const expertCity = expert.expertForm?.city ?? null;
+
+  // §13 honesty for the More-info dialog: show a rating ONLY when the object
+  // carries a real rating backed by reviews (reviewCount > 0). Experts have no
+  // platform-level rating aggregate yet (§13 filed), so this usually renders
+  // nothing — never a fabricated number.
+  const dialogReviewCount = Number(expert.reviewCount ?? 0);
+  const dialogRating = dialogReviewCount > 0 && rating ? Number(rating) : null;
 
   // Initials for the no-photo avatar (first letters of first/last name)
   const initials = [expert.firstName, expert.lastName]
@@ -91,16 +106,99 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
           </div>
         )}
 
-        <Button
-          size="sm"
-          className="w-full h-7 text-xs mt-auto"
-          onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
-          data-testid={`btn-contact-expert-${expert.id}`}
-        >
-          <MessageCircle className="w-3 h-3 mr-1" />
-          {/* Honest label: this navigates to the expert's profile (chat starts there) */}
-          View {expert.firstName || "Expert"}'s profile
-        </Button>
+        <div className="flex gap-1.5 mt-auto">
+          <Button
+            size="sm"
+            className="flex-1 h-7 text-xs"
+            onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
+            data-testid={`btn-contact-expert-${expert.id}`}
+          >
+            <MessageCircle className="w-3 h-3 mr-1" />
+            {/* Honest label: this navigates to the expert's profile (chat starts there) */}
+            View {expert.firstName || "Expert"}'s profile
+          </Button>
+
+          {/* D9: More info modal — additive, the profile button above is untouched.
+              Same shadcn Dialog pattern as the calendar city cards (GlobalCalendar). */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2"
+                data-testid={`button-more-info-expert-${expert.id}`}
+              >
+                <Info className="w-3 h-3 mr-1" />
+                More info
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={name}
+                      className="w-14 h-14 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-lg font-semibold text-primary flex-shrink-0">
+                      {initials}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{specialty}</p>
+                    {expertCity && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {expertCity}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  {packagesCount > 0 && (
+                    <span data-testid={`modal-expert-packages-${expert.id}`}>
+                      📔 {packagesCount} {packagesCount === 1 ? "package" : "packages"}
+                    </span>
+                  )}
+                  {/* §13: rating rendered only when review-backed (see dialogRating above) */}
+                  {dialogRating !== null && (
+                    <span className="flex items-center gap-0.5" data-testid={`modal-expert-rating-${expert.id}`}>
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      {dialogRating.toFixed(1)} ({dialogReviewCount})
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {/* Same destination as the existing card button */}
+                  <Button
+                    size="sm"
+                    onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
+                    data-testid={`modal-view-profile-${expert.id}`}
+                  >
+                    View profile
+                  </Button>
+                  {/* "Ask" starts on the profile page too — chat begins there */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
+                    data-testid={`modal-ask-expert-${expert.id}`}
+                  >
+                    <MessageCircle className="w-3 h-3 mr-1" />
+                    Ask
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
     </div>
   );

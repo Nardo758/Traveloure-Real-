@@ -7,7 +7,14 @@ import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
@@ -173,6 +180,16 @@ function HeroSection({
                 style={{ background: "rgba(255,255,255,0.2)", color: "#A7F3D0" }}
               >
                 📅 {datePillLabel}
+                {/* D7 date-continuity: back to the By-Date calendar
+                    (/discover?tab=events) to pick a different date. Additive —
+                    the ✕ dismiss below is untouched. */}
+                <a
+                  href="/discover?tab=events"
+                  className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+                  data-testid="link-change-date"
+                >
+                  Change date
+                </a>
                 <button
                   onClick={onDismissDate}
                   className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
@@ -220,6 +237,16 @@ function HeroSection({
               style={{ background: "rgba(255,255,255,0.55)", color: "#0F6E56" }}
             >
               📅 {datePillLabel}
+              {/* D7 date-continuity: back to the By-Date calendar
+                  (/discover?tab=events) to pick a different date. Additive —
+                  the ✕ dismiss below is untouched. */}
+              <a
+                href="/discover?tab=events"
+                className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+                data-testid="link-change-date"
+              >
+                Change date
+              </a>
               <button
                 onClick={onDismissDate}
                 className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
@@ -562,11 +589,10 @@ function PackageCard({
 
   // The teaser payload carries no expert name — show destination · duration instead.
   const expertName = template.expertName ?? null;
-  const byline = expertName
-    ? `by ${expertName}`
-    : [template.destination, template.duration ? `${template.duration} days` : null]
-        .filter(Boolean)
-        .join(" · ");
+  const destDuration = [template.destination, template.duration ? `${template.duration} days` : null]
+    .filter(Boolean)
+    .join(" · ");
+  const byline = expertName ? `by ${expertName}` : destDuration;
 
   const photoArea = (
     <div
@@ -625,6 +651,74 @@ function PackageCard({
         <Button size="sm" className="h-7 text-xs px-3" asChild data-testid={`btn-view-package-${template.id}`}>
           <a href={`/expert-templates/${template.id}`}>View itinerary</a>
         </Button>
+
+        {/* D9: More info modal — additive, "View itinerary" above is untouched.
+            Shows the TEASER day list only (itineraryPreview: day + title from
+            the server's content gate) — full content stays purchase-gated. */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              data-testid={`button-more-info-package-${template.id}`}
+            >
+              <Info className="w-3 h-3 mr-1" />
+              More info
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{template.title}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {destDuration && <p className="text-sm text-muted-foreground">{destDuration}</p>}
+              {expertName && <p className="text-xs text-muted-foreground">by {expertName}</p>}
+
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                {priceDisplay && (
+                  <span className="text-base font-bold text-foreground">{priceDisplay}</span>
+                )}
+                {/* §13: real rating only when review-backed; otherwise an honest "New" */}
+                {rating !== null ? (
+                  <span data-testid={`modal-package-rating-${template.id}`}>
+                    ★ {rating.toFixed(1)} ({reviewCount})
+                  </span>
+                ) : (
+                  <span className="font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    New
+                  </span>
+                )}
+                {salesCount > 0 && <span>{salesCount} sold</span>}
+              </div>
+
+              {Array.isArray(template.itineraryPreview) && template.itineraryPreview.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium mb-1">What's inside (preview)</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {template.itineraryPreview.map((d: any, i: number) => (
+                      <div key={i} className="flex items-baseline gap-2 text-xs">
+                        <span className="text-muted-foreground flex-shrink-0 font-medium">
+                          Day {d.day ?? i + 1}
+                        </span>
+                        <span className="truncate">{d.title ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1.5">
+                    Full day-by-day details unlock after purchase.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button size="sm" asChild data-testid={`modal-view-itinerary-${template.id}`}>
+                  <a href={`/expert-templates/${template.id}`}>View itinerary</a>
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -680,11 +774,13 @@ function RecommendationCard({
       // Repointed: /api/feed/impression never existed (all rec impressions were silently
       // discarded). /api/upsell/impression is the real endpoint; it expects
       // { surface, offeringIds } — the engine's own impression ledger.
+      // D1: in date mode the candidates came from the discover_date surface, so
+      // the impression ref must carry the same surface the ranking ran on.
       fetch("/api/upsell/impression", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          surface: "discover_location",
+          surface: scheduledDate ? "discover_date" : "discover_location",
           offeringIds: [candidate.offeringId],
         }),
       }).catch(() => {});
@@ -797,6 +893,92 @@ function RecommendationCard({
         <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
           <a href="/local-experts">💬 Ask</a>
         </Button>
+
+        {/* D9: More info modal — additive; Book/Add/Ask above are untouched.
+            "Why recommended" is built ONLY from fields actually on the wire
+            candidate (offeringId/categoryKey/displayName/tagline/reason/
+            sourceType/expertEndorsed): the server's own `reason` string
+            (which encodes template REQ/REC, neighborhood/date proximity and
+            endorsement) plus the `expertEndorsed` boolean. templateStrength/
+            matchType/price never reach the client, so they are not shown —
+            §13: real data or nothing. */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              data-testid={`button-more-info-rec-${position}`}
+            >
+              <Info className="w-3 h-3 mr-1" />
+              More info
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {/* The engine-source disclosure stays visible in the dialog —
+                  affiliate candidates keep their "Paid partner" label here too. */}
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
+                  isAffiliate ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700",
+                )}
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+                {isAffiliate ? affiliateLabel : recommendedLabel}
+              </span>
+
+              {candidate.tagline && (
+                <p className="text-sm text-muted-foreground">{candidate.tagline}</p>
+              )}
+
+              {(candidate.reason || candidate.expertEndorsed) && (
+                <div className="p-2 rounded-lg bg-muted/50 border border-muted">
+                  <p className="text-xs font-medium mb-1">Why you're seeing this</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {candidate.reason && <p data-testid={`modal-rec-reason-${position}`}>{candidate.reason}</p>}
+                    {candidate.expertEndorsed === true && (
+                      <p data-testid={`modal-rec-endorsed-${position}`}>✓ Endorsed by a local expert</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Same handlers as the card's existing Book/Add buttons */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {onBook && (
+                  <Button
+                    size="sm"
+                    onClick={() => onBook(candidate)}
+                    data-testid={`modal-book-rec-${position}`}
+                  >
+                    Book
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    onAdd?.({
+                      title: name,
+                      description: candidate.tagline,
+                      city,
+                      type: "recommendation",
+                      scheduledDate,
+                    })
+                  }
+                  data-testid={`modal-add-rec-${position}`}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  {addLabel}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -1138,15 +1320,22 @@ function DateHighlightStrip({
   const eventTitle = seasonalEntry?.highlight ?? cityIntel?.currentHighlight ?? "Seasonal highlight";
 
   type ServiceAddon = { icon: string; label: string; price: string; href: string };
+  // D2 honest links: the old `/experiences/photo` and `/experiences/gear` hrefs
+  // resolved to the /experiences/:slug route but matched NO real experience
+  // template — dead-ish destinations. The companion object carries no service
+  // id, so each "Book" now goes to `/discover?tab=services` — the live Browse
+  // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
+  // are actually searchable. `/local-experts` (festival guide) was already a
+  // real routed page and stays.
   const companionService: ServiceAddon | null = (() => {
     if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
-      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/experiences/photo" };
+      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/discover?tab=services" };
     if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
-      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/experiences/gear" };
+      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/discover?tab=services" };
     if (highlight.includes("festival") || highlight.includes("matsuri"))
       return { icon: "🎋", label: "Festival guide", price: "from ¥8,000", href: "/local-experts" };
     if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
-      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/experiences/photo" };
+      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/discover?tab=services" };
     return null;
   })();
 
@@ -1182,7 +1371,12 @@ function DateHighlightStrip({
                 data-testid="button-date-event-tickets"
                 asChild
               >
-                <a href="/experiences/events">Tickets</a>
+                {/* D2 honest link: was /experiences/events — a slug that resolved to
+                    the /experiences/:slug route but matched no real experience
+                    template. Now points at /discover?tab=events, the live By-Date
+                    calendar tab (in discover.tsx's VISIBLE_TABS), where dated
+                    events are actually browsable. */}
+                <a href="/discover?tab=events">Tickets</a>
               </Button>
               <Button
                 size="sm"
@@ -1542,24 +1736,44 @@ export default function DiscoverLocationPage() {
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
 
-  // ── Engine recommendations (discover_location upsell surface) ──────────
+  // ── Engine recommendations (discover_location / discover_date surface) ──
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
   // endorsed by those experts — the authoritative endorsement signal driving
   // both the slot ranking and the lead-expert pick. Candidates arrive in the
   // engine's ranked order; this page renders them natively, it does not rank.
-  const discoverySlotResult = useUpsellSlot("discover_location", {
-    contextPayload: {
-      ...(neighborhoods[0]?.id
-        ? { neighborhoodId: String(neighborhoods[0].id) }
-        : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
-      expertEndorsedKeys: experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean),
-    },
+  //
+  // D1 (date mode): when the traveler arrived with a ?date=, the slot switches
+  // to the discover_date surface (POST /api/upsell/discover-date), where
+  // dateRange is a HARD availability filter, not a ranking weight — offerings
+  // whose category needs date-specific inventory with none on the requested
+  // date are dropped server-side. Contract (discoverDateBodySchema):
+  // { city: string (required, market scope), dateRange: { start: ISO, end?: ISO }
+  //   (required), cartItems?, userProfile?, expertEndorsedKeys?, tripId?, … } —
+  // city-scoped, NOT neighborhoodId-scoped like discover_location. The response
+  // is the same ranked-candidates shape, so rendering below is unchanged.
+  // Without a date, the neighborhood-focused discover_location call is
+  // exactly as before.
+  const upsellSurface = scheduledDate ? ("discover_date" as const) : ("discover_location" as const);
+  const expertEndorsedKeys = experts.map((e: any) => String(e.id ?? e.userId ?? e.user_id)).filter(Boolean);
+  const discoverySlotResult = useUpsellSlot(upsellSurface, {
+    contextPayload: scheduledDate
+      ? {
+          city,
+          dateRange: { start: scheduledDate },
+          expertEndorsedKeys,
+        }
+      : {
+          ...(neighborhoods[0]?.id
+            ? { neighborhoodId: String(neighborhoods[0].id) }
+            : { neighborhoodId: city.toLowerCase().replace(/\s+/g, "-") }),
+          expertEndorsedKeys,
+        },
     enabled: !!data,
   });
 
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
-    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=discover_location`);
+    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
   };
 
   // ── Injected-element payloads for the composition layer ────────────────
