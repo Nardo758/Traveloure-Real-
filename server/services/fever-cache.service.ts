@@ -68,6 +68,16 @@ class FeverCacheService {
   async refreshCityCache(cityCode: string): Promise<{ refreshed: number; errors: string[] }> {
     const result = { refreshed: 0, errors: [] as string[] };
 
+    // Data-integrity guard: without credentials, feverService.searchEvents returns GENERATED
+    // MOCK events — and this refresher was writing them into the canonical destination_events
+    // table as status='approved', where the public By-Date calendar served them as real
+    // (fabricated-content class, same family as the §13 ratings fix). Match the sibling
+    // providers' behavior (Booking.com/OpenTable: "not configured — skipping live fetch").
+    if (!feverService.isReady()) {
+      console.log(`[FeverCache] Fever/Impact API not configured — skipping refresh for ${cityCode} (no mock data is cached or canonicalized)`);
+      return result;
+    }
+
     try {
       console.log(`[FeverCache] Refreshing events for city: ${cityCode}`);
 
