@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { CityFeedCardGem } from "@/components/city-feed-card";
 import { cn } from "@/lib/utils";
 import { resolveBookability } from "@shared/bookability";
+import { useAskExpert } from "@/lib/use-ask-expert";
 
 interface NeighborhoodLocalExpert {
   id: string;
@@ -45,6 +46,7 @@ export function NeighborhoodContainer({
 }: NeighborhoodContainerProps) {
   // Gems may arrive nested (neighborhood.gems) or via the top-level feed
   // merge. Use whichever gives the higher count so the header is always accurate.
+  const askExpert = useAskExpert();
   const gems = neighborhood.gems ?? [];
   const total = Math.max(neighborhood.gemCount ?? 0, gems.length);
   const topGems = gems.slice(0, 4);
@@ -142,10 +144,10 @@ export function NeighborhoodContainer({
           <Button
             size="sm"
             className="h-7 text-xs px-3 flex-shrink-0"
-            asChild
+            onClick={() => askExpert({ expertId: localExpert.id, city, subject: neighborhood.name })}
             data-testid={`btn-ask-expert-${neighborhood.slug}`}
           >
-            <a href={`/local-experts/${localExpert.id}`}>Ask about {neighborhood.name}</a>
+            Ask about {neighborhood.name}
           </Button>
         </div>
       )}
