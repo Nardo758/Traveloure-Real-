@@ -75,7 +75,10 @@ export function NeighborhoodContainer({
           asChild
           data-testid={`btn-explore-${neighborhood.slug}`}
         >
-          <a href={`/discover/location/${encodeURIComponent(city)}/${neighborhood.slug}`}>
+          {/* Only /discover/location/:city is registered — the old two-segment link
+              (/discover/location/:city/:slug) fell through to the 404 catch-all.
+              A neighborhood-focused view is filed; until it exists, land on the city. */}
+          <a href={`/discover/location/${encodeURIComponent(city)}`}>
             Explore {neighborhood.name}
           </a>
         </Button>

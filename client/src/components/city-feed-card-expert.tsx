@@ -78,7 +78,8 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
           data-testid={`btn-contact-expert-${expert.id}`}
         >
           <MessageCircle className="w-3 h-3 mr-1" />
-          Chat with {expert.firstName || "Expert"}
+          {/* Honest label: this navigates to the expert's profile (chat starts there) */}
+          View {expert.firstName || "Expert"}'s profile
         </Button>
       </div>
     </div>

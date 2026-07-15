@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 import { queryClient } from "@/lib/queryClient";
 import {
   MapPin,
@@ -82,6 +83,7 @@ export function AddToExperienceDialog({
   onOpenChange,
 }: AddToExperienceDialogProps) {
   const { user, isAuthenticated } = useAuth();
+  const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
   const [selectedTab, setSelectedTab] = useState<"trips" | "templates">("trips");
 
@@ -167,7 +169,9 @@ export function AddToExperienceDialog({
               className="w-full"
               onClick={() => {
                 onOpenChange(false);
-                window.location.href = "/auth";
+                // /auth is not a registered route (guests were 404ing here) —
+                // use the app's sign-in modal like every other guest gate.
+                openSignInModal();
               }}
             >
               <LogIn className="h-4 w-4 mr-2" />
