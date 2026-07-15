@@ -21,6 +21,7 @@ import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
+import { useAskExpert } from "@/lib/use-ask-expert";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -106,6 +107,7 @@ export function CityFeedCardRecommendation({
   cardPosition,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const askExpert = useAskExpert();
   const name = resolveRecommendationName(candidate);
   const meta = recVisualMeta(candidate);
   const isAffiliate = candidate.sourceType === "affiliate";
@@ -201,8 +203,14 @@ export function CityFeedCardRecommendation({
           <Plus className="w-3 h-3 mr-1" />
           {addLabel}
         </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" asChild>
-          <a href="/local-experts">💬 Ask</a>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs px-2.5"
+          onClick={() => askExpert({ city, subject: name })}
+          data-testid={`btn-ask-rec-${position}`}
+        >
+          💬 Ask
         </Button>
       </div>
     </div>
