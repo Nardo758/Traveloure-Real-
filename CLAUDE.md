@@ -295,7 +295,14 @@ This document captures architectural decisions to maintain consistency across co
   queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
   (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
-- **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
+- **`expert_service_categories` — NOT a bug (corrected Jul 15, 2026).** Earlier drafts called this a "dropped-by-013
+  but still referenced" latent bug. **That premise was factually wrong:** migration 013 explicitly retains it
+  (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration **030**
+  (`030_restore_expert_service_categories.sql`, registered + startup-run) recreates and seeds it (7 rows + FK). The
+  table is **live** — it's the read-only ESO onboarding catalog. The **one real defect** was
+  `storage.getExpertServiceCategories()` hardcoded to `return []` on that false premise, which left
+  `GET /api/expert-service-categories` permanently empty (the expert service-listings + travel-expert onboarding
+  category pickers had no options). **Fixed** — the method now queries the live table.
 
 ### §14 — Money-endpoint server-derivation rule (client-trusted amount/identity cluster)
 
@@ -450,12 +457,12 @@ has no importers; its "Request Payout →" span never renders. A dead-code-lane 
 - **Phase 1+2 (DONE):** Migrations 011-012 add schema columns and consolidate `expert_custom_services` → `provider_services` with category mapping
 - **Phase 3 (DONE):** Build shared ServiceForm component targeting provider_services (role-aware, both expert and provider)
 - **Phase 4 (DONE):** Apply User Console theme to expert pages (#1A1A18, #7A7A72, #E8E8E2, #FAFAF8)
-- **Phase 5 (DONE):** Migration 013 drops deprecated tables/columns: expert_custom_services, expert_selected_services, expert_service_categories, ESO workflow columns
+- **Phase 5 (DONE):** Migration 013 drops deprecated tables/columns: expert_custom_services, expert_selected_services, ESO workflow columns. **NOTE (corrected Jul 15, 2026):** `expert_service_categories` was **intentionally NOT dropped** by 013 and is **restored/seeded by migration 030** as the read-only ESO onboarding catalog — do not list it among the dropped tables.
 
 **What Was Deprecated:**
 - Commit `bfc3db2` made ESO canonical by adding workflow columns. This contradicted the booking-FK fact and is superseded by this document.
 - The `runEsoBackfill()` startup migration is disabled; migrations 011-012 handle schema + data consolidation to provider_services.
-- Deprecated tables (expert_custom_services, expert_selected_services, expert_service_categories) and ESO workflow columns are dropped by migration 013.
+- Deprecated tables (expert_custom_services, expert_selected_services) and ESO workflow columns are dropped by migration 013. (`expert_service_categories` is **NOT** dropped — retained by 013, restored/seeded by migration 030 as the ESO onboarding catalog; corrected Jul 15, 2026.)
 
 ---
 
@@ -475,10 +482,12 @@ All service creation routes converge on one destination: `POST /api/provider/ser
 
 ## Category Mapping (historical — one-time consolidation, completed)
 
-> **Status note (Jul 2026):** this describes the one-time migration 011–012 consolidation. Its source table
-> `expert_service_categories` was **dropped by migration 013**, so this is a record of a completed migration, not an
-> ongoing rule. ⚠️ Code-internal drift: `expert_service_categories` is still defined in `shared/schema.ts` and referenced
-> by live server code despite being dropped — a latent bug, filed separately (not a doc issue).
+> **Status note (Jul 2026; corrected Jul 15, 2026):** this describes the one-time migration 011–012 consolidation.
+> Its source table `expert_service_categories` was **NOT dropped** — migration 013 explicitly retains it
+> (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration 030 recreates/seeds it (7 rows +
+> FK) as the read-only ESO onboarding catalog. (Earlier drafts said "dropped by 013"; that was factually wrong — there
+> is no code-internal drift, the table is live.) The one real defect — `storage.getExpertServiceCategories()`
+> returning `[]` on that false premise — is **fixed**; it now queries the live table.
 
 When migrating services from expert taxonomy (`expert_service_categories`) to canonical (`service_categories`):
 

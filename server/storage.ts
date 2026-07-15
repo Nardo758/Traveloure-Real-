@@ -96,6 +96,7 @@ import {
   type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
   providerNeighborhoodCoverage,
   cityNeighborhoods,
+  expertNeighborhoods,
   dmoRawContent,
   dmoScrapeJobs,
   crossSellEvents,
@@ -899,7 +900,70 @@ export class DatabaseStorage implements IStorage {
       .set({ status, rejectionMessage })
       .where(eq(localExpertForms.id, id))
       .returning();
+    // On approval, translate the expert's self-declared neighborhoods into
+    // expert_neighborhoods rows — the source that feeds the feed's localExpert
+    // enrichment + the "Ask about <neighborhood>" routing. Best-effort: a capture
+    // failure must NEVER block or roll back the approval.
+    if (updated && status === "approved") {
+      try {
+        await this.captureExpertNeighborhoods(updated);
+      } catch (err: any) {
+        console.error(`[expert-neighborhoods] capture failed for form ${id}:`, err?.message || err);
+      }
+    }
     return updated;
+  }
+
+  /**
+   * Translate a local-expert form's self-declared free-text `neighborhoods` into
+   * `expert_neighborhoods` rows, matching each name to a `city_neighborhoods` row
+   * scoped to the expert's city (+ country when present). Case-insensitive name
+   * match with a slug fallback; unmatched names are skipped + logged (a name with
+   * no city_neighborhoods row can't be honestly linked). Idempotent via the
+   * (expert_id, neighborhood_id) unique constraint. Reused by the approval hook
+   * and the one-time backfill. Returns the number of rows captured.
+   */
+  async captureExpertNeighborhoods(form: LocalExpertForm): Promise<number> {
+    const names = Array.isArray(form.neighborhoods)
+      ? (form.neighborhoods as unknown[]).map((n) => String(n)).filter((n) => n.trim().length > 0)
+      : [];
+    if (names.length === 0 || !form.city) return 0;
+
+    const cityRows = await db
+      .select({ id: cityNeighborhoods.id, name: cityNeighborhoods.name, slug: cityNeighborhoods.slug })
+      .from(cityNeighborhoods)
+      .where(
+        form.country
+          ? and(ilike(cityNeighborhoods.city, form.city), ilike(cityNeighborhoods.country, form.country))
+          : ilike(cityNeighborhoods.city, form.city),
+      );
+    if (cityRows.length === 0) return 0;
+
+    const slugify = (s: string) =>
+      s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const byName = new Map(cityRows.map((r) => [r.name.toLowerCase().trim(), r.id]));
+    const bySlug = new Map(cityRows.map((r) => [r.slug.toLowerCase().trim(), r.id]));
+
+    const matchedIds = new Set<string>();
+    for (const raw of names) {
+      const key = raw.toLowerCase().trim();
+      const id = byName.get(key) ?? bySlug.get(key) ?? bySlug.get(slugify(raw));
+      if (id) matchedIds.add(id);
+    }
+    if (matchedIds.size === 0) return 0;
+
+    await db
+      .insert(expertNeighborhoods)
+      .values(
+        Array.from(matchedIds).map((neighborhoodId, i) => ({
+          expertId: form.userId,
+          neighborhoodId,
+          isLead: false, // lead is a separate admin/curation concern; never auto-claimed here
+          sortOrder: i,
+        })),
+      )
+      .onConflictDoNothing();
+    return matchedIds.size;
   }
 
   // Kyoto Knowledge-Bar scored expertise gate (migration 114): persist the AI-scored rubric result.
@@ -2291,9 +2355,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expert Service Categories & Offerings
-  // expert_service_categories was dropped by migration 013 — return empty array so callers don't break.
+  // expert_service_categories was NOT dropped by migration 013 (that migration says
+  // "intentionally NOT dropped here") and migration 030 restores/seeds it (7 rows + FK).
+  // It is the read-only ESO onboarding catalog (the signup category picker). The old
+  // `return []` stub — written on the false "dropped by 013" premise — left
+  // /api/expert-service-categories permanently EMPTY, so the expert service-listings and
+  // travel-expert onboarding category pickers had no options. Now reads the live table.
   async getExpertServiceCategories(): Promise<any[]> {
-    return [];
+    return await db.select().from(expertServiceCategories)
+      .orderBy(expertServiceCategories.sortOrder);
   }
 
   async getActiveExpertOfferingTypes(): Promise<any[]> {
@@ -2422,12 +2492,37 @@ export class DatabaseStorage implements IStorage {
       // Get expert's local expert form for additional info
       const form = await this.getLocalExpertForm(expert.id);
 
+      // Expert-level rating aggregate (§13-honest). Experts have no rating column of
+      // their own, so we derive it from the real, booking-gated reviews on their OWN
+      // approved services (the per-service average_rating/review_count already stored
+      // on provider_services). Review-count-WEIGHTED mean — equivalent to the true
+      // mean of every individual review across the expert's services, so a service
+      // with many reviews correctly outweighs one with a single review (a naive
+      // average-of-averages would distort that). No fabrication: null → the client
+      // renders "New" when the expert has no reviews yet. Zero extra queries — the
+      // services are already loaded above.
+      let weightedSum = 0;
+      let totalReviews = 0;
+      for (const s of services) {
+        const rc = Number(s.reviewCount ?? 0);
+        const ar = s.averageRating != null ? Number(s.averageRating) : null;
+        if (rc > 0 && ar != null && !Number.isNaN(ar)) {
+          weightedSum += ar * rc;
+          totalReviews += rc;
+        }
+      }
+      const expertAverageRating =
+        totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
+
       return {
         ...expert,
         experienceTypes: expTypes,
         selectedServices: services,
         specializations: specializations.map(s => s.specialization),
-        expertForm: form
+        expertForm: form,
+        // Computed expert-level aggregate (overrides any column of the same name).
+        averageRating: expertAverageRating,
+        reviewCount: totalReviews,
       };
     }));
 
