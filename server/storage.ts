@@ -2422,12 +2422,37 @@ export class DatabaseStorage implements IStorage {
       // Get expert's local expert form for additional info
       const form = await this.getLocalExpertForm(expert.id);
 
+      // Expert-level rating aggregate (§13-honest). Experts have no rating column of
+      // their own, so we derive it from the real, booking-gated reviews on their OWN
+      // approved services (the per-service average_rating/review_count already stored
+      // on provider_services). Review-count-WEIGHTED mean — equivalent to the true
+      // mean of every individual review across the expert's services, so a service
+      // with many reviews correctly outweighs one with a single review (a naive
+      // average-of-averages would distort that). No fabrication: null → the client
+      // renders "New" when the expert has no reviews yet. Zero extra queries — the
+      // services are already loaded above.
+      let weightedSum = 0;
+      let totalReviews = 0;
+      for (const s of services) {
+        const rc = Number(s.reviewCount ?? 0);
+        const ar = s.averageRating != null ? Number(s.averageRating) : null;
+        if (rc > 0 && ar != null && !Number.isNaN(ar)) {
+          weightedSum += ar * rc;
+          totalReviews += rc;
+        }
+      }
+      const expertAverageRating =
+        totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
+
       return {
         ...expert,
         experienceTypes: expTypes,
         selectedServices: services,
         specializations: specializations.map(s => s.specialization),
-        expertForm: form
+        expertForm: form,
+        // Computed expert-level aggregate (overrides any column of the same name).
+        averageRating: expertAverageRating,
+        reviewCount: totalReviews,
       };
     }));
 
