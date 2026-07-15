@@ -29,6 +29,9 @@ interface MonthSummary {
   cityCount: number;
   eventDays?: number[];
   highlights?: EventHighlight[];
+  // D10: best-time cities for this month (top 2 + full count)
+  bestCities?: { cityName: string; country: string }[];
+  bestCitiesTotal?: number;
 }
 
 interface CompactYearCalendarProps {
@@ -567,12 +570,24 @@ export function CompactYearCalendar({
                 </div>
               )}
               {summary && summary.highlights && summary.highlights.length > 0 && (
-                <div 
-                  className="mt-0.5 text-[7px] text-foreground font-medium truncate" 
+                <div
+                  className="mt-0.5 text-[7px] text-foreground font-medium truncate"
                   title={summary.highlights[0]?.name}
                   data-testid={`text-highlight-${month}`}
                 >
                   {summary.highlights[0]?.name}
+                </div>
+              )}
+              {/* D10: best-time cities — display text inside the clickable month cell,
+                  so clicking a city name inherits the existing month-select click */}
+              {summary && summary.bestCities && summary.bestCities.length > 0 && (
+                <div
+                  className="mt-0.5 text-[7px] text-muted-foreground truncate"
+                  title={summary.bestCities.map(c => `${c.cityName}, ${c.country}`).join(" · ")}
+                  data-testid={`text-best-cities-${month}`}
+                >
+                  ⭐ {summary.bestCities.map(c => c.cityName).join(" · ")}
+                  {(summary.bestCitiesTotal ?? 0) > 2 && ` +${(summary.bestCitiesTotal ?? 0) - 2}`}
                 </div>
               )}
             </div>
