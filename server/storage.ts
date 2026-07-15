@@ -2291,9 +2291,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expert Service Categories & Offerings
-  // expert_service_categories was dropped by migration 013 — return empty array so callers don't break.
+  // expert_service_categories was NOT dropped by migration 013 (that migration says
+  // "intentionally NOT dropped here") and migration 030 restores/seeds it (7 rows + FK).
+  // It is the read-only ESO onboarding catalog (the signup category picker). The old
+  // `return []` stub — written on the false "dropped by 013" premise — left
+  // /api/expert-service-categories permanently EMPTY, so the expert service-listings and
+  // travel-expert onboarding category pickers had no options. Now reads the live table.
   async getExpertServiceCategories(): Promise<any[]> {
-    return [];
+    return await db.select().from(expertServiceCategories)
+      .orderBy(expertServiceCategories.sortOrder);
   }
 
   async getActiveExpertOfferingTypes(): Promise<any[]> {
