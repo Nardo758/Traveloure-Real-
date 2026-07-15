@@ -64,7 +64,7 @@ import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from 
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
-import { feverCacheService } from "../services/fever-cache.service";
+import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
 import { travelPulseService } from "../services/travelpulse.service";
 import { coordinationService } from "../services/coordination.service";

@@ -22,7 +22,7 @@ interface FeverCachePayload {
   refreshedAt: string; // ISO-8601
 }
 
-class FeverCacheService {
+class PartnerEventsCacheService {
   async getCachedEvents(cityCode: string): Promise<FeverEvent[]> {
     const payload = await sharedCache.get<FeverCachePayload>(NAMESPACE, cityCode.toUpperCase());
     return payload?.events ?? [];
@@ -74,17 +74,17 @@ class FeverCacheService {
     // (fabricated-content class, same family as the §13 ratings fix). Match the sibling
     // providers' behavior (Booking.com/OpenTable: "not configured — skipping live fetch").
     if (!feverService.isReady()) {
-      console.log(`[FeverCache] Fever/Impact API not configured — skipping refresh for ${cityCode} (no mock data is cached or canonicalized)`);
+      console.log(`[PartnerEvents] Fever/Impact API not configured — skipping refresh for ${cityCode} (no mock data is cached or canonicalized)`);
       return result;
     }
 
     try {
-      console.log(`[FeverCache] Refreshing events for city: ${cityCode}`);
+      console.log(`[PartnerEvents] Refreshing events for city: ${cityCode}`);
 
       const response = await feverService.searchEvents({ city: cityCode, limit: 100 });
 
       if (!response || !response.events || response.events.length === 0) {
-        console.log(`[FeverCache] No events found for ${cityCode}`);
+        console.log(`[PartnerEvents] No events found for ${cityCode}`);
         return result;
       }
 
@@ -105,10 +105,10 @@ class FeverCacheService {
         }
       }
 
-      console.log(`[FeverCache] Cached ${result.refreshed} events for ${cityCode}`);
+      console.log(`[PartnerEvents] Cached ${result.refreshed} events for ${cityCode}`);
     } catch (err: any) {
       result.errors.push(`Failed to refresh ${cityCode}: ${err.message}`);
-      console.error(`[FeverCache] Error refreshing ${cityCode}:`, err.message);
+      console.error(`[PartnerEvents] Error refreshing ${cityCode}:`, err.message);
     }
 
     return result;
@@ -264,7 +264,7 @@ class FeverCacheService {
         },
       });
     } catch (err: any) {
-      console.warn(`[FeverCache] Skipping canonical upsert for event ${event.id}: ${err.message}`);
+      console.warn(`[PartnerEvents] Skipping canonical upsert for event ${event.id}: ${err.message}`);
     }
   }
 
@@ -273,4 +273,4 @@ class FeverCacheService {
   }
 }
 
-export const feverCacheService = new FeverCacheService();
+export const partnerEventsCacheService = new PartnerEventsCacheService();
