@@ -137,7 +137,10 @@ function MatchedServiceStrip({
           guestSessionId: getOrCreateGuestSessionId(),
         }),
       });
-      if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
+      // Dead endpoints return 200-HTML via the Vite catch-all (CLAUDE.md §9), so resp.ok
+      // alone would show a FALSE "Request recorded" success. Require a real JSON response.
+      const isJson = (resp.headers.get("content-type") ?? "").includes("application/json");
+      if (!resp.ok || !isJson) throw new Error(`Request failed: ${resp.status}`);
       setRequested(true);
       toast({
         title: "Request recorded",
@@ -527,10 +530,28 @@ export function CityFeedCardGem({
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
+  // DISABLED: GET /api/gems/:id/matched-service has no server implementation — every gem
+  // card was firing a dead fetch (200-HTML via the Vite catch-all) per render. Re-enable
+  // when the matched-service endpoint ships; the strip + suggestion-first Book href below
+  // are already wired for it.
   const { data: suggestion } = useQuery<MatchSuggestion | null>({
     queryKey: [`/api/gems/${gem.id}/matched-service`],
     staleTime: 5 * 60 * 1000,
+    enabled: false,
   });
+
+  // Book/Reserve destination: prefer a matched platform service, else the gem's OWN booking
+  // signal (the same fields resolveBookability keyed on). Never "#" — without a real
+  // destination the button doesn't render at all.
+  const bookHref: string | null =
+    suggestion?.href ??
+    (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
+    gem.platformBookingUrl ??
+    gem.affiliateUrl ??
+    gem.affiliateLink ??
+    gem.bookingUrl ??
+    gem.externalUrl ??
+    null;
   const typeMeta = gemTypeMeta(gem.placeType);
   const isTrending = gem.gemScore !== undefined && Number(gem.gemScore) >= 8.5;
 
@@ -647,7 +668,7 @@ export function CityFeedCardGem({
       {/* Actions */}
       {!compact && (
         <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-          {resolvedBookability !== "info_only" && (
+          {resolvedBookability !== "info_only" && bookHref && (
             <Button
               size="sm"
               className="h-7 text-xs px-3"
@@ -662,7 +683,10 @@ export function CityFeedCardGem({
                 }).catch(() => {});
               }}
             >
-              <a href={suggestion?.href ?? "#"}>
+              <a
+                href={bookHref}
+                {...(bookHref.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              >
                 {resolvedBookability === "deeplink" ? "Reserve" : "Book"}
               </a>
             </Button>
@@ -1169,7 +1193,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             )}>
               {isHotel ? "Hotel" : "Activity"}
             </span>
-            <BookingBadge level="native" />
+            {/* Honest badge: supply cards open an EXTERNAL partner link — never claim
+                "Book on Traveloure" (native). No link → "Not bookable". */}
+            <BookingBadge level={(item.bookingLink || item.externalUrl || item.url) ? "deeplink" : "info_only"} />
             {priceText && (
               <span
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-gray-100 text-gray-600"
@@ -1217,22 +1243,26 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           )}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-            <Button
-              size="sm"
-              className="h-7 text-xs px-3"
-              onClick={() => {
-                const impId = getImpIdSupply();
-                fetch("/api/affiliates/track", {
-                  method: "POST",
-                  keepalive: true,
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ partner: "discover-supply", destination: city, contentType: kind, contentId: String(item.id ?? ""), impressionId: impId }),
-                }).catch(() => {});
-                const bookUrl = item.bookingLink || item.externalUrl || item.url;
-                if (bookUrl) window.open(bookUrl, "_blank", "noopener");
-              }}
-              data-testid={`btn-book-supply-${item.id}`}
-            >Book</Button>
+            {/* Book renders only when a real destination exists — a URL-less supply item
+                previously showed a Book button that logged a click and did nothing. */}
+            {(item.bookingLink || item.externalUrl || item.url) && (
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                onClick={() => {
+                  const impId = getImpIdSupply();
+                  fetch("/api/affiliates/track", {
+                    method: "POST",
+                    keepalive: true,
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ partner: "discover-supply", destination: city, contentType: kind, contentId: String(item.id ?? ""), impressionId: impId }),
+                  }).catch(() => {});
+                  const bookUrl = item.bookingLink || item.externalUrl || item.url;
+                  if (bookUrl) window.open(bookUrl, "_blank", "noopener");
+                }}
+                data-testid={`btn-book-supply-${item.id}`}
+              >Book</Button>
+            )}
             <Button
               size="sm"
               variant="outline"
