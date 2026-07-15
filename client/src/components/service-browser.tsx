@@ -61,6 +61,15 @@ type Service = {
 
 type DiscoverResult = {
   services: Service[];
+  // Expert packages matching the same search (approved+published, teaser-redacted server-side).
+  packages?: Array<{
+    id: string;
+    title: string;
+    destination: string;
+    duration: number;
+    price: string;
+    coverImage?: string | null;
+  }>;
   total: number;
 };
 
@@ -273,6 +282,27 @@ export function ServiceBrowser({
         </div>
       ) : result?.services && result.services.length > 0 ? (
         <>
+          {/* Expert packages matching this search (packages-in-discovery) */}
+          {(result.packages?.length ?? 0) > 0 && (
+            <div className="space-y-2" data-testid="search-packages-strip">
+              <p className="text-sm font-medium">Expert Packages</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {result.packages!.slice(0, 3).map((pkg) => (
+                  <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
+                    <div className="flex items-center justify-between gap-2 p-3 rounded-lg border hover-elevate cursor-pointer" data-testid={`search-package-${pkg.id}`}>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{pkg.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {pkg.destination} · {pkg.duration} days
+                        </p>
+                      </div>
+                      <p className="font-bold text-primary text-sm whitespace-nowrap">${pkg.price}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">
             Showing {result.services.length} of {result.total} services
           </p>

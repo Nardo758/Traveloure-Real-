@@ -258,7 +258,7 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; total: number }>;
+  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }>;
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
@@ -1531,7 +1531,7 @@ export class DatabaseStorage implements IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; total: number }> {
+  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }> {
     // F2 public read-gate: unified search is a public surface — approved listings only.
     const conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
 
@@ -1588,9 +1588,51 @@ export class DatabaseStorage implements IStorage {
     
     const limit = filters.limit || 20;
     const offset = filters.offset || 0;
-    
+
+    // Packages (expert_templates) — discovery parity with services: search the SAME public set
+    // the packages feed shows (approved + published only). Content is redacted at the route
+    // layer (teaser only). Category-locked browses are services-only (template categories are a
+    // different vocabulary than service_categories), so skip packages when categoryId is set.
+    let packages: ExpertTemplate[] = [];
+    if (!filters.categoryId) {
+      const pkgConditions = [
+        eq(expertTemplates.approvalStatus, "approved"),
+        eq(expertTemplates.isPublished, true),
+      ];
+      if (filters.query) {
+        pkgConditions.push(
+          or(
+            ilike(expertTemplates.title, `%${filters.query}%`),
+            ilike(expertTemplates.description, `%${filters.query}%`),
+            ilike(expertTemplates.destination, `%${filters.query}%`)
+          )!
+        );
+      }
+      if (filters.location) {
+        pkgConditions.push(ilike(expertTemplates.destination, `%${filters.location}%`));
+      }
+      const pkgRows = await db
+        .select()
+        .from(expertTemplates)
+        .where(and(...pkgConditions))
+        .orderBy(
+          desc(expertTemplates.isFeatured),
+          desc(expertTemplates.salesCount),
+          desc(expertTemplates.createdAt)
+        )
+        .limit(6);
+      // Price filters in memory (decimal stored as string), mirroring the services handling.
+      packages = pkgRows.filter((t) => {
+        const price = parseFloat(t.price || "0") || 0;
+        if (filters.minPrice && price < filters.minPrice) return false;
+        if (filters.maxPrice && price > filters.maxPrice) return false;
+        return true;
+      });
+    }
+
     return {
       services: filtered.slice(offset, offset + limit),
+      packages,
       total: filtered.length
     };
   }
@@ -2802,10 +2844,19 @@ export class DatabaseStorage implements IStorage {
       conditions.push(ilike(expertTemplates.destination, `%${filters.destination}%`));
     }
     
+    // Quality ordering (packages-in-discovery): featured first, then proven sellers, then rating,
+    // then recency — so the public feed and B4 surfaces lead with the strongest packages instead
+    // of raw insertion order. Owner/admin reads share the ordering harmlessly.
+    const ordering = [
+      desc(expertTemplates.isFeatured),
+      desc(expertTemplates.salesCount),
+      desc(expertTemplates.averageRating),
+      desc(expertTemplates.createdAt),
+    ];
     if (conditions.length > 0) {
-      return await db.select().from(expertTemplates).where(and(...conditions)).orderBy(desc(expertTemplates.createdAt));
+      return await db.select().from(expertTemplates).where(and(...conditions)).orderBy(...ordering);
     }
-    return await db.select().from(expertTemplates).orderBy(desc(expertTemplates.createdAt));
+    return await db.select().from(expertTemplates).orderBy(...ordering);
   }
 
   async getExpertTemplate(id: string): Promise<ExpertTemplate | undefined> {

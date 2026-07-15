@@ -167,8 +167,17 @@ This document captures architectural decisions to maintain consistency across co
       bookings) now lands on the Packages tab instead of the "No bookings yet" dead-end. **B4 (three surfaces, scoped
       by the surface map):** un-hide the Discover `packages` tab (cards already built, already link to the B2 page);
       expert-profile packages section (`/experts/:id`, via the existing `?expertId=` filter); service-detail
-      same-owner cross-sell. Filed (not B4): search doesn't index templates; recommender doesn't rank them;
-      `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
+      same-owner cross-sell. **Search-indexing CLOSED (packages-in-discovery, post-B4):** `unifiedSearch` now also
+      returns matching **packages** (approved+published only; query vs title/description/destination; location vs
+      destination; price filters; skipped on category-locked browses — template categories ≠ `service_categories`),
+      rendered as a strip in `ServiceBrowser`, and the public packages feed is **quality-ordered** (featured →
+      salesCount → rating → recency, was raw insertion order). Route-shadow catch #2 (same class as the §15
+      `/api/checkout` landmine): `/api/discover` is duplicated — `content.routes.ts` is the LIVE one (mount order),
+      `routes.ts`'s copy is shadowed dead code; the content-gate redaction now lives in the shared
+      `server/utils/template-content-gate.ts` and BOTH copies apply it (proven behaviorally: search results carry
+      teaser only, no `itineraryData`). **Still filed:** recommender doesn't rank packages — and note the engine is
+      **demand-signal-typed** (recommends service *types*), not a catalog ranker, so this is a design task, not a
+      bolt-on; `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
       category/destination/duration are structured. **Label standard (ratified): traveler-facing = "Packages"**
       (Discover tab/header, my-bookings tab, detail page); the seller console keeps "Itinerary Templates" (same
       product, seller-side vocabulary — the Airbnb listings/homes split). **B4 LANDED (Phase B complete):** Discover
