@@ -284,9 +284,15 @@ This document captures architectural decisions to maintain consistency across co
   cache-scheduler tick wrote them into `destination_events` **born-`approved`** (ids `mock-<city>-<n>`, fake dates/
   ratings), which the public By-Date calendar served as real. Fix: `fever-cache.service` now skips entirely when
   `feverService.isReady()` is false (the Booking.com/OpenTable "skipping live fetch" sibling pattern); migration 115
-  purges the already-written `mock-%` rows. **Still open (same audit, decision pending):** AI (Grok) and real-Fever
-  events are **born-`approved`** with no review — only user-submitted events pass the admin queue (the D1a
-  born-approved lesson applied to machine content). Full pipeline audit verdicts in the data-capture report
+  purges the already-written `mock-%` rows. **CLOSED (Jul 15, 2026 — decision ratified):** AI (Grok) and Fever events
+  are now **born-`pending`**, not `approved` — the D1a born-approved lesson applied to machine content (AI can
+  hallucinate events, so it doesn't self-publish to the public By-Date calendar). Both machine insert sites flipped
+  (`travelpulse.service.ts` AI arm, `partner-events-cache.service.ts` Fever arm); they land in the **existing**
+  `getPendingDestinationEvents` admin queue alongside user-submitted events. The queue was **headless** (approve/reject
+  endpoints existed, zero client consumer) — built the admin UI (`client/src/pages/admin/destination-events.tsx`,
+  "Event Review", source-badged AI/Partner/User, approve + reject-with-reason). Grandfather: existing `approved` rows
+  untouched (no calendar outage). Proven behaviorally: born-pending → hidden from the public calendar, visible in the
+  queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
   (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.

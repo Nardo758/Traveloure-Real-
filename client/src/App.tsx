@@ -91,6 +91,7 @@ import AdminPayouts from "@/pages/admin/payouts";
 import AdminNeighborhoodBackfill from "@/pages/admin/neighborhood-backfill";
 import AdminGemPhotoBackfill from "@/pages/admin/gem-photo-backfill";
 import AdminReviewModeration from "@/pages/admin/review-moderation";
+import AdminDestinationEvents from "@/pages/admin/destination-events";
 import AdminReconciliation from "@/pages/admin/reconciliation";
 import ConciergePage from "@/pages/concierge";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -734,6 +735,9 @@ function Router() {
       </Route>
       <Route path="/admin/review-moderation">
         {() => <ProtectedRoute component={AdminReviewModeration} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/destination-events">
+        {() => <ProtectedRoute component={AdminDestinationEvents} requiredRole="admin" />}
       </Route>
       <Route path="/admin/analytics/cross-sell">
         {() => <ProtectedRoute component={AdminCrossSellAnalytics} requiredRole="admin" />}
