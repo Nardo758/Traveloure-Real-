@@ -268,7 +268,16 @@ This document captures architectural decisions to maintain consistency across co
   carry placeholder `rating: 4.x` — those are fake sample *content*, a "wire real data" task, not the display-fabrication
   bug. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
   confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap. Do not mark §13 resolved — the
-  `verified` + live-ratings arms are done.
+  `verified` + live-ratings arms are done. **New arm found by the data-capture audit (Jul 15, 2026), CLOSED same day
+  (migration 115 + guard):** the unconfigured Fever integration **fabricated calendar events** — without
+  `IMPACT_ACCOUNT_SID`/`IMPACT_AUTH_TOKEN`, `feverService.searchEvents` returned generated mock events and the daily
+  cache-scheduler tick wrote them into `destination_events` **born-`approved`** (ids `mock-<city>-<n>`, fake dates/
+  ratings), which the public By-Date calendar served as real. Fix: `fever-cache.service` now skips entirely when
+  `feverService.isReady()` is false (the Booking.com/OpenTable "skipping live fetch" sibling pattern); migration 115
+  purges the already-written `mock-%` rows. **Still open (same audit, decision pending):** AI (Grok) and real-Fever
+  events are **born-`approved`** with no review — only user-submitted events pass the admin queue (the D1a
+  born-approved lesson applied to machine content). Full pipeline audit verdicts in the data-capture report
+  (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
 - **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
 

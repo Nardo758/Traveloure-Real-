@@ -59,7 +59,7 @@ import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from 
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
-import { feverCacheService } from "../services/fever-cache.service";
+import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { cityNeighborhoods, expertNeighborhoods } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
