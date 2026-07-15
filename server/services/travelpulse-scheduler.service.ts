@@ -113,6 +113,20 @@ export class TravelPulseScheduler {
 
         // Demand signals are appended per the v2 spec — refresh per city even if AI failed,
         // so the recommendation surface stays current independent of AI cadence.
+        //
+        // Un-starve the generator first: generateDemandSignals reads travel_pulse_trending,
+        // a 30-minute-TTL cache written only on user hits — at the daily tick it is
+        // near-always empty, so the generator produced 0 signals. Prime the cache via the
+        // same fetch-and-cache-on-miss path /api/travelpulse/trending/:city uses.
+        // Best-effort: a priming failure never blocks the signal refresh or the cycle.
+        try {
+          await travelPulseService.getTrendingDestinations(city.cityName, 20);
+        } catch (err: any) {
+          console.error(
+            `[TravelPulse Scheduler] Trending prime failed for ${city.cityName} (continuing):`,
+            err?.message ?? err,
+          );
+        }
         try {
           const generated = await serviceRecommendationEngine.refreshDemandSignalsForCity(
             city.cityName,
@@ -176,6 +190,15 @@ export class TravelPulseScheduler {
       console.log(`[TravelPulse Scheduler] Manual refresh triggered for ${cityName}, ${country}`);
       const result = await travelPulseService.updateCityWithAI(cityName, country);
       let demandSignalsGenerated = 0;
+      // Prime travel_pulse_trending before generating (same un-starve as the daily loop).
+      try {
+        await travelPulseService.getTrendingDestinations(cityName, 20);
+      } catch (err: any) {
+        console.error(
+          `[TravelPulse Scheduler] Trending prime failed for ${cityName} (continuing):`,
+          err?.message ?? err,
+        );
+      }
       try {
         demandSignalsGenerated = await serviceRecommendationEngine.refreshDemandSignalsForCity(cityName);
       } catch (err: any) {
