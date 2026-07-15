@@ -710,9 +710,12 @@ router.get("/api/discover/location/:city", async (req, res) => {
       const month = req.query.month ? Number(req.query.month) : undefined;
       const year = req.query.year ? Number(req.query.year) : undefined;
       const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      // date passthrough harvested from the routes.ts shadow copy — the service's
+      // LocationViewOptions.date exists for this route (no behavior change server-side yet).
+      const date = typeof req.query.date === "string" ? req.query.date : undefined;
 
       const { locationViewService } = await import("../services/location-view.service");
-      const payload = await locationViewService.getLocationView(city, country, { month, year, limit });
+      const payload = await locationViewService.getLocationView(city, country, { month, year, limit, date });
       res.set("Cache-Control", "public, max-age=300");
       res.json(payload);
     } catch (err: any) {
@@ -839,6 +842,16 @@ router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
 
 router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
+      // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f
+      // applied this fix to the dead duplicate; see docs/audits/shadow-route-sweep.md).
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const venue = await storage.getCustomVenue(req.params.id);
+      if (!venue) {
+        return res.status(404).json({ message: "Custom venue not found" });
+      }
+      if (venue.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const input = insertCustomVenueSchema.partial().parse(req.body);
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
@@ -856,8 +869,21 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
   // Delete custom venue
 
 router.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
-    await storage.deleteCustomVenue(req.params.id);
-    res.status(204).send();
+    try {
+      // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f).
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const venue = await storage.getCustomVenue(req.params.id);
+      if (!venue) {
+        return res.status(404).json({ message: "Custom venue not found" });
+      }
+      if (venue.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteCustomVenue(req.params.id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete custom venue" });
+    }
   });
 
   // === Experience Types Routes ===
@@ -1905,7 +1931,9 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
 
 router.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);
-    if (!service || service.status !== "active") {
+    // Public surface: F2 read-gate (approval_status = 'approved') — harvested from the
+    // routes.ts shadow copy, where 23ece804 applied the gate to the dead duplicate.
+    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
     res.json(service);
@@ -5019,33 +5047,53 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
         expertCountMap.set(row.city, Number(row.expertCount) || 0);
       }
 
-      // Create a map of city+country to seasonal data
+      // Create a map of city+country to seasonal data, with a country-level fallback.
+      // destination_seasons rows are seeded COUNTRY-level (city = NULL, see
+      // server/seed-destination-calendar.ts), so a strict city+country join matches
+      // nothing and every city gets dropped. Fix bf93f45e ("match seasons by country
+      // with city-level override") was applied to the routes.ts shadow copy and lost
+      // in the defrag — harvested back here (docs/audits/shadow-route-sweep.md).
       const seasonMap = new Map<string, typeof seasonsData[0]>();
+      const countrySeasonMap = new Map<string, typeof seasonsData[0]>();
       for (const season of seasonsData) {
-        const key = `${season.city || ""}-${season.country}`.toLowerCase();
-        seasonMap.set(key, season);
-      }
-      
-      // Create a map of city to events
-      const eventMap = new Map<string, typeof eventsData>();
-      for (const event of eventsData) {
-        const key = `${event.city || ""}-${event.country}`.toLowerCase();
-        if (!eventMap.has(key)) {
-          eventMap.set(key, []);
+        if (season.city) {
+          const key = `${season.city}-${season.country}`.toLowerCase();
+          seasonMap.set(key, season);
+        } else {
+          const key = season.country.toLowerCase();
+          if (!countrySeasonMap.has(key)) countrySeasonMap.set(key, season);
         }
-        eventMap.get(key)!.push(event);
       }
-      
-      // Combine cities with seasonal data - ONLY include cities that have seasonal data for this month
+
+      // Create a map of city to events (country-level events fall back the same way)
+      const eventMap = new Map<string, typeof eventsData>();
+      const countryEventMap = new Map<string, typeof eventsData>();
+      for (const event of eventsData) {
+        if (event.city) {
+          const key = `${event.city}-${event.country}`.toLowerCase();
+          if (!eventMap.has(key)) eventMap.set(key, []);
+          eventMap.get(key)!.push(event);
+        } else {
+          const key = event.country.toLowerCase();
+          if (!countryEventMap.has(key)) countryEventMap.set(key, []);
+          countryEventMap.get(key)!.push(event);
+        }
+      }
+
+      // Combine cities with seasonal data — city-level season wins, else country-level;
+      // keep cities with no season but events this month (events-only bucket).
       const citiesWithSeasons = cities
         .map(city => {
-          const key = `${city.cityName}-${city.country}`.toLowerCase();
-          const season = seasonMap.get(key);
-          const events = eventMap.get(key) || [];
-          
-          // Skip cities without seasonal data for this month
-          if (!season) return null;
-          
+          const cityKey = `${city.cityName}-${city.country}`.toLowerCase();
+          const countryKey = city.country.toLowerCase();
+          const season = seasonMap.get(cityKey) ?? countrySeasonMap.get(countryKey) ?? null;
+          const cityEvents = eventMap.get(cityKey) || [];
+          const countryEvents = countryEventMap.get(countryKey) || [];
+          const events = [...cityEvents, ...countryEvents];
+
+          // Skip cities with neither seasonal data nor events for this month
+          if (!season && events.length === 0) return null;
+
           return {
             id: city.id,
             cityName: city.cityName,
@@ -5059,14 +5107,14 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             crowdLevel: city.crowdLevel,
             currentHighlight: city.currentHighlight,
             highlightEmoji: city.highlightEmoji,
-            // Seasonal data for this month
-            seasonalRating: season.rating,
-            weatherDescription: season.weatherDescription,
-            averageTemp: season.averageTemp,
-            rainfall: season.rainfall,
-            seasonCrowdLevel: season.crowdLevel,
-            priceLevel: season.priceLevel,
-            highlights: season.highlights || [],
+            // Seasonal data for this month (null when the city is events-only)
+            seasonalRating: season?.rating || null,
+            weatherDescription: season?.weatherDescription || null,
+            averageTemp: season?.averageTemp || null,
+            rainfall: season?.rainfall || null,
+            seasonCrowdLevel: season?.crowdLevel || null,
+            priceLevel: season?.priceLevel || null,
+            highlights: season?.highlights || [],
             // Events this month
             events: events.map(e => ({
               id: e.id,
@@ -5109,8 +5157,8 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       };
       
       filteredCities.sort((a: typeof citiesWithSeasons[0], b: typeof citiesWithSeasons[0]) => {
-        const aRating = ratingOrder[a.seasonalRating] ?? 2;
-        const bRating = ratingOrder[b.seasonalRating] ?? 2;
+        const aRating = a.seasonalRating ? ratingOrder[a.seasonalRating] ?? 2 : 2;
+        const bRating = b.seasonalRating ? ratingOrder[b.seasonalRating] ?? 2 : 2;
         if (aRating !== bRating) return aRating - bRating;
         // Secondary sort by pulse score
         return (b.pulseScore || 0) - (a.pulseScore || 0);
@@ -5121,8 +5169,9 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       const grouped = {
         best: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "best" || c.seasonalRating === "excellent"),
         good: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "good"),
-        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average" || !c.seasonalRating),
-        eventsOnly: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "events-only"),
+        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average"),
+        // events-only: explicit rating value, or a city surfaced with events but no season row
+        eventsOnly: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "events-only" || !c.seasonalRating),
         avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
       };
       

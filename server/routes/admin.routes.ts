@@ -3704,12 +3704,15 @@ router.get("/api/admin/search", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      // DB role lookup harvested from the routes.ts shadow copy — the previous
+      // `claims?.role` check 403'd every real admin (no auth flow writes a role
+      // claim into the session; role lives in the users table). Belt-and-suspenders
+      // under the blanket adminApiGuard (§2).
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-
-      const userId = user?.claims?.sub ?? user?.id;
       const adminNotifications = await getAdminNotifications(userId);
 
       const enriched = adminNotifications.map(n => ({
