@@ -262,6 +262,49 @@ This document captures architectural decisions to maintain consistency across co
       `{question, answer}` objects — it now normalizes both, so scoring actually runs on real submissions. **Filed
       follow-ups:** Phase 3 = calibrate the rubric on real Kyoto submissions, then decide whether to tighten from advisory
       to a harder gate; refine the Kyoto scoring context (currently a first-draft seed).
+    - **Experience-planning lens — ADOPTED WITHIN KYOTO (ratified Jul 16, 2026).** The BP reframe
+      (`research/traveloure_bp_reframed_analysis.md`) recasts Traveloure as a destination
+      *experience/event-planning* platform (weddings/proposals/birthdays/corporate events) rather than a
+      tour marketplace — transactions are $5K–$50K events, not $50–$200 tours. **The LENS is adopted;
+      the reframe's 8-market breadth is NOT** — §12's one-wedge-Kyoto (ratified *later*, Jul 14)
+      supersedes it. So the lens applies **within Kyoto** ("plan your Kyoto experience"), the other 7
+      markets stay paused. The codebase already carries the DNA (`/experiences/:slug`
+      wedding/proposal/birthday, coordination-fee engine, `getExperienceSuggestionsForCity`).
+      **Filed (not built):** the client-side acquisition funnel the reframe flags as missing — SEO for
+      "Kyoto wedding/proposal", Pinterest hooks, hotel-concierge B2B; event-tier pricing surfacing.
+    - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
+      8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
+      already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,
+      `expert_dmo_collections`, `expert_dmo_collection_items`, `expert_dmo_edits`, `content_gap_alerts`,
+      `dmo_scrape_jobs`; `DMOSourceRegistry` (62 sources), `DMOCrawler` (Firecrawl/Tavily/Brave), mounted
+      `/api/expert-workspace` with `requireExpert`) but **effectively dark and broken**: the table-creating
+      migration lived UNREGISTERED in the legacy top-level `migrations/0010_add_dmo_content_layer.sql`, so
+      the tables never existed at runtime and every DB-backed endpoint errored. **D0 (this change):**
+      relocated → `server/migrations/117_add_dmo_content_layer.sql`, registered in `migration-files.ts`,
+      **made the FK `ADD CONSTRAINT`s idempotent** (`DO/EXCEPTION WHEN duplicate_object` — the tables may
+      already exist from a publish-time drizzle push, and the runner is fail-fast); added
+      `server/seeds/dmo-sources.seed.ts` (mirrors the registry into `dmo_sources` so `dmo_scrape_jobs`
+      FKs resolve; idempotent upsert on `(domain, market)`; registry `id` as PK), wired at startup. The
+      born-hidden design (`discover_page_visible=false` until expert review) **already matches D1a** — raw
+      machine/DMO content never reaches travelers without expert review. **Ingestion stays Kyoto-scoped
+      per §12**; seeding all-market source *definitions* is inert scaffolding (a definition does nothing
+      until a scrape job runs). **D1 LANDED (seed, Jul 16, 2026):** live UNESCO/crawler ingestion is gated
+      on outbound network to the DMO domains + API keys (the agent proxy 403s `whc.unesco.org`; Firecrawl/
+      Tavily/Brave keys absent), so it can only run at deploy — `server/seeds/dmo-kyoto-heritage.seed.ts`
+      instead bootstraps the pipeline with 10 REAL, born-hidden Kyoto UNESCO component sites (WHC #688,
+      Uji/Otsu excluded per §12) as thin factual `dmo_raw_content` stubs (`pending_expert_review`,
+      `discover_page_visible=false` — experts enrich before publish). Idempotent on `(source_url, source_id)`,
+      wired after the sources seed (FK). **D2 LANDED (Jul 16, 2026):** the Expert Workspace DMO Library UI
+      (`client/src/pages/expert/dmo-library.tsx`, routed `/expert/dmo-library` behind `requiredRole="expert"`,
+      linked in the expert sidebar) — the previously-missing client consumer. Kyoto-scoped
+      (`?city=Kyoto`); browse pending/published/rejected tabs → review & enrich (name/description/tags) →
+      the loop the server already enforced: `POST /content/:id/edit` then `PATCH /edits/:id/submit` then
+      `POST /content/:id/publish` (publish is server-gated on a submitted edit existing — D1a) or
+      `POST /content/:id/reject`. Rides the already-mounted `/api/expert-workspace` endpoints, no server
+      change. **NOT built (filed, Kyoto-first build order):** ingestion scheduler + live scrape wiring (D3).
+      Env for live scraping: `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY` (crawler warns-only if
+      absent). No Smartvel/ATDW per-API client exists yet (only generic scraping). Migration 117 has **no
+      CHECK constraints** → no publish-time push trap.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

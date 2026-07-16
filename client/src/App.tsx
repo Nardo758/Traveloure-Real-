@@ -135,6 +135,7 @@ import ExpertServiceForm from "@/pages/expert/service-form";
 import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ExpertWorkspace from "@/pages/expert/workspace";
+import DmoLibrary from "@/pages/expert/dmo-library";
 import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
@@ -544,6 +545,9 @@ function Router() {
       </Route>
       <Route path="/expert/workspace">
         {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/dmo-library">
+        {() => <ProtectedRoute component={DmoLibrary} requiredRole="expert" />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
