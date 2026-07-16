@@ -74,6 +74,10 @@ interface GlobalCity {
   // D3 honest counts (real aggregates from the server; hidden when 0)
   packagesCount?: number;
   expertsCount?: number;
+  // More-info modal enrichers: min package price + real expert neighbourhood coverage
+  packagesFromPrice?: number | null;
+  packagesCurrency?: string | null;
+  expertNeighborhoods?: string[];
 }
 
 interface GlobalEvent {
@@ -804,6 +808,15 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 }
 
 // Helper: Convert season rating to a numeric score for display (best=9, good=7, average=5, etc.)
+// Format a package "from" price. USD → "$49"; other currencies → "49 EUR".
+// Whole numbers drop the decimals; otherwise show cents.
+function formatFromPrice(amount: number, currency: string): string {
+  const isWhole = Number.isInteger(amount);
+  const n = isWhole ? amount.toString() : amount.toFixed(2);
+  if (currency === "USD") return `$${n}`;
+  return `${n} ${currency}`;
+}
+
 function getSeasonScore(rating: string | null): number {
   switch (rating) {
     case "best":
@@ -895,15 +908,28 @@ function CityCard({
   });
   const eventsExtra = Math.max(0, eventsCount - 3);
 
-  // PACKAGES/EXPERTS show honest counts today; "from $X" price + expert neighbourhoods
-  // upgrade in follow-up B once the global-calendar payload carries them.
+  // PACKAGES: count + real "from $X" (min over the city's approved packages) when priced.
+  const fromPrice =
+    typeof city.packagesFromPrice === "number" && city.packagesFromPrice > 0
+      ? city.packagesFromPrice
+      : null;
+  const priceCurrency = city.packagesCurrency ?? "USD";
   const packagesRow =
     packagesCount > 0
-      ? `${packagesCount} expert ${packagesCount === 1 ? "itinerary" : "itineraries"}`
+      ? `${packagesCount} expert ${packagesCount === 1 ? "itinerary" : "itineraries"}` +
+        (fromPrice !== null ? ` — from ${formatFromPrice(fromPrice, priceCurrency)}` : "")
       : null;
+
+  // EXPERTS: count + the real neighbourhoods they cover ("cover Gion, Higashiyama, …").
+  const coveredNeighborhoods = (city.expertNeighborhoods ?? []).filter(Boolean);
   const expertsRow =
     expertsCount > 0
-      ? `${expertsCount} local ${expertsCount === 1 ? "expert covers" : "experts cover"} this destination`
+      ? `${expertsCount} local ${expertsCount === 1 ? "expert" : "experts"}` +
+        (coveredNeighborhoods.length > 0
+          ? ` cover ${coveredNeighborhoods.slice(0, 3).join(", ")}${
+              coveredNeighborhoods.length > 3 ? " +more" : ""
+            }`
+          : " cover this destination")
       : null;
 
   return (

@@ -5033,8 +5033,14 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       
       // D3 honest counts (§13): grouped queries across the whole city set — no N+1.
       // Packages = approved + published expert templates whose destination mentions the city.
-      const approvedTemplateDestinations = await db
-        .select({ destination: expertTemplates.destination })
+      // Price is carried alongside destination so the modal can show a real "from $X"
+      // (min over the city's matching approved packages) — never a fabricated figure.
+      const approvedTemplateRows = await db
+        .select({
+          destination: expertTemplates.destination,
+          price: expertTemplates.price,
+          currency: expertTemplates.currency,
+        })
         .from(expertTemplates)
         .where(
           and(
@@ -5042,9 +5048,16 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             eq(expertTemplates.isPublished, true)
           )
         );
-      const templateDestinationsLower = approvedTemplateDestinations
+      const templateDestinationsLower = approvedTemplateRows
         .map(t => (t.destination || "").toLowerCase())
         .filter(d => d.length > 0);
+      const templatePriceRows = approvedTemplateRows
+        .map(t => ({
+          dest: (t.destination || "").toLowerCase(),
+          price: parseFloat(t.price as unknown as string),
+          currency: t.currency || "USD",
+        }))
+        .filter(t => t.dest.length > 0 && Number.isFinite(t.price) && t.price > 0);
 
       // Local experts = DISTINCT experts with neighborhood coverage in the city.
       const expertCountRows = await db
@@ -5058,6 +5071,23 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       const expertCountMap = new Map<string, number>();
       for (const row of expertCountRows) {
         expertCountMap.set(row.city, Number(row.expertCount) || 0);
+      }
+
+      // Distinct neighbourhood NAMES an expert actually covers, per city — powers the
+      // modal's "cover Gion, Higashiyama, Arashiyama" line (real coverage, not filler).
+      const expertNeighborhoodRows = await db
+        .select({
+          city: sql<string>`LOWER(${cityNeighborhoods.city})`,
+          name: cityNeighborhoods.name,
+        })
+        .from(expertNeighborhoods)
+        .innerJoin(cityNeighborhoods, eq(expertNeighborhoods.neighborhoodId, cityNeighborhoods.id))
+        .groupBy(sql`LOWER(${cityNeighborhoods.city})`, cityNeighborhoods.name);
+      const expertNeighborhoodMap = new Map<string, string[]>();
+      for (const row of expertNeighborhoodRows) {
+        const arr = expertNeighborhoodMap.get(row.city) ?? [];
+        arr.push(row.name);
+        expertNeighborhoodMap.set(row.city, arr);
       }
 
       // Create a map of city+country to seasonal data, with a country-level fallback.
@@ -5140,7 +5170,22 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             packagesCount: templateDestinationsLower.filter(d =>
               d.includes(city.cityName.toLowerCase())
             ).length,
+            // Min price across this city's approved packages ("from $X"); null when none.
+            packagesFromPrice: (() => {
+              const matches = templatePriceRows.filter(t =>
+                t.dest.includes(city.cityName.toLowerCase())
+              );
+              return matches.length > 0 ? Math.min(...matches.map(t => t.price)) : null;
+            })(),
+            packagesCurrency: (() => {
+              const match = templatePriceRows.find(t =>
+                t.dest.includes(city.cityName.toLowerCase())
+              );
+              return match?.currency ?? null;
+            })(),
             expertsCount: expertCountMap.get(city.cityName.toLowerCase()) || 0,
+            // Real neighbourhood coverage names for the EXPERTS row (empty when none).
+            expertNeighborhoods: expertNeighborhoodMap.get(city.cityName.toLowerCase()) ?? [],
             // AI data
             aiBestTimeToVisit: city.aiBestTimeToVisit,
             aiBudgetEstimate: city.aiBudgetEstimate as any,
