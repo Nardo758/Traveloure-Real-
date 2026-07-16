@@ -288,11 +288,17 @@ This document captures architectural decisions to maintain consistency across co
       born-hidden design (`discover_page_visible=false` until expert review) **already matches D1a** — raw
       machine/DMO content never reaches travelers without expert review. **Ingestion stays Kyoto-scoped
       per §12**; seeding all-market source *definitions* is inert scaffolding (a definition does nothing
-      until a scrape job runs). **NOT built (filed, Kyoto-first build order):** UNESCO-first Kyoto
-      ingestion (D1 — cheapest, no key); Expert Workspace DMO Library/curation UI (D2 — no client consumer
-      exists); ingestion scheduler (D3). Env for live scraping: `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`,
-      `BRAVE_API_KEY` (crawler warns-only if absent). No Smartvel/ATDW per-API client exists yet (only
-      generic scraping). Migration 117 has **no CHECK constraints** → no publish-time push trap.
+      until a scrape job runs). **D1 LANDED (seed, Jul 16, 2026):** live UNESCO/crawler ingestion is gated
+      on outbound network to the DMO domains + API keys (the agent proxy 403s `whc.unesco.org`; Firecrawl/
+      Tavily/Brave keys absent), so it can only run at deploy — `server/seeds/dmo-kyoto-heritage.seed.ts`
+      instead bootstraps the pipeline with 10 REAL, born-hidden Kyoto UNESCO component sites (WHC #688,
+      Uji/Otsu excluded per §12) as thin factual `dmo_raw_content` stubs (`pending_expert_review`,
+      `discover_page_visible=false` — experts enrich before publish). Idempotent on `(source_url, source_id)`,
+      wired after the sources seed (FK). **NOT built (filed, Kyoto-first build order):** Expert Workspace DMO
+      Library/curation UI (D2 — no client consumer exists yet); ingestion scheduler + live scrape wiring (D3).
+      Env for live scraping: `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY` (crawler warns-only if
+      absent). No Smartvel/ATDW per-API client exists yet (only generic scraping). Migration 117 has **no
+      CHECK constraints** → no publish-time push trap.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
