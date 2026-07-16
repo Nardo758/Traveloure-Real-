@@ -623,6 +623,7 @@ export default function DiscoverPage() {
   const [tripSearchQuery, setTripSearchQuery] = useState("");
   const [selectedTripCategory, setSelectedTripCategory] = useState("all");
   const [favorites, setFavorites] = useState<number[]>([]);
+  const [showAllPackages, setShowAllPackages] = useState(false);
 
   // Cart state
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
@@ -1643,7 +1644,7 @@ export default function DiscoverPage() {
                   {(expertTemplates && expertTemplates.length > 0) && (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {expertTemplates.slice(0, 6).map((template, idx) => (
+                      {(showAllPackages ? expertTemplates : expertTemplates.slice(0, 6)).map((template, idx) => (
                         <motion.div
                           key={template.id}
                           initial={{ opacity: 0, y: 20 }}
@@ -1745,14 +1746,23 @@ export default function DiscoverPage() {
 
                     {expertTemplates.length > 6 && (
                       <div className="text-center mt-6">
-                        <Button variant="outline" data-testid="button-view-all-templates">
-                          View All {expertTemplates.length} Templates
-                          <ArrowRight className="w-4 h-4 ml-2" />
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowAllPackages((v) => !v)}
+                          data-testid="button-view-all-templates"
+                        >
+                          {showAllPackages ? (
+                            <>Show fewer</>
+                          ) : (
+                            <>
+                              View all {expertTemplates.length} packages
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </>
+                          )}
                         </Button>
                       </div>
                     )}
 
-                    <div className="border-t my-8" />
                     </>
                   )}
                 </div>
@@ -1765,185 +1775,9 @@ export default function DiscoverPage() {
                         <Skeleton key={i} className="h-72 rounded-lg" />
                       ))}
                     </div>
-                    <div className="border-t my-8" />
                   </div>
                 )}
 
-                <h2 className="text-xl font-semibold mb-4">Trending Destinations</h2>
-                
-                {/* Category Filters */}
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {tripCategories.map((cat) => (
-                    <Button
-                      key={cat.id}
-                      variant={selectedTripCategory === cat.id ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedTripCategory(cat.id)}
-                      data-testid={`button-category-${cat.id}`}
-                    >
-                      <cat.icon className="w-4 h-4 mr-1" />
-                      {cat.label}
-                    </Button>
-                  ))}
-                </div>
-
-                {/* Trip Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredTrips.map((trip, idx) => (
-                    <motion.div
-                      key={trip.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      whileHover={{ y: -4 }}
-                      transition={{ duration: 0.2, delay: idx * 0.05 }}
-                    >
-                      <Card
-                        className="hover-elevate overflow-hidden group h-full"
-                        data-testid={`card-trip-${trip.id}`}
-                      >
-                        <CardContent className="p-0 flex flex-col h-full">
-                          <div className="relative h-48 overflow-hidden">
-                            {trip.imageUrl ? (
-                              <img
-                                src={trip.imageUrl}
-                                alt={trip.title}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                                <MapPin className="h-12 w-12 text-primary/30" />
-                              </div>
-                            )}
-                            
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                            
-                            <button
-                              onClick={() => toggleFavorite(trip.id)}
-                              className="absolute top-3 right-3 p-2 bg-white/90 rounded-full shadow-sm hover:bg-white transition-colors"
-                              data-testid={`button-favorite-${trip.id}`}
-                            >
-                              <Heart
-                                className={cn(
-                                  "w-5 h-5",
-                                  favorites.includes(trip.id)
-                                    ? "fill-[#FF385C] text-[#FF385C]"
-                                    : "text-gray-600"
-                                )}
-                              />
-                            </button>
-
-                            {trip.expertPick && (
-                              <div className="absolute top-3 left-3">
-                                <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 font-semibold">
-                                  <Trophy className="w-3 h-3 mr-1" />
-                                  Expert Pick
-                                </Badge>
-                              </div>
-                            )}
-
-                            <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
-                              <div className="flex flex-wrap gap-1">
-                                {trip.vibeTags?.slice(0, 2).map((tag: string) => (
-                                  <Badge 
-                                    key={tag} 
-                                    variant="secondary" 
-                                    className="text-xs bg-white/90 text-gray-700 border-0"
-                                  >
-                                    {tag}
-                                  </Badge>
-                                ))}
-                              </div>
-                              <div className="bg-white px-3 py-1.5 rounded-lg shadow-md">
-                                <span className="text-xs text-gray-400 line-through block">
-                                  ${trip.originalPrice}
-                                </span>
-                                <span className="font-bold text-lg text-[#FF385C]">
-                                  ${trip.price}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-4 flex-1 flex flex-col">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                              <MapPin className="w-4 h-4 text-[#FF385C]" />
-                              <span className="font-medium">{trip.destination}</span>
-                            </div>
-
-                            <h3 className="font-semibold text-lg mb-3 group-hover:text-[#FF385C] transition-colors line-clamp-2">
-                              {trip.title}
-                            </h3>
-
-                            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-3">
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-4 h-4" />
-                                {trip.duration}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Users className="w-4 h-4" />
-                                {trip.travelers}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                                {trip.rating} ({trip.reviews})
-                              </span>
-                            </div>
-
-                            <div className="flex flex-wrap gap-1 mb-4 flex-1">
-                              {trip.highlights.slice(0, 2).map((h: string) => (
-                                <Badge key={h} variant="outline" className="text-xs">
-                                  <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
-                                  {h}
-                                </Badge>
-                              ))}
-                              {trip.highlights.length > 2 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{trip.highlights.length - 2} more
-                                </Badge>
-                              )}
-                            </div>
-
-                            <Link href={(trip as any).citySlug ? `/discover?tab=travelpulse&city=${encodeURIComponent(trip.destination)}` : `/discover?tab=services&location=${encodeURIComponent(trip.destination)}`}>
-                              <Button className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-trip-${trip.id}`}>
-                                View Details
-                                <ArrowRight className="w-4 h-4 ml-2" />
-                              </Button>
-                            </Link>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {filteredTrips.length === 0 && trendingTrips.length === 0 && !trendingLoading && (
-                  <div className="text-center py-16">
-                    <Globe className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Destination intelligence loading</h3>
-                    <p className="text-muted-foreground max-w-sm mx-auto">
-                      Trending destination data is generated daily by TravelPulse. Check back soon, or browse expert templates above.
-                    </p>
-                  </div>
-                )}
-
-                {filteredTrips.length === 0 && trendingTrips.length > 0 && (
-                  <div className="text-center py-16">
-                    <Search className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No destinations match your filters</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Try adjusting your search or category
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setTripSearchQuery("");
-                        setSelectedTripCategory("all");
-                      }}
-                    >
-                      Clear Filters
-                    </Button>
-                  </div>
-                )}
               </TabsContent>
 
               {/* Influencer Curated Content Tab */}
