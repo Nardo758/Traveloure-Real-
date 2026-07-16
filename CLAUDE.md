@@ -275,8 +275,20 @@ This document captures architectural decisions to maintain consistency across co
       title/description/keywords targeting the high-intent "`<city> <event>`" search the reframe flags
       (e.g. `?destination=Kyoto` on the wedding slug → "Plan Your Kyoto Wedding", keywords `kyoto wedding`,
       `kyoto destination wedding`, `wedding planner kyoto`, …); falls back to an event-specific title with
-      no destination. Client-side (same SPA `SEOHead` mechanism the rest of the app uses). **Still filed
-      (not built):** Pinterest hooks, hotel-concierge B2B, event-tier pricing surfacing.
+      no destination. Client-side (same SPA `SEOHead` mechanism the rest of the app uses). The
+      experience-template optimize upsell now also carries a "See planning & coordination fees" link to
+      `/pricing` (fee transparency in the planning flow; no fee literals duplicated — they resolve from
+      config). **Event-tier pricing — NOT a gap (corrected Jul 16, 2026):** it is already surfaced on the
+      live, globally-linked `/pricing` page (Pay-Per-Use section: Trip/Experience $5.99, Event $19.99
+      credited-toward-coordination, Coordination 8%-or-$499, all `fee-literal-ok` config-resolved display
+      strings). **AI optimization fee — ALREADY BUILT + BILLED (corrected Jul 16, 2026):** billing the
+      optimize is not a gap — the free path (`/api/optimization-preview`) returns a metrics *teaser* only,
+      and the **full LLM optimization is delivered behind the paid gate**: `POST /api/optimization-payments`
+      resolves the fee **server-side** via `getFee(eventType, tier)` (complexity-tiered; 24h free re-run;
+      Stripe PaymentIntent `type=optimization_fee`, ownership-verified — §14-clean), then
+      `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
+      pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
+      credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
     - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
       8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
       already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,
