@@ -294,8 +294,14 @@ This document captures architectural decisions to maintain consistency across co
       instead bootstraps the pipeline with 10 REAL, born-hidden Kyoto UNESCO component sites (WHC #688,
       Uji/Otsu excluded per §12) as thin factual `dmo_raw_content` stubs (`pending_expert_review`,
       `discover_page_visible=false` — experts enrich before publish). Idempotent on `(source_url, source_id)`,
-      wired after the sources seed (FK). **NOT built (filed, Kyoto-first build order):** Expert Workspace DMO
-      Library/curation UI (D2 — no client consumer exists yet); ingestion scheduler + live scrape wiring (D3).
+      wired after the sources seed (FK). **D2 LANDED (Jul 16, 2026):** the Expert Workspace DMO Library UI
+      (`client/src/pages/expert/dmo-library.tsx`, routed `/expert/dmo-library` behind `requiredRole="expert"`,
+      linked in the expert sidebar) — the previously-missing client consumer. Kyoto-scoped
+      (`?city=Kyoto`); browse pending/published/rejected tabs → review & enrich (name/description/tags) →
+      the loop the server already enforced: `POST /content/:id/edit` then `PATCH /edits/:id/submit` then
+      `POST /content/:id/publish` (publish is server-gated on a submitted edit existing — D1a) or
+      `POST /content/:id/reject`. Rides the already-mounted `/api/expert-workspace` endpoints, no server
+      change. **NOT built (filed, Kyoto-first build order):** ingestion scheduler + live scrape wiring (D3).
       Env for live scraping: `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY` (crawler warns-only if
       absent). No Smartvel/ATDW per-API client exists yet (only generic scraping). Migration 117 has **no
       CHECK constraints** → no publish-time push trap.
