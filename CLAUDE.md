@@ -390,6 +390,14 @@ The earning ledger is an escrow state machine: **`held → releasable → paid_o
 - **Phase 3 (#168):** traveler `POST /api/bookings/:id/confirm-completion` (early release) + `/dispute` (block, pulls
   `releasable → held+open`, enforcing "disputed ⟹ held") + admin `/api/admin/disputes/:id/reject`; owner-gated on
   `service_bookings.traveler_id`; disputes list reads `service_bookings`.
+  - **Dispute-window enforcement (escrow decision 3, landed later).** `/dispute` now REJECTS a dispute raised after the
+    clearance window closes (`now > completedAt + holdWindowDays('service_booking')`, default 7d, env-overridable → the
+    same clock the release job uses) with `409 dispute_window_closed`. Previously the endpoint enforced no window — a
+    traveler could dispute a `completed` booking indefinitely, which is precisely the situation decision 4's manual
+    post-payout claw-back exists to cover. Enforcing the window aligns the dispute cutoff with the payout timing, so a
+    refund can't be raised after payout → **decision 4's "no automated post-`paid_out` claw-back" limitation is
+    now essentially unreachable by design, not a live hole.** `completedAt` null (not yet completed) → window not applied.
+    Client (`my-bookings.tsx`) surfaces the window-closed message; the server is authoritative (no client-side window literal).
 - **Phase 4 (#170) — reversal terminal.** `storage.reverseEarningsForBooking` (held/releasable → `reversed`; `paid_out`
   **never auto-clawed-back** — ratified "reversal only while in escrow"; returns `skippedPaidOut` for manual handling) +
   `reversePlatformRevenueForBooking` (compensating **negative** `platform_revenue` row — double-entry nets both the
