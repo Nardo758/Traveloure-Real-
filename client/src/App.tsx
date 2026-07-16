@@ -542,6 +542,9 @@ function Router() {
       <Route path="/expert/workspace/:tripId">
         {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
       </Route>
+      <Route path="/expert/workspace">
+        {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
+      </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
       <Route path="/ea/dashboard">
