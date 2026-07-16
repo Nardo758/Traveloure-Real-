@@ -386,4 +386,17 @@ export const MIGRATION_FILES = [
   // content_id) reads ride 082's idx_ci_content prefix. Analytics-only — no money
   // semantics, fire-and-forget writes. Guarded/idempotent.
   "116_content_impressions_tracking.sql",
+  // Migration 117 — activate the built-but-dark DMO content layer (Expert Workspace).
+  // Creates the 7 DMO tables (dmo_sources, dmo_raw_content, expert_dmo_collections,
+  // expert_dmo_collection_items, expert_dmo_edits, content_gap_alerts, dmo_scrape_jobs).
+  // The schema + routes + crawler already shipped in shared/schema.ts and
+  // server/content/*, but this DDL lived unregistered in the legacy top-level
+  // migrations/ dir (0010_add_dmo_content_layer.sql), so the tables never existed at
+  // runtime and every DB-backed /api/expert-workspace endpoint errored. Relocated here
+  // and registered so runMigrations() is authoritative. All CREATE TABLE IF NOT EXISTS +
+  // ADD CONSTRAINT / CREATE INDEX IF NOT EXISTS — idempotent, no CHECK constraints (no
+  // publish-time push trap). Born-hidden by design (discover_page_visible=false until
+  // expert review — the D1a lesson). Ingestion is Kyoto-scoped per §12; the table set is
+  // market-agnostic scaffolding.
+  "117_add_dmo_content_layer.sql",
 ] as const;
