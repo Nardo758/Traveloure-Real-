@@ -4407,14 +4407,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.json({ recommendations, message: "Showing trending destinations" });
       }
 
-      const recommendations = await serviceRecommendationEngine.getUserRecommendations(
-        userId, 
-        city, 
-        preferences || (experienceType ? [experienceType] : undefined), 
-        limit
-      );
-      
-      res.json({ recommendations, city });
+      const prefs = preferences || (experienceType ? [experienceType] : undefined);
+      const [recommendations, packages] = await Promise.all([
+        serviceRecommendationEngine.getUserRecommendations(userId, city, prefs, limit),
+        // Destination-aware, quality-ranked package recs — additive field; existing
+        // consumers read `.recommendations` and are unaffected.
+        serviceRecommendationEngine.getRecommendedPackagesForUser(city, prefs, 6),
+      ]);
+
+      res.json({ recommendations, packages, city });
     } catch (err) {
       console.error("Error fetching user recommendations:", err);
       res.status(500).json({ message: "Failed to fetch recommendations" });
