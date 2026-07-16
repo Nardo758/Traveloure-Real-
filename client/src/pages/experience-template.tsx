@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRoute, useLocation, Link, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { SEOHead } from "@/components/seo-head";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1715,8 +1716,35 @@ export default function ExperienceTemplatePage() {
   // config is kept as a read-only aesthetic reference only (hero images from pre-DB era).
   // All structural behavior (tabs, form fields, filters) is DB-driven via experienceType + dbTabs.
 
+  // Experience-planning lens (§12): destination-aware SEO targets the high-intent
+  // "<city> <event>" search the BP reframe flags as the missing acquisition funnel
+  // (e.g. "Kyoto wedding") instead of a generic templates title.
+  const eventLabel = experienceType?.name || (slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : "Experience");
+  const eventLower = eventLabel.toLowerCase();
+  const seoCity = (destinationFromQuery || "").split(",")[0].trim();
+  const seo = seoCity
+    ? {
+        title: `Plan Your ${seoCity} ${eventLabel}`,
+        description: `Planning a ${eventLower} in ${seoCity}? Work with vetted local experts who handle venues, vendors, and cultural details, with AI-assisted planning. Get matched and start your ${seoCity} ${eventLower}.`,
+        keywords: [
+          `${seoCity} ${eventLower}`,
+          `${seoCity} destination ${eventLower}`,
+          `${eventLower} planner ${seoCity}`,
+          `plan ${eventLower} in ${seoCity}`,
+          `${seoCity} experience planning`,
+        ],
+        url: `/experiences/${slug}?destination=${encodeURIComponent(destinationFromQuery || "")}`,
+      }
+    : {
+        title: `${eventLabel} Planning with Local Experts`,
+        description: `Plan your ${eventLower} with vetted local experts and AI-assisted coordination — venues, vendors, and every detail handled. Choose your destination and get matched.`,
+        keywords: [`${eventLower} planning`, `destination ${eventLower}`, `${eventLower} planner`, "experience planning", "local expert planning"],
+        url: `/experiences/${slug}`,
+      };
+
   return (
     <Layout>
+      <SEOHead title={seo.title} description={seo.description} keywords={seo.keywords} url={seo.url} />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
           <Panel defaultSize={60} minSize={40} maxSize={80} className="h-full flex flex-col overflow-hidden">
