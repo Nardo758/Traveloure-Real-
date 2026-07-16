@@ -174,6 +174,10 @@ export interface ViatorSearchResult {
 }
 
 class ViatorService {
+  isConfigured(): boolean {
+    return !!VIATOR_API_KEY;
+  }
+
   private async makeRequest<T>(endpoint: string, method: 'GET' | 'POST' = 'GET', body?: any): Promise<T> {
     if (!VIATOR_API_KEY) {
       throw new Error('VIATOR_API_KEY is not configured');
@@ -211,6 +215,10 @@ class ViatorService {
   }
 
   async searchByFreetext(searchTerm: string, currency: string = 'USD', count: number = 20): Promise<ViatorSearchResult> {
+    if (!this.isConfigured()) {
+      console.warn('[Viator] VIATOR_API_KEY not set – skipping searchByFreetext');
+      return { products: [], totalCount: 0 };
+    }
     try {
       const response = await this.makeRequest<any>('/search/freetext', 'POST', {
         searchTerm,
@@ -225,11 +233,15 @@ class ViatorService {
       };
     } catch (error: any) {
       console.error('Viator freetext search error:', error);
-      throw error;
+      return { products: [], totalCount: 0 };
     }
   }
 
   async searchProducts(params: ViatorSearchParams): Promise<ViatorSearchResult> {
+    if (!this.isConfigured()) {
+      console.warn('[Viator] VIATOR_API_KEY not set – skipping searchProducts');
+      return { products: [], totalCount: 0 };
+    }
     try {
       const requestBody: any = {
         currency: params.currency || 'USD',
@@ -267,17 +279,21 @@ class ViatorService {
       };
     } catch (error: any) {
       console.error('Viator product search error:', error);
-      throw error;
+      return { products: [], totalCount: 0 };
     }
   }
 
   async getDestinations(): Promise<ViatorDestination[]> {
+    if (!this.isConfigured()) {
+      console.warn('[Viator] VIATOR_API_KEY not set – skipping getDestinations');
+      return [];
+    }
     try {
       const response = await this.makeRequest<any>('/destinations', 'GET');
       return response.destinations || [];
     } catch (error: any) {
       console.error('Viator destinations error:', error);
-      throw error;
+      return [];
     }
   }
 
@@ -292,6 +308,10 @@ class ViatorService {
   }
 
   async checkAvailability(productCode: string, travelDate: string, paxMix: Array<{ ageBand: string; numberOfTravelers: number }>): Promise<any> {
+    if (!this.isConfigured()) {
+      console.warn('[Viator] VIATOR_API_KEY not set – skipping checkAvailability');
+      return null;
+    }
     try {
       const response = await this.makeRequest<any>('/availability/check', 'POST', {
         productCode,
@@ -302,7 +322,7 @@ class ViatorService {
       return response;
     } catch (error: any) {
       console.error('Viator availability check error:', error);
-      throw error;
+      return null;
     }
   }
 
