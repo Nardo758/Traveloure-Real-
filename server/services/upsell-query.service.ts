@@ -145,6 +145,10 @@ export async function gatherOfferingCandidates(opts: {
   marketCity?: string | null;
   neighborhoodIds?: string[];
   expertEndorsedKeys?: string[];
+  /** Shape A: include approved+published expert packages as first-class candidates in
+   *  the ranked slate. Set ONLY by the Discover surfaces — packages must NOT surface in
+   *  the cart/checkout/expert-review upsells. Requires marketCity to scope by destination. */
+  includePackages?: boolean;
 }): Promise<RankInputCandidate[]> {
   const endorsedSet = new Set(opts.expertEndorsedKeys ?? []);
   const effectiveTemplate = resolveTemplateKey(opts.templateKey);
@@ -216,6 +220,56 @@ export async function gatherOfferingCandidates(opts: {
         proximityFit: isAffiliate ? PROXIMITY_FIT.market : PROXIMITY_FIT[inv!.matchType],
       });
     }
+
+    // Shape A: expert packages as first-class engine candidates (Discover only).
+    // A package has no template_category_matrix row, so it can't inherit a REQ/REC/OPT
+    // strength — it is FLOORED to OPT (an optional add: it can never outrank a REQ-needed
+    // offering, so essentials are never crowded out). It is scored on its OWN signals
+    // (quality → profileMatch; market-level → proximity), the same honest basis as the
+    // #205 client scorer, avoiding the fragile free-text-category → category_key bridge.
+    // Revenue is 0 (no fee literal; packages rank on relevance, and revenue can't cross a
+    // relevance band anyway). Same approved+published read-gate + destination scope as the
+    // public packages feed. categoryKey is a per-package sentinel so it never collides with
+    // a real service category in the already-in-plan / transport filters.
+    if (opts.includePackages && opts.marketCity) {
+      try {
+        const pkgResult = await db.execute(sql`
+          SELECT id, sales_count, average_rating, review_count, is_featured
+          FROM expert_templates
+          WHERE approval_status = 'approved' AND is_published = true
+            AND destination ILIKE ${opts.marketCity}
+          ORDER BY is_featured DESC, sales_count DESC NULLS LAST, average_rating DESC NULLS LAST, created_at DESC
+          LIMIT 12
+        `);
+        const pkgRows = (pkgResult.rows ?? []) as any[];
+        const maxSales = Math.max(0, ...pkgRows.map((p) => Number(p.sales_count ?? 0)));
+        for (const p of pkgRows) {
+          const sales = Number(p.sales_count ?? 0);
+          const salesN = maxSales > 0 ? Math.log1p(Math.max(0, sales)) / Math.log1p(maxSales) : 0;
+          const reviewCount = Number(p.review_count ?? 0);
+          const ratingN = reviewCount > 0 && p.average_rating != null ? Number(p.average_rating) / 5 : 0;
+          const quality = 0.5 * salesN + 0.3 * Math.min(1, Math.max(0, ratingN)) + 0.2 * (p.is_featured ? 1 : 0);
+          candidates.push({
+            offeringId: String(p.id),            // real template id — the client joins to package data for display
+            categoryKey: `pkg:${p.id}`,          // sentinel; never collides with a service_categories key
+            sourceType: "expert_package",
+            templateStrength: "OPT",             // floor — an optional add, never crowds out a REQ offering
+            riskProfile: null,
+            riskOverride: null,
+            requiresBackgroundCheck: false,
+            providerHasVerifiedBadge: true,
+            candidateNeighborhoodSlug: null,
+            expectedPlatformEarningsRaw: 0,      // no revenue thumb (no fee literal); packages rank on relevance
+            expertEndorsed: false,
+            profileMatchScore: Math.min(1, Math.max(0, quality)),
+            proximityFit: PROXIMITY_FIT.market,
+          });
+        }
+      } catch (pkgErr) {
+        console.error("[upsell] package-candidate gather failed (non-fatal):", pkgErr);
+      }
+    }
+
     return candidates;
   } catch (err) {
     console.error("[upsell] gatherOfferingCandidates failed:", err);

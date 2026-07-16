@@ -22,7 +22,6 @@ import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { useAskExpert } from "@/lib/use-ask-expert";
-import { rankPackagesByRelevance } from "@/lib/package-relevance";
 import {
   composeDiscoverFeed,
   defaultIsRelated,
@@ -1894,37 +1893,28 @@ export default function DiscoverLocationPage() {
         )
       : filterFeedStream(feedItems, activeFilter);
 
-  // Post-composition INSERTIONS (F7/F9): packages at ~4/~16 and exactly ONE
-  // earn-card at ~9. These are splice-inserts into the composed stream —
-  // nothing is replaced, re-sorted, or dropped, so the engine's rec cadence
-  // and wanted-slot spacing stay intact (they only shift down by the inserts).
-  // Rank the city's packages by relevance to what the traveler is browsing (active
-  // category filter + quality) instead of splicing the server's global top-2. The
-  // packages are already destination-filtered + approval-gated + teaser-redacted by the
-  // /api/expert-templates feed; this only re-orders which two surface.
-  const cityPackages = rankPackagesByRelevance(packagesData ?? [], {
-    city,
-    category: activeFilter,
-    scheduledDate,
-  }).slice(0, 2);
+  // Shape A: expert packages are now first-class engine candidates, ranked in the SAME
+  // slate as offering recommendations (server: gatherOfferingCandidates includePackages,
+  // OPT-floored so they never crowd out a REQ offering). They arrive through the
+  // recommendation channel; re-tag them here as package feed items so they render as
+  // PackageCard, joining the thin candidate (offeringId = template.id) to the fetched
+  // package data. A candidate with no matching package is dropped (never render a raw id).
+  // This SUPERSEDES the old fixed 4/16 package splice + the #205 client-side ranking.
+  const packageById = new Map((packagesData ?? []).map((p: any) => [String(p.id), p]));
+  const retagged: FeedItem[] = composedItems
+    .map((it: any) => {
+      if (it.kind === "recommendation" && it.data?.candidate?.sourceType === "expert_package") {
+        const pkg = packageById.get(String(it.data.candidate.offeringId));
+        return pkg ? ({ kind: "package", id: `package-${pkg.id}`, data: pkg } as FeedItem) : null;
+      }
+      return it as FeedItem;
+    })
+    .filter(Boolean) as FeedItem[];
+  // Exactly ONE earn-card near position 9 (F7/F9), only on the unfiltered "all" view.
   const filteredItems: FeedItem[] = (() => {
-    if (activeFilter !== "all") return composedItems;
-    const out = [...composedItems];
-    if (cityPackages[0]) {
-      out.splice(Math.min(4, out.length), 0, {
-        kind: "package",
-        id: `package-${cityPackages[0].id}`,
-        data: cityPackages[0],
-      });
-    }
+    if (activeFilter !== "all") return retagged;
+    const out = [...retagged];
     out.splice(Math.min(9, out.length), 0, { kind: "earn-card", id: "earn-card", data: { city } });
-    if (cityPackages[1]) {
-      out.splice(Math.min(16, out.length), 0, {
-        kind: "package",
-        id: `package-${cityPackages[1].id}`,
-        data: cityPackages[1],
-      });
-    }
     return out;
   })();
 
