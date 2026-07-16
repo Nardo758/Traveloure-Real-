@@ -326,7 +326,7 @@ export default function ExpertDetailPage() {
                     <TabsTrigger value="services">Services</TabsTrigger>
                     {packages.length > 0 && (
                       <TabsTrigger value="packages" data-testid="tab-expert-packages">
-                        Packages ({packages.length})
+                        Trips ({packages.length})
                       </TabsTrigger>
                     )}
                     <TabsTrigger value="reviews">Reviews ({totalReviews})</TabsTrigger>

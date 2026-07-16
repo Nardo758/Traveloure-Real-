@@ -484,7 +484,7 @@ function LeadExpertCard({ expert }: { expert: any }) {
         </p>
         {packagesCount > 0 && (
           <p className="text-[11px] text-muted-foreground truncate" data-testid="lead-expert-packages">
-            📔 {packagesCount} {packagesCount === 1 ? "package" : "packages"}
+            📔 {packagesCount} {packagesCount === 1 ? "trip" : "trips"}
           </p>
         )}
       </div>
@@ -623,7 +623,7 @@ function PackageCard({
     <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-primary/10 text-primary">
-          Package
+          Trip
         </span>
         {rating === null && (
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-muted text-muted-foreground">

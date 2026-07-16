@@ -285,7 +285,7 @@ export function ServiceBrowser({
           {/* Expert packages matching this search (packages-in-discovery) */}
           {(result.packages?.length ?? 0) > 0 && (
             <div className="space-y-2" data-testid="search-packages-strip">
-              <p className="text-sm font-medium">Expert Packages</p>
+              <p className="text-sm font-medium">Ready Made Trips</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {result.packages!.slice(0, 3).map((pkg) => (
                   <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
