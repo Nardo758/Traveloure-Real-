@@ -1,0 +1,46 @@
+Let me ground this in what's actually wired for external supply before answering — so I tell you exactly what's built vs. what's needed.
+
+There's actually a **lot** already built — Amadeus + Viator clients, Partnerize/Impact affiliate networks, commission-tracking + reconciliation services, and a `/api/affiliates/track` endpoint. So #2 is much closer than "build a rail." Let me check the readiness gates + whether it's credential-blocked (like Fever was).
+
+Good news — **#2 is roughly 90% built already.** It's not "build a rail," it's "provide credentials + enroll in the programs." Here's exactly what's there and what's missing.
+
+## What already exists in the code
+It's an **affiliate/referral rail** (supply cards deeplink to the partner with your affiliate ID; the partner reports the booking back and it's reconciled as platform revenue) — not on-site checkout. The plumbing is built:
+
+| Piece | File |
+|---|---|
+| Hotel inventory (Amadeus) | `amadeus.service.ts` |
+| Activity inventory (Viator / GetYourGuide) | `viator.service.ts` |
+| Affiliate networks (Impact, Partnerize) | `partnerize/*`, Impact via `IMPACT_*` |
+| Commission tracking | `booking-com-commissions`, `viator-commissions` |
+| Conversion reconciliation → platform revenue | `affiliate-reconciliation.service.ts` ("pulls commission reports … auto-matches against affiliate_earnings") |
+| Click tracking | `POST /api/affiliates/track` |
+
+## What needs to happen for it to go active
+
+**1. Business — enroll in the affiliate programs (the real gate, not code):**
+Get approved and obtain keys for the ones you want:
+- **Amadeus Self-Service** (hotels), **Viator / GetYourGuide** affiliate program (activities), and an affiliate network — **Impact (impact.com)** and/or **Partnerize**, plus optionally **Booking.com** affiliate / **Travelpayouts**.
+
+**2. Credentials — set the env vars** (Replit secrets); the code already reads these:
+```
+AMADEUS_API_KEY, AMADEUS_API_SECRET
+VIATOR_API_KEY
+IMPACT_ACCOUNT_SID, IMPACT_AUTH_TOKEN
+PARTNERIZE_API_KEY, PARTNERIZE_APPLICATION_KEY, PARTNERIZE_PUBLISHER_ID
+BOOKING_AFFILIATE_ID / BOOKING_COM_AFFILIATE_ID, GYG_AFFILIATE_ID
+```
+(Only the ones for programs you actually join. Note: `IMPACT_*` is the same pair the Fever/partner-events arm needs — one key set unlocks both.)
+
+**3. Code hardening — one real thing I can do *now*:**
+`viator.service.ts` **throws** when `VIATOR_API_KEY` is missing (`throw new Error('VIATOR_API_KEY is not configured')`), whereas Amadeus returns `[]` gracefully. That's the **same class of bug as the Fever mock issue** — an unconfigured supplier shouldn't be able to error the feed. I'd add an `isReady()`/skip guard (the pattern we used for `fever-cache`) so the rail:
+- stays a clean no-op while you have no keys (no feed errors), and
+- turns on cleanly the moment you add them.
+
+I'd also verify the reconciliation job is scheduled and the supply-card deeplinks carry the affiliate ID + fire the track endpoint.
+
+## Bottom line
+- **You provide:** program enrollment + API keys (steps 1–2). That's the actual blocker — it's commercial/credentials, which I can't do from the repo.
+- **I can do now:** step 3 — harden the credential gates (Viator no-op guard + verify the reconciliation/deeplink wiring) so it's safe-off today and flips on with zero code changes once your keys are in.
+
+Want me to do step 3 (the safe hardening) now, so the rail is ready to activate the instant you have the keys?
