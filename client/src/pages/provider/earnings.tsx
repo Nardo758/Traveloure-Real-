@@ -14,16 +14,45 @@ import {
   PieChart,
   Shield,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
 export default function ProviderEarnings() {
+  const { toast } = useToast();
+  const [requested, setRequested] = useState(false);
   const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
     queryKey: ["/api/provider/bookings"],
+  });
+
+  // Self-service payout REQUEST. The amount is server-derived from the cleared
+  // (releasable) balance — this button only submits the request; the actual amount +
+  // Stripe transfer happen server-side under admin processing. The client `available`
+  // below is a display hint; the server is authoritative.
+  const payoutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/payouts/request"),
+    onSuccess: () => {
+      setRequested(true);
+      toast({ title: "Payout requested", description: "It's pending review — you'll be paid to your connected account once approved." });
+    },
+    onError: (err: any) => {
+      const msg = String(err?.message ?? "");
+      if (msg.includes("payout_request_pending")) {
+        setRequested(true);
+        toast({ title: "Request already pending", description: "You already have a payout request under review." });
+      } else if (msg.includes("below_minimum")) {
+        toast({ title: "Below minimum", description: "The minimum payout is $10.00.", variant: "destructive" });
+      } else if (msg.includes("no_balance")) {
+        toast({ title: "No available balance", description: "You have no cleared earnings to withdraw yet.", variant: "destructive" });
+      } else {
+        toast({ title: "Could not submit request", description: "Please try again or contact support.", variant: "destructive" });
+      }
+    },
   });
 
   const stats = useMemo(() => {
@@ -208,6 +237,24 @@ export default function ProviderEarnings() {
                   <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
               </div>
+
+              <Button
+                className="w-full"
+                disabled={payoutMutation.isPending || requested || stats.available < 10}
+                onClick={() => payoutMutation.mutate()}
+                data-testid="button-request-payout"
+              >
+                {payoutMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Requesting…</>
+                ) : requested ? (
+                  "Payout requested — pending review"
+                ) : (
+                  <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
+                )}
+              </Button>
+              {stats.available < 10 && !requested && (
+                <p className="text-xs text-muted-foreground text-center">Minimum payout is $10.00.</p>
+              )}
 
               <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800" data-testid="card-pending-balance">
                 <div className="flex items-center justify-between">
