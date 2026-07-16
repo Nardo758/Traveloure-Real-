@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { ExpertCard } from "@/components/expert-card";
+import { SEOHead } from "@/components/seo-head";
 import { ExpertMatchCard } from "@/components/expert-match-card";
 import { format } from "date-fns";
 
@@ -300,24 +301,52 @@ export default function ExpertsPage() {
     }
   });
 
+  const seo =
+    selectedRole === "travel_expert"
+      ? {
+          title: "Travel Advisors & Trip Planners",
+          description:
+            "Work with experienced trip planners who handle every detail — itineraries, bookings, and logistics — so you can just enjoy the journey.",
+          keywords: ["trip planner", "travel advisor", "custom itinerary", "trip planning service"],
+        }
+      : selectedRole === "event_planner"
+      ? {
+          title: "Destination Event Planners",
+          description:
+            "Specialist event planners for destination weddings, proposals, and group celebrations. Find an expert to make it unforgettable.",
+          keywords: ["destination wedding planner", "event planner", "proposal planner", "group celebration"],
+        }
+      : {
+          title: "Local Travel Experts",
+          description:
+            "Connect with verified local experts who know their destinations inside out. Get personalized recommendations, bookable services, and insider access.",
+          keywords: ["local expert", "local guide", "insider travel tips", "personalized travel"],
+        };
+
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-[#111827] to-[#1F2937] text-white py-16">
+    <div className="min-h-screen bg-[var(--earn-ground)]">
+      <SEOHead
+        title={seo.title}
+        description={seo.description}
+        keywords={seo.keywords}
+        url={selectedRole ? `/experts?role=${selectedRole}` : "/experts"}
+      />
+      {/* Hero Section — earn-page editorial treatment (flat, warm, teal-accented) */}
+      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-12">
         <div className="container mx-auto px-4 max-w-6xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-8"
+            className="text-center mb-7"
           >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 drop-shadow-lg [text-shadow:_0_2px_10px_rgb(0_0_0_/_60%)]">
+            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-3">
               {selectedRole === "travel_expert"
                 ? "Work with a Trip Planner"
                 : selectedRole === "event_planner"
                 ? "Plan Your Event"
                 : "Find Your Perfect Local Expert"}
             </h1>
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto drop-shadow-md [text-shadow:_0_1px_4px_rgb(0_0_0_/_50%)]">
+            <p className="text-[15px] md:text-base text-[color:var(--earn-muted)] max-w-2xl mx-auto">
               {selectedRole === "travel_expert"
                 ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
                 : selectedRole === "event_planner"
@@ -331,10 +360,10 @@ export default function ExpertsPage() {
             initial={{ opacity: 1, y: 0 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="flex justify-center mb-6"
+            className="flex justify-center"
           >
             <div
-              className="inline-flex bg-white/10 backdrop-blur-sm rounded-full p-1 gap-1"
+              className="inline-flex bg-[var(--earn-chip)] rounded-full p-1 gap-1"
               role="tablist"
               aria-label="Expert type"
               data-testid="role-switcher"
@@ -354,8 +383,8 @@ export default function ExpertsPage() {
                     className={cn(
                       "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap flex items-center gap-1.5",
                       selectedRole === role
-                        ? "bg-[#FF385C] text-white shadow-md"
-                        : "text-white/80 hover:text-white hover:bg-white/15"
+                        ? "bg-[var(--earn-teal)] text-white shadow-sm"
+                        : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)]"
                     )}
                     data-testid={`tab-role-${role}`}
                   >
@@ -364,7 +393,7 @@ export default function ExpertsPage() {
                       <span
                         className={cn(
                           "inline-block w-5 h-4 rounded-full animate-pulse",
-                          selectedRole === role ? "bg-white/30" : "bg-white/20"
+                          selectedRole === role ? "bg-white/30" : "bg-black/10"
                         )}
                         data-testid={`skeleton-count-${role}`}
                       />
@@ -374,7 +403,7 @@ export default function ExpertsPage() {
                           "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold leading-none",
                           selectedRole === role
                             ? "bg-white/25 text-white"
-                            : "bg-white/20 text-white/90"
+                            : "bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
                         )}
                         data-testid={`count-${role}`}
                       >

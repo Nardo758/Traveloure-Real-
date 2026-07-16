@@ -963,22 +963,22 @@ export default function DiscoverPage() {
           </button>
         </div>
 
-        {/* Hero Section */}
-        <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
+        {/* Hero Section — earn-page editorial treatment (flat, warm, teal-accented) */}
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-12">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-center mb-8"
             >
-              <div className="inline-flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full text-sm mb-6">
+              <div className="inline-flex items-center gap-2 bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] px-4 py-2 rounded-full text-sm mb-6">
                 <Sparkles className="w-4 h-4" />
                 Discover Your Perfect Experience
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-4" data-testid="text-page-title">
+              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-3" data-testid="text-page-title">
                 Explore Services & Ready Made Trips
               </h1>
-              <p className="text-lg text-primary-foreground/90 max-w-2xl mx-auto">
+              <p className="text-[15px] md:text-base text-[color:var(--earn-muted)] max-w-2xl mx-auto">
                 Browse expert services, buy ready-made trips, and get AI-powered recommendations
                 for your next adventure.
               </p>
@@ -1028,7 +1028,7 @@ export default function DiscoverPage() {
               <Link href="/experiences">
                 <Button
                   variant="outline"
-                  className="bg-white/10 backdrop-blur-sm border-white/30 text-primary-foreground font-medium"
+                  className="border-[color:var(--earn-border)] text-[color:var(--earn-teal-ink)] font-medium hover:bg-[var(--earn-teal-wash)]"
                   data-testid="button-plan-experience"
                 >
                   <Compass className="w-4 h-4 mr-2" />
