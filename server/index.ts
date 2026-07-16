@@ -15,6 +15,8 @@ import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
 import { seedMajorCitiesBackfill } from "./seeds/major-cities-backfill.seed";
 import { seedPhaseDKyotoVendors } from "./seeds/phase-d-kyoto-vendors.seed";
+import { seedDmoSources } from "./seeds/dmo-sources.seed";
+import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
@@ -356,6 +358,29 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
+  }
+
+  try {
+    // Mirror the in-code DMO source registry into dmo_sources so scrape jobs
+    // (dmo_scrape_jobs.source_id FK) resolve. Idempotent upsert; source definitions
+    // are inert scaffolding until a Kyoto-scoped scrape job runs (§12).
+    const dmoResult = await seedDmoSources();
+    if (dmoResult.upserted > 0) {
+      logger.info({ count: dmoResult.upserted }, "Seeded DMO sources registry");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed DMO sources");
+  }
+
+  try {
+    // D1: bootstrap the DMO pipeline with real, born-hidden Kyoto UNESCO heritage
+    // stubs (experts enrich before publish). Runs after dmo_sources (FK on source_id).
+    const dmoHeritageResult = await seedDmoKyotoHeritage();
+    if (dmoHeritageResult.upserted > 0) {
+      logger.info({ count: dmoHeritageResult.upserted }, "Seeded DMO Kyoto heritage stubs");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed DMO Kyoto heritage");
   }
 
   try {

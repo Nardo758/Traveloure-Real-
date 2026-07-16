@@ -30,11 +30,16 @@ export default function ProviderProfile() {
     phone: user?.phone || "",
     email: user?.email || "",
     website: user?.website || "",
-    rating: 4.9,
-    totalReviews: 127,
-    totalEvents: 342,
-    memberSince: "March 2022",
-    verified: true,
+    // §13: no fabricated trust stats. Real rating/reviews/verification aren't wired
+    // into this self-view yet, so show honest empties ("New" / 0 / no badge) rather
+    // than invented numbers. memberSince is the only real signal available (createdAt).
+    rating: null as number | null,
+    totalReviews: 0,
+    totalEvents: 0,
+    memberSince: user?.createdAt
+      ? new Date(user.createdAt as string | Date).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+      : null,
+    verified: false,
   };
 
   const amenities = user?.amenities || [
@@ -81,17 +86,27 @@ export default function ProviderProfile() {
                 <div className="flex flex-wrap items-center gap-4 mt-3">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                    <span className="font-semibold">{businessInfo.rating}</span>
-                    <span className="text-console-mid">({businessInfo.totalReviews} reviews)</span>
+                    {businessInfo.rating !== null && businessInfo.totalReviews > 0 ? (
+                      <>
+                        <span className="font-semibold">{businessInfo.rating}</span>
+                        <span className="text-console-mid">({businessInfo.totalReviews} reviews)</span>
+                      </>
+                    ) : (
+                      <span className="font-semibold">New</span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1 text-console-dark">
-                    <Calendar className="w-4 h-4" />
-                    <span>{businessInfo.totalEvents} events hosted</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-console-dark">
-                    <Users className="w-4 h-4" />
-                    <span>Member since {businessInfo.memberSince}</span>
-                  </div>
+                  {businessInfo.totalEvents > 0 && (
+                    <div className="flex items-center gap-1 text-console-dark">
+                      <Calendar className="w-4 h-4" />
+                      <span>{businessInfo.totalEvents} events hosted</span>
+                    </div>
+                  )}
+                  {businessInfo.memberSince && (
+                    <div className="flex items-center gap-1 text-console-dark">
+                      <Users className="w-4 h-4" />
+                      <span>Member since {businessInfo.memberSince}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <Button data-testid="button-edit-profile">
