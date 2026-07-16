@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   MapPin,
   PenSquare,
+  Library,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -55,6 +56,7 @@ function buildMenuGroups(expertType?: string | null) {
         { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
         { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
+        { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],
