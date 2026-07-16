@@ -15,6 +15,7 @@ import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getUserId } from '../utils/auth';
+import { holdWindowDays } from '../config/earnings-hold.config';
 import Stripe from 'stripe';
 
 const router = Router();
@@ -461,6 +462,29 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // Escrow decisions 3 + 4 (docs/design/escrow-spine.md): a traveler may dispute ONLY during the
+    // clearance window. Once it elapses the held earning matures → releasable → paid_out, and per
+    // decision 4 there is NO automated post-payout claw-back. So a late dispute must be REJECTED
+    // here — silently accepting one would strand a refund the escrow spine can't fund. The cutoff
+    // uses the same holdWindowDays('service_booking') config the release job uses, so the dispute
+    // window and the payout timing line up exactly (default 7 days, env-overridable). completedAt
+    // null (not yet completed) → no matured earning → the window doesn't apply (dispute allowed).
+    const [bk] = await db
+      .select({ completedAt: serviceBookings.completedAt })
+      .from(serviceBookings)
+      .where(eq(serviceBookings.id, bookingId));
+    if (!bk) return res.status(404).json({ error: 'Booking not found' });
+    if (bk.completedAt) {
+      const windowDays = holdWindowDays('service_booking');
+      const deadline = new Date(bk.completedAt).getTime() + windowDays * 24 * 60 * 60 * 1000;
+      if (Date.now() > deadline) {
+        return res.status(409).json({
+          error: 'dispute_window_closed',
+          message: `The ${windowDays}-day dispute window for this booking has closed.`,
+        });
+      }
+    }
 
     // Persist the dispute reason into booking_metadata so the admin disputes list can surface it —
     // service_bookings has no dispute_reason column, and updateServiceBookingStatus only records a

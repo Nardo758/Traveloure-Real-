@@ -542,7 +542,20 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
       setDisputeReason("");
       toast({ title: "Dispute submitted", description: "Our team will review it and follow up with you." });
     },
-    onError: () => {
+    onError: (err: any) => {
+      // The server rejects a dispute raised after the clearance window closes
+      // (escrow decision 3 — dispute only during the ~7-day window). Surface the
+      // real reason rather than a generic retry prompt.
+      const msg = String(err?.message ?? "");
+      if (msg.includes("dispute_window_closed")) {
+        setDisputeOpen(false);
+        toast({
+          title: "Dispute window has closed",
+          description: "The review window for this booking has passed, so it can no longer be disputed. Contact support if you need help.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({ title: "Could not submit dispute", description: "Please try again or contact support.", variant: "destructive" });
     },
   });
