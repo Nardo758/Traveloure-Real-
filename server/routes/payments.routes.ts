@@ -818,6 +818,71 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
     }
   });
 
+  // ─── Self-service payout request (provider/expert) ───────────────────────────
+  // The payout MODEL OF RECORD stays admin-initiated processing (Payout rail note). This
+  // only lets an earner REQUEST a payout of their own cleared balance; the request lands as
+  // a `pending` payout in the admin queue, which an admin processes via the already-audited,
+  // idempotency-safe Stripe transfer (PATCH /api/admin/payouts/:id, §15 FIX 1). No new
+  // payout mechanics. Buildable now that the escrow spine defines a real "available" balance
+  // (releasable earnings) — the reason self-service was deferred is resolved.
+  const EXPERT_ROLES = new Set(["expert", "travel_expert", "local_expert", "event_planner"]);
+  const MIN_PAYOUT_REQUEST_CENTS = 1000; // $10 — mirrors the admin path threshold
+
+  router.post("/api/payouts/request", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const isProvider = user.role === "service_provider";
+      const isExpert = EXPERT_ROLES.has(user.role ?? "");
+      if (!isProvider && !isExpert) {
+        return res.status(403).json({ error: "Only providers and experts can request payouts" });
+      }
+
+      // §15: one open request at a time — a pending/processing payout blocks a duplicate.
+      const existing = isProvider
+        ? await storage.getProviderPayouts(userId)
+        : await storage.getExpertPayouts(userId);
+      const open = existing.find((p: any) => p.status === "pending" || p.status === "processing");
+      if (open) {
+        return res.status(409).json({
+          error: "payout_request_pending",
+          message: "You already have a payout request awaiting review.",
+          payout: open,
+        });
+      }
+
+      // §14: amount is SERVER-DERIVED from the earner's releasable balance, never from the
+      // body (a self-service withdrawal of the user's OWN cleared balance — money-derive-ok).
+      const summary = isProvider
+        ? await storage.getProviderEarningsSummary(userId)
+        : await storage.getExpertEarningsSummary(userId);
+      const amountCents = Math.round((summary.available ?? 0) * 100); // money-derive-ok: own cleared balance
+      if (amountCents <= 0) {
+        return res.status(400).json({ error: "no_balance", message: "You have no available balance to withdraw." });
+      }
+      if (amountCents < MIN_PAYOUT_REQUEST_CENTS) {
+        return res.status(400).json({
+          error: "below_minimum",
+          message: `The minimum payout is $${(MIN_PAYOUT_REQUEST_CENTS / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
+        });
+      }
+
+      const amount = (amountCents / 100).toFixed(2);
+      // requestedAt is DB-defaulted (defaultNow) — not in the insert type, so it's omitted here.
+      const payout = isProvider
+        ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
+        : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+
+      res.status(201).json({ ...payout, requesterType: isProvider ? "provider" : "expert" });
+    } catch (error: any) {
+      console.error("Error creating payout request:", error);
+      res.status(500).json({ error: "Failed to submit payout request" });
+    }
+  });
+
   // ─── Smart Lead Routing ──────────────────────────────────────────────────────
   // POST /api/leads/route  — score experts and auto-assign
 
