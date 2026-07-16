@@ -67,6 +67,28 @@
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* ── Ways-to-Earn palette — Discover/Experts redesign (themeable, light values) ── */
+  --earn-ground: #FAFAF8;
+  --earn-card: #FFFFFF;
+  --earn-border: #E7E4DD;
+  --earn-border-dash: #D5D0C8;
+  --earn-teal: #2E8B8B;
+  --earn-teal-ink: #226B6B;
+  --earn-teal-wash: rgba(46, 139, 139, 0.10);
+  --earn-gold: #E8B339;
+  --earn-gold-ink: #8A6414;
+  --earn-gold-wash: rgba(232, 179, 57, 0.15);
+  --earn-green: #5DCAA5;
+  --earn-green-ink: #2F7D63;
+  --earn-coral-bg: #FFF4F4;
+  --earn-coral-border: #FCCACA;
+  --earn-coral-ink: #E85D55;
+  --earn-navy: #1E3A5F;
+  --earn-ink: #1F2733;
+  --earn-muted: #6A7480;
+  --earn-faint: #B0AAA0;
+  --earn-chip: #F6F5F1;
 }
 
 .dark {
@@ -108,6 +130,28 @@
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-border: 217 33% 20%;
   --sidebar-ring: 350 100% 65%;
+
+  /* ── Ways-to-Earn palette — dark counterpart (warm-neutral, not a naive invert) ── */
+  --earn-ground: #17181A;
+  --earn-card: #202225;
+  --earn-border: #34363B;
+  --earn-border-dash: #3E4045;
+  --earn-teal: #43A5A5;
+  --earn-teal-ink: #83D6D6;
+  --earn-teal-wash: rgba(67, 165, 165, 0.16);
+  --earn-gold: #E8B339;
+  --earn-gold-ink: #E2BB60;
+  --earn-gold-wash: rgba(232, 179, 57, 0.16);
+  --earn-green: #5DCAA5;
+  --earn-green-ink: #82DBBB;
+  --earn-coral-bg: rgba(232, 93, 85, 0.13);
+  --earn-coral-border: rgba(232, 93, 85, 0.36);
+  --earn-coral-ink: #F0908A;
+  --earn-navy: #E9ECF1;
+  --earn-ink: #E6E8EB;
+  --earn-muted: #9BA3AD;
+  --earn-faint: #71747A;
+  --earn-chip: #2A2C30;
 }
 
 @layer base {

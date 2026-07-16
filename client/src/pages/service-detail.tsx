@@ -324,7 +324,7 @@ export default function ServiceDetailPage() {
               <Card data-testid="card-owner-packages">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-primary" /> Packages by this expert
+                    <BookOpen className="w-5 h-5 text-primary" /> Ready made trips by this expert
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">

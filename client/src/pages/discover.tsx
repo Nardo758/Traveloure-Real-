@@ -963,23 +963,23 @@ export default function DiscoverPage() {
           </button>
         </div>
 
-        {/* Hero Section */}
-        <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
+        {/* Hero Section — earn-page editorial treatment (flat, warm, teal-accented) */}
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-12">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-center mb-8"
             >
-              <div className="inline-flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full text-sm mb-6">
+              <div className="inline-flex items-center gap-2 bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] px-4 py-2 rounded-full text-sm mb-6">
                 <Sparkles className="w-4 h-4" />
                 Discover Your Perfect Experience
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-4" data-testid="text-page-title">
-                Explore Services & Trip Packages
+              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-3" data-testid="text-page-title">
+                Explore Services & Ready Made Trips
               </h1>
-              <p className="text-lg text-primary-foreground/90 max-w-2xl mx-auto">
-                Browse expert services, curated trip packages, and get AI-powered recommendations
+              <p className="text-[15px] md:text-base text-[color:var(--earn-muted)] max-w-2xl mx-auto">
+                Browse expert services, buy ready-made trips, and get AI-powered recommendations
                 for your next adventure.
               </p>
             </motion.div>
@@ -1028,7 +1028,7 @@ export default function DiscoverPage() {
               <Link href="/experiences">
                 <Button
                   variant="outline"
-                  className="bg-white/10 backdrop-blur-sm border-white/30 text-primary-foreground font-medium"
+                  className="border-[color:var(--earn-border)] text-[color:var(--earn-teal-ink)] font-medium hover:bg-[var(--earn-teal-wash)]"
                   data-testid="button-plan-experience"
                 >
                   <Compass className="w-4 h-4 mr-2" />
@@ -1256,7 +1256,7 @@ export default function DiscoverPage() {
                     data-testid="tab-travelpulse"
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
-                    TravelPulse
+                    <span className="hidden sm:inline">By </span>Location
                   </TabsTrigger>
                   {/* Influencer Curated tab hidden in Phase 1a — returns in Phase 5 with real DB-backed content */}
                   {/* Packages tab UN-HIDDEN in marketplace Phase B4 — the buy loop is closed end-to-end
@@ -1268,7 +1268,7 @@ export default function DiscoverPage() {
                     data-testid="tab-packages"
                   >
                     <Award className="w-4 h-4 mr-2" />
-                    Packages
+                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
                   </TabsTrigger>
                   <TabsTrigger
                     value="events"
@@ -1598,16 +1598,16 @@ export default function DiscoverPage() {
 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
-                {/* Expert Packages Section (traveler-facing label = "Packages"; seller console keeps "templates") */}
+                {/* Ready Made Trips Section (traveler-facing label = "Ready Made Trips"; seller console keeps "templates") */}
                 <div className="mb-10">
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Award className="w-5 h-5 text-primary" />
-                        Expert Packages
+                        Ready Made Trips
                       </h2>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Purchase ready-made travel plans crafted by verified local experts
+                        Buy a complete, ready-made trip crafted by verified local experts
                       </p>
                     </div>
                     {expertTemplates && expertTemplates.length > 0 && (
@@ -1620,9 +1620,9 @@ export default function DiscoverPage() {
                   {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
                     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
                       <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <h3 className="font-semibold text-gray-700 mb-1">No packages published yet</h3>
+                      <h3 className="font-semibold text-gray-700 mb-1">No ready-made trips published yet</h3>
                       <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-                        Verified experts can publish ready-made itinerary packages here for travelers to purchase.
+                        Verified experts can publish ready-made trips here for travelers to purchase.
                       </p>
                       {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
                         <Link href="/expert/templates">
@@ -1755,7 +1755,7 @@ export default function DiscoverPage() {
                             <>Show fewer</>
                           ) : (
                             <>
-                              View all {expertTemplates.length} packages
+                              View all {expertTemplates.length} trips
                               <ArrowRight className="w-4 h-4 ml-2" />
                             </>
                           )}

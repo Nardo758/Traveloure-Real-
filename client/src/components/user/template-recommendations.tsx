@@ -208,7 +208,7 @@ export function UserTemplateRecommendations({ city, experienceType, className = 
             <BookOpen className="w-5 h-5 text-[#FF385C]" />
             <div>
               <h3 className="text-lg font-bold text-[#111827] dark:text-white">
-                Ready-made packages{city ? ` for ${city}` : ""}
+                Ready made trips{city ? ` for ${city}` : ""}
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">Curated by verified local experts</p>
             </div>

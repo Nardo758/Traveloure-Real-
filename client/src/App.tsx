@@ -97,7 +97,6 @@ import ConciergePage from "@/pages/concierge";
 import ResetPasswordPage from "@/pages/reset-password";
 import VerifyEmailPage from "@/pages/verify-email";
 import ExpertsPage from "@/pages/experts";
-import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
 import DiscoverLocationPage from "@/pages/discover-location";
 import ContactPage from "@/pages/contact";
@@ -269,8 +268,11 @@ function Router() {
       <Route path="/local-experts/:id">
         <ExpertDetailPage />
       </Route>
+      {/* /service-providers retired as a standalone surface — providers now live in the
+          Discover "Services" tab (redesign decision, Jul 2026). Redirect preserves any
+          inbound links/bookmarks. */}
       <Route path="/service-providers">
-        <ServiceProvidersPage />
+        <Redirect to="/discover?tab=services" />
       </Route>
       
       {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
