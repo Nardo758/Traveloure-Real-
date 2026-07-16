@@ -97,6 +97,7 @@ import {
   providerNeighborhoodCoverage,
   cityNeighborhoods,
   expertNeighborhoods,
+  travelPulseCities,
   dmoRawContent,
   dmoScrapeJobs,
   crossSellEvents,
@@ -910,8 +911,44 @@ export class DatabaseStorage implements IStorage {
       } catch (err: any) {
         console.error(`[expert-neighborhoods] capture failed for form ${id}:`, err?.message || err);
       }
+      // Auto-enroll the expert's city into the AI content pipeline. The pipeline only
+      // generates content (gems/events/seasons) for cities present in travel_pulse_cities
+      // (~21 seeded), so a new market with a vetted local expert would otherwise stay dark.
+      // Supply-driven by design (Kyoto-wedge §12): enroll where we have real local depth,
+      // NOT every browsed city. Best-effort — never blocks approval.
+      if (updated.city && updated.country) {
+        try {
+          const enrolled = await this.ensureCityEnrolled(updated.city, updated.country);
+          if (enrolled) {
+            console.log(`[city-enroll] ${updated.city}, ${updated.country} enrolled into the content pipeline (expert approval)`);
+          }
+        } catch (err: any) {
+          console.error(`[city-enroll] failed for ${updated.city}, ${updated.country}:`, err?.message || err);
+        }
+      }
     }
     return updated;
+  }
+
+  /**
+   * Ensure a city exists in travel_pulse_cities so the daily AI scheduler generates
+   * content for it. A fresh row has `aiGeneratedAt = NULL`, which `getCitiesNeedingRefresh`
+   * treats as stale → the next scheduler cycle runs `updateCityWithAI` and fills it in.
+   * Idempotent (case-insensitive existence check — the table has no unique constraint,
+   * matching updateCityWithAI's own dedup). Returns true only when a NEW row was created.
+   */
+  async ensureCityEnrolled(cityName: string, country: string): Promise<boolean> {
+    const name = cityName?.trim();
+    const ctry = country?.trim();
+    if (!name || !ctry) return false;
+    const existing = await db
+      .select({ id: travelPulseCities.id })
+      .from(travelPulseCities)
+      .where(and(ilike(travelPulseCities.cityName, name), ilike(travelPulseCities.country, ctry)))
+      .limit(1);
+    if (existing.length > 0) return false;
+    await db.insert(travelPulseCities).values({ cityName: name, country: ctry });
+    return true;
   }
 
   /**
