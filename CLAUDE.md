@@ -191,9 +191,17 @@ This document captures architectural decisions to maintain consistency across co
       `/api/checkout` landmine): `/api/discover` was duplicated — `content.routes.ts` is the LIVE one (mount order);
       the shadowed `routes.ts` copy is **deleted by the §9 shadow-route sweep (Jul 15, 2026)**. The content-gate
       redaction lives in the shared `server/utils/template-content-gate.ts` and the live copy applies it (proven
-      behaviorally: search results carry teaser only, no `itineraryData`). **Still filed:** recommender doesn't rank packages — and note the engine is
-      **demand-signal-typed** (recommends service *types*), not a catalog ranker, so this is a design task, not a
-      bolt-on; `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
+      behaviorally: search results carry teaser only, no `itineraryData`). **Recommender ranks packages — RESOLVED
+      (Jul 16, 2026).** The demand-signal recommender is **demand-signal-typed** (recommends service *types*), and
+      packages live in a separate taxonomy (§10) — so rather than force a taxonomy bridge, package ranking was added
+      in the layer that fits: `getRecommendedPackagesForUser(city, prefs)` in `recommendation.service.ts` ranks
+      **approved+published** packages by **destination match** (the city the recommender already has) then real
+      quality (`isFeatured → salesCount → averageRating → recency`), returns **teaser fields only** (no
+      `itineraryData` — content-gate), and rides `GET /api/recommendations/user` as an **additive `packages` field**
+      (existing consumers read `.recommendations`, unaffected). Surfaced in `template-recommendations.tsx` as a
+      "Ready-made packages for `<city>`" strip → the B2 detail page; honest rating ("New" when `reviewCount=0`).
+      This is also the destination-aware ordering the packages feed wanted — done in the recommender, not a
+      duplicate feed sort. **Still filed:** `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
       category/destination/duration are structured. **Label standard (ratified): traveler-facing = "Packages"**
       (Discover tab/header, my-bookings tab, detail page); the seller console keeps "Itinerary Templates" (same
       product, seller-side vocabulary — the Airbnb listings/homes split). **B4 LANDED (Phase B complete):** Discover
@@ -270,8 +278,25 @@ This document captures architectural decisions to maintain consistency across co
       supersedes it. So the lens applies **within Kyoto** ("plan your Kyoto experience"), the other 7
       markets stay paused. The codebase already carries the DNA (`/experiences/:slug`
       wedding/proposal/birthday, coordination-fee engine, `getExperienceSuggestionsForCity`).
-      **Filed (not built):** the client-side acquisition funnel the reframe flags as missing — SEO for
-      "Kyoto wedding/proposal", Pinterest hooks, hotel-concierge B2B; event-tier pricing surfacing.
+      **Acquisition funnel — SEO slice LANDED (Jul 16, 2026):** the experience-template page
+      (`/experiences/:slug`) had **no SEO at all**; it now emits destination-aware `SEOHead` meta —
+      title/description/keywords targeting the high-intent "`<city> <event>`" search the reframe flags
+      (e.g. `?destination=Kyoto` on the wedding slug → "Plan Your Kyoto Wedding", keywords `kyoto wedding`,
+      `kyoto destination wedding`, `wedding planner kyoto`, …); falls back to an event-specific title with
+      no destination. Client-side (same SPA `SEOHead` mechanism the rest of the app uses). The
+      experience-template optimize upsell now also carries a "See planning & coordination fees" link to
+      `/pricing` (fee transparency in the planning flow; no fee literals duplicated — they resolve from
+      config). **Event-tier pricing — NOT a gap (corrected Jul 16, 2026):** it is already surfaced on the
+      live, globally-linked `/pricing` page (Pay-Per-Use section: Trip/Experience $5.99, Event $19.99
+      credited-toward-coordination, Coordination 8%-or-$499, all `fee-literal-ok` config-resolved display
+      strings). **AI optimization fee — ALREADY BUILT + BILLED (corrected Jul 16, 2026):** billing the
+      optimize is not a gap — the free path (`/api/optimization-preview`) returns a metrics *teaser* only,
+      and the **full LLM optimization is delivered behind the paid gate**: `POST /api/optimization-payments`
+      resolves the fee **server-side** via `getFee(eventType, tier)` (complexity-tiered; 24h free re-run;
+      Stripe PaymentIntent `type=optimization_fee`, ownership-verified — §14-clean), then
+      `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
+      pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
+      credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
     - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
       8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
       already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,
