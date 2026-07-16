@@ -436,6 +436,20 @@ async function runDatabaseSeeding() {
   logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
 }
 
+// ── Production: bind port immediately so the Cloud Run startup health probe
+// (GET /) returns 200 while migrations run. Without this the probe fires as
+// soon as the container starts, gets 500/refused for the entire migration
+// window (~7 s), and the autoscale promote step times out and fails.
+// In development this block is skipped — Vite dev-server setup must happen
+// before listen(), so dev keeps the original order.
+const _productionPort = parseInt(process.env.PORT || "5000", 10);
+if (process.env.NODE_ENV === "production") {
+  serveStatic(app);
+  httpServer.listen({ port: _productionPort, host: "0.0.0.0", reusePort: true }, () => {
+    logger.info({ port: _productionPort }, "Server pre-bound: static serving active, migrations pending");
+  });
+}
+
 (async () => {
   // Run migrations synchronously BEFORE the server accepts any connections.
   // A schema failure here exits the process — no requests land on a broken schema.
@@ -468,10 +482,10 @@ async function runDatabaseSeeding() {
     proxy.end();
   });
 
-  // Set up frontend serving before error handlers
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
+  // Set up frontend serving before error handlers.
+  // Production: static serving was already mounted before migrations (see pre-bind block
+  // above) so we skip it here to avoid double-mounting. Dev needs Vite dev server.
+  if (process.env.NODE_ENV !== "production") {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
@@ -480,94 +494,89 @@ async function runDatabaseSeeding() {
   app.use(notFoundHandler);
   app.use(globalErrorHandler);
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      console.log("[STARTUP] expert_city_queues deprecated → _deprecated_expert_city_queues | Safe to drop after 2026-09-01");
-      console.warn(
-        "[CLEANUP REMINDER] " +
-        "_deprecated_expert_city_queues scheduled " +
-        "for DROP after 2026-09-01. " +
-        "See: server/migrations/" +
-        "scheduled_drop_deprecated_city_queues.sql"
-      );
-      logger.info({ port }, "Server started");
-      
-      // Start cache scheduler
-      cacheSchedulerService.start();
-      logger.info("Cache scheduler started");
+  // Startup tasks: schedulers, seeding, one-time admin promotion.
+  // Extracted into a function so it can be called either from the listen()
+  // callback (dev) or directly (prod, where listen() already fired above).
+  function onServerReady(port: number) {
+    console.log("[STARTUP] expert_city_queues deprecated → _deprecated_expert_city_queues | Safe to drop after 2026-09-01");
+    console.warn(
+      "[CLEANUP REMINDER] " +
+      "_deprecated_expert_city_queues scheduled " +
+      "for DROP after 2026-09-01. " +
+      "See: server/migrations/" +
+      "scheduled_drop_deprecated_city_queues.sql"
+    );
+    logger.info({ port }, "Server started");
 
-      // Start booking expiry scheduler (auto-cancels stale pending_payment bookings)
-      bookingExpiryScheduler.start();
-      logger.info("Booking expiry scheduler started");
+    cacheSchedulerService.start();
+    logger.info("Cache scheduler started");
 
-      // Start daily admin digest scheduler (payout-gap report + unresolved lead alerts)
-      adminDigestScheduler.start();
-      logger.info("Admin digest scheduler started");
+    bookingExpiryScheduler.start();
+    logger.info("Booking expiry scheduler started");
 
-      // Start earnings release scheduler (escrow spine P2: flips held → releasable once the
-      // clearance window passes and no dispute is open)
-      earningsReleaseScheduler.start();
-      logger.info("Earnings release scheduler started");
+    adminDigestScheduler.start();
+    logger.info("Admin digest scheduler started");
 
-      // Run digest job once on startup, then on interval
-      runDailyAdminDigest();
-      setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
+    earningsReleaseScheduler.start();
+    logger.info("Earnings release scheduler started");
 
-      // Run Stripe reconciliation daily (offset by 1 hour from digest to spread load)
+    runDailyAdminDigest();
+    setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
+
+    setTimeout(() => {
+      runStripeReconciliation();
+      setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
+    }, 60 * 60 * 1000);
+
+    (() => {
+      const now = new Date();
+      const next2amUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
+      if (next2amUtc <= now) next2amUtc.setUTCDate(next2amUtc.getUTCDate() + 1);
+      const msUntilFirst = next2amUtc.getTime() - now.getTime();
+      logger.info({ nextRunAt: next2amUtc.toISOString() }, "Nightly QA scheduled");
       setTimeout(() => {
-        runStripeReconciliation();
-        setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
-      }, 60 * 60 * 1000);
-
-      // Schedule nightly QA at ~02:00 UTC each night.
-      // First run is delayed until the next 02:00 UTC; subsequent runs every 24 h.
-      (() => {
-        const now = new Date();
-        const next2amUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
-        if (next2amUtc <= now) next2amUtc.setUTCDate(next2amUtc.getUTCDate() + 1);
-        const msUntilFirst = next2amUtc.getTime() - now.getTime();
-        logger.info({ nextRunAt: next2amUtc.toISOString() }, "Nightly QA scheduled");
-        setTimeout(() => {
+        runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+        setInterval(() => {
           runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
-          setInterval(() => {
-            runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
-          }, 24 * 60 * 60 * 1000);
-        }, msUntilFirst);
-      })();
-      
-      // One-time admin promotion
-      import("./db").then(({ pool }) => {
-        pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
-          .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
-          .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-      }).catch(() => {});
+        }, 24 * 60 * 60 * 1000);
+      }, msUntilFirst);
+    })();
 
-      // Run database seeding in background AFTER server is listening,
-      // then fire-and-forget gem photo backfill so no gems are left without images
-      runDatabaseSeeding()
-        .then(() => {
-          grokDiscoveryService.backfillGemPhotos()
-            .then(({ processed, updated, failed }) => {
-              if (processed > 0) {
-                logger.info({ processed, updated, failed }, "Gem photo backfill complete");
-              }
-            })
-            .catch(err => {
-              logger.error({ err }, "Gem photo backfill failed");
-            });
-        })
-        .catch(err => {
-          logger.error({ err }, "FATAL: Database migration/seeding failed — shutting down to prevent serving with broken schema");
-          process.exit(1);
-        });
-    },
-  );
+    import("./db").then(({ pool }) => {
+      pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
+        .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
+        .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
+    }).catch(() => {});
+
+    runDatabaseSeeding()
+      .then(() => {
+        grokDiscoveryService.backfillGemPhotos()
+          .then(({ processed, updated, failed }) => {
+            if (processed > 0) {
+              logger.info({ processed, updated, failed }, "Gem photo backfill complete");
+            }
+          })
+          .catch(err => {
+            logger.error({ err }, "Gem photo backfill failed");
+          });
+      })
+      .catch(err => {
+        logger.error({ err }, "FATAL: Database seeding failed — shutting down");
+        process.exit(1);
+      });
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    // Server is already listening (pre-bound before migrations).
+    // API routes are now registered — call startup tasks directly.
+    onServerReady(_productionPort);
+  } else {
+    const port = parseInt(process.env.PORT || "5000", 10);
+    httpServer.listen(
+      { port, host: "0.0.0.0", reusePort: true },
+      () => onServerReady(port),
+    );
+  }
 })();
 
 // ── Graceful Shutdown ────────────────────────────────────────────────────────
