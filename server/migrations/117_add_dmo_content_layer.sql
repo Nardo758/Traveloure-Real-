@@ -184,23 +184,50 @@ CREATE TABLE IF NOT EXISTS "dmo_scrape_jobs" (
 	"updated_at" timestamp DEFAULT now()
 );
 
--- Foreign Keys
-ALTER TABLE "dmo_raw_content" ADD CONSTRAINT "dmo_raw_content_source_id_dmo_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "dmo_sources"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "dmo_raw_content" ADD CONSTRAINT "dmo_raw_content_expert_reviewed_by_users_id_fk" FOREIGN KEY ("expert_reviewed_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
-ALTER TABLE "dmo_raw_content" ADD CONSTRAINT "dmo_raw_content_published_by_users_id_fk" FOREIGN KEY ("published_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+-- Foreign Keys.
+-- Guarded with DO/EXCEPTION so the migration is idempotent: the tables + these
+-- constraints may already exist from a Replit publish-time drizzle-kit push (which
+-- builds from shared/schema.ts), and the runner is fail-fast — a bare "constraint
+-- already exists" would block startup. duplicate_object is swallowed; any other
+-- error still surfaces.
+DO $$ BEGIN
+  ALTER TABLE "dmo_raw_content" ADD CONSTRAINT "dmo_raw_content_source_id_dmo_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "dmo_sources"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "dmo_raw_content" ADD CONSTRAINT "dmo_raw_content_expert_reviewed_by_users_id_fk" FOREIGN KEY ("expert_reviewed_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "dmo_raw_content" ADD CONSTRAINT "dmo_raw_content_published_by_users_id_fk" FOREIGN KEY ("published_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "expert_dmo_collections" ADD CONSTRAINT "expert_dmo_collections_expert_id_users_id_fk" FOREIGN KEY ("expert_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+DO $$ BEGIN
+  ALTER TABLE "expert_dmo_collections" ADD CONSTRAINT "expert_dmo_collections_expert_id_users_id_fk" FOREIGN KEY ("expert_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "expert_dmo_collection_items" ADD CONSTRAINT "expert_dmo_collection_items_collection_id_expert_dmo_collections_id_fk" FOREIGN KEY ("collection_id") REFERENCES "expert_dmo_collections"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "expert_dmo_collection_items" ADD CONSTRAINT "expert_dmo_collection_items_raw_content_id_dmo_raw_content_id_fk" FOREIGN KEY ("raw_content_id") REFERENCES "dmo_raw_content"("id") ON DELETE cascade ON UPDATE no action;
+DO $$ BEGIN
+  ALTER TABLE "expert_dmo_collection_items" ADD CONSTRAINT "expert_dmo_collection_items_collection_id_expert_dmo_collections_id_fk" FOREIGN KEY ("collection_id") REFERENCES "expert_dmo_collections"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "expert_dmo_collection_items" ADD CONSTRAINT "expert_dmo_collection_items_raw_content_id_dmo_raw_content_id_fk" FOREIGN KEY ("raw_content_id") REFERENCES "dmo_raw_content"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "expert_dmo_edits" ADD CONSTRAINT "expert_dmo_edits_raw_content_id_dmo_raw_content_id_fk" FOREIGN KEY ("raw_content_id") REFERENCES "dmo_raw_content"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "expert_dmo_edits" ADD CONSTRAINT "expert_dmo_edits_expert_id_users_id_fk" FOREIGN KEY ("expert_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "expert_dmo_edits" ADD CONSTRAINT "expert_dmo_edits_reviewed_by_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+DO $$ BEGIN
+  ALTER TABLE "expert_dmo_edits" ADD CONSTRAINT "expert_dmo_edits_raw_content_id_dmo_raw_content_id_fk" FOREIGN KEY ("raw_content_id") REFERENCES "dmo_raw_content"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "expert_dmo_edits" ADD CONSTRAINT "expert_dmo_edits_expert_id_users_id_fk" FOREIGN KEY ("expert_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "expert_dmo_edits" ADD CONSTRAINT "expert_dmo_edits_reviewed_by_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "content_gap_alerts" ADD CONSTRAINT "content_gap_alerts_assigned_expert_id_users_id_fk" FOREIGN KEY ("assigned_expert_id") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+DO $$ BEGIN
+  ALTER TABLE "content_gap_alerts" ADD CONSTRAINT "content_gap_alerts_assigned_expert_id_users_id_fk" FOREIGN KEY ("assigned_expert_id") REFERENCES "users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "dmo_scrape_jobs" ADD CONSTRAINT "dmo_scrape_jobs_source_id_dmo_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "dmo_sources"("id") ON DELETE set null ON UPDATE no action;
+DO $$ BEGIN
+  ALTER TABLE "dmo_scrape_jobs" ADD CONSTRAINT "dmo_scrape_jobs_source_id_dmo_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "dmo_sources"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Indexes for Performance
 CREATE INDEX IF NOT EXISTS "dmo_raw_content_market_idx" ON "dmo_raw_content" ("country","city","content_type");
