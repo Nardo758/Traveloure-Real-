@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
-  Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2,
+  Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2, PenSquare,
   AlertTriangle, Send, MessageSquare, Plus, Filter, Zap,
   Navigation, Lock, Eye, EyeOff,
   FileText, DollarSign, CheckCircle, Clock,
@@ -642,7 +642,19 @@ export default function ExpertWorkspace() {
 
   const isLoading = tripsLoading || assignmentLoading;
 
-  if (!tripId) return <div style={{ padding: 40, textAlign: "center", color: G[500] }}>No trip selected.</div>;
+  if (!tripId) return (
+    <div style={{ padding: 40, textAlign: "center" }}>
+      <PenSquare style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
+      <div style={{ fontSize: 18, fontWeight: 600, color: G[900], marginBottom: 8 }}>No trip selected</div>
+      <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>Open a trip from your Assigned Trips list to start working in the workspace.</div>
+      <button
+        onClick={() => setLocation("/expert/assigned-trips")}
+        style={{ background: "#E85D55", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+      >
+        Go to Assigned Trips
+      </button>
+    </div>
+  );
 
   if (isLoading) return (
     <div style={{ padding: 40, display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, margin: "0 auto" }}>

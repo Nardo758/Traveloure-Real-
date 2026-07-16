@@ -29,6 +29,7 @@ import {
   Link2,
   ShieldCheck,
   MapPin,
+  PenSquare,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -44,6 +45,7 @@ function buildMenuGroups(expertType?: string | null) {
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
         { title: isEA ? "Executives" : "Clients", href: "/expert/clients", icon: Users },
         { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
+        { title: "Workspace", href: "/expert/workspace", icon: PenSquare },
         { title: "Messages", href: "/expert/messages", icon: MessageSquare },
       ],
     },
