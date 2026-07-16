@@ -661,6 +661,13 @@ function AIOptimizationTab({
                   Get the full plan via Concierge
                 </Button>
               </Link>
+              {/* Upfront fee transparency — the AI optimize / coordination fees are
+                  config-resolved and shown on /pricing (no literals duplicated here). */}
+              <Link href="/pricing">
+                <span className="block text-xs text-muted-foreground underline cursor-pointer hover:text-foreground mt-1" data-testid="link-experience-pricing">
+                  See planning &amp; coordination fees
+                </span>
+              </Link>
             </div>
           </div>
         </Card>
