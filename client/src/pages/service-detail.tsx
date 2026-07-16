@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -121,13 +121,35 @@ export default function ServiceDetailPage() {
     enabled: !!service?.userId,
   });
 
+  const [, navigate] = useLocation();
+  // Native "Book on Traveloure": capture a preferred date/time and carry it into the
+  // cart (cart_items.scheduled_date → checkout bookingDetails). Optional — non-dated
+  // services (e.g. a PDF deliverable) can book without it. This closes the gap where
+  // Add-to-Cart wrote no date; the whole flow reuses the audited /api/cart + /api/checkout
+  // rail (server-derived amount, idempotent), so there is no money-path change here.
+  const [bookingDate, setBookingDate] = useState("");
+  const [bookingTime, setBookingTime] = useState("");
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
   const addToCartMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", "/api/cart", { serviceId: id, quantity: 1 });
+    mutationFn: async (_vars: { proceed: boolean }) => {
+      const scheduledDate = bookingDate
+        ? new Date(`${bookingDate}T${bookingTime || "09:00"}:00`).toISOString()
+        : undefined;
+      return apiRequest("POST", "/api/cart", { serviceId: id, quantity: 1, scheduledDate });
     },
-    onSuccess: () => {
-      toast({ title: "Added to cart", description: "Service has been added to your cart" });
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      if (vars.proceed) {
+        navigate("/cart");
+      } else {
+        toast({
+          title: "Added to cart",
+          description: bookingDate
+            ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
+            : "Service has been added to your cart",
+        });
+      }
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to add to cart", variant: "destructive" });
@@ -386,34 +408,77 @@ export default function ServiceDetailPage() {
                 <Separator className="my-4" />
 
                 <div className="space-y-3">
-                  <Button 
-                    className="w-full" 
+                  {/* Preferred date/time — optional. Carried into the cart + booking. */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Preferred date & time <span className="font-normal">(optional)</span>
+                    </div>
+                    <input
+                      type="date"
+                      min={todayStr}
+                      value={bookingDate}
+                      onChange={(e) => setBookingDate(e.target.value)}
+                      className="rounded-md border bg-background px-3 py-2 text-sm"
+                      data-testid="input-booking-date"
+                      aria-label="Preferred date"
+                    />
+                    <input
+                      type="time"
+                      value={bookingTime}
+                      onChange={(e) => setBookingTime(e.target.value)}
+                      disabled={!bookingDate}
+                      className="rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
+                      data-testid="input-booking-time"
+                      aria-label="Preferred time"
+                    />
+                  </div>
+
+                  <Button
+                    className="w-full"
                     onClick={() => {
                       if (!user) {
                         openSignInModal();
                         return;
                       }
-                      addToCartMutation.mutate();
+                      addToCartMutation.mutate({ proceed: true });
                     }}
                     disabled={addToCartMutation.isPending}
-                    data-testid="button-add-to-cart"
+                    data-testid="button-book-now"
                   >
                     {addToCartMutation.isPending ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Adding...
+                        Booking...
                       </>
                     ) : (
                       <>
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
+                        <BookOpen className="w-4 h-4 mr-2" />
+                        Book on Traveloure
                       </>
                     )}
                   </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="w-full" 
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      if (!user) {
+                        openSignInModal();
+                        return;
+                      }
+                      addToCartMutation.mutate({ proceed: false });
+                    }}
+                    disabled={addToCartMutation.isPending}
+                    data-testid="button-add-to-cart"
+                  >
+                    <ShoppingCart className="w-4 h-4 mr-2" />
+                    Add to Cart
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    className="w-full"
                     asChild
                     data-testid="button-contact-provider"
                   >
@@ -424,10 +489,15 @@ export default function ServiceDetailPage() {
                   </Button>
                 </div>
 
-                {/* Provider commission transparency */}
+                {/* Provider commission transparency. §8: no hardcoded rate literal —
+                    the real split is config-resolved server-side (fee_bands /
+                    resolveCommissionRates), so the old "90% / 10%" numbers were both a
+                    fee-literal violation and potentially wrong. State the model without
+                    a fabricated number. */}
                 <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
                   <p className="text-xs text-muted-foreground text-center">
-                    Provider earns 90% of booking. Platform fee: 10%.
+                    A platform service fee is deducted from each booking; the provider
+                    receives the remainder.
                   </p>
                 </div>
               </CardContent>

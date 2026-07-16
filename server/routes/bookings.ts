@@ -15,16 +15,10 @@ import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getUserId } from '../utils/auth';
+import { holdWindowDays } from '../config/earnings-hold.config';
 import Stripe from 'stripe';
 
 const router = Router();
-
-// Owner of a legacy `bookings` row (for the refund authorization gate). Returns null if absent.
-async function getBookingOwnerId(bookingId: string): Promise<string | null> {
-  const r = await db.execute(sql`SELECT user_id FROM bookings WHERE id = ${bookingId} LIMIT 1`);
-  const row = r.rows?.[0] as any;
-  return row?.user_id != null ? String(row.user_id) : null;
-}
 
 // Owner (traveler) of a `service_bookings` row. The escrow confirm/dispute endpoints operate on
 // service_bookings (that's where the earnings link and where /api/my-bookings reads), so their
@@ -386,7 +380,12 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'Booking ID required' });
     }
 
-    const ownerId = await getBookingOwnerId(bookingId);
+    // Re-pointed onto service_bookings (the canonical booking rail). The old code gated on
+    // and refunded against the legacy `bookings` table (getBookingOwnerId + createRefund),
+    // so it 404'd every real booking — refunds live in service_bookings, where disputes and
+    // the earnings link already are. Uses the same service-booking-native owner gate + refund
+    // as the admin dispute-uphold path (§14 amount server-derived, §15 idempotent).
+    const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) {
       return res.status(404).json({ error: 'Booking not found' });
     }
@@ -397,8 +396,9 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
-    // amount omitted → createRefund derives it from the booking's stored total_amount.
-    const result = await stripePaymentService.createRefund(bookingId, undefined, reason);
+    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
+    // claim + deterministic Stripe idempotencyKey).
+    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
 
     // Escrow Phase 4 (closes §14 A2): a refund now also reverses the linked earnings ledger + the
     // recognised platform revenue, so a refunded booking doesn't leave the provider/expert credited.
@@ -462,6 +462,29 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // Escrow decisions 3 + 4 (docs/design/escrow-spine.md): a traveler may dispute ONLY during the
+    // clearance window. Once it elapses the held earning matures → releasable → paid_out, and per
+    // decision 4 there is NO automated post-payout claw-back. So a late dispute must be REJECTED
+    // here — silently accepting one would strand a refund the escrow spine can't fund. The cutoff
+    // uses the same holdWindowDays('service_booking') config the release job uses, so the dispute
+    // window and the payout timing line up exactly (default 7 days, env-overridable). completedAt
+    // null (not yet completed) → no matured earning → the window doesn't apply (dispute allowed).
+    const [bk] = await db
+      .select({ completedAt: serviceBookings.completedAt })
+      .from(serviceBookings)
+      .where(eq(serviceBookings.id, bookingId));
+    if (!bk) return res.status(404).json({ error: 'Booking not found' });
+    if (bk.completedAt) {
+      const windowDays = holdWindowDays('service_booking');
+      const deadline = new Date(bk.completedAt).getTime() + windowDays * 24 * 60 * 60 * 1000;
+      if (Date.now() > deadline) {
+        return res.status(409).json({
+          error: 'dispute_window_closed',
+          message: `The ${windowDays}-day dispute window for this booking has closed.`,
+        });
+      }
+    }
 
     // Persist the dispute reason into booking_metadata so the admin disputes list can surface it —
     // service_bookings has no dispute_reason column, and updateServiceBookingStatus only records a

@@ -43,6 +43,7 @@ import {
   ImageIcon,
   ShieldCheck,
   ShieldAlert,
+  CalendarDays,
 } from "lucide-react";
 
 const menuGroups = [
@@ -77,6 +78,7 @@ const menuGroups = [
       { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
+      { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
     ],
   },
   {

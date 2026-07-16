@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Star, MapPin, MessageCircle, UserCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAskExpert } from "@/lib/use-ask-expert";
 
 interface CityFeedCardExpertProps {
   expert: any;
@@ -22,20 +23,22 @@ interface CityFeedCardExpertProps {
  */
 export function CityFeedCardExpert({ expert, city, className, cardPosition }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const askExpert = useAskExpert();
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
 
   const name = [expert.firstName, expert.lastName].filter(Boolean).join(" ") || expert.name || "Expert";
-  const rating = expert.averageRating || expert.rating;
   const specialty = expert.expertForm?.primarySpecialty || expert.specialties?.[0] || "Local Expert";
   const packagesCount = Number(expert.packagesCount ?? 0);
   const expertCity = expert.expertForm?.city ?? null;
 
-  // §13 honesty for the More-info dialog: show a rating ONLY when the object
-  // carries a real rating backed by reviews (reviewCount > 0). Experts have no
-  // platform-level rating aggregate yet (§13 filed), so this usually renders
-  // nothing — never a fabricated number.
-  const dialogReviewCount = Number(expert.reviewCount ?? 0);
-  const dialogRating = dialogReviewCount > 0 && rating ? Number(rating) : null;
+  // §13 honesty: show a rating ONLY when it is review-backed. The expert-level
+  // aggregate (server: getExpertsWithProfiles) is a review-count-weighted mean of
+  // the expert's own services' reviews, and is null when reviewCount === 0. Gate on
+  // reviewCount and read ONLY averageRating — never a stale `expert.rating` fallback.
+  const reviewCount = Number(expert.reviewCount ?? 0);
+  const rating = reviewCount > 0 && expert.averageRating != null ? Number(expert.averageRating) : null;
+  const dialogReviewCount = reviewCount;
+  const dialogRating = rating;
 
   // Initials for the no-photo avatar (first letters of first/last name)
   const initials = [expert.firstName, expert.lastName]
@@ -83,10 +86,10 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
             <UserCircle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             <h3 className="font-semibold text-sm truncate">{name}</h3>
           </div>
-          {rating && (
+          {rating !== null && (
             <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
               <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              <span>{Number(rating).toFixed(1)}</span>
+              <span>{rating.toFixed(1)}</span>
             </div>
           )}
         </div>
@@ -184,11 +187,11 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
                   >
                     View profile
                   </Button>
-                  {/* "Ask" starts on the profile page too — chat begins there */}
+                  {/* "Ask" goes straight into chat with this expert, pre-filled with the city */}
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
+                    onClick={() => askExpert({ expertId: expert.id, city, subject: expertCity || city })}
                     data-testid={`modal-ask-expert-${expert.id}`}
                   >
                     <MessageCircle className="w-3 h-3 mr-1" />

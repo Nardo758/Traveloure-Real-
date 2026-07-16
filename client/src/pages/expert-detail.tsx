@@ -232,10 +232,20 @@ export default function ExpertDetailPage() {
 
                 {/* Stats */}
                 <div className="flex flex-wrap gap-6 mb-6">
+                  {/* §13 honesty: the expert rating is a review-count-weighted mean of the
+                      expert's own services' reviews (server: getExpertsWithProfiles), null
+                      until they have any. Show a star + score only when review-backed; else
+                      an honest "New" — never "0.0 (0 reviews)". */}
                   <div className="flex items-center gap-2">
-                    <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                    <span className="font-semibold">{averageRating.toFixed(1)}</span>
-                    <span className="text-muted-foreground">({totalReviews} reviews)</span>
+                    {totalReviews > 0 ? (
+                      <>
+                        <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                        <span className="font-semibold">{averageRating.toFixed(1)}</span>
+                        <span className="text-muted-foreground">({totalReviews} reviews)</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">New expert · no reviews yet</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Briefcase className="w-5 h-5" />
@@ -581,18 +591,19 @@ export default function ExpertDetailPage() {
                       Schedule Consultation
                     </Button>
 
+                    {/* §13 honesty: the old "free cancellation / instant confirmation /
+                        24-7 support" claims were fabricated (no per-expert cancellation
+                        policy exists; bookings go through a request/confirm flow, not
+                        instant). Replaced with statements that are actually true of the
+                        platform: Stripe checkout + the escrow hold/dispute protection. */}
                     <div className="pt-4 border-t space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span>Free cancellation up to 24h</span>
+                        <span>Secure checkout via Stripe</span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span>Instant confirmation</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span>24/7 support</span>
+                        <span>Payment protected until the service is delivered</span>
                       </div>
                     </div>
                   </CardContent>

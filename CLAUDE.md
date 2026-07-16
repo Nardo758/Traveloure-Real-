@@ -284,12 +284,25 @@ This document captures architectural decisions to maintain consistency across co
   cache-scheduler tick wrote them into `destination_events` **born-`approved`** (ids `mock-<city>-<n>`, fake dates/
   ratings), which the public By-Date calendar served as real. Fix: `fever-cache.service` now skips entirely when
   `feverService.isReady()` is false (the Booking.com/OpenTable "skipping live fetch" sibling pattern); migration 115
-  purges the already-written `mock-%` rows. **Still open (same audit, decision pending):** AI (Grok) and real-Fever
-  events are **born-`approved`** with no review — only user-submitted events pass the admin queue (the D1a
-  born-approved lesson applied to machine content). Full pipeline audit verdicts in the data-capture report
+  purges the already-written `mock-%` rows. **CLOSED (Jul 15, 2026 — decision ratified):** AI (Grok) and Fever events
+  are now **born-`pending`**, not `approved` — the D1a born-approved lesson applied to machine content (AI can
+  hallucinate events, so it doesn't self-publish to the public By-Date calendar). Both machine insert sites flipped
+  (`travelpulse.service.ts` AI arm, `partner-events-cache.service.ts` Fever arm); they land in the **existing**
+  `getPendingDestinationEvents` admin queue alongside user-submitted events. The queue was **headless** (approve/reject
+  endpoints existed, zero client consumer) — built the admin UI (`client/src/pages/admin/destination-events.tsx`,
+  "Event Review", source-badged AI/Partner/User, approve + reject-with-reason). Grandfather: existing `approved` rows
+  untouched (no calendar outage). Proven behaviorally: born-pending → hidden from the public calendar, visible in the
+  queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
   (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
-- **`expert_service_categories`** dropped by migration 013 but still in `shared/schema.ts` + live code — latent runtime bug.
+- **`expert_service_categories` — NOT a bug (corrected Jul 15, 2026).** Earlier drafts called this a "dropped-by-013
+  but still referenced" latent bug. **That premise was factually wrong:** migration 013 explicitly retains it
+  (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration **030**
+  (`030_restore_expert_service_categories.sql`, registered + startup-run) recreates and seeds it (7 rows + FK). The
+  table is **live** — it's the read-only ESO onboarding catalog. The **one real defect** was
+  `storage.getExpertServiceCategories()` hardcoded to `return []` on that false premise, which left
+  `GET /api/expert-service-categories` permanently empty (the expert service-listings + travel-expert onboarding
+  category pickers had no options). **Fixed** — the method now queries the live table.
 
 ### §14 — Money-endpoint server-derivation rule (client-trusted amount/identity cluster)
 
@@ -377,6 +390,14 @@ The earning ledger is an escrow state machine: **`held → releasable → paid_o
 - **Phase 3 (#168):** traveler `POST /api/bookings/:id/confirm-completion` (early release) + `/dispute` (block, pulls
   `releasable → held+open`, enforcing "disputed ⟹ held") + admin `/api/admin/disputes/:id/reject`; owner-gated on
   `service_bookings.traveler_id`; disputes list reads `service_bookings`.
+  - **Dispute-window enforcement (escrow decision 3, landed later).** `/dispute` now REJECTS a dispute raised after the
+    clearance window closes (`now > completedAt + holdWindowDays('service_booking')`, default 7d, env-overridable → the
+    same clock the release job uses) with `409 dispute_window_closed`. Previously the endpoint enforced no window — a
+    traveler could dispute a `completed` booking indefinitely, which is precisely the situation decision 4's manual
+    post-payout claw-back exists to cover. Enforcing the window aligns the dispute cutoff with the payout timing, so a
+    refund can't be raised after payout → **decision 4's "no automated post-`paid_out` claw-back" limitation is
+    now essentially unreachable by design, not a live hole.** `completedAt` null (not yet completed) → window not applied.
+    Client (`my-bookings.tsx`) surfaces the window-closed message; the server is authoritative (no client-side window literal).
 - **Phase 4 (#170) — reversal terminal.** `storage.reverseEarningsForBooking` (held/releasable → `reversed`; `paid_out`
   **never auto-clawed-back** — ratified "reversal only while in escrow"; returns `skippedPaidOut` for manual handling) +
   `reversePlatformRevenueForBooking` (compensating **negative** `platform_revenue` row — double-entry nets both the
@@ -408,7 +429,18 @@ architecture that's about to change underneath it — the "reinvent the same log
 payout requests are **deferred to the escrow-spine design**, where release (and any request UI it needs) gets built
 once, correctly. This is *not* "cut a feature" — it's declining to build the release UI before release is designed.
 Leaving admin-initiated as the honest model keeps the payout rail from constraining that future escrow decision.
-**Filed (belongs to escrow design, do NOT rebuild standalone):** provider/expert self-service payout requests.
+**Self-service payout REQUESTS — LANDED (now that the escrow spine defines a real cleared balance).** The deferral
+condition ("payout is the release half of an escrow spine not yet designed") is resolved — the spine is built (#163–170)
+and the dispute window is enforced (#210), so an earner's `available` = their `releasable` earnings is now a real,
+well-defined number. `POST /api/payouts/request` (mounted in `payments.routes.ts`, role-aware provider/expert) lets an
+earner REQUEST a payout of their own cleared balance: **§14** acting user + amount are **server-derived**
+(`get{Provider,Expert}EarningsSummary(session).available`, never `req.body` — the documented "server-capped withdrawal
+of the user's own balance" money-derive-ok case); **§15** a `pending`/`processing` payout blocks a duplicate request
+($10 min, mirrors the admin path). It creates a `pending` payout via the existing `create{Provider,Expert}Payout` →
+lands in the **admin queue**, processed by the unchanged idempotent transfer (`PATCH /api/admin/payouts/:id`, §15 FIX 1).
+**The processing model of record stays admin-initiated** — this only adds the request half; no new payout mechanics, no
+Stripe change. Client: a real "Request Payout" button on `provider/earnings.tsx` + `expert/earnings.tsx` (the retired
+decorative buttons' honest replacement).
 
 *(Orphaned-component observation, filed separately — not payout-scoped: `client/src/components/shared/earnings-card.tsx`
 has no importers; its "Request Payout →" span never renders. A dead-code-lane candidate, left untouched here.)*
@@ -444,12 +476,12 @@ has no importers; its "Request Payout →" span never renders. A dead-code-lane 
 - **Phase 1+2 (DONE):** Migrations 011-012 add schema columns and consolidate `expert_custom_services` → `provider_services` with category mapping
 - **Phase 3 (DONE):** Build shared ServiceForm component targeting provider_services (role-aware, both expert and provider)
 - **Phase 4 (DONE):** Apply User Console theme to expert pages (#1A1A18, #7A7A72, #E8E8E2, #FAFAF8)
-- **Phase 5 (DONE):** Migration 013 drops deprecated tables/columns: expert_custom_services, expert_selected_services, expert_service_categories, ESO workflow columns
+- **Phase 5 (DONE):** Migration 013 drops deprecated tables/columns: expert_custom_services, expert_selected_services, ESO workflow columns. **NOTE (corrected Jul 15, 2026):** `expert_service_categories` was **intentionally NOT dropped** by 013 and is **restored/seeded by migration 030** as the read-only ESO onboarding catalog — do not list it among the dropped tables.
 
 **What Was Deprecated:**
 - Commit `bfc3db2` made ESO canonical by adding workflow columns. This contradicted the booking-FK fact and is superseded by this document.
 - The `runEsoBackfill()` startup migration is disabled; migrations 011-012 handle schema + data consolidation to provider_services.
-- Deprecated tables (expert_custom_services, expert_selected_services, expert_service_categories) and ESO workflow columns are dropped by migration 013.
+- Deprecated tables (expert_custom_services, expert_selected_services) and ESO workflow columns are dropped by migration 013. (`expert_service_categories` is **NOT** dropped — retained by 013, restored/seeded by migration 030 as the ESO onboarding catalog; corrected Jul 15, 2026.)
 
 ---
 
@@ -469,10 +501,12 @@ All service creation routes converge on one destination: `POST /api/provider/ser
 
 ## Category Mapping (historical — one-time consolidation, completed)
 
-> **Status note (Jul 2026):** this describes the one-time migration 011–012 consolidation. Its source table
-> `expert_service_categories` was **dropped by migration 013**, so this is a record of a completed migration, not an
-> ongoing rule. ⚠️ Code-internal drift: `expert_service_categories` is still defined in `shared/schema.ts` and referenced
-> by live server code despite being dropped — a latent bug, filed separately (not a doc issue).
+> **Status note (Jul 2026; corrected Jul 15, 2026):** this describes the one-time migration 011–012 consolidation.
+> Its source table `expert_service_categories` was **NOT dropped** — migration 013 explicitly retains it
+> (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration 030 recreates/seeds it (7 rows +
+> FK) as the read-only ESO onboarding catalog. (Earlier drafts said "dropped by 013"; that was factually wrong — there
+> is no code-internal drift, the table is live.) The one real defect — `storage.getExpertServiceCategories()`
+> returning `[]` on that false premise — is **fixed**; it now queries the live table.
 
 When migrating services from expert taxonomy (`expert_service_categories`) to canonical (`service_categories`):
 
@@ -513,6 +547,19 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   repair note below). Registry order is authoritative; numeric filename order is not.
 - Migrations are applied at server startup via `runMigrations()` (server/index.ts)
 - `/migrations/` is for Drizzle-only migrations; `server/migrations/` is the active set
+
+**CRITICAL: Replit deploy-push vs. our migrations (the "publish-time CHECK failure" trap)**
+- Replit's Autoscale deploy runs an **automatic drizzle-kit schema-push** from `shared/schema.ts` at publish —
+  and it enforces the schema's CHECK constraints **WITHOUT** running our migrations' value-remap steps first.
+  So a migration that adds a CHECK over a column still holding legacy values on prod fails the deploy mid-push
+  (`check constraint … violated by some row`) and offers the **DESTRUCTIVE** "copy dev database over production"
+  option. **Never accept that option** — it overwrites prod with dev. This bit us twice on the Jul 15 publish
+  (`expert_earnings.status='pending'`, `service_templates.delivery_method='document'`).
+- Guard: **before publishing any migration that adds/changes a CHECK**, run
+  `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
+  declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK
+  migration, add its column to that script's `CONSTRAINT_MANIFEST`. The real fix (disable the deploy-push so
+  `runMigrations()` is authoritative) is a Replit deployment setting, filed.
 
 **CRITICAL: Drizzle push has TWO schema entry points — do not collapse to one**
 - `drizzle.config.ts` `schema` is an **array**: `["./shared/schema.ts", "./shared/guest-invites-schema.ts"]`.
