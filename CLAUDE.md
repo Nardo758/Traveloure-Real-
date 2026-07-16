@@ -429,7 +429,18 @@ architecture that's about to change underneath it — the "reinvent the same log
 payout requests are **deferred to the escrow-spine design**, where release (and any request UI it needs) gets built
 once, correctly. This is *not* "cut a feature" — it's declining to build the release UI before release is designed.
 Leaving admin-initiated as the honest model keeps the payout rail from constraining that future escrow decision.
-**Filed (belongs to escrow design, do NOT rebuild standalone):** provider/expert self-service payout requests.
+**Self-service payout REQUESTS — LANDED (now that the escrow spine defines a real cleared balance).** The deferral
+condition ("payout is the release half of an escrow spine not yet designed") is resolved — the spine is built (#163–170)
+and the dispute window is enforced (#210), so an earner's `available` = their `releasable` earnings is now a real,
+well-defined number. `POST /api/payouts/request` (mounted in `payments.routes.ts`, role-aware provider/expert) lets an
+earner REQUEST a payout of their own cleared balance: **§14** acting user + amount are **server-derived**
+(`get{Provider,Expert}EarningsSummary(session).available`, never `req.body` — the documented "server-capped withdrawal
+of the user's own balance" money-derive-ok case); **§15** a `pending`/`processing` payout blocks a duplicate request
+($10 min, mirrors the admin path). It creates a `pending` payout via the existing `create{Provider,Expert}Payout` →
+lands in the **admin queue**, processed by the unchanged idempotent transfer (`PATCH /api/admin/payouts/:id`, §15 FIX 1).
+**The processing model of record stays admin-initiated** — this only adds the request half; no new payout mechanics, no
+Stripe change. Client: a real "Request Payout" button on `provider/earnings.tsx` + `expert/earnings.tsx` (the retired
+decorative buttons' honest replacement).
 
 *(Orphaned-component observation, filed separately — not payout-scoped: `client/src/components/shared/earnings-card.tsx`
 has no importers; its "Request Payout →" span never renders. A dead-code-lane candidate, left untouched here.)*
