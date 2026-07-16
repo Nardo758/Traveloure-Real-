@@ -84,7 +84,7 @@ export interface SlotConfig {
 export interface RankInputCandidate {
   offeringId: string;
   categoryKey: string;
-  sourceType: "platform_provider" | "affiliate";
+  sourceType: "platform_provider" | "affiliate" | "expert_package";
   templateStrength: "REQ" | "REC" | "OPT" | null;
   riskProfile: "low" | "moderate" | "high" | "specialized" | null;
   riskOverride: "low" | "moderate" | "high" | "specialized" | null;
@@ -100,7 +100,7 @@ export interface RankInputCandidate {
 export interface UpsellCandidate {
   offeringId: string;
   categoryKey: string;
-  sourceType: "platform_provider" | "affiliate";
+  sourceType: "platform_provider" | "affiliate" | "expert_package";
   relevanceScore: number;
   revenueScore: number;
   finalScore: number;
