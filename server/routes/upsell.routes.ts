@@ -222,6 +222,7 @@ router.post("/api/upsell/discover-location", async (req, res) => {
       marketCity: marketCity ? marketCity.toLowerCase() : null,
       neighborhoodIds: [body.neighborhoodId],
       expertEndorsedKeys: mergedEndorsedKeys,
+      includePackages: true, // Shape A: packages ranked in the Discover slate (this surface only)
     });
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_location", ctx, raw, req);
     res.json({ candidates: decorate(candidates, displayLookup), suppressed });
@@ -258,6 +259,7 @@ router.post("/api/upsell/discover-date", async (req, res) => {
       templateKey: body.templateKey,
       marketCity: body.city.toLowerCase(),
       expertEndorsedKeys: mergedEndorsedKeys,
+      includePackages: true, // Shape A: packages ranked in the Discover slate (this surface only)
     })).filter(c => !unavailable.has(c.offeringId));
 
     const { candidates, suppressed, displayLookup } = await rankAndLog("discover_date", ctx, raw, req);
