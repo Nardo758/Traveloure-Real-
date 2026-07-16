@@ -191,9 +191,17 @@ This document captures architectural decisions to maintain consistency across co
       `/api/checkout` landmine): `/api/discover` was duplicated — `content.routes.ts` is the LIVE one (mount order);
       the shadowed `routes.ts` copy is **deleted by the §9 shadow-route sweep (Jul 15, 2026)**. The content-gate
       redaction lives in the shared `server/utils/template-content-gate.ts` and the live copy applies it (proven
-      behaviorally: search results carry teaser only, no `itineraryData`). **Still filed:** recommender doesn't rank packages — and note the engine is
-      **demand-signal-typed** (recommends service *types*), not a catalog ranker, so this is a design task, not a
-      bolt-on; `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
+      behaviorally: search results carry teaser only, no `itineraryData`). **Recommender ranks packages — RESOLVED
+      (Jul 16, 2026).** The demand-signal recommender is **demand-signal-typed** (recommends service *types*), and
+      packages live in a separate taxonomy (§10) — so rather than force a taxonomy bridge, package ranking was added
+      in the layer that fits: `getRecommendedPackagesForUser(city, prefs)` in `recommendation.service.ts` ranks
+      **approved+published** packages by **destination match** (the city the recommender already has) then real
+      quality (`isFeatured → salesCount → averageRating → recency`), returns **teaser fields only** (no
+      `itineraryData` — content-gate), and rides `GET /api/recommendations/user` as an **additive `packages` field**
+      (existing consumers read `.recommendations`, unaffected). Surfaced in `template-recommendations.tsx` as a
+      "Ready-made packages for `<city>`" strip → the B2 detail page; honest rating ("New" when `reviewCount=0`).
+      This is also the destination-aware ordering the packages feed wanted — done in the recommender, not a
+      duplicate feed sort. **Still filed:** `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
       category/destination/duration are structured. **Label standard (ratified): traveler-facing = "Packages"**
       (Discover tab/header, my-bookings tab, detail page); the seller console keeps "Itinerary Templates" (same
       product, seller-side vocabulary — the Airbnb listings/homes split). **B4 LANDED (Phase B complete):** Discover

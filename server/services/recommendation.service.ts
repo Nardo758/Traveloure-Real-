@@ -37,6 +37,7 @@ import {
   travelPulseTrending,
   providerServices,
   expertServiceOfferings,
+  expertTemplates,
   users,
   HotelCache,
   ActivityCache,
@@ -154,6 +155,26 @@ interface UserRecommendation {
   matchScore: number;
   reasons: string[];
   relatedServices: { id: string; name: string; price?: number }[];
+}
+
+// Traveler-facing package (expert_template) recommendation. This is the catalog-item
+// half the demand-signal recommender can't express (packages live in a separate taxonomy,
+// CLAUDE.md §10) — ranked by destination match + real quality signals, NOT by forcing
+// packages into the serviceType demand vocabulary. Teaser fields only (no itineraryData —
+// the paid content stays gated).
+interface PackageRecommendation {
+  id: string;
+  title: string;
+  destination: string;
+  price: number | null;
+  currency: string;
+  duration: number | null;
+  coverImage: string | null;
+  salesCount: number;
+  averageRating: number | null;
+  reviewCount: number;
+  matchScore: number;
+  reasons: string[];
 }
 
 const SERVICE_TYPE_MAPPINGS: Record<string, string[]> = {
@@ -1089,6 +1110,99 @@ class RecommendationService {
     return recommendations
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, limit);
+  }
+
+  /**
+   * Destination-aware, quality-ranked package (expert_template) recommendations for a
+   * traveler. Packages are catalog items in a separate taxonomy from the serviceType
+   * demand signals (§10), so they can't ride the demand loop — instead we rank by the
+   * signals that actually exist on a package: destination match (the city the recommender
+   * already has), then real quality (featured, sales, rating, recency). Only approved +
+   * published packages surface, and only teaser fields are returned — the paid
+   * itineraryData never leaves this method (content-gate).
+   */
+  async getRecommendedPackagesForUser(
+    city: string,
+    preferences?: string[],
+    limit: number = 6,
+  ): Promise<PackageRecommendation[]> {
+    if (!city) return [];
+
+    const rows = await db
+      .select({
+        id: expertTemplates.id,
+        title: expertTemplates.title,
+        destination: expertTemplates.destination,
+        category: expertTemplates.category,
+        price: expertTemplates.price,
+        currency: expertTemplates.currency,
+        duration: expertTemplates.duration,
+        coverImage: expertTemplates.coverImage,
+        salesCount: expertTemplates.salesCount,
+        averageRating: expertTemplates.averageRating,
+        reviewCount: expertTemplates.reviewCount,
+        isFeatured: expertTemplates.isFeatured,
+      })
+      .from(expertTemplates)
+      .where(
+        and(
+          eq(expertTemplates.approvalStatus, "approved"),
+          eq(expertTemplates.isPublished, true),
+          ilike(expertTemplates.destination, `%${city}%`),
+        ),
+      )
+      .orderBy(
+        desc(expertTemplates.isFeatured),
+        desc(expertTemplates.salesCount),
+        desc(expertTemplates.averageRating),
+        desc(expertTemplates.createdAt),
+      )
+      .limit(limit);
+
+    const prefsLower = (preferences ?? []).map((p) => p.toLowerCase()).filter(Boolean);
+
+    return rows.map((r) => {
+      let matchScore = 60; // destination already matched
+      const reasons: string[] = [`Curated for ${this.capitalizeCity(city)}`];
+
+      if (r.isFeatured) {
+        matchScore += 15;
+        reasons.push("Featured package");
+      }
+      const sales = Number(r.salesCount) || 0;
+      if (sales > 0) {
+        matchScore += Math.min(15, sales); // popularity, capped
+        reasons.push(`${sales} sold`);
+      }
+      const rating = r.averageRating != null ? Number(r.averageRating) : null;
+      const reviews = Number(r.reviewCount) || 0;
+      if (rating != null && reviews > 0) {
+        matchScore += Math.round((rating / 5) * 10);
+        reasons.push(`Rated ${rating.toFixed(1)}`);
+      }
+      if (prefsLower.length > 0 && r.category) {
+        const cat = r.category.toLowerCase();
+        if (prefsLower.some((p) => cat.includes(p) || p.includes(cat))) {
+          matchScore += 15;
+          reasons.push("Matches your interests");
+        }
+      }
+
+      return {
+        id: r.id,
+        title: r.title,
+        destination: r.destination,
+        price: r.price != null ? Number(r.price) : null,
+        currency: r.currency || "USD",
+        duration: r.duration != null ? Number(r.duration) : null,
+        coverImage: r.coverImage ?? null,
+        salesCount: sales,
+        averageRating: rating,
+        reviewCount: reviews,
+        matchScore: Math.min(100, matchScore),
+        reasons,
+      };
+    });
   }
 
   async recordConversion(
