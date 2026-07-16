@@ -168,9 +168,9 @@ export default function ExpertTemplateDetail() {
       <Layout>
         <div className="max-w-4xl mx-auto p-6 text-center py-20">
           <Package className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Package not found</h1>
+          <h1 className="text-2xl font-bold mb-2">Trip not found</h1>
           <p className="text-muted-foreground mb-6">
-            This package doesn't exist or isn't available for purchase.
+            This trip doesn't exist or isn't available for purchase.
           </p>
           <Link href="/discover">
             <Button variant="outline">Browse Discover</Button>

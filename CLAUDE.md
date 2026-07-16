@@ -202,9 +202,13 @@ This document captures architectural decisions to maintain consistency across co
       "Ready-made packages for `<city>`" strip → the B2 detail page; honest rating ("New" when `reviewCount=0`).
       This is also the destination-aware ordering the packages feed wanted — done in the recommender, not a
       duplicate feed sort. **Still filed:** `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
-      category/destination/duration are structured. **Label standard (ratified): traveler-facing = "Packages"**
-      (Discover tab/header, my-bookings tab, detail page); the seller console keeps "Itinerary Templates" (same
-      product, seller-side vocabulary — the Airbnb listings/homes split). **B4 LANDED (Phase B complete):** Discover
+      category/destination/duration are structured. **Label standard (ratified, superseded Jul 16, 2026):
+      traveler-facing = "Ready Made Trips"** (Discover tab/header, my-bookings tab, detail page) — renamed from
+      "Packages" because "Packages" read ambiguously against services/bookings and obscured that these are
+      pre-made, expert-authored *trips* the traveler buys. The seller console keeps "Itinerary Templates" (same
+      product, seller-side vocabulary — the Airbnb listings/homes split). **Routing key unchanged:** the tab
+      `value="packages"` + `?tab=packages` deep-link + `VISIBLE_TABS` routing token stay `packages` (URL/routing
+      contract); only the human-readable label text changes to "Ready Made Trips". **B4 LANDED (Phase B complete):** Discover
       `packages` TabsTrigger restored (feed is server-gated + teaser-redacted); `/experts/:id` gains a Packages tab
       (`?expertId=` filter, hidden when the expert has none); `/services/:id` gains a "Packages by this expert"
       same-owner cross-sell (top 3, hidden when none). All three link into the B2 detail page.
