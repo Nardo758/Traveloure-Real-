@@ -74,6 +74,10 @@ interface GlobalCity {
   // D3 honest counts (real aggregates from the server; hidden when 0)
   packagesCount?: number;
   expertsCount?: number;
+  // More-info modal enrichers: min package price + real expert neighbourhood coverage
+  packagesFromPrice?: number | null;
+  packagesCurrency?: string | null;
+  expertNeighborhoods?: string[];
 }
 
 interface GlobalEvent {
@@ -804,6 +808,15 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 }
 
 // Helper: Convert season rating to a numeric score for display (best=9, good=7, average=5, etc.)
+// Format a package "from" price. USD → "$49"; other currencies → "49 EUR".
+// Whole numbers drop the decimals; otherwise show cents.
+function formatFromPrice(amount: number, currency: string): string {
+  const isWhole = Number.isInteger(amount);
+  const n = isWhole ? amount.toString() : amount.toFixed(2);
+  if (currency === "USD") return `$${n}`;
+  return `${n} ${currency}`;
+}
+
 function getSeasonScore(rating: string | null): number {
   switch (rating) {
     case "best":
@@ -870,6 +883,54 @@ function CityCard({
     packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "package" : "packages"}` : null,
     expertsCount > 0 ? `🧭 ${expertsCount} local ${expertsCount === 1 ? "expert" : "experts"}` : null,
   ].filter((segment): segment is string => segment !== null);
+
+  // More-info modal: one-line subtitle + SEASON/EVENTS/PACKAGES/EXPERTS labeled rows.
+  // Every value is a real aggregate; a row renders only when it has data (§13 — no filler).
+  const modalSubtitle = [
+    seasonScore > 0 ? `${seasonScore}/10` : null,
+    seasonScore > 0 ? "Ideal month" : null,
+    city.highlights?.[0] ?? null,
+  ].filter((s): s is string => !!s).join(" · ");
+
+  const seasonRow = [
+    city.weatherDescription
+      ? `${city.weatherDescription}${city.averageTemp ? ` (${city.averageTemp})` : ""}`
+      : null,
+    city.seasonCrowdLevel ? `${city.seasonCrowdLevel} crowds` : null,
+    city.priceLevel ? `${city.priceLevel} pricing` : null,
+  ].filter((s): s is string => !!s).join(" · ");
+
+  const eventsRow = city.events.slice(0, 3).map((e) => {
+    const d = e.specificDate
+      ? new Date(e.specificDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : null;
+    return d ? `${e.title} (${d})` : e.title;
+  });
+  const eventsExtra = Math.max(0, eventsCount - 3);
+
+  // PACKAGES: count + real "from $X" (min over the city's approved packages) when priced.
+  const fromPrice =
+    typeof city.packagesFromPrice === "number" && city.packagesFromPrice > 0
+      ? city.packagesFromPrice
+      : null;
+  const priceCurrency = city.packagesCurrency ?? "USD";
+  const packagesRow =
+    packagesCount > 0
+      ? `${packagesCount} expert ${packagesCount === 1 ? "itinerary" : "itineraries"}` +
+        (fromPrice !== null ? ` — from ${formatFromPrice(fromPrice, priceCurrency)}` : "")
+      : null;
+
+  // EXPERTS: count + the real neighbourhoods they cover ("cover Gion, Higashiyama, …").
+  const coveredNeighborhoods = (city.expertNeighborhoods ?? []).filter(Boolean);
+  const expertsRow =
+    expertsCount > 0
+      ? `${expertsCount} local ${expertsCount === 1 ? "expert" : "experts"}` +
+        (coveredNeighborhoods.length > 0
+          ? ` cover ${coveredNeighborhoods.slice(0, 3).join(", ")}${
+              coveredNeighborhoods.length > 3 ? " +more" : ""
+            }`
+          : " cover this destination")
+      : null;
 
   return (
     <Card
@@ -1004,66 +1065,51 @@ function CityCard({
                 <DialogTitle>
                   {city.cityName}{monthName ? ` in ${monthName}` : ""}
                 </DialogTitle>
+                {modalSubtitle && (
+                  <p className="text-sm text-muted-foreground" data-testid={`modal-subtitle-${city.id}`}>
+                    {modalSubtitle}
+                  </p>
+                )}
               </DialogHeader>
+
+              {/* SAME PATTERN EVERYWHERE: uppercase label + value rows.
+                  Each row renders only when its aggregate has data (§13). */}
+              <dl className="divide-y divide-border">
+                {seasonRow && (
+                  <div className="grid grid-cols-[84px_1fr] gap-3 py-3" data-testid={`modal-row-season-${city.id}`}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Season</dt>
+                    <dd className="text-sm">{seasonRow}</dd>
+                  </div>
+                )}
+
+                {eventsRow.length > 0 && (
+                  <div className="grid grid-cols-[84px_1fr] gap-3 py-3" data-testid={`modal-row-events-${city.id}`}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</dt>
+                    <dd className="text-sm">
+                      {eventsRow.join(" · ")}
+                      {eventsExtra > 0 && (
+                        <span className="text-muted-foreground"> · +{eventsExtra} more</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
+
+                {packagesRow && (
+                  <div className="grid grid-cols-[84px_1fr] gap-3 py-3" data-testid={`modal-row-packages-${city.id}`}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packages</dt>
+                    <dd className="text-sm">{packagesRow}</dd>
+                  </div>
+                )}
+
+                {expertsRow && (
+                  <div className="grid grid-cols-[84px_1fr] gap-3 py-3" data-testid={`modal-row-experts-${city.id}`}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Experts</dt>
+                    <dd className="text-sm">{expertsRow}</dd>
+                  </div>
+                )}
+              </dl>
+
               <div className="space-y-3">
-                {/* Season summary: score + guidance */}
-                {city.seasonalRating && seasonScore > 0 && (
-                  <div className="p-2 rounded-lg bg-muted/50 border border-muted">
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-lg font-bold">{seasonScore}</span>
-                        <span className="text-xs text-muted-foreground">/10</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground font-medium">Ideal month</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{seasonGuidance}</p>
-                  </div>
-                )}
-
-                {/* Weather + crowds */}
-                <div className="flex flex-wrap items-center gap-3 text-xs">
-                  {city.weatherDescription && (
-                    <span className="flex items-center gap-1">
-                      {getWeatherIcon(city.weatherDescription)}
-                      <span className="text-muted-foreground">
-                        {city.weatherDescription}
-                        {city.averageTemp ? ` · ${city.averageTemp}` : ""}
-                      </span>
-                    </span>
-                  )}
-                  {city.seasonCrowdLevel && (
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel} crowds</span>
-                    </span>
-                  )}
-                </div>
-
-                {/* Events this month */}
-                {city.events.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium mb-1">Events{monthName ? ` in ${monthName}` : ""}</p>
-                    <div className="space-y-1">
-                      {city.events.slice(0, 5).map((event) => (
-                        <div key={event.id} className="flex items-center gap-1 text-xs">
-                          <Ticket className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                          <span className="truncate">{event.title}</span>
-                          {event.specificDate && (
-                            <span className="text-muted-foreground flex-shrink-0">
-                              · {new Date(event.specificDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* D3 counts — real aggregates only; hidden when all 0 (§13) */}
-                {countSegments.length > 0 && (
-                  <p className="text-xs text-muted-foreground">{countSegments.join(" · ")}</p>
-                )}
-
                 {/* CTAs */}
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
