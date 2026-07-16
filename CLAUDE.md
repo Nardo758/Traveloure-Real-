@@ -270,8 +270,13 @@ This document captures architectural decisions to maintain consistency across co
       supersedes it. So the lens applies **within Kyoto** ("plan your Kyoto experience"), the other 7
       markets stay paused. The codebase already carries the DNA (`/experiences/:slug`
       wedding/proposal/birthday, coordination-fee engine, `getExperienceSuggestionsForCity`).
-      **Filed (not built):** the client-side acquisition funnel the reframe flags as missing — SEO for
-      "Kyoto wedding/proposal", Pinterest hooks, hotel-concierge B2B; event-tier pricing surfacing.
+      **Acquisition funnel — SEO slice LANDED (Jul 16, 2026):** the experience-template page
+      (`/experiences/:slug`) had **no SEO at all**; it now emits destination-aware `SEOHead` meta —
+      title/description/keywords targeting the high-intent "`<city> <event>`" search the reframe flags
+      (e.g. `?destination=Kyoto` on the wedding slug → "Plan Your Kyoto Wedding", keywords `kyoto wedding`,
+      `kyoto destination wedding`, `wedding planner kyoto`, …); falls back to an event-specific title with
+      no destination. Client-side (same SPA `SEOHead` mechanism the rest of the app uses). **Still filed
+      (not built):** Pinterest hooks, hotel-concierge B2B, event-tier pricing surfacing.
     - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
       8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
       already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,
