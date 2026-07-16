@@ -2222,31 +2222,65 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
     }
 
-    // Feed v2: attach packagesCount (approved + published expert_templates — the same
-    // gate as the public /api/expert-templates feed, §10 read-gate) via ONE grouped
-    // COUNT query so expert cards can show a real package count, never a fabricated one.
+    // Storefront metrics for expert cards — all REAL aggregates, never fabricated (§13):
+    //   packagesCount / packagesSold : approved+published expert_templates (same §10 gate
+    //     as the public /api/expert-templates feed) — count + SUM(salesCount). salesCount
+    //     is only server-incremented on a completed purchase, so it is honest sales volume.
+    //   servicesCount / serviceBookings : approved+active provider_services for this expert
+    //     (owner console gate) — count + SUM(bookingsCount), the real booking volume.
+    // Two grouped queries, applied to every role (local_expert / travel_expert /
+    // event_planner) so trip advisors + event planners carry sales numbers too.
     try {
       const expertIds = Array.from(new Set(filtered.map((e: any) => String(e.id)).filter(Boolean)));
       if (expertIds.length > 0) {
-        const countRows = await db
-          .select({
-            expertId: expertTemplates.expertId,
-            count: sql<number>`cast(count(*) as int)`,
-          })
-          .from(expertTemplates)
-          .where(
-            and(
-              inArray(expertTemplates.expertId, expertIds),
-              eq(expertTemplates.approvalStatus, "approved"),
-              eq(expertTemplates.isPublished, true),
-            ),
-          )
-          .groupBy(expertTemplates.expertId);
-        const countMap = new Map(countRows.map((r) => [r.expertId, r.count]));
-        filtered = filtered.map((e: any) => ({ ...e, packagesCount: countMap.get(String(e.id)) ?? 0 }));
+        const [templateRows, serviceRows] = await Promise.all([
+          db
+            .select({
+              expertId: expertTemplates.expertId,
+              count: sql<number>`cast(count(*) as int)`,
+              sold: sql<number>`cast(coalesce(sum(${expertTemplates.salesCount}), 0) as int)`,
+            })
+            .from(expertTemplates)
+            .where(
+              and(
+                inArray(expertTemplates.expertId, expertIds),
+                eq(expertTemplates.approvalStatus, "approved"),
+                eq(expertTemplates.isPublished, true),
+              ),
+            )
+            .groupBy(expertTemplates.expertId),
+          db
+            .select({
+              userId: providerServices.userId,
+              count: sql<number>`cast(count(*) as int)`,
+              bookings: sql<number>`cast(coalesce(sum(${providerServices.bookingsCount}), 0) as int)`,
+            })
+            .from(providerServices)
+            .where(
+              and(
+                inArray(providerServices.userId, expertIds),
+                eq(providerServices.approvalStatus, "approved"),
+                eq(providerServices.status, "active"),
+              ),
+            )
+            .groupBy(providerServices.userId),
+        ]);
+        const tplMap = new Map(templateRows.map((r) => [r.expertId, r]));
+        const svcMap = new Map(serviceRows.map((r) => [r.userId, r]));
+        filtered = filtered.map((e: any) => {
+          const tpl = tplMap.get(String(e.id));
+          const svc = svcMap.get(String(e.id));
+          return {
+            ...e,
+            packagesCount: tpl?.count ?? 0,
+            packagesSold: tpl?.sold ?? 0,
+            servicesCount: svc?.count ?? 0,
+            serviceBookings: svc?.bookings ?? 0,
+          };
+        });
       }
     } catch (err) {
-      console.error("Error attaching expert packagesCount:", err);
+      console.error("Error attaching expert storefront metrics:", err);
       // Non-fatal: experts list still returns without counts.
     }
 

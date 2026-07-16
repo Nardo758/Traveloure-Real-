@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home, Plane, PartyPopper } from "lucide-react";
+import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home, Plane, PartyPopper, BookOpen, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
@@ -27,6 +27,12 @@ interface ExpertCardProps {
     responseTime?: string;
     verified?: boolean;
     superExpert?: boolean;
+    // Storefront metrics — real server aggregates (§13), attached by GET /api/experts.
+    // All hidden when 0; sales counts increment only on completed purchase/booking.
+    servicesCount?: number;      // approved+active provider_services offered
+    serviceBookings?: number;    // SUM(bookingsCount) across those services
+    packagesCount?: number;      // approved+published Ready Made Trips
+    packagesSold?: number;       // SUM(salesCount) across those trips
     experienceTypes?: Array<{
       experienceType?: {
         id: string;
@@ -98,6 +104,15 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
   const showNeighbourhoods = neighbourhoods.length > 0;
 
   const roleBadge = expert.role ? ROLE_BADGE[expert.role] : null;
+
+  // Storefront metrics — what this expert has to sell + real sales volume (§13: hidden
+  // when 0, never fabricated). Applies to every role incl. trip advisors + event planners.
+  const servicesCount = expert.servicesCount ?? 0;
+  const packagesCount = expert.packagesCount ?? 0;
+  const packagesSold = expert.packagesSold ?? 0;
+  const serviceBookings = expert.serviceBookings ?? 0;
+  const totalSales = packagesSold + serviceBookings;
+  const hasStorefront = servicesCount > 0 || packagesCount > 0;
 
   return (
     <Card className="relative hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
@@ -242,6 +257,43 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
           </div>
         )}
         
+        {/* Storefront — what this expert sells + real sales volume (§13: hidden at 0). */}
+        {hasStorefront && (
+          <div
+            className="flex flex-wrap items-center gap-1.5 mt-2"
+            data-testid="expert-storefront"
+          >
+            {servicesCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                data-testid="storefront-services"
+              >
+                <Briefcase className="w-2.5 h-2.5" />
+                {servicesCount} {servicesCount === 1 ? "service" : "services"}
+              </span>
+            )}
+            {packagesCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                data-testid="storefront-trips"
+              >
+                <BookOpen className="w-2.5 h-2.5" />
+                {packagesCount} {packagesCount === 1 ? "trip" : "trips"}
+              </span>
+            )}
+            {totalSales > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[var(--earn-gold-wash)] text-[color:var(--earn-gold-ink)]"
+                data-testid="storefront-sales"
+                title={`${serviceBookings} bookings · ${packagesSold} trips sold`}
+              >
+                <TrendingUp className="w-2.5 h-2.5" />
+                {totalSales} sold
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#E5E7EB] dark:border-gray-700">
           <Button
             variant="outline"
