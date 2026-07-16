@@ -1,5 +1,5 @@
 const VIATOR_API_KEY = process.env.VIATOR_API_KEY;
-const VIATOR_BASE_URL = 'https://api.sandbox.viator.com/partner';
+const VIATOR_BASE_URL = process.env.VIATOR_BASE_URL || 'https://api.sandbox.viator.com/partner';
 
 export interface ViatorSearchParams {
   destination?: string;
