@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { CityCard as SharedCityCard } from "./CityCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,211 +160,30 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
   const citySlug = city.cityName.toLowerCase().replace(/\s+/g, "-");
 
   return (
-    <motion.div
-      layoutId={`city-${city.id}`}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.2 }}
-      className="group"
-    >
-      <div
-        className="bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-500 cursor-pointer border border-border"
-        onClick={onClick}
-        data-testid={`card-city-${citySlug}`}
-      >
-        {/* ── Photo ── */}
-        <div className="relative h-48 overflow-hidden">
-          {city.imageUrl ? (
-            <img
-              src={city.imageUrl}
-              alt={city.cityName}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-              <MapPin className="h-12 w-12 text-primary/30" />
-            </div>
-          )}
-
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-          {/* Pulse score — white pill, top-right (matches landing page) */}
-          <div
-            className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
-            data-testid={`pulse-score-${citySlug}`}
-          >
-            <span className={cn("text-lg font-bold", getPulseColor(city.pulseScore))}>
-              {city.pulseScore}
-            </span>
-          </div>
-
-          {/* Hot / Trending badge + travelers + alerts — top-left */}
-          <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
-            {isHot ? (
-              <span
-                className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
-                data-testid={`badge-hot-${citySlug}`}
-              >
-                <Zap className="w-3 h-3 fill-white" />
-                Hot
-              </span>
-            ) : (
-              <span
-                className="px-2.5 py-1 rounded-lg bg-amber-500 dark:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 shadow-lg"
-                data-testid={`badge-trending-${citySlug}`}
-              >
-                <TrendingUp className="w-3 h-3" />
-                Trending
-              </span>
-            )}
-            {city.activeTravelers > 0 && (
-              <span
-                className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1 shadow-sm"
-                data-testid={`badge-travelers-${citySlug}`}
-              >
-                <Users className="w-3 h-3" />
-                {city.activeTravelers.toLocaleString()}
-              </span>
-            )}
-            {city.totalAlerts > 0 && (
-              <span
-                className="px-2 py-1 rounded-lg bg-red-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
-                data-testid={`alert-count-${citySlug}`}
-              >
-                <Bell className="w-3 h-3" />
-                {city.totalAlerts}
-              </span>
-            )}
-          </div>
-
-          {/* In-trip indicator — top-right (only when pulse badge shifts it) */}
-          {inQueue && (
-            <div className="absolute bottom-3 right-3">
-              <span className="px-2.5 py-1 rounded-lg bg-green-500 text-white text-xs font-bold flex items-center gap-1 shadow-lg">
-                <Check className="w-3 h-3" />
-                In Trip
-              </span>
-            </div>
-          )}
-
-          {/* City name overlay */}
-          <div className="absolute bottom-3 left-3 right-14">
-            <h3
-              className="text-2xl font-bold text-white"
-              data-testid={`city-name-${citySlug}`}
-            >
-              {city.cityName}
-            </h3>
-            <div className="flex items-center gap-2 text-white/80 text-sm">
-              <MapPin className="h-3 w-3" />
-              <span>{city.country}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Card body ── */}
-        <div className="p-4">
-          {/* Current highlight */}
-          {city.currentHighlight && (
-            <div className="flex items-start gap-2 mb-3">
-              <Sparkles className="h-4 w-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
-              <span className="text-sm font-semibold text-[#FF385C] line-clamp-2">
-                {city.currentHighlight}
-              </span>
-            </div>
-          )}
-
-          {/* Vibe tags */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {vibeTags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className={cn(
-                  "px-2.5 py-1 rounded-full text-xs font-medium capitalize",
-                  vibeTagColors[tag] || "bg-muted text-muted-foreground"
-                )}
-              >
-                {tag}
-              </span>
-            ))}
-            {vibeTags.length > 3 && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                +{vibeTags.length - 3}
-              </span>
-            )}
-          </div>
-
-          {/* Price + crowd level */}
-          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-lg font-bold text-foreground">
-                ${city.avgHotelPrice || "N/A"}
-              </span>
-              {priceChange !== 0 && (
-                <span className={cn(
-                  "text-xs flex items-center gap-0.5",
-                  priceChange < 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"
-                )}>
-                  {priceChange < 0 ? (
-                    <TrendingDown className="h-3 w-3" />
-                  ) : (
-                    <TrendingUp className="h-3 w-3" />
-                  )}
-                  {Math.abs(priceChange)}%
-                </span>
-              )}
-            </div>
-            <span className={cn(
-              "text-xs font-medium px-2 py-0.5 rounded-full capitalize",
-              getCrowdLevelColor(city.crowdLevel)
-            )}>
-              {city.crowdLevel || "Unknown"}
-            </span>
-          </div>
-
-          {/* Deal alert */}
-          {city.dealAlert && (
-            <div
-              className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 mb-3"
-              data-testid={`deal-alert-${citySlug}`}
-            >
-              <DollarSign className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-              <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium line-clamp-2">
-                {city.dealAlert}
-              </span>
-            </div>
-          )}
-
-          {/* Footer stats — 3-col matching landing page */}
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border">
-            <div className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Pulse {city.pulseScore}
-            </div>
-            <div className="flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
-              {city.totalTrendingSpots} trending (7d)
-            </div>
-            <div className="flex items-center gap-1">
-              <Gem className="h-3 w-3 text-purple-500 dark:text-purple-400" />
-              {city.totalHiddenGems} gems
-            </div>
-          </div>
-
-          {/* Take me Here CTA */}
-          <Button
-            className="w-full mt-3"
-            size="sm"
-            onClick={(e) => { e.stopPropagation(); setDialogOpen(true); }}
-            data-testid={`button-take-me-here-${citySlug}`}
-          >
-            <Plane className="h-4 w-4 mr-2" />
-            Take me Here
-          </Button>
-
+    <>
+      <SharedCityCard
+        variant="pulse"
+        cityName={city.cityName}
+        country={city.country}
+        imageUrl={city.imageUrl}
+        score={city.pulseScore}
+        isHot={isHot}
+        activeTravelers={city.activeTravelers}
+        alertCount={city.totalAlerts}
+        inTrip={inQueue}
+        highlight={city.currentHighlight}
+        vibeTags={vibeTags}
+        avgPrice={city.avgHotelPrice}
+        priceChangePct={Math.round(priceChange)}
+        crowdLevel={city.crowdLevel}
+        dealAlert={city.dealAlert}
+        trendingSpots={city.totalTrendingSpots}
+        hiddenGems={city.totalHiddenGems}
+        primaryLabel="Take me Here"
+        onPrimary={() => setDialogOpen(true)}
+        onCardClick={onClick}
+        testId={`card-city-${citySlug}`}
+      />
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
               <DialogHeader>
@@ -477,9 +297,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
               </div>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
-    </motion.div>
+    </>
   );
 }
 

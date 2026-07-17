@@ -410,7 +410,7 @@ export default function MyBookingsPage() {
               </TabsTrigger>
               {(purchasedPackages?.length ?? 0) > 0 && (
                 <TabsTrigger value="packages" data-testid="tab-packages">
-                  Packages ({purchasedPackages!.length})
+                  Trips ({purchasedPackages!.length})
                 </TabsTrigger>
               )}
             </TabsList>
@@ -454,7 +454,7 @@ export default function MyBookingsPage() {
             {/* Purchased expert packages — Phase B3 delivery surface */}
             <TabsContent value="packages" className="space-y-4">
               {(purchasedPackages ?? []).length === 0 ? (
-                <EmptyState message="No purchased packages" />
+                <EmptyState message="No purchased trips yet" />
               ) : (
                 (purchasedPackages ?? []).map((purchase) => (
                   <PurchasedPackageCard key={purchase.id} purchase={purchase} />

@@ -880,7 +880,7 @@ function CityCard({
   const expertsCount = city.expertsCount ?? 0;
   const countSegments = [
     eventsCount > 0 ? `🎆 ${eventsCount} ${eventsCount === 1 ? "event" : "events"}` : null,
-    packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "package" : "packages"}` : null,
+    packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "trip" : "trips"}` : null,
     expertsCount > 0 ? `🧭 ${expertsCount} local ${expertsCount === 1 ? "expert" : "experts"}` : null,
   ].filter((segment): segment is string => segment !== null);
 
@@ -1096,7 +1096,7 @@ function CityCard({
 
                 {packagesRow && (
                   <div className="grid grid-cols-[84px_1fr] gap-3 py-3" data-testid={`modal-row-packages-${city.id}`}>
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packages</dt>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Trips</dt>
                     <dd className="text-sm">{packagesRow}</dd>
                   </div>
                 )}
