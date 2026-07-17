@@ -68,9 +68,12 @@ interface ExpertCardProps {
   showServices?: boolean;
   experienceTypeFilter?: string;
   onNeighbourhoodClick?: (neighbourhood: string) => void;
+  /** Query string (starting with "?") appended to the View Profile link —
+   *  used to carry plan-handoff context (e.g. ?tripId=) into the detail page. */
+  detailQuery?: string;
 }
 
-export function ExpertCard({ expert, showServices = true, experienceTypeFilter, onNeighbourhoodClick }: ExpertCardProps) {
+export function ExpertCard({ expert, showServices = true, experienceTypeFilter, onNeighbourhoodClick, detailQuery }: ExpertCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [, setLocation] = useLocation();
   
@@ -305,7 +308,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
             <MessageCircle className="w-3 h-3" />
             Message
           </Button>
-          <Link href={`/experts/${expert.id}`} className="flex-1">
+          <Link href={`/experts/${expert.id}${detailQuery ?? ""}`} className="flex-1">
             <Button 
               size="sm" 
               className="w-full bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs"
