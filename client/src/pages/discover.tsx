@@ -914,7 +914,7 @@ export default function DiscoverPage() {
 
         {/* Smart Service Recommendations — surfaced in discover feed */}
         {user && (
-          <section className="container mx-auto px-4 max-w-6xl py-6">
+          <section className="container mx-auto px-4 max-w-6xl py-4">
             <SmartServiceRecommendations
               trips={trips}
               credits={creditsData?.balance}
