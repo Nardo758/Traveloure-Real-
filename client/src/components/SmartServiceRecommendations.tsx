@@ -272,43 +272,46 @@ export function SmartServiceRecommendations({
   const recs = buildRecs(trips, credits, user);
   if (recs.length === 0) return null;
 
+  // Compact strip: the recs sit between the Discover hero and the feed on
+  // every tab, so they get one slim row each (side-by-side on desktop) rather
+  // than full-height cards — enough to act on, not enough to push the content
+  // below the fold.
   return (
     <section>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2">
         <Sparkles className="w-4 h-4 text-[#FF385C]" />
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           Recommended for You
         </h2>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         {recs.map((rec) => (
           <Link key={rec.id} href={rec.href}>
             <div
-              className={`group flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer border-l-4 ${rec.accentColor}`}
+              className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-card hover:shadow-sm transition-all cursor-pointer border-l-4 ${rec.accentColor}`}
               data-testid={`service-rec-${rec.id}`}
             >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${rec.iconBg}`}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${rec.iconBg}`}>
                 {rec.icon}
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className="font-semibold text-sm text-foreground">{rec.title}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-sm text-foreground truncate">{rec.title}</p>
                   {rec.urgency === "now" && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400">
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 flex-shrink-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
                       Live
                     </span>
                   )}
                   {rec.urgency === "soon" && (
-                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">
+                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">
                       Action needed
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{rec.context}</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-1">{rec.description}</p>
+                <p className="text-xs text-muted-foreground truncate">{rec.context}</p>
               </div>
 
               <span className="flex items-center gap-1 text-xs font-semibold text-[#FF385C] group-hover:gap-2 transition-all flex-shrink-0">

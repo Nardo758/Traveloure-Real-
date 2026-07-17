@@ -16,7 +16,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Sparkles, ChevronRight } from "lucide-react";
+import { Sparkles, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -37,6 +37,10 @@ export interface UpsellCandidate {
   /** Present in the server payload; lets surfaces show the distinct
    *  paid-affiliate disclosure marker. */
   sourceType?: "platform_provider" | "affiliate";
+  /** Cart surface only: the concrete approved listing behind this candidate,
+   *  so the slot can add it to the cart in place instead of navigating away.
+   *  Price is display-only — the charge re-derives server-side at checkout. */
+  bookable?: { serviceId: string; serviceName: string | null; price: number | null } | null;
 }
 
 export interface SlotResult {
@@ -53,6 +57,16 @@ interface UpsellSlotProps {
   heading?: string;
   className?: string;
   "data-testid"?: string;
+  /**
+   * When provided, candidates that resolve to a concrete listing (`bookable`)
+   * render an in-place "Add" action calling this instead of navigating away —
+   * the cart surface uses it so recommendations stay add-to-cart, not a
+   * redirect out of the checkout flow. Candidates without a bookable listing
+   * keep the browse navigation.
+   */
+  onAddBookable?: (c: UpsellCandidate) => void;
+  /** Offering ids currently being added — shows a pending state on that row. */
+  addingOfferingId?: string | null;
   /**
    * Called once with the full slot result after the server responds.
    * Use `result.candidates` for what to render; use `result.suppressed` to
@@ -169,6 +183,8 @@ export function UpsellSlot({
   className,
   "data-testid": testId,
   onSlotData,
+  onAddBookable,
+  addingOfferingId,
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
   const slotDataFiredRef = useRef(false);
@@ -204,26 +220,71 @@ export function UpsellSlot({
           {label}
         </div>
         <div className="space-y-1.5">
-          {candidates.map((c) => (
-            <button
-              key={c.offeringId}
-              type="button"
-              onClick={() => handleExplore(c)}
-              className="w-full flex items-center gap-2 text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
-              data-testid={`upsell-candidate-${surface}-${c.offeringId}`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-foreground truncate">{c.displayName}</div>
-                {c.tagline && (
-                  <div className="text-[11px] text-muted-foreground truncate">{c.tagline}</div>
-                )}
-                {c.reason && (
-                  <div className="text-[10px] text-muted-foreground/70 italic truncate">{c.reason}</div>
-                )}
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            </button>
-          ))}
+          {candidates.map((c) => {
+            const addInPlace = Boolean(onAddBookable && c.bookable?.serviceId);
+            if (addInPlace) {
+              const priceNum = c.bookable?.price;
+              return (
+                <div
+                  key={c.offeringId}
+                  className="w-full flex items-center gap-2 text-left p-2 rounded-lg"
+                  data-testid={`upsell-candidate-${surface}-${c.offeringId}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-foreground truncate">
+                      {c.bookable?.serviceName || c.displayName}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {c.displayName}
+                      {typeof priceNum === "number" && Number.isFinite(priceNum) && (
+                        <> · ${priceNum.toFixed(0)}</>
+                      )}
+                    </div>
+                    {c.reason && (
+                      <div className="text-[10px] text-muted-foreground/70 italic truncate">{c.reason}</div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logClick(c.offeringId);
+                      onAddBookable?.(c);
+                    }}
+                    disabled={addingOfferingId === c.offeringId}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[12px] font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-60 flex-shrink-0"
+                    data-testid={`upsell-add-${surface}-${c.offeringId}`}
+                  >
+                    {addingOfferingId === c.offeringId ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    Add
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <button
+                key={c.offeringId}
+                type="button"
+                onClick={() => handleExplore(c)}
+                className="w-full flex items-center gap-2 text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                data-testid={`upsell-candidate-${surface}-${c.offeringId}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-foreground truncate">{c.displayName}</div>
+                  {c.tagline && (
+                    <div className="text-[11px] text-muted-foreground truncate">{c.tagline}</div>
+                  )}
+                  {c.reason && (
+                    <div className="text-[10px] text-muted-foreground/70 italic truncate">{c.reason}</div>
+                  )}
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

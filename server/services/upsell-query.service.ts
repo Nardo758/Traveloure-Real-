@@ -30,6 +30,12 @@ export type CoverageMatch = {
   verified: boolean;
   price: number | null;
   matchType: "same" | "adjacent" | "market" | "global";
+  /** The concrete approved listing behind this coverage row — lets high-intent
+   *  surfaces (cart) offer a real add-to-cart instead of a browse redirect.
+   *  Display-only on the client; the charge always re-derives from the catalog
+   *  at checkout (§14). */
+  serviceId: string | null;
+  serviceName: string | null;
 };
 
 export async function loadCoveringInventory(opts: {
@@ -74,6 +80,8 @@ export async function loadCoveringInventory(opts: {
     SELECT DISTINCT ON (c.category_key)
       c.category_key,
       cn.slug AS matched_slug,
+      ps.id AS service_id,
+      ps.service_name AS service_name,
       ps.price AS listing_price,
       (u.provider_verification_status = 'verified'
         AND (sc.requires_background_check = false OR u.background_check_confirmed = true)
@@ -114,6 +122,8 @@ export async function loadCoveringInventory(opts: {
       verified: Boolean(r.provider_verified),
       price: Number.isFinite(priceNum as number) ? priceNum : null,
       matchType,
+      serviceId: r.service_id ? String(r.service_id) : null,
+      serviceName: r.service_name ? String(r.service_name) : null,
     });
   }
   return map;
