@@ -215,6 +215,14 @@ export default function CartPage() {
   const [optimizationPreview, setOptimizationPreview] = useState<OptimizationPreview | null>(null);
   const [optimizationPayment, setOptimizationPayment] = useState<OptimizationPaymentState | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // Funnel PR2: quiet preview fetched on the CART step so the optimization's real
+  // value (savings %, plan score) is visible before the user reaches the optimize
+  // step. Same free endpoint the optimize step uses; the nudge renders only when
+  // the preview finds room to improve — real metrics only, never invented (§13).
+  const [cartNudge, setCartNudge] = useState<OptimizationPreview | null>(null);
+  // Funnel PR2: explicit "What are you planning?" — replaces the silent "general"
+  // context fallback. Drives the REAL fee tier (complexityTier) + preview metrics.
+  const [tripEventType, setTripEventType] = useState<string>("");
 
   // G6: Trip auto-creation state
   const [resolvingTrip, setResolvingTrip] = useState(false);
@@ -579,6 +587,50 @@ export default function CartPage() {
 
   const [creatingComparison, setCreatingComparison] = useState(false);
 
+  // Funnel PR2: best-effort nudge preview on the cart step (no toasts, no step
+  // change — silently absent on failure). Re-runs when the cart contents change.
+  useEffect(() => {
+    if (flowStep !== "cart") return;
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      setCartNudge(null);
+      return;
+    }
+    let eventType: string | undefined;
+    try {
+      const stored = sessionStorage.getItem("experienceContext");
+      if (stored) {
+        const ctx = JSON.parse(stored);
+        eventType = ctx.experienceType || ctx.eventType;
+      }
+    } catch { /* ignore */ }
+    const items = [
+      ...platformItems.map((item: any) => ({
+        serviceType: item.service?.serviceType || "sightseeing",
+        price: parseFloat(item.service?.price || "0"),
+        duration: 90,
+        dayNumber: 1,
+      })),
+      ...externalItems.map((item, i) => ({
+        serviceType: item.type || "activity",
+        price: item.price,
+        duration: 120,
+        dayNumber: Math.floor(i / 3) + 1,
+      })),
+    ];
+    let cancelled = false;
+    fetch("/api/optimization-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ items, eventType }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => { if (!cancelled) setCartNudge(p); })
+      .catch(() => { /* nudge is best-effort */ });
+    return () => { cancelled = true; };
+  }, [flowStep, cart?.items?.length, externalItems.length]);
+
   // ── G4: Call heuristic preview before full optimization ──────────────────
   const fetchPreview = async () => {
     if (previewLoading) return;
@@ -682,6 +734,15 @@ export default function CartPage() {
       setTripStartDate(trip.startDate || "");
       setTripEndDate(trip.endDate || "");
       setTripTravelers(trip.numberOfTravelers || 2);
+      // Prefill "What are you planning?" from an existing template context
+      // (wedding/proposal template flows keep their type); default "trip".
+      try {
+        const stored = sessionStorage.getItem("experienceContext");
+        const ctx = stored ? JSON.parse(stored) : {};
+        setTripEventType(ctx.experienceType || ctx.eventType || "trip");
+      } catch {
+        setTripEventType("trip");
+      }
 
       // Persist the resolved tripId back into the experience context so
       // downstream steps (createComparison, requestOptimizationPayment) pick it up
@@ -728,6 +789,9 @@ export default function CartPage() {
         ctx.startDate = tripStartDate;
         ctx.endDate = tripEndDate;
         ctx.travelers = tripTravelers;
+        // Funnel PR2: the explicit answer replaces the silent "general" fallback —
+        // this is what getFee/complexityTier price against downstream.
+        if (tripEventType) ctx.experienceType = tripEventType;
         sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
       } catch { /* ignore */ }
     } catch { /* non-fatal */ }
@@ -1175,6 +1239,33 @@ export default function CartPage() {
             {flowStep === "cart" && (
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-4">
+                  {/* Funnel PR2: optimization nudge — REAL preview metrics only (§13);
+                      hidden when the preview finds no room to improve, or when the
+                      optimizer is disabled (feeCents 0 without a free re-run). Fee is
+                      the config-resolved amount the preview returned. */}
+                  {cartNudge && !optimizationResult &&
+                    (cartNudge.estimatedSavingsPct > 0 || cartNudge.estimatedScheduleTighteningPct > 0) &&
+                    (cartNudge.feeCents > 0 || cartNudge.freeRerun) && (
+                    <button
+                      type="button"
+                      onClick={handleOptimizeClick}
+                      disabled={resolvingTrip || previewLoading}
+                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[#FF385C]/30 bg-[#FF385C]/5 px-4 py-2.5 text-left text-sm hover:bg-[#FF385C]/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
+                      data-testid="cart-optimize-nudge"
+                    >
+                      <Sparkles className="w-4 h-4 text-[#FF385C] flex-shrink-0" />
+                      <span className="font-medium">
+                        Preview: up to {cartNudge.estimatedSavingsPct}% savings
+                        {cartNudge.estimatedCostDelta < 0 && (
+                          <> (~{formatPrice(Math.abs(cartNudge.estimatedCostDelta / 100))} less)</>
+                        )}
+                      </span>
+                      <span className="text-muted-foreground">Plan score {cartNudge.currentScore}/100</span>
+                      <span className="ml-auto font-semibold text-[#FF385C] whitespace-nowrap">
+                        {cartNudge.freeRerun ? "Optimize free →" : `Optimize · ${formatPrice(cartNudge.feeCents / 100)} →`}
+                      </span>
+                    </button>
+                  )}
                   {(cart?.items || []).map((item) => {
                     const isContent = item.isContentItem || (item.contentId && item.contentType);
                     const contentDisplay = item.contentDisplay ?? (item.contentMeta ? {
@@ -1611,6 +1702,27 @@ export default function CartPage() {
                       />
                     </div>
 
+                    {/* Funnel PR2: explicit "What are you planning?" — values map to the
+                        real complexityTier set (wedding/corporate = complex; proposal/
+                        honeymoon/anniversary = standard; trip = simple), so the answer
+                        drives the actual optimization fee tier, not just a label. */}
+                    <div className="space-y-2">
+                      <Label htmlFor="trip-event-type">What are you planning?</Label>
+                      <Select value={tripEventType} onValueChange={setTripEventType}>
+                        <SelectTrigger id="trip-event-type" data-testid="select-trip-event-type">
+                          <SelectValue placeholder="What are you planning?" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="trip">A trip</SelectItem>
+                          <SelectItem value="wedding">A wedding</SelectItem>
+                          <SelectItem value="proposal">A proposal</SelectItem>
+                          <SelectItem value="honeymoon">A honeymoon</SelectItem>
+                          <SelectItem value="anniversary">An anniversary</SelectItem>
+                          <SelectItem value="corporate">A corporate event</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="trip-start">Start date</Label>
@@ -1870,7 +1982,12 @@ export default function CartPage() {
                           <p className="text-xs text-muted-foreground">Let an expert handle every detail</p>
                         </div>
                       </div>
-                      <Link href="/experts?role=travel_expert">
+                      {/* Funnel PR2: carry the plan's context to the expert page — the
+                          old bare link dropped the cart entirely (funnel audit). The
+                          experts page consumes ?destination= (filters + search);
+                          tripId rides along for the future full plan-handoff rail
+                          (filed follow-up: expert sees the cart snapshot). */}
+                      <Link href={`/experts?role=travel_expert${tripDestination ? `&destination=${encodeURIComponent(tripDestination)}` : ""}${resolvedTrip?.id ? `&tripId=${resolvedTrip.id}` : ""}`}>
                         <Button variant="outline" size="sm" className="w-full border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" data-testid="button-find-trip-planner">
                           Find a Trip Planner <ArrowLeft className="w-3.5 h-3.5 ml-1.5 rotate-180" />
                         </Button>
