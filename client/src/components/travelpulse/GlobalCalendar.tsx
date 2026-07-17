@@ -543,10 +543,14 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     grouped.eventsOnly.length === 0;
 
   return (
-    <div data-testid="global-calendar" className="after:block after:clear-both after:content-['']">
-      {/* Calendar container - only float when calendar is visible */}
+    // Two-column flex layout (content left, calendar right) replaces the old
+    // float-right + hand-sliced "rows" hack, which left an empty hole beside the
+    // calendar and rendered every section's first row at 2 cards wide even far
+    // below the calendar. The calendar keeps DOM order (first) but displays on
+    // the right via lg:order-2; it's sticky so the filter stays in reach.
+    <div data-testid="global-calendar" className="lg:flex lg:items-start lg:gap-6">
       {calendarVisible && (
-        <div className="hidden lg:block float-right ml-6 mb-4">
+        <div className="hidden lg:block shrink-0 lg:order-2 lg:sticky lg:top-4">
           <div className="flex justify-end mb-2">
             <Button
               variant="ghost"
@@ -602,6 +606,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         </div>
       )}
 
+      <div className="flex-1 min-w-0 lg:order-1">
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -876,6 +881,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
             </Card>
           )}
+      </div>
       </div>
     </div>
   );
@@ -1295,13 +1301,6 @@ function CitySection({
     return true;
   });
   
-  // When calendar is visible: 2 cards in first row (beside wider 648px calendar)
-  // When calendar is hidden: 4 cards in first row (full width)
-  const firstRowCount = calendarVisible ? 2 : 4;
-  const firstRowCities = uniqueCities.slice(0, firstRowCount);
-  const secondRowCities = uniqueCities.slice(firstRowCount, firstRowCount + 4);
-  const thirdRowCities = uniqueCities.slice(firstRowCount + 4, firstRowCount + 8);
-  
   return (
     <div>
       <div className="mb-3">
@@ -1313,30 +1312,18 @@ function CitySection({
         </h3>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      {/* First row: 2 cards when calendar visible (beside 648px calendar), 4 cards when hidden */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${calendarVisible ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 mb-4`}>
-        {firstRowCities.map((city) => (
+      {/* ONE uniform grid for ALL cities. The old hand-sliced three-row layout
+          (2 cards beside the floated calendar, then clear-both rows of 4) left an
+          empty hole beside the calendar, rendered every section's first row at 2
+          jumbo cards even far below the calendar, and silently DROPPED any city
+          past the tenth. The parent now handles the calendar as a proper flex
+          column, so sections just fill their own column: 2-up when the calendar
+          narrows the content column, 4-up at full width. */}
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${calendarVisible ? '' : 'lg:grid-cols-4'} gap-4`}>
+        {uniqueCities.map((city) => (
           <CityCard key={city.id} city={city} onCityClick={onCityClick} monthName={monthName} />
         ))}
       </div>
-      
-      {/* Second row: 4 cards wide, clear of the calendar */}
-      {secondRowCities.length > 0 && (
-        <div className="clear-both grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {secondRowCities.map((city) => (
-            <CityCard key={city.id} city={city} onCityClick={onCityClick} monthName={monthName} />
-          ))}
-        </div>
-      )}
-
-      {/* Third row: 4 more cards */}
-      {thirdRowCities.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          {thirdRowCities.map((city) => (
-            <CityCard key={city.id} city={city} onCityClick={onCityClick} monthName={monthName} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
