@@ -98,7 +98,7 @@ export function CityCard(props: CityCardProps) {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCardClick(); }
       } : undefined}
       aria-label={onCardClick ? `View ${cityName}` : undefined}
-      className={`flex flex-col rounded-2xl overflow-hidden border transition-all duration-200 bg-[var(--earn-card)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] hover:shadow-[0_4px_16px_rgba(30,58,95,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)] ${onCardClick ? "cursor-pointer" : ""}`}
+      className={`flex flex-col rounded-2xl overflow-hidden border transition-all duration-200 bg-[var(--earn-card)] border-primary hover:border-primary hover:shadow-[0_4px_16px_rgba(30,58,95,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${onCardClick ? "cursor-pointer" : ""}`}
       data-testid={testId}
     >
       {/* ── Photo (whole card is the click target; photo is presentational) ── */}
@@ -228,7 +228,7 @@ export function CityCard(props: CityCardProps) {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onPrimary?.(); }}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-[var(--earn-ink)] bg-transparent border border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] hover:text-[var(--earn-teal-ink)] rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)] focus-visible:ring-offset-1"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-primary bg-transparent border border-primary hover:bg-primary/10 rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             data-testid={testId ? `${testId}-primary` : undefined}
           >
             {variant === "pulse" ? <Plane className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}

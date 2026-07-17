@@ -276,22 +276,25 @@ export default function ExpertsPage() {
         keywords={seo.keywords}
         url={selectedRole ? `/experts?role=${selectedRole}` : "/experts"}
       />
-      {/* Hero Section — earn-page editorial treatment (flat, warm, teal-accented) */}
-      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-12">
+      {/* Hero — UNIFIED header band, shared pattern with /discover: centered navy
+          title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
+          row beneath (here: the role switcher). py-9 = the ratified middle size.
+          Change the pattern in BOTH places or not at all. */}
+      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
         <div className="container mx-auto px-4 max-w-6xl">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-7"
+            className="text-center mb-5"
           >
-            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-3">
+            <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-1.5">
               {selectedRole === "travel_expert"
                 ? "Work with a Trip Planner"
                 : selectedRole === "event_planner"
                 ? "Plan Your Event"
                 : "Find Your Perfect Local Expert"}
             </h1>
-            <p className="text-[15px] md:text-base text-[color:var(--earn-muted)] max-w-2xl mx-auto">
+            <p className="text-[15px] text-[color:var(--earn-muted)] max-w-2xl mx-auto">
               {selectedRole === "travel_expert"
                 ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
                 : selectedRole === "event_planner"
