@@ -1,5 +1,6 @@
-import { useParams, Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useParams, Link, useLocation, useSearch } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,9 +36,15 @@ import { useToast } from "@/hooks/use-toast";
 export default function ExpertDetailPage() {
   const { id: expertId } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const { isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
+
+  // Sprint 2.1 plan handoff: arriving from the cart/planner with ?tripId=
+  // unlocks a "share my trip plan" request — the expert-booking-request carries
+  // the tripId, which is what authorizes the expert's plan-snapshot view.
+  const handoffTripId = new URLSearchParams(searchString).get("tripId");
 
   // Fetch expert details
   const { data: expert, isLoading } = useQuery<any>({
@@ -79,6 +86,38 @@ export default function ExpertDetailPage() {
       return;
     }
     navigate(`/chat?expertId=${expertId}`);
+  };
+
+  // Sprint 2.1: request this expert's help WITH the trip plan attached. Creates
+  // a pending expert-booking-request (no payment moves here — amounts derive
+  // server-side from the service record, §14); the tripId on the booking is
+  // what lets the expert open the traveler's plan snapshot in their console.
+  const requestHelpMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/expert-booking-requests", {
+        tripId: handoffTripId,
+        serviceId: services[0]?.id,
+        notes: "Traveler shared their trip plan and requested help from your storefront.",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      toast({
+        title: "Request sent with your trip plan",
+        description: `${expert?.firstName || "The expert"} can now see your plan and will respond to your request.`,
+      });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Could not send request", description: "Please try again." });
+    },
+  });
+
+  const handleRequestHelpWithPlan = () => {
+    if (!isAuthenticated) {
+      openSignInModal();
+      return;
+    }
+    requestHelpMutation.mutate();
   };
 
   const handleScheduleConsultation = () => {
@@ -581,7 +620,27 @@ export default function ExpertDetailPage() {
                       )}
                     </div>
 
-                    <Button className="w-full" size="lg" onClick={handleContactExpert} data-testid="button-contact-expert">
+                    {/* Plan handoff: only when the traveler arrived with a trip
+                        (?tripId= from the cart) AND the expert has a bookable
+                        service to attach the request to. */}
+                    {handoffTripId && services.length > 0 && (
+                      <Button
+                        className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                        size="lg"
+                        onClick={handleRequestHelpWithPlan}
+                        disabled={requestHelpMutation.isPending || requestHelpMutation.isSuccess}
+                        data-testid="button-request-help-with-plan"
+                      >
+                        <Briefcase className="w-4 h-4 mr-2" />
+                        {requestHelpMutation.isSuccess
+                          ? "Request sent ✓"
+                          : requestHelpMutation.isPending
+                            ? "Sending..."
+                            : "Share my trip plan & request help"}
+                      </Button>
+                    )}
+
+                    <Button className="w-full" size="lg" variant={handoffTripId && services.length > 0 ? "outline" : "default"} onClick={handleContactExpert} data-testid="button-contact-expert">
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Contact Expert
                     </Button>

@@ -54,7 +54,7 @@ import { db } from "./db";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
-import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
+import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -5229,7 +5229,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
+
+      // Sprint-1 dislike loop (harvested from the UNMOUNTED trips.routes.ts copy —
+      // the router is imported but never app.use()d, so this inline registration
+      // is the live one; §9 route-shadow class): whitelisted "what to fix" chips
+      // from a re-run flow into TripPreferences.feedback, where
+      // selectVariantStrategy gives them top priority over inferred preferences.
+      const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
+      const dislikeFeedback: string[] = Array.isArray(rawFeedback)
+        ? rawFeedback.filter((f: unknown): f is string => typeof f === "string" && FEEDBACK_CHIPS.has(f)).slice(0, 4)
+        : [];
 
       const comparison = await db.query.itineraryComparisons.findFirst({
         where: eq(itineraryComparisons.id, comparisonId),
@@ -5314,6 +5324,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       res.json({ message: "Optimization started", status: "generating" });
 
+      // Build trip preferences for the adaptive variant strategy. Dislike
+      // feedback applies even without a trip row (it's an explicit instruction,
+      // not an inferred preference).
+      let tripPreferencesForGen: TripPreferences | undefined =
+        dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : undefined;
+      if (comparison.tripId) {
+        const tripRowForGen = await storage.getTrip(comparison.tripId);
+        if (tripRowForGen) {
+          const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
+          tripPreferencesForGen = {
+            eventType: tripRowForGen.eventType,
+            budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
+            travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
+            ...(dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : {}),
+          };
+        }
+      }
+
       generateOptimizedItineraries(
         comparisonId,
         userId,
@@ -5323,7 +5351,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         comparison.startDate || new Date().toISOString(),
         comparison.endDate || new Date().toISOString(),
         comparison.budget ? parseFloat(comparison.budget) : undefined,
-        comparison.travelers || 1
+        comparison.travelers || 1,
+        comparison.tripId || undefined,
+        undefined,
+        tripPreferencesForGen
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
