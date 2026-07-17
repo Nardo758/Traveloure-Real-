@@ -184,6 +184,11 @@ export interface TripPreferences {
   travelStyles?: string[];
   budget?: number | null;
   eventType?: string | null;
+  /** Sprint-1 dislike loop: structured "what to fix" chips from a re-run
+   *  (too_expensive | too_packed | wrong_areas | wrong_vibe). When present they
+   *  take priority over inferred preferences — an explicit complaint beats a
+   *  guess. Whitelisted at the API boundary. */
+  feedback?: string[];
 }
 
 interface VariantDescriptor {
@@ -200,6 +205,51 @@ export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescript
   const eventType = (prefs?.eventType || "").toLowerCase();
   const budget = prefs?.budget ?? null;
   const styles: string[] = (prefs?.travelStyles || []).map(s => s.toLowerCase());
+
+  // 0. Dislike-feedback signals (highest priority — an explicit "what to fix"
+  //    from a re-run beats every inferred preference). Each chip maps to a
+  //    primary descriptor; two chips → both primaries; one chip → its primary
+  //    plus the general Experience Enhancer as the contrasting take.
+  const feedback = (prefs?.feedback || []).map(f => f.toLowerCase());
+  if (feedback.length > 0) {
+    const feedbackPrimaries: Record<string, VariantDescriptor> = {
+      too_expensive: {
+        name: "Budget Optimizer",
+        goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+        strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+      },
+      too_packed: {
+        name: "Relaxed Pace",
+        goal: "Slow the itinerary down so each day breathes",
+        strategy: "Cap activities at three per day, group them by neighbourhood to cut transit, add afternoon rest windows, prefer later starts, and protect at least one fully unscheduled evening",
+      },
+      wrong_areas: {
+        name: "Neighbourhood Regroup",
+        goal: "Re-cluster the plan around better-fitting areas",
+        strategy: "Re-group activities by neighbourhood to avoid backtracking, shift the emphasis toward districts that match the traveler's stated styles, and drop legs that force long crosstown transit",
+      },
+      wrong_vibe: {
+        name: "Local Character",
+        goal: "Trade generic stops for distinctive local experiences",
+        strategy: "Replace generic or tourist-heavy items with distinctive local alternatives matched to the traveler's stated styles, add one standout cultural or culinary experience per day, and favour venues locals actually frequent",
+      },
+    };
+    const picked = feedback.filter(f => feedbackPrimaries[f]);
+    if (picked.length >= 2) {
+      return [feedbackPrimaries[picked[0]], feedbackPrimaries[picked[1]]];
+    }
+    if (picked.length === 1) {
+      return [
+        feedbackPrimaries[picked[0]],
+        {
+          name: "Experience Enhancer",
+          goal: "Maximise the variety and quality of experiences across the itinerary",
+          strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+        },
+      ];
+    }
+    // unknown chips only → fall through to the normal preference chain
+  }
 
   // 1. Event-type signals (highest priority)
   const romanticEvents = new Set(["honeymoon", "anniversary", "proposal", "wedding"]);

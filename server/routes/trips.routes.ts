@@ -778,7 +778,15 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
+
+      // Sprint-1 dislike loop: whitelisted "what to fix" chips from a re-run.
+      // They flow into TripPreferences.feedback, where selectVariantStrategy
+      // gives them top priority over inferred preferences.
+      const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
+      const dislikeFeedback: string[] = Array.isArray(rawFeedback)
+        ? rawFeedback.filter((f: unknown): f is string => typeof f === "string" && FEEDBACK_CHIPS.has(f)).slice(0, 4)
+        : [];
 
       const comparison = await storage.getItineraryComparison(comparisonId);
 
@@ -847,8 +855,11 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
 
       res.json({ message: "Optimization started", status: "generating" });
 
-      // Build trip preferences for adaptive variant strategy
-      let tripPreferencesForGen: TripPreferences | undefined;
+      // Build trip preferences for adaptive variant strategy. Dislike feedback
+      // applies even without a trip row (it's an explicit instruction, not an
+      // inferred preference).
+      let tripPreferencesForGen: TripPreferences | undefined =
+        dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : undefined;
       if (comparison.tripId) {
         const tripRowForGen = await storage.getTrip(comparison.tripId);
         if (tripRowForGen) {
@@ -857,6 +868,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
             eventType: tripRowForGen.eventType,
             budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
             travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
+            ...(dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : {}),
           };
         }
       }
