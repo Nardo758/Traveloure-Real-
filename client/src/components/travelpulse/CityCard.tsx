@@ -228,7 +228,7 @@ export function CityCard(props: CityCardProps) {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onPrimary?.(); }}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-primary bg-transparent border border-primary hover:bg-primary/10 rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-primary bg-primary/15 hover:bg-primary/25 rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             data-testid={testId ? `${testId}-primary` : undefined}
           >
             {variant === "pulse" ? <Plane className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
