@@ -41,7 +41,6 @@ import {
   HelpCircle,
   ChevronLeft,
   ChevronRight,
-  Wand2,
   Loader2,
   ShoppingCart,
   Plus,
@@ -104,16 +103,6 @@ type Service = {
 type DiscoverResult = {
   services: Service[];
   total: number;
-};
-
-type AIRecommendation = {
-  recommendedCategories: Array<{
-    slug: string;
-    name: string;
-    reason: string;
-  }>;
-  recommendedServices: Array<Service & { recommendationReason: string }>;
-  suggestions: string;
 };
 
 interface CartData {
@@ -669,27 +658,8 @@ export default function DiscoverPage() {
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
-  // AI Recommendations
-  const [showRecommendations, setShowRecommendations] = useState(false);
-  const [recommendations, setRecommendations] = useState<AIRecommendation | null>(null);
-
-  const recommendationsMutation = useMutation({
-    mutationFn: async (data: { query?: string; destination?: string }) => {
-      const res = await apiRequest("POST", "/api/discover/recommendations", data);
-      return res.json() as Promise<AIRecommendation>;
-    },
-    onSuccess: (data) => {
-      setRecommendations(data);
-      setShowRecommendations(true);
-    },
-  });
-
-  const getAIRecommendations = () => {
-    recommendationsMutation.mutate({
-      query: debouncedQuery || undefined,
-      destination: locationFilter || undefined,
-    });
-  };
+  // AI Recommendations panel removed (funnel PR1) — the AI sell lives in the cart's
+  // paid-optimization step now; POST /api/discover/recommendations stays server-side.
 
   // Guest cart fallback — used when auth has resolved to no user, or when the
   // server returns 401 (the definitive "not authenticated" signal).
@@ -843,6 +813,15 @@ export default function DiscoverPage() {
             row beneath. py-9 = the ratified middle between the old compact py-6
             single-row and the /experts py-12 masthead. Change the pattern in BOTH
             places or not at all. */}
+        {/* Funnel PR1: the whole header region (hero + tab bar) lives inside ONE Tabs
+            root so the tab bar renders INSIDE the hero band (Radix TabsList needs the
+            Tabs context). The sections between the hero and the TabsContents are
+            unaffected — Tabs is context, not layout. The hero carries the ONE
+            instructional ad (browse → add to cart → we assemble & optimize); the old
+            AI-Suggestions button, Plan-Experience button, and the standalone banner
+            are all removed — each duplicated another entry (funnel audit, Jul 17).
+            The AI sell lives in the cart's paid-optimization step instead. */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
@@ -861,43 +840,74 @@ export default function DiscoverPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="flex flex-col sm:flex-row gap-2 max-w-3xl mx-auto"
+              className="max-w-3xl mx-auto"
             >
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search services, destinations..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-10 text-foreground"
-                    data-testid="input-search"
-                  />
-                </div>
-                <Button
-                  className="h-10 px-5"
-                  onClick={getAIRecommendations}
-                  disabled={recommendationsMutation.isPending}
-                  data-testid="button-ai-suggestions"
-                >
-                  {recommendationsMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4 mr-2" />
-                  )}
-                  AI Suggestions
-                </Button>
-                <Link href="/experiences">
-                  <Button
-                    variant="outline"
-                    className="h-10 w-full sm:w-auto border-[color:var(--earn-border)] text-[color:var(--earn-teal-ink)] font-medium hover:bg-[var(--earn-teal-wash)]"
-                    data-testid="button-plan-experience"
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search services, destinations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10 text-foreground"
+                  data-testid="input-search"
+                />
+              </div>
+              {/* The instructional ad — tells users what to DO (the funnel's one pitch) */}
+              <button
+                type="button"
+                onClick={() => setActiveTab("services")}
+                className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                data-testid="cta-how-it-works"
+              >
+                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
+                <p className="text-sm truncate min-w-0">
+                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
+                  <span className="text-muted-foreground hidden sm:inline">
+                    Browse services and add them to your cart — we assemble &amp; optimize your trip.
+                  </span>
+                </p>
+                <span className="ml-auto flex items-center gap-1 text-sm font-semibold text-[color:var(--earn-teal-ink)] whitespace-nowrap">
+                  Browse services <ArrowRight className="w-4 h-4" />
+                </span>
+              </button>
+              {/* Tab bar — inside the hero band (merged header) */}
+              <div className="relative mt-4">
+                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                  <TabsTrigger
+                    value="travelpulse"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-travelpulse"
                   >
-                    <Compass className="w-4 h-4 mr-2" />
-                    Plan Experience
-                  </Button>
-                </Link>
-                {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}
-                {/* (absorb). Per-city happening-now section ships in Phase 3's location view. */}
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">By&nbsp;</span>Location
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="packages"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-packages"
+                  >
+                    <Award className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="events"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-events"
+                  >
+                    <Calendar className="w-4 h-4 mr-2" />
+                    By Date
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="services"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-services"
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
+                  </TabsTrigger>
+                </TabsList>
+                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+              </div>
             </motion.div>
           </div>
         </section>
@@ -1088,113 +1098,11 @@ export default function DiscoverPage() {
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
-            {/* Experiences cross-link — compacted from the old two-line banner to a slim
-                single row (it predates B4: the Ready Made Trips tab is back, so this is
-                just a pointer to curated experience templates, not the tab's stand-in). */}
-            <Link href="/experiences">
-              <div
-                className="mb-4 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 hover-elevate active-elevate-2 cursor-pointer"
-                data-testid="cta-trip-templates"
-              >
-                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
-                <p className="text-sm truncate min-w-0">
-                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
-                  <span className="text-muted-foreground hidden sm:inline">
-                    Build your trip from a curated template.
-                  </span>
-                </p>
-                <ArrowRight className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0 ml-auto" />
-              </div>
-            </Link>
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <div className="relative mb-8">
-                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                  <TabsTrigger
-                    value="travelpulse"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-travelpulse"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">By&nbsp;</span>Location
-                  </TabsTrigger>
-                  {/* Influencer Curated tab hidden in Phase 1a — returns in Phase 5 with real DB-backed content */}
-                  {/* Packages tab UN-HIDDEN in marketplace Phase B4 — the buy loop is closed end-to-end
-                      (B1 submit → admin approve → B2 gated detail + purchase → B3 buyer delivery), and the
-                      feed is server-gated (approved+published only) + content-redacted (teaser only). */}
-                  <TabsTrigger
-                    value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-packages"
-                  >
-                    <Award className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="events"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-events"
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    By Date
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="services"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-services"
-                  >
-                    <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
-                  </TabsTrigger>
-                </TabsList>
-                {/* Scroll hint for mobile */}
-                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
-              </div>
+            {/* Tab bar moved INTO the hero band (funnel PR1) — TabsContents below stay
+                inside the same Tabs root, which now opens above the hero. */}
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
-
-                {/* AI Recommendations Panel */}
-                {showRecommendations && recommendations && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 rounded-lg"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Wand2 className="w-5 h-5 text-purple-600" />
-                        <span className="font-medium text-purple-900 dark:text-purple-100">AI Recommendations</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowRecommendations(false)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <p className="text-sm text-purple-700 dark:text-purple-200 mb-3">
-                      {recommendations.suggestions}
-                    </p>
-                    {recommendations.recommendedCategories.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {recommendations.recommendedCategories.map((cat) => (
-                          <Badge
-                            key={cat.slug}
-                            variant="secondary"
-                            className="cursor-pointer"
-                            onClick={() => {
-                              const found = categories?.find(c => c.slug === cat.slug);
-                              if (found) setSelectedCategory(found.id);
-                            }}
-                          >
-                            {cat.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
 
                 {/* Quick Category Chips */}
                 {categories && categories.length > 0 && (
@@ -1744,9 +1652,9 @@ export default function DiscoverPage() {
               <TabsContent value="travelpulse">
                 <CityGrid selectedCityName={urlCity} />
               </TabsContent>
-            </Tabs>
           </div>
         </section>
+        </Tabs>
 
         {/* Still Undecided CTA */}
         <section className="py-16 bg-card border-t">
