@@ -60,8 +60,6 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useTrips } from "@/hooks/use-trips";
-import { SmartServiceRecommendations } from "@/components/SmartServiceRecommendations";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
@@ -467,12 +465,6 @@ export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
-  const { data: trips } = useTrips();
-  const { data: creditsData } = useQuery<{ balance: number }>({
-    queryKey: ["/api/credits/balance"],
-    enabled: !!user,
-  });
-  
   // Parse URL params for expert handoff context (useSearch makes this reactive to navigation)
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -911,17 +903,6 @@ export default function DiscoverPage() {
             </motion.div>
           </div>
         </section>
-
-        {/* Smart Service Recommendations — surfaced in discover feed */}
-        {user && (
-          <section className="container mx-auto px-4 max-w-6xl py-4">
-            <SmartServiceRecommendations
-              trips={trips}
-              credits={creditsData?.balance}
-              user={user}
-            />
-          </section>
-        )}
 
         {/* Expert Handoff Banner - shown when coming from quick-start */}
         {showExpertHandoffBanner && (
