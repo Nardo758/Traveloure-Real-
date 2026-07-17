@@ -6,9 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -34,18 +31,14 @@ import {
   Verified,
   Loader2,
   Sparkles,
-  Brain,
   Target,
   Home,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
 import { ExpertCard } from "@/components/expert-card";
 import { SEOHead } from "@/components/seo-head";
-import { ExpertMatchCard } from "@/components/expert-match-card";
-import { format } from "date-fns";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -94,20 +87,6 @@ const languages = [
   "German",
   "Italian",
 ];
-
-interface MatchedExpert {
-  expert: any;
-  score: number;
-  breakdown: {
-    destinationExpertise: number;
-    styleAlignment: number;
-    budgetFit: number;
-    experienceRelevance: number;
-    availability: number;
-  };
-  reasoning: string;
-  strengths: string[];
-}
 
 const roleLabels: Record<string, string> = {
   travel_expert: "Trip Planners",
@@ -158,9 +137,6 @@ export default function ExpertsPage() {
   }, [searchString, location, navigate]);
 
   const [favorites, setFavorites] = useState<string[]>([]);
-  
-  const [aiMatchOpen, setAiMatchOpen] = useState(false);
-  const [aiDestination, setAiDestination] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(searchString);
@@ -168,13 +144,11 @@ export default function ExpertsPage() {
     const topicParam = params.get("topic");
     const roleParam = params.get("role");
     if (destParam) {
-      setAiDestination(destParam);
       setSearchQuery(destParam);
       const match = destinations.find(d =>
         d.toLowerCase().startsWith(destParam.toLowerCase().split(",")[0])
       );
       if (match) setSelectedDestination(match);
-      setAiMatchOpen(true);
     }
     if (topicParam) {
       const topicToSpecialty: Record<string, string> = {
@@ -196,35 +170,6 @@ export default function ExpertsPage() {
       setNeighbourhoodQuery("");
     }
   }, [searchString]);
-  const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
-  const [aiEndDate, setAiEndDate] = useState<Date | undefined>(undefined);
-  const [aiAdults, setAiAdults] = useState("2");
-  const [aiKids, setAiKids] = useState("0");
-  const [matchedExperts, setMatchedExperts] = useState<MatchedExpert[]>([]);
-  const [showMatches, setShowMatches] = useState(false);
-
-  const matchExpertsMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/grok/match-experts", {
-        tripDetails: {
-          destination: aiDestination,
-          dates: {
-            start: aiStartDate?.toISOString(),
-            end: aiEndDate?.toISOString(),
-          },
-          travelers: (parseInt(aiAdults) || 2) + (parseInt(aiKids) || 0),
-          experienceType: selectedExperienceType || undefined,
-          preferences: [],
-        },
-      });
-      const data = await response.json() as { matches: MatchedExpert[] };
-      return data.matches || [];
-    },
-    onSuccess: (data) => {
-      setMatchedExperts(data);
-      setShowMatches(true);
-    },
-  });
 
   // Fetch experience types for filtering
   const { data: experienceTypes = [] } = useQuery<any[]>({
@@ -416,223 +361,6 @@ export default function ExpertsPage() {
             </div>
           </motion.div>
 
-        </div>
-      </section>
-
-      {/* AI Expert Matching Section */}
-      <section className="py-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10 border-b">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <Collapsible open={aiMatchOpen} onOpenChange={setAiMatchOpen}>
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className="w-full flex items-center justify-between p-4 h-auto"
-                data-testid="button-toggle-ai-match"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500">
-                    <Brain className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-semibold text-[#111827] dark:text-white flex items-center gap-2">
-                      AI Expert Matching
-                      <Badge variant="secondary" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px]">
-                        Powered by Grok
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-[#6B7280]">
-                      Let our AI find the perfect experts based on your specific trip details
-                    </p>
-                  </div>
-                </div>
-                {aiMatchOpen ? (
-                  <ChevronUp className="w-5 h-5 text-[#6B7280]" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-[#6B7280]" />
-                )}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Card className="mt-3 border-purple-200 dark:border-purple-800">
-                <CardContent className="p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Where are you going?</Label>
-                      <Input
-                        placeholder="e.g., Tokyo, Japan"
-                        value={aiDestination}
-                        onChange={(e) => setAiDestination(e.target.value)}
-                        className="mt-1"
-                        data-testid="input-ai-destination"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Start Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full mt-1 justify-start text-left font-normal",
-                              !aiStartDate && "text-muted-foreground"
-                            )}
-                            data-testid="button-ai-start-date"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {aiStartDate ? format(aiStartDate, "MMM d, yyyy") : "Select date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={aiStartDate}
-                            onSelect={setAiStartDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">End Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full mt-1 justify-start text-left font-normal",
-                              !aiEndDate && "text-muted-foreground"
-                            )}
-                            data-testid="button-ai-end-date"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {aiEndDate ? format(aiEndDate, "MMM d, yyyy") : "Select date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={aiEndDate}
-                            onSelect={setAiEndDate}
-                            disabled={(date) => aiStartDate ? date < aiStartDate : false}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Adults & Kids</Label>
-                      <div className="flex gap-2 mt-1">
-                        <Select value={aiAdults} onValueChange={setAiAdults}>
-                          <SelectTrigger data-testid="select-ai-adults" className="flex-1">
-                            <Users className="w-4 h-4 mr-2" />
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                              <SelectItem key={n} value={String(n)}>
-                                {n} {n === 1 ? "adult" : "adults"}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={aiKids} onValueChange={setAiKids}>
-                          <SelectTrigger data-testid="select-ai-kids" className="flex-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                              <SelectItem key={n} value={String(n)}>
-                                {n} {n === 1 ? "kid" : "kids"}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-4">
-                    <Button
-                      onClick={() => matchExpertsMutation.mutate()}
-                      disabled={!aiDestination || matchExpertsMutation.isPending}
-                      className="bg-purple-600 text-white gap-2"
-                      data-testid="button-find-ai-matches"
-                    >
-                      {matchExpertsMutation.isPending ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Finding Matches...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          Find My Perfect Experts
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {matchExpertsMutation.isError && (
-                <Card className="mt-3 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <p className="text-sm text-red-700 dark:text-red-400">
-                      Unable to find expert matches. Please try again.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => matchExpertsMutation.mutate()}
-                      className="text-xs"
-                      data-testid="button-retry-match"
-                    >
-                      Try Again
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {showMatches && matchedExperts.length > 0 && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Target className="w-4 h-4 text-purple-600" />
-                      <span className="font-medium text-sm">
-                        {matchedExperts.length} AI-Matched Experts for {aiDestination}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowMatches(false)}
-                      className="text-xs"
-                    >
-                      Show All Experts
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {matchedExperts.map((match, idx) => (
-                      <motion.div
-                        key={match.expert.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.05 }}
-                      >
-                        <ExpertMatchCard
-                          expert={match.expert}
-                          matchScore={match.score}
-                          matchBreakdown={match.breakdown}
-                          matchReasons={[match.reasoning]}
-                          matchStrengths={match.strengths}
-                          showDetails={idx < 3}
-                        />
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
         </div>
       </section>
 
