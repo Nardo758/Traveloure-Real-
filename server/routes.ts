@@ -4805,12 +4805,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
-      
-      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug });
-      
-      if (!serviceId && !customVenueId) {
-        return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
+      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta } = req.body;
+
+      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, contentType, contentId, experienceSlug: rawSlug });
+
+      // Funnel consistency: Discover-feed CONTENT items (gems/hotels/activities/
+      // events) add straight to the cart like services — the trip/experience
+      // question is asked once, in the cart's Trip-details step, not at add-time.
+      // Storage + cart UI already supported content rows; this is the missing
+      // write path. contentMeta is DISPLAY-ONLY and whitelisted to string fields —
+      // no price is accepted (§14: a client-supplied price must never reach a charge).
+      const CART_CONTENT_TYPES = new Set(["gem", "hotel", "activity", "event", "neighborhood"]);
+      const isContentAdd =
+        typeof contentType === "string" && CART_CONTENT_TYPES.has(contentType) &&
+        typeof contentId === "string" && contentId.length > 0 && contentId.length <= 200;
+
+      if (!serviceId && !customVenueId && !isContentAdd) {
+        return res.status(400).json({ message: "Service ID, Custom Venue ID, or content item is required" });
       }
       
       // Verify service or custom venue exists
@@ -4835,10 +4846,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       
       // Resolve slug aliases
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
-      
+
+      // Whitelist display metadata for content items (strings only, capped).
+      let safeContentMeta: Record<string, string> | undefined;
+      if (isContentAdd && contentMeta && typeof contentMeta === "object") {
+        safeContentMeta = {};
+        for (const key of ["name", "description", "city", "imageUrl"]) {
+          const v = (contentMeta as Record<string, unknown>)[key];
+          if (typeof v === "string" && v.length > 0) safeContentMeta[key] = v.slice(0, 500);
+        }
+      }
+
       const item = await storage.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
+        ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
         quantity: quantity || 1,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
