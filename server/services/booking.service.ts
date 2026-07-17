@@ -301,7 +301,18 @@ class BookingService {
           }
           finalPrice = dbPrice;
         } else {
-          finalPrice = item.price;
+          // AI-generated item — no catalog price exists, so the client's number is
+          // the only source (§14 residual, filed). Sanitize it hard: a negative or
+          // non-finite "price" would REDUCE the PaymentIntent total for the whole
+          // cart (pay less for the real items), so clamp to [0, 100000]. This is
+          // the buyer's own charge — no payout derives from it. money-derive-ok
+          const rawPrice = Number(item.price);
+          finalPrice = Number.isFinite(rawPrice) ? Math.min(Math.max(rawPrice, 0), 100000) : 0;
+          if (finalPrice !== item.price) {
+            console.warn(
+              `[BookingService] Sanitized AI-item price for "${item.title}": client sent ${item.price}, using ${finalPrice}.`
+            );
+          }
         }
 
         // Calculate fees
