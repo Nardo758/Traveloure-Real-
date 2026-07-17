@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -8,9 +7,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -20,14 +17,6 @@ import {
   Plus,
   Loader2,
   Plane,
-  Heart,
-  Gem,
-  Moon,
-  Cake,
-  Building2,
-  Users,
-  TreePine,
-  Briefcase,
   LogIn,
 } from "lucide-react";
 
@@ -41,10 +30,12 @@ interface Trip {
 }
 
 interface ExperienceItem {
+  /** Stable content id when the feed has one; falls back to a title slug. */
+  id?: string;
   city?: string;
   title: string;
   description?: string;
-  type: "gem" | "neighborhood" | "hotel" | "activity" | "event";
+  type: "gem" | "neighborhood" | "hotel" | "activity" | "event" | "recommendation";
   scheduledDate?: string | null;
 }
 
@@ -54,29 +45,6 @@ interface AddToExperienceDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const experienceTemplates = [
-  { slug: "travel", name: "Travel", icon: "Plane" },
-  { slug: "wedding", name: "Wedding", icon: "Heart" },
-  { slug: "proposal", name: "Proposal", icon: "Gem" },
-  { slug: "date-night", name: "Date Night", icon: "Moon" },
-  { slug: "birthday", name: "Birthday", icon: "Cake" },
-  { slug: "corporate", name: "Corporate Event", icon: "Briefcase" },
-  { slug: "retreat", name: "Retreat", icon: "TreePine" },
-  { slug: "reunion", name: "Reunion", icon: "Users" },
-];
-
-const templateIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  Plane,
-  Heart,
-  Gem,
-  Moon,
-  Cake,
-  Building2,
-  Users,
-  TreePine,
-  Briefcase,
-};
-
 export function AddToExperienceDialog({
   item,
   open,
@@ -85,7 +53,47 @@ export function AddToExperienceDialog({
   const { user, isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
-  const [selectedTab, setSelectedTab] = useState<"trips" | "templates">("trips");
+
+  // Funnel consistency fix: feed content items add straight to the CART (the one
+  // planning pipeline) — the trip/experience question is asked once, in the
+  // cart's Trip-details step, not at add-time. contentMeta is display-only;
+  // no price field is sent (§14 — a client price must never reach a charge).
+  const addToCartMutation = useMutation({
+    mutationFn: async () => {
+      if (!item) return;
+      const contentId =
+        item.id ||
+        item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120) ||
+        "feed-item";
+      const res = await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          contentType: item.type === "recommendation" ? "activity" : item.type,
+          contentId,
+          contentMeta: {
+            name: item.title,
+            description: item.description || undefined,
+            city: item.city || undefined,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to add to cart");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({
+        title: "Added to your trip cart",
+        description: `"${item?.title}" is in your cart — plan & optimize whenever you're ready.`,
+      });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Could not add to cart", description: "Please try again." });
+    },
+  });
 
   const { data: trips, isLoading: tripsLoading } = useQuery<Trip[]>({
     queryKey: ["/api/trips"],
@@ -141,16 +149,6 @@ export function AddToExperienceDialog({
     },
   });
 
-  const addToExperienceMutation = useMutation({
-    mutationFn: async (templateSlug: string) => {
-      if (!item) return;
-      // Navigate to experience builder with the item pre-selected
-      const destination = item.city || "destination";
-      const templateUrl = `/experiences/${templateSlug}/new?destination=${encodeURIComponent(destination)}&source=${encodeURIComponent(item.title)}`;
-      window.location.href = templateUrl;
-    },
-  });
-
   const activeTripStatuses = ["planning", "draft", "confirmed"];
   const activeTrips = trips?.filter((t) => activeTripStatuses.includes(t.status)) || [];
 
@@ -194,23 +192,46 @@ export function AddToExperienceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md" data-testid="dialog-add-to-experience">
         <DialogHeader>
-          <DialogTitle>Add to a Trip or Experience</DialogTitle>
+          <DialogTitle>Add to your plan</DialogTitle>
           <DialogDescription>
-            Choose where to add "{item?.title}".
+            Where should "{item?.title}" go?
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs
-          value={selectedTab}
-          onValueChange={(v) => setSelectedTab(v as "trips" | "templates")}
-          className="w-full"
+        {/* Primary: straight into the trip cart — same as adding a service. The
+            trip/experience question is asked once, in the cart's Trip-details
+            step ("What are you planning?"), never at add-time. The old
+            "Experience Type" tab (a forced template choice that redirected into
+            the builder) is removed — funnel doctrine, Jul 17. */}
+        <button
+          type="button"
+          onClick={() => addToCartMutation.mutate()}
+          disabled={addToCartMutation.isPending}
+          className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors text-left"
+          data-testid="button-add-content-to-cart"
         >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="trips">My Plans</TabsTrigger>
-            <TabsTrigger value="templates">Experience Type</TabsTrigger>
-          </TabsList>
+          <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+            {addToCartMutation.isPending ? (
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            ) : (
+              <Plus className="w-5 h-5 text-primary" />
+            )}
+          </div>
+          <div>
+            <p className="font-semibold text-sm">Add to my trip cart</p>
+            <p className="text-xs text-muted-foreground">
+              Plan &amp; optimize whenever you're ready — nothing to set up now
+            </p>
+          </div>
+        </button>
 
-          <TabsContent value="trips" className="space-y-3">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex-1 border-t" />
+          or add to a specific trip
+          <div className="flex-1 border-t" />
+        </div>
+
+        <div className="space-y-3">
             {tripsLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -266,38 +287,7 @@ export function AddToExperienceDialog({
                 ))}
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="templates" className="space-y-3">
-            <p className="text-xs text-muted-foreground mb-3">
-              Create a new experience based on a template
-            </p>
-            <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-              {experienceTemplates.map((template) => {
-                const IconComponent =
-                  templateIcons[template.icon] || Plane;
-                return (
-                  <button
-                    key={template.slug}
-                    className="flex flex-col items-center gap-2 p-3 rounded-lg border hover:border-primary hover:bg-primary/5 transition-colors"
-                    onClick={() =>
-                      addToExperienceMutation.mutate(template.slug)
-                    }
-                    disabled={addToExperienceMutation.isPending}
-                    data-testid={`button-template-${template.slug}`}
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                      <IconComponent className="w-5 h-5 text-foreground" />
-                    </div>
-                    <span className="text-xs font-medium text-center">
-                      {template.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </TabsContent>
-        </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   );
