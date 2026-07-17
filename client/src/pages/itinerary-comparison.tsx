@@ -144,6 +144,7 @@ interface Variant {
 interface Comparison {
   id: string;
   userId: string;
+  tripId?: string | null;
   title: string;
   destination: string;
   startDate: string;
@@ -394,6 +395,18 @@ export default function ItineraryComparisonPage() {
   const [modalVariant, setModalVariant] = useState<Variant | null>(null);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
+  // Sprint-1 dislike loop: structured "what to fix" chips. They feed the re-run
+  // (strategy-mapped server-side) AND ride the expert request's metadata so a
+  // human sees exactly what was rejected.
+  const [feedbackChips, setFeedbackChips] = useState<string[]>([]);
+  const FEEDBACK_OPTIONS: { id: string; label: string }[] = [
+    { id: "too_expensive", label: "Too expensive" },
+    { id: "too_packed", label: "Too packed" },
+    { id: "wrong_areas", label: "Wrong areas" },
+    { id: "wrong_vibe", label: "Wrong vibe" },
+  ];
+  const toggleFeedbackChip = (chipId: string) =>
+    setFeedbackChips((prev) => prev.includes(chipId) ? prev.filter((c) => c !== chipId) : [...prev, chipId]);
   // G7: auto-apply state
   const [autoApplying, setAutoApplying] = useState(false);
   const [autoApplied, setAutoApplied] = useState(false);
@@ -418,7 +431,7 @@ export default function ItineraryComparisonPage() {
   };
 
   const expertBookingMutation = useMutation({
-    mutationFn: async (data: { tripId: string; notes: string }) => {
+    mutationFn: async (data: { tripId?: string; notes: string; bookingMetadata?: Record<string, unknown> }) => {
       return apiRequest("POST", "/api/expert-booking-requests", data);
     },
     onSuccess: () => {
@@ -439,9 +452,28 @@ export default function ItineraryComparisonPage() {
   });
 
   const handleExpertBookingRequest = () => {
-    if (id) {
-      expertBookingMutation.mutate({ tripId: id, notes: expertNotes });
-    }
+    if (!id) return;
+    // BUG FIX (Sprint 1): this previously sent the COMPARISON id as tripId —
+    // the expert request carried a bogus trip reference. Send the comparison's
+    // real tripId, and attach the comparison + rejected-variant context in
+    // bookingMetadata so the expert sees exactly what the AI produced and what
+    // the traveler disliked.
+    const chipLabels = feedbackChips
+      .map((c) => FEEDBACK_OPTIONS.find((o) => o.id === c)?.label)
+      .filter(Boolean)
+      .join(", ");
+    const notesWithContext = chipLabels
+      ? `${expertNotes ? `${expertNotes}\n\n` : ""}[Traveler feedback on the AI plan: ${chipLabels}]`
+      : expertNotes;
+    expertBookingMutation.mutate({
+      tripId: data?.comparison?.tripId || undefined,
+      notes: notesWithContext,
+      bookingMetadata: {
+        comparisonId: id,
+        selectedVariantId: selectedVariantId || data?.comparison?.selectedVariantId || null,
+        dislikeFeedback: feedbackChips,
+      },
+    });
   };
 
   const { data, isLoading, refetch } = useQuery<ComparisonData>({
@@ -503,10 +535,20 @@ export default function ItineraryComparisonPage() {
     mutationFn: async () => {
       const stored = sessionStorage.getItem(`comparison_baseline_${id}`);
       const baselineItems = stored ? JSON.parse(stored) : [];
-      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, { baselineItems });
+      // Sprint-1 dislike loop: the selected chips steer the re-run — the server
+      // maps them onto the variant-strategy matrix with top priority.
+      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, {
+        baselineItems,
+        ...(feedbackChips.length > 0 ? { feedback: feedbackChips } : {}),
+      });
     },
     onSuccess: () => {
-      toast({ title: "Regenerating alternatives", description: "AI is creating optimized versions..." });
+      toast({
+        title: "Regenerating alternatives",
+        description: feedbackChips.length > 0
+          ? "AI is re-optimizing around your feedback..."
+          : "AI is creating optimized versions...",
+      });
       refetch();
     },
     onError: () => {
@@ -1533,6 +1575,74 @@ export default function ItineraryComparisonPage() {
                         <ShoppingCart className="mr-2 h-4 w-4" />
                       )}
                       Apply to Cart & Checkout
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Sprint-1 dislike loop: the four escape hatches, presented as a set.
+                Chips steer a strategy-mapped re-run (free within 24h of your
+                optimization) and ride the expert request so a human sees what was
+                rejected. Keeping the original is always free — nothing applies to
+                the cart unless explicitly chosen above. */}
+            {!isGenerating && (
+              <Card className="border-dashed" data-testid="dislike-loop-panel">
+                <CardContent className="p-5 space-y-3">
+                  <div>
+                    <h3 className="font-semibold text-sm">Not happy with these plans?</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Tell the optimizer what to fix and re-run it — free within 24 hours of your
+                      optimization — or hand the plan to a human expert. Your original plan stays
+                      untouched unless you apply a variant.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {FEEDBACK_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => toggleFeedbackChip(opt.id)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                          feedbackChips.includes(opt.id)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                        data-testid={`feedback-chip-${opt.id}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => retryMutation.mutate()}
+                      disabled={retryMutation.isPending || feedbackChips.length === 0}
+                      data-testid="button-rerun-with-feedback"
+                    >
+                      {retryMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Re-run with these fixes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowExpertDialog(true)}
+                      data-testid="button-dislike-expert"
+                    >
+                      Send to an expert
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setLocation("/cart")}
+                      data-testid="button-keep-original"
+                    >
+                      Keep my original plan
                     </Button>
                   </div>
                 </CardContent>
