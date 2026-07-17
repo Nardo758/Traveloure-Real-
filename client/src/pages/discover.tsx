@@ -945,23 +945,6 @@ export default function DiscoverPage() {
         url="/discover"
       />
       <div className="min-h-screen bg-background">
-        {/* Back navigation */}
-        <div className="container mx-auto px-4 max-w-6xl pt-4">
-          <button
-            onClick={() => {
-              if (window.history.length > 1) {
-                window.history.back();
-              } else {
-                setLocation("/");
-              }
-            }}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            data-testid="btn-back"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </button>
-        </div>
 
         {/* Hero — compact earn-style band: title left, search + actions in one row.
             Was a three-block centered masthead (eyebrow chip + big title + boxed
