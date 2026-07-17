@@ -91,16 +91,18 @@ export function CityCard(props: CityCardProps) {
 
   return (
     <div
-      className="flex flex-col rounded-2xl overflow-hidden border transition-all duration-200 bg-[var(--earn-card)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] hover:shadow-[0_4px_16px_rgba(30,58,95,0.08)]"
+      onClick={onCardClick}
+      role={onCardClick ? "button" : undefined}
+      tabIndex={onCardClick ? 0 : undefined}
+      onKeyDown={onCardClick ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCardClick(); }
+      } : undefined}
+      aria-label={onCardClick ? `View ${cityName}` : undefined}
+      className={`flex flex-col rounded-2xl overflow-hidden border transition-all duration-200 bg-[var(--earn-card)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] hover:shadow-[0_4px_16px_rgba(30,58,95,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)] ${onCardClick ? "cursor-pointer" : ""}`}
       data-testid={testId}
     >
-      {/* ── Photo ── */}
-      <button
-        type="button"
-        onClick={onCardClick}
-        className="relative h-40 w-full overflow-hidden group text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)]"
-        aria-label={`View ${cityName}`}
-      >
+      {/* ── Photo (whole card is the click target; photo is presentational) ── */}
+      <div className="relative h-40 w-full overflow-hidden group">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -149,7 +151,7 @@ export function CityCard(props: CityCardProps) {
           <h3 className="text-lg font-bold text-white leading-tight [text-shadow:0_1px_6px_rgba(0,0,0,0.35)]">{cityName}</h3>
           <span className="text-xs text-white/85 flex items-center gap-1"><MapPin className="w-3 h-3" />{country}</span>
         </div>
-      </button>
+      </div>
 
       {/* ── Body ── */}
       <div className="p-3.5 flex flex-col flex-1">
@@ -220,12 +222,13 @@ export function CityCard(props: CityCardProps) {
           </div>
         )}
 
-        {/* actions — one solid-teal primary */}
+        {/* actions — neutral outline primary; the whole card handles navigation, so
+            these are distinct actions and stopPropagation to not double-fire card click */}
         <div className="flex items-center gap-2 mt-3">
           <button
             type="button"
-            onClick={onPrimary}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-white bg-[var(--earn-teal)] hover:bg-[var(--earn-teal-ink)] rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)] focus-visible:ring-offset-1"
+            onClick={(e) => { e.stopPropagation(); onPrimary?.(); }}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-[var(--earn-ink)] bg-transparent border border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] hover:text-[var(--earn-teal-ink)] rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)] focus-visible:ring-offset-1"
             data-testid={testId ? `${testId}-primary` : undefined}
           >
             {variant === "pulse" ? <Plane className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
@@ -234,8 +237,8 @@ export function CityCard(props: CityCardProps) {
           {secondaryLabel && onSecondary && (
             <button
               type="button"
-              onClick={onSecondary}
-              className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-[var(--earn-teal)] bg-[var(--earn-card)] border border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)]"
+              onClick={(e) => { e.stopPropagation(); onSecondary(); }}
+              className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-[var(--earn-muted)] bg-[var(--earn-card)] border border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)] hover:text-[var(--earn-teal-ink)] rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)]"
               data-testid={testId ? `${testId}-secondary` : undefined}
             >
               <Info className="w-3.5 h-3.5" />{secondaryLabel}
@@ -244,7 +247,7 @@ export function CityCard(props: CityCardProps) {
           {onAsk && (
             <button
               type="button"
-              onClick={onAsk}
+              onClick={(e) => { e.stopPropagation(); onAsk(); }}
               className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--earn-teal-ink)] bg-[color:var(--earn-teal-wash)] hover:brightness-95 rounded-lg px-2.5 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)]"
               data-testid={testId ? `${testId}-ask` : undefined}
               aria-label="Ask an expert"
