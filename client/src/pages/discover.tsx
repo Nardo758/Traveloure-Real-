@@ -1227,24 +1227,22 @@ export default function DiscoverPage() {
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
-            {/* Trip Packages CTA — replaces the retired Packages tab per spec §10 / decision #2 */}
+            {/* Experiences cross-link — compacted from the old two-line banner to a slim
+                single row (it predates B4: the Ready Made Trips tab is back, so this is
+                just a pointer to curated experience templates, not the tab's stand-in). */}
             <Link href="/experiences">
               <div
-                className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 to-amber-500/5 px-5 py-4 hover-elevate active-elevate-2 cursor-pointer"
+                className="mb-4 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 hover-elevate active-elevate-2 cursor-pointer"
                 data-testid="cta-trip-templates"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Globe className="w-5 h-5 text-primary flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm sm:text-base truncate">
-                      Looking for trip packages?
-                    </p>
-                    <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                      Build a trip from a curated template — wedding, proposal, getaway, and more.
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-5 h-5 text-primary flex-shrink-0" />
+                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
+                <p className="text-sm truncate min-w-0">
+                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
+                  <span className="text-muted-foreground hidden sm:inline">
+                    Build your trip from a curated template.
+                  </span>
+                </p>
+                <ArrowRight className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0 ml-auto" />
               </div>
             </Link>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1256,7 +1254,7 @@ export default function DiscoverPage() {
                     data-testid="tab-travelpulse"
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">By </span>Location
+                    <span className="hidden sm:inline">By&nbsp;</span>Location
                   </TabsTrigger>
                   {/* Influencer Curated tab hidden in Phase 1a — returns in Phase 5 with real DB-backed content */}
                   {/* Packages tab UN-HIDDEN in marketplace Phase B4 — the buy loop is closed end-to-end
@@ -1284,7 +1282,7 @@ export default function DiscoverPage() {
                     data-testid="tab-services"
                   >
                     <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse </span>Services
+                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
                   </TabsTrigger>
                 </TabsList>
                 {/* Scroll hint for mobile */}
