@@ -98,7 +98,7 @@ export function CityCard(props: CityCardProps) {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCardClick(); }
       } : undefined}
       aria-label={onCardClick ? `View ${cityName}` : undefined}
-      className={`flex flex-col rounded-2xl overflow-hidden border transition-all duration-200 bg-[var(--earn-card)] border-primary hover:border-primary hover:shadow-[0_4px_16px_rgba(30,58,95,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${onCardClick ? "cursor-pointer" : ""}`}
+      className={`flex flex-col rounded-2xl overflow-hidden border transition-all duration-200 bg-[var(--earn-card)] border-[color:var(--earn-border)] hover:border-primary hover:shadow-[0_4px_16px_rgba(30,58,95,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${onCardClick ? "cursor-pointer" : ""}`}
       data-testid={testId}
     >
       {/* ── Photo (whole card is the click target; photo is presentational) ── */}
