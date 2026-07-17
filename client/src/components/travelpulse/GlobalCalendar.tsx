@@ -942,27 +942,29 @@ function CityCard({
         className="cursor-pointer hover-elevate flex-1"
         onClick={() => onCityClick?.(city.cityName, city.country)}
       >
-        {city.heroImage && (
-          <div className="h-32 relative">
+        {/* Photo block ALWAYS renders at h-32 (placeholder when the city has no
+            heroImage) so every card shares the same skeleton — no-image cards used
+            to skip this block entirely and render ~130px shorter than their
+            neighbors (the "cards are all different sizes" bug). */}
+        <div className="h-32 relative">
+          {city.heroImage ? (
             <img
               src={city.heroImage}
               alt={city.cityName}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            <div className="absolute bottom-2 left-3 right-3">
-              <h4 className="font-semibold text-white">{city.cityName}</h4>
-              <p className="text-xs text-white/80">{city.country}</p>
-            </div>
-          </div>
-        )}
-        <CardContent className={city.heroImage ? "p-3" : "p-4"}>
-          {!city.heroImage && (
-            <div className="mb-2">
-              <h4 className="font-semibold">{city.cityName}</h4>
-              <p className="text-xs text-muted-foreground">{city.country}</p>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/60">
+              <MapPin className="h-8 w-8 text-muted-foreground/40" />
             </div>
           )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute bottom-2 left-3 right-3">
+            <h4 className="font-semibold text-white">{city.cityName}</h4>
+            <p className="text-xs text-white/80">{city.country}</p>
+          </div>
+        </div>
+        <CardContent className="p-3">
 
           {/* Season suitability score (prominent guidance) */}
           {city.seasonalRating && seasonScore > 0 && (
@@ -974,7 +976,7 @@ function CityCard({
                 </div>
                 <span className="text-xs text-muted-foreground font-medium">Ideal month</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{seasonGuidance}</p>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{seasonGuidance}</p>
             </div>
           )}
 
