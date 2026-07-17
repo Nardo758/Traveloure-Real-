@@ -230,6 +230,9 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [selectedWeek, setSelectedWeek] = useState<number | undefined>(undefined);
   const [selectedDay, setSelectedDay] = useState<number | undefined>(undefined);
   const [calendarVisible, setCalendarVisible] = useState(true);
+  // Events & Festivals: expandable list — the old slice(0, 6) silently dropped
+  // the rest with no indication anything was cut (the "no silent caps" rule).
+  const [showAllEvents, setShowAllEvents] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery<GlobalCalendarResponse>({
     queryKey: [`/api/travelpulse/global-calendar?month=${selectedMonth}&vibe=${selectedVibe}&limit=30`],
@@ -737,40 +740,111 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
                 <Ticket className="h-5 w-5 text-muted-foreground" />
                 Events & Festivals{filterMode === "day" && selectedDay ? ` on ${months[selectedMonth - 1]} ${selectedDay}` : filterMode === "week" && selectedWeek ? ` in Week ${selectedWeek}` : ` in ${monthName}`}
               </h3>
+              {/* Enhanced event cards: real DATE surfaced (a calendar page was showing
+                  dated events with no date), description when present, chronological
+                  order, and an explicit expander instead of the old silent 6-cap.
+                  All values are real event fields — nothing invented (§13). */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredEvents.slice(0, 6).map((event) => (
-                  <Card key={event.id} className="hover-elevate" data-testid={`event-card-${event.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                          <Ticket className="h-5 w-5 text-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <Badge variant="secondary" className="mb-1 text-xs capitalize">
-                            {event.eventType || "event"}
-                          </Badge>
-                          <h4 className="font-medium text-sm line-clamp-1">{event.title}</h4>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                            <MapPin className="h-3 w-3" />
-                            {event.city ? `${event.city}, ` : ""}{event.country}
+                {[...filteredEvents]
+                  .sort((a, b) => {
+                    const ta = a.specificDate ? new Date(a.specificDate).getTime() : Infinity;
+                    const tb = b.specificDate ? new Date(b.specificDate).getTime() : Infinity;
+                    return ta - tb;
+                  })
+                  .slice(0, showAllEvents ? filteredEvents.length : 6)
+                  .map((event) => {
+                    const d = event.specificDate ? new Date(event.specificDate) : null;
+                    const monthSpan =
+                      !d && event.startMonth
+                        ? event.endMonth && event.endMonth !== event.startMonth
+                          ? `${months[event.startMonth - 1].slice(0, 3)}–${months[event.endMonth - 1].slice(0, 3)}`
+                          : months[event.startMonth - 1].slice(0, 3)
+                        : null;
+                    return (
+                      <Card
+                        key={event.id}
+                        className="hover-elevate border-[color:var(--earn-border)] hover:border-primary transition-colors"
+                        data-testid={`event-card-${event.id}`}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            {/* Date tile — the event's real date (or month span), calendar-style */}
+                            <div className="w-12 flex-shrink-0 rounded-lg border border-[color:var(--earn-border)] overflow-hidden text-center">
+                              {d ? (
+                                <>
+                                  <div className="bg-[var(--earn-teal-wash)] text-[10px] font-bold uppercase tracking-wide text-[var(--earn-teal-ink)] py-0.5">
+                                    {d.toLocaleDateString("en-US", { month: "short" })}
+                                  </div>
+                                  <div className="text-lg font-bold text-[var(--earn-navy)] py-0.5 tabular-nums">
+                                    {d.getDate()}
+                                  </div>
+                                </>
+                              ) : monthSpan ? (
+                                <>
+                                  <div className="bg-[var(--earn-teal-wash)] text-[10px] font-bold uppercase tracking-wide text-[var(--earn-teal-ink)] py-0.5">
+                                    Season
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-[var(--earn-navy)] py-1.5 px-0.5 leading-tight">
+                                    {monthSpan}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="h-12 flex items-center justify-center bg-[var(--earn-chip)]">
+                                  <Ticket className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                <Badge variant="secondary" className="text-xs capitalize">
+                                  {event.eventType || "event"}
+                                </Badge>
+                                {d && (
+                                  <span className="text-xs text-muted-foreground" data-testid={`event-date-${event.id}`}>
+                                    {d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="font-medium text-sm line-clamp-1">{event.title}</h4>
+                              {event.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                                  {event.description}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                                <MapPin className="h-3 w-3" />
+                                {event.city ? `${event.city}, ` : ""}{event.country}
+                              </div>
+                              <Link href={`/experiences/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-2"
+                                  data-testid={`button-plan-event-${event.id}`}
+                                >
+                                  <Plane className="h-3 w-3 mr-1" />
+                                  Plan This Trip
+                                </Button>
+                              </Link>
+                            </div>
                           </div>
-                          <Link href={`/experiences/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="mt-2"
-                              data-testid={`button-plan-event-${event.id}`}
-                            >
-                              <Plane className="h-3 w-3 mr-1" />
-                              Plan This Trip
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
               </div>
+              {filteredEvents.length > 6 && (
+                <div className="text-center mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAllEvents((v) => !v)}
+                    data-testid="button-toggle-all-events"
+                  >
+                    {showAllEvents ? "Show fewer" : `Show all ${filteredEvents.length} events`}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
