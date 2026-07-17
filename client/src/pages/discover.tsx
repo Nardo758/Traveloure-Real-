@@ -963,47 +963,38 @@ export default function DiscoverPage() {
           </button>
         </div>
 
-        {/* Hero Section — earn-page editorial treatment (flat, warm, teal-accented) */}
-        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-12">
+        {/* Hero — compact earn-style band: title left, search + actions in one row.
+            Was a three-block centered masthead (eyebrow chip + big title + boxed
+            search + separate quick-actions row) that pushed the tabs/content below
+            the fold; the content is the point of this page, not the masthead. */}
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-6">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-8"
+              className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8"
             >
-              <div className="inline-flex items-center gap-2 bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] px-4 py-2 rounded-full text-sm mb-6">
-                <Sparkles className="w-4 h-4" />
-                Discover Your Perfect Experience
+              <div className="min-w-0 lg:max-w-md flex-shrink-0">
+                <h1 className="text-2xl md:text-[26px] font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
+                  Explore Services & Ready Made Trips
+                </h1>
+                <p className="text-sm text-[color:var(--earn-muted)] mt-1 hidden sm:block">
+                  Expert services, ready-made trips, and AI-powered recommendations.
+                </p>
               </div>
-              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-3" data-testid="text-page-title">
-                Explore Services & Ready Made Trips
-              </h1>
-              <p className="text-[15px] md:text-base text-[color:var(--earn-muted)] max-w-2xl mx-auto">
-                Browse expert services, buy ready-made trips, and get AI-powered recommendations
-                for your next adventure.
-              </p>
-            </motion.div>
-
-            {/* Search Bar */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-card rounded-xl p-4 shadow-xl max-w-3xl mx-auto"
-            >
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     placeholder="Search services, destinations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-12 text-foreground"
+                    className="pl-9 h-10 text-foreground"
                     data-testid="input-search"
                   />
                 </div>
                 <Button
-                  className="h-12 px-8"
+                  className="h-10 px-5"
                   onClick={getAIRecommendations}
                   disabled={recommendationsMutation.isPending}
                   data-testid="button-ai-suggestions"
@@ -1015,28 +1006,19 @@ export default function DiscoverPage() {
                   )}
                   AI Suggestions
                 </Button>
+                <Link href="/experiences">
+                  <Button
+                    variant="outline"
+                    className="h-10 w-full sm:w-auto border-[color:var(--earn-border)] text-[color:var(--earn-teal-ink)] font-medium hover:bg-[var(--earn-teal-wash)]"
+                    data-testid="button-plan-experience"
+                  >
+                    <Compass className="w-4 h-4 mr-2" />
+                    Plan Experience
+                  </Button>
+                </Link>
+                {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}
+                {/* (absorb). Per-city happening-now section ships in Phase 3's location view. */}
               </div>
-            </motion.div>
-
-            {/* Quick Actions */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="flex flex-wrap justify-center gap-3 mt-6"
-            >
-              <Link href="/experiences">
-                <Button
-                  variant="outline"
-                  className="border-[color:var(--earn-border)] text-[color:var(--earn-teal-ink)] font-medium hover:bg-[var(--earn-teal-wash)]"
-                  data-testid="button-plan-experience"
-                >
-                  <Compass className="w-4 h-4 mr-2" />
-                  Plan Experience
-                </Button>
-              </Link>
-              {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}
-              {/* (absorb). Per-city happening-now section ships in Phase 3's location view. */}
             </motion.div>
           </div>
         </section>
