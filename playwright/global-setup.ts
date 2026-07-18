@@ -17,6 +17,7 @@
  *   playwright/.auth/expert.json   — travel_expert role
  *   playwright/.auth/provider.json — service_provider role
  *   playwright/.auth/admin.json    — admin role
+ *   playwright/.auth/ea.json       — executive_assistant role
  *
  * Failure policy:
  *   CI (process.env.CI === 'true'): any login failure OR unreachable server
@@ -56,6 +57,12 @@ const CI_USERS = [
     password: 'CITestAdmin!99',
     authFile: 'playwright/.auth/admin.json',
     label: 'admin',
+  },
+  {
+    email: 'ci-ea@traveloure.test',
+    password: 'CITestEA!99',
+    authFile: 'playwright/.auth/ea.json',
+    label: 'ea',
   },
 ];
 
@@ -105,6 +112,7 @@ async function globalSetup(_config: FullConfig) {
         'unauthenticated. Start the dev server to test authenticated routes.',
     );
     for (const user of CI_USERS) writeEmptyState(user.authFile);
+
     return;
   }
 

@@ -49,6 +49,13 @@ const CI_USERS = [
     firstName: 'CI',
     lastName: 'Admin',
   },
+  {
+    email: 'ci-ea@traveloure.test',
+    password: 'CITestEA!99',
+    role: 'executive_assistant',
+    firstName: 'CI',
+    lastName: 'EA',
+  },
 ];
 
 async function main() {
