@@ -70,17 +70,10 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Apply database migrations
-        run: npx tsx server/migrations/migrate-entry.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-
-      - name: Create sessions table (connect-pg-simple workaround)
-        # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
-        # incompatible with Postgres 12+. Pre-create the table here.
-        run: npx tsx scripts/create-sessions-table.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
 
       - name: Cache production build output
         uses: actions/cache@v4
