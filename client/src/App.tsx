@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,7 +10,7 @@ import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
-import { SignInModalProvider } from "@/contexts/SignInModalContext";
+import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
@@ -166,21 +166,25 @@ import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
   const { user, isLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const [, navigate] = useLocation();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    const dest = window.location.pathname + window.location.search;
-    if (dest && dest !== "/") {
-      sessionStorage.setItem("traveloure_return_to", dest);
+  useEffect(() => {
+    if (!isLoading && !user) {
+      const dest = window.location.pathname + window.location.search;
+      if (dest && dest !== "/") {
+        sessionStorage.setItem("traveloure_return_to", dest);
+      }
+      openSignInModal({
+        title: "Sign in to continue",
+        description: "Please sign in to access this page.",
+        returnTo: dest !== "/" ? dest : undefined,
+      });
+      navigate("/");
     }
-    window.location.replace("/");
+  }, [isLoading, user, openSignInModal, navigate]);
+
+  if (isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
