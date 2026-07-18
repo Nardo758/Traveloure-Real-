@@ -285,7 +285,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                           type="button"
                           className={sharedClass}
                           data-testid={`link-nav-${slugify(child.name)}`}
-                          onClick={() => { setIsOpen(false); openSignInModal(); }}
+                          onClick={() => { setIsOpen(false); openSignInModal({ returnTo: child.href }); }}
                         >
                           {inner}
                         </button>
@@ -493,7 +493,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                                   type="button"
                                   className={mobileClass}
                                   data-testid={testId}
-                                  onClick={() => { setIsMobileMenuOpen(false); openSignInModal(); }}
+                                  onClick={() => { setIsMobileMenuOpen(false); openSignInModal({ returnTo: child.href }); }}
                                 >
                                   {child.icon && <child.icon className="w-5 h-5" />}
                                   {child.name}
