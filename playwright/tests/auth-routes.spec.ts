@@ -324,6 +324,9 @@ const EA_ROUTES = [
   '/ea/venues',
   '/ea/gifts',
   '/ea/communications',
+  '/ea/ai-assistant',
+  '/ea/profile',
+  '/ea/settings',
 ];
 
 test.describe('Auth smoke — EA routes (executive_assistant role)', () => {
