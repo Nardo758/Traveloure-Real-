@@ -651,7 +651,8 @@ export default function DiscoverPage() {
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
   // AI Recommendations panel removed (funnel PR1) — the AI sell lives in the cart's
-  // paid-optimization step now; POST /api/discover/recommendations stays server-side.
+  // paid-optimization step now. Its server endpoint (POST /api/discover/recommendations)
+  // was removed too (roadmap 3.4, consumer-less; restore from git history if revived).
 
   // Guest cart fallback — used when auth has resolved to no user, or when the
   // server returns 401 (the definitive "not authenticated" signal).
