@@ -176,6 +176,10 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   if (!user) {
+    const dest = window.location.pathname + window.location.search;
+    if (dest && dest !== "/") {
+      sessionStorage.setItem("traveloure_return_to", dest);
+    }
     window.location.replace("/");
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
