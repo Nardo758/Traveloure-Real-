@@ -84,9 +84,10 @@ export default function EAExecutives() {
     mutationFn: async ({ id, payload }: { id: string; payload: object }) => {
       return apiRequest("PATCH", `/api/ea/executives/${id}`, payload);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ea/executives"] });
       toast({ title: "Profile updated", description: "Executive profile saved successfully." });
+      setExpandedId(variables.id);
       setEditingExec(null);
       setFormState(null);
     },
