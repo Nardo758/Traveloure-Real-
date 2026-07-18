@@ -60,7 +60,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
-import { navGroupsConfig, authNavConfig } from "@/lib/nav-config";
+import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 // Icons are bound here so nav-config.ts stays a pure-data module with no React
@@ -597,45 +597,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* Product Column */}
-            <div>
-              <h4 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">Product</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="/experiences" className="hover:text-foreground transition-colors" data-testid="link-footer-create-trip">Plan an Experience</Link></li>
-                <li><Link href="/discover" className="hover:text-foreground transition-colors" data-testid="link-footer-explore">Discover Services</Link></li>
-                <li><Link href="/chat" className="hover:text-foreground transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
-                <li><Link href="/how-it-works" className="hover:text-foreground transition-colors" data-testid="link-footer-how-it-works">How It Works</Link></li>
-                <li><Link href="/pricing" className="hover:text-foreground transition-colors" data-testid="link-footer-pricing">Pricing</Link></li>
-                <li><Link href="/features" className="hover:text-foreground transition-colors" data-testid="link-footer-features">Features</Link></li>
-                <li><Link href="/global-calendar" className="hover:text-foreground transition-colors" data-testid="link-footer-global-calendar">Global Calendar</Link></li>
-                <li><Link href="/executive-assistant" className="hover:text-foreground transition-colors" data-testid="link-footer-executive-assistant">Executive Assistant</Link></li>
-              </ul>
-            </div>
-
-            {/* Company Column */}
-            <div>
-              <h4 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">Company</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="/about" className="hover:text-foreground transition-colors" data-testid="link-footer-about">About Us</Link></li>
-                <li><Link href="/earn" className="hover:text-foreground transition-colors" data-testid="link-footer-earn">Ways to earn</Link></li>
-                <li><Link href="/careers" className="hover:text-foreground transition-colors" data-testid="link-footer-careers">Careers</Link></li>
-                <li><Link href="/blog" className="hover:text-foreground transition-colors" data-testid="link-footer-blog">Blog</Link></li>
-                <li><Link href="/press" className="hover:text-foreground transition-colors" data-testid="link-footer-press">Press</Link></li>
-              </ul>
-            </div>
-
-            {/* Support Column */}
-            <div>
-              <h4 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">Support</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="/help" className="hover:text-foreground transition-colors" data-testid="link-footer-help">Help Center</Link></li>
-                <li><Link href="/contact" className="hover:text-foreground transition-colors" data-testid="link-footer-contact">Contact Us</Link></li>
-                <li><Link href="/visa-help" className="hover:text-foreground transition-colors" data-testid="link-footer-visa-help">Visa Help</Link></li>
-                <li><Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-footer-terms">Terms of Service</Link></li>
-                <li><Link href="/faq" className="hover:text-foreground transition-colors" data-testid="link-footer-faq">FAQ</Link></li>
-              </ul>
-            </div>
+            {/* Footer columns — rendered from footerSectionsConfig (nav-config.ts) */}
+            {footerSectionsConfig.map((section) => (
+              <div key={section.title}>
+                <h4 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">{section.title}</h4>
+                <ul className="space-y-3 text-sm text-muted-foreground">
+                  {section.links.map((link) => (
+                    <li key={link.href}>
+                      <Link
+                        href={link.href}
+                        className="hover:text-foreground transition-colors"
+                        data-testid={`link-footer-${link.href.replace(/^\//, '').replace(/\//g, '-')}`}
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
 
           {/* Bottom Bar */}
