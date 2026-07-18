@@ -2,27 +2,32 @@ name: Route Coverage Gate
 
 # Guards against broken or missing routes reaching production.
 #
-# Three Playwright smoke suites run inside the single navbar-links-smoke job:
+# The navbar-links-smoke job runs four checks in order:
 #
-#   1. navbar-links  — every href in navGroupsConfig + authNavConfig
-#                      (client/src/lib/nav-config.ts)
-#   2. footer-links  — every href in footerSectionsConfig
-#                      (client/src/lib/nav-config.ts)
-#   3. app-routes    — every <Route path="..."> in client/src/App.tsx,
-#                      including routes not listed in nav-config.ts
-#                      (detail pages, onboarding flows, public share pages,
-#                      role dashboards, etc.)
+#   0. crash-filter-unit — pure unit tests for the console-error filter
+#                          predicates (playwright/utils/console-crash-filter.ts)
+#                          used by the smoke test. No browser or server needed;
+#                          runs fast as an early gate.
 #
-# Each suite visits every resolved URL against a locally-built production
-# bundle and fails if any route renders the NotFound (404) component or
-# a blank/empty page with no heading or <main> content.
+#   1. navbar-links      — every href in navGroupsConfig + authNavConfig
+#                          (client/src/lib/nav-config.ts)
+#   2. footer-links      — every href in footerSectionsConfig
+#                          (client/src/lib/nav-config.ts)
+#   3. app-routes        — every <Route path="..."> in client/src/App.tsx,
+#                          including routes not listed in nav-config.ts
+#                          (detail pages, onboarding flows, public share pages,
+#                          role dashboards, etc.)
+#
+# Each browser suite visits every resolved URL against a locally-built
+# production bundle and fails if any route renders the NotFound (404)
+# component or a blank/empty page with no heading or <main> content.
 #
 # Dynamic segments (:id, :token, :slug, …) in App.tsx routes are replaced
 # with canonical placeholders; duplicate resolved URLs are deduplicated.
 # Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — all three suites run here; safe to mark REQUIRED.
+#   * navbar-links-smoke — all four checks run here; safe to mark REQUIRED.
 #   * report             — PR comment; informational only.
 
 on:
@@ -69,6 +74,15 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      - name: Crash-filter unit tests (pure logic, no browser needed)
+        # Verifies the console-error filter predicates in
+        # playwright/utils/console-crash-filter.ts that the navbar-links smoke
+        # test depends on. These are pure JS unit tests — no server or browser
+        # required — so they run fast and act as an early gate.
+        run: npx playwright test crash-filter-unit
+        env:
+          CI: 'true'
 
       - name: Install Playwright (chromium)
         run: npx playwright install --with-deps chromium
