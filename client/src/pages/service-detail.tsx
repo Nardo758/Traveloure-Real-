@@ -96,7 +96,20 @@ export default function ServiceDetailPage() {
 
   const { data: service, isLoading: serviceLoading, isError: serviceError } = useQuery<Service>({
     queryKey: ["/api/services", id],
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
+      try {
+        const res = await fetch(`/api/services/${id}`, { credentials: "include", signal: controller.signal });
+        if (res.status === 404) return null as unknown as Service;
+        if (!res.ok) throw new Error(`Failed to load service: ${res.status}`);
+        return res.json() as Promise<Service>;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
     enabled: !!id,
+    retry: false,
   });
 
   const { data: reviews, isLoading: reviewsLoading } = useQuery<Review[]>({

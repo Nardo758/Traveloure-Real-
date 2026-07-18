@@ -50,11 +50,18 @@ export default function ExpertDetailPage() {
   const { data: expert, isLoading, isError } = useQuery<any>({
     queryKey: ["/api/experts", expertId],
     queryFn: async () => {
-      const res = await fetch(`/api/experts/${expertId}`);
-      if (!res.ok) throw new Error("Expert not found");
-      return res.json();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
+      try {
+        const res = await fetch(`/api/experts/${expertId}`, { signal: controller.signal });
+        if (!res.ok) throw new Error("Expert not found");
+        return res.json();
+      } finally {
+        clearTimeout(timer);
+      }
     },
     enabled: !!expertId,
+    retry: false,
   });
 
   // Fetch expert's services/offerings
