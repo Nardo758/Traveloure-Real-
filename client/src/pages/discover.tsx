@@ -7,8 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -25,9 +23,7 @@ import {
   Star,
   Clock,
   DollarSign,
-  Filter,
   X,
-  SlidersHorizontal,
   Camera,
   Car,
   UtensilsCrossed,
@@ -45,7 +41,6 @@ import {
   HelpCircle,
   ChevronLeft,
   ChevronRight,
-  Wand2,
   Loader2,
   ShoppingCart,
   Plus,
@@ -63,14 +58,6 @@ import {
   Trophy,
   CheckCircle,
 } from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useTrips } from "@/hooks/use-trips";
@@ -116,16 +103,6 @@ type Service = {
 type DiscoverResult = {
   services: Service[];
   total: number;
-};
-
-type AIRecommendation = {
-  recommendedCategories: Array<{
-    slug: string;
-    name: string;
-    reason: string;
-  }>;
-  recommendedServices: Array<Service & { recommendationReason: string }>;
-  suggestions: string;
 };
 
 interface CartData {
@@ -486,102 +463,6 @@ function ServiceCard({
   );
 }
 
-function FilterPanel({
-  categories,
-  selectedCategory,
-  setSelectedCategory,
-  minPrice,
-  setMinPrice,
-  maxPrice,
-  setMaxPrice,
-  minRating,
-  setMinRating,
-  onClear,
-}: {
-  categories: ServiceCategory[];
-  selectedCategory: string;
-  setSelectedCategory: (v: string) => void;
-  minPrice: number;
-  setMinPrice: (v: number) => void;
-  maxPrice: number;
-  setMaxPrice: (v: number) => void;
-  minRating: number;
-  setMinRating: (v: number) => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <Label className="text-sm font-medium">Category</Label>
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="mt-2" data-testid="select-category">
-            <SelectValue placeholder="All categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label className="text-sm font-medium">Price Range</Label>
-        <div className="flex items-center gap-2 mt-2">
-          <Input
-            type="number"
-            placeholder="Min"
-            value={minPrice || ""}
-            onChange={(e) => setMinPrice(Number(e.target.value) || 0)}
-            className="w-24"
-            data-testid="input-min-price"
-          />
-          <span className="text-muted-foreground">-</span>
-          <Input
-            type="number"
-            placeholder="Max"
-            value={maxPrice || ""}
-            onChange={(e) => setMaxPrice(Number(e.target.value) || 0)}
-            className="w-24"
-            data-testid="input-max-price"
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label className="text-sm font-medium">Minimum Rating</Label>
-        <div className="flex items-center gap-3 mt-2">
-          <Slider
-            value={[minRating]}
-            onValueChange={([v]) => setMinRating(v)}
-            max={5}
-            step={0.5}
-            className="flex-1"
-            data-testid="slider-rating"
-          />
-          <div className="flex items-center gap-1 min-w-[60px]">
-            <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-            <span className="font-medium">{minRating.toFixed(1)}+</span>
-          </div>
-        </div>
-      </div>
-
-      <Button 
-        variant="outline" 
-        className="w-full" 
-        onClick={onClear}
-        data-testid="button-clear-filters"
-      >
-        <X className="w-4 h-4 mr-2" />
-        Clear Filters
-      </Button>
-    </div>
-  );
-}
-
 export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -777,27 +658,8 @@ export default function DiscoverPage() {
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
-  // AI Recommendations
-  const [showRecommendations, setShowRecommendations] = useState(false);
-  const [recommendations, setRecommendations] = useState<AIRecommendation | null>(null);
-
-  const recommendationsMutation = useMutation({
-    mutationFn: async (data: { query?: string; destination?: string }) => {
-      const res = await apiRequest("POST", "/api/discover/recommendations", data);
-      return res.json() as Promise<AIRecommendation>;
-    },
-    onSuccess: (data) => {
-      setRecommendations(data);
-      setShowRecommendations(true);
-    },
-  });
-
-  const getAIRecommendations = () => {
-    recommendationsMutation.mutate({
-      query: debouncedQuery || undefined,
-      destination: locationFilter || undefined,
-    });
-  };
+  // AI Recommendations panel removed (funnel PR1) — the AI sell lives in the cart's
+  // paid-optimization step now; POST /api/discover/recommendations stays server-side.
 
   // Guest cart fallback — used when auth has resolved to no user, or when the
   // server returns 401 (the definitive "not authenticated" signal).
@@ -946,61 +808,105 @@ export default function DiscoverPage() {
       />
       <div className="min-h-screen bg-background">
 
-        {/* Hero — compact earn-style band: title left, search + actions in one row.
-            Was a three-block centered masthead (eyebrow chip + big title + boxed
-            search + separate quick-actions row) that pushed the tabs/content below
-            the fold; the content is the point of this page, not the masthead. */}
-        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-6">
+        {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
+            title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
+            row beneath. py-9 = the ratified middle between the old compact py-6
+            single-row and the /experts py-12 masthead. Change the pattern in BOTH
+            places or not at all. */}
+        {/* Funnel PR1: the whole header region (hero + tab bar) lives inside ONE Tabs
+            root so the tab bar renders INSIDE the hero band (Radix TabsList needs the
+            Tabs context). The sections between the hero and the TabsContents are
+            unaffected — Tabs is context, not layout. The hero carries the ONE
+            instructional ad (browse → add to cart → we assemble & optimize); the old
+            AI-Suggestions button, Plan-Experience button, and the standalone banner
+            are all removed — each duplicated another entry (funnel audit, Jul 17).
+            The AI sell lives in the cart's paid-optimization step instead. */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8"
+              className="text-center mb-5"
             >
-              <div className="min-w-0 lg:max-w-md flex-shrink-0">
-                <h1 className="text-2xl md:text-[26px] font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
-                  Explore Services & Ready Made Trips
-                </h1>
-                <p className="text-sm text-[color:var(--earn-muted)] mt-1 hidden sm:block">
-                  Expert services, ready-made trips, and AI-powered recommendations.
-                </p>
+              <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
+                Explore Services & Ready Made Trips
+              </h1>
+              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1.5">
+                Expert services, ready-made trips, and AI-powered recommendations.
+              </p>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="max-w-3xl mx-auto"
+            >
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search services, destinations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10 text-foreground"
+                  data-testid="input-search"
+                />
               </div>
-              <div className="flex-1 flex flex-col sm:flex-row gap-2">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search services, destinations..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-10 text-foreground"
-                    data-testid="input-search"
-                  />
-                </div>
-                <Button
-                  className="h-10 px-5"
-                  onClick={getAIRecommendations}
-                  disabled={recommendationsMutation.isPending}
-                  data-testid="button-ai-suggestions"
-                >
-                  {recommendationsMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4 mr-2" />
-                  )}
-                  AI Suggestions
-                </Button>
-                <Link href="/experiences">
-                  <Button
-                    variant="outline"
-                    className="h-10 w-full sm:w-auto border-[color:var(--earn-border)] text-[color:var(--earn-teal-ink)] font-medium hover:bg-[var(--earn-teal-wash)]"
-                    data-testid="button-plan-experience"
+              {/* The instructional ad — tells users what to DO (the funnel's one pitch) */}
+              <button
+                type="button"
+                onClick={() => setActiveTab("services")}
+                className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                data-testid="cta-how-it-works"
+              >
+                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
+                <p className="text-sm truncate min-w-0">
+                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
+                  <span className="text-muted-foreground hidden sm:inline">
+                    Browse services and add them to your cart — we assemble &amp; optimize your trip.
+                  </span>
+                </p>
+                <span className="ml-auto flex items-center gap-1 text-sm font-semibold text-[color:var(--earn-teal-ink)] whitespace-nowrap">
+                  Browse services <ArrowRight className="w-4 h-4" />
+                </span>
+              </button>
+              {/* Tab bar — inside the hero band (merged header) */}
+              <div className="relative mt-4">
+                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                  <TabsTrigger
+                    value="travelpulse"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-travelpulse"
                   >
-                    <Compass className="w-4 h-4 mr-2" />
-                    Plan Experience
-                  </Button>
-                </Link>
-                {/* "Live Intel" → /spontaneous button retired in Phase 2 per v2 spec §6 */}
-                {/* (absorb). Per-city happening-now section ships in Phase 3's location view. */}
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">By&nbsp;</span>Location
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="packages"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-packages"
+                  >
+                    <Award className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="events"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-events"
+                  >
+                    <Calendar className="w-4 h-4 mr-2" />
+                    By Date
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="services"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-services"
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
+                  </TabsTrigger>
+                </TabsList>
+                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
               </div>
             </motion.div>
           </div>
@@ -1192,113 +1098,11 @@ export default function DiscoverPage() {
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
-            {/* Experiences cross-link — compacted from the old two-line banner to a slim
-                single row (it predates B4: the Ready Made Trips tab is back, so this is
-                just a pointer to curated experience templates, not the tab's stand-in). */}
-            <Link href="/experiences">
-              <div
-                className="mb-4 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 hover-elevate active-elevate-2 cursor-pointer"
-                data-testid="cta-trip-templates"
-              >
-                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
-                <p className="text-sm truncate min-w-0">
-                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
-                  <span className="text-muted-foreground hidden sm:inline">
-                    Build your trip from a curated template.
-                  </span>
-                </p>
-                <ArrowRight className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0 ml-auto" />
-              </div>
-            </Link>
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <div className="relative mb-8">
-                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                  <TabsTrigger
-                    value="travelpulse"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-travelpulse"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">By&nbsp;</span>Location
-                  </TabsTrigger>
-                  {/* Influencer Curated tab hidden in Phase 1a — returns in Phase 5 with real DB-backed content */}
-                  {/* Packages tab UN-HIDDEN in marketplace Phase B4 — the buy loop is closed end-to-end
-                      (B1 submit → admin approve → B2 gated detail + purchase → B3 buyer delivery), and the
-                      feed is server-gated (approved+published only) + content-redacted (teaser only). */}
-                  <TabsTrigger
-                    value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-packages"
-                  >
-                    <Award className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="events"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-events"
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    By Date
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="services"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-services"
-                  >
-                    <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
-                  </TabsTrigger>
-                </TabsList>
-                {/* Scroll hint for mobile */}
-                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
-              </div>
+            {/* Tab bar moved INTO the hero band (funnel PR1) — TabsContents below stay
+                inside the same Tabs root, which now opens above the hero. */}
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
-
-                {/* AI Recommendations Panel */}
-                {showRecommendations && recommendations && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 rounded-lg"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Wand2 className="w-5 h-5 text-purple-600" />
-                        <span className="font-medium text-purple-900 dark:text-purple-100">AI Recommendations</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowRecommendations(false)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <p className="text-sm text-purple-700 dark:text-purple-200 mb-3">
-                      {recommendations.suggestions}
-                    </p>
-                    {recommendations.recommendedCategories.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {recommendations.recommendedCategories.map((cat) => (
-                          <Badge
-                            key={cat.slug}
-                            variant="secondary"
-                            className="cursor-pointer"
-                            onClick={() => {
-                              const found = categories?.find(c => c.slug === cat.slug);
-                              if (found) setSelectedCategory(found.id);
-                            }}
-                          >
-                            {cat.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
 
                 {/* Quick Category Chips */}
                 {categories && categories.length > 0 && (
@@ -1350,100 +1154,79 @@ export default function DiscoverPage() {
                   />
                 )}
 
-                <div className="flex flex-col lg:flex-row gap-6">
-                  {/* Desktop Filters Sidebar */}
-                  <aside className="hidden lg:block lg:w-72 flex-shrink-0">
-                    <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Filter className="w-4 h-4" />
-                          Filters
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {categories && (
-                          <FilterPanel
-                            categories={categories}
-                            selectedCategory={selectedCategory}
-                            setSelectedCategory={setSelectedCategory}
-                            minPrice={minPrice}
-                            setMinPrice={setMinPrice}
-                            maxPrice={maxPrice}
-                            setMaxPrice={setMaxPrice}
-                            minRating={minRating}
-                            setMinRating={setMinRating}
-                            onClear={clearFilters}
-                          />
-                        )}
-                      </CardContent>
-                    </Card>
-                  </aside>
 
-                  <main className="flex-1">
-                    {/* Search and Sort Row */}
-                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                      <div className="relative sm:w-48">
-                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Location"
-                          value={locationFilter}
-                          onChange={(e) => setLocationFilter(e.target.value)}
-                          className="pl-10"
-                          data-testid="input-location"
-                        />
-                      </div>
-                      <Select value={sortBy} onValueChange={setSortBy}>
-                        <SelectTrigger className="sm:w-44" data-testid="select-sort">
-                          <SelectValue placeholder="Sort by" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="rating">Top Rated</SelectItem>
-                          <SelectItem value="reviews">Most Reviews</SelectItem>
-                          <SelectItem value="price_low">Price: Low to High</SelectItem>
-                          <SelectItem value="price_high">Price: High to Low</SelectItem>
-                        </SelectContent>
-                      </Select>
+                {/* Unified Filter Bar — one earn-styled bar (mirrors the /experts filter
+                    bar) replacing the old desktop sidebar Card + scattered Location/Sort
+                    row + mobile filter Sheet. Every control inline; wraps on small screens. */}
+                <div className="bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
+                  <div className="relative flex-1 min-w-[170px]">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Location"
+                      value={locationFilter}
+                      onChange={(e) => setLocationFilter(e.target.value)}
+                      className="pl-10"
+                      data-testid="input-location"
+                    />
+                  </div>
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                    <SelectTrigger className="w-[170px]" data-testid="select-category">
+                      <SelectValue placeholder="All categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All categories</SelectItem>
+                      {(categories ?? []).map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    placeholder="Min $"
+                    value={minPrice || ""}
+                    onChange={(e) => setMinPrice(Number(e.target.value) || 0)}
+                    className="w-24"
+                    data-testid="input-min-price"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Max $"
+                    value={maxPrice || ""}
+                    onChange={(e) => setMaxPrice(Number(e.target.value) || 0)}
+                    className="w-24"
+                    data-testid="input-max-price"
+                  />
+                  <Select value={String(minRating)} onValueChange={(v) => setMinRating(parseFloat(v))}>
+                    <SelectTrigger className="w-[130px]" data-testid="select-rating">
+                      <SelectValue placeholder="Any rating" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Any rating</SelectItem>
+                      <SelectItem value="3">3.0+ ★</SelectItem>
+                      <SelectItem value="4">4.0+ ★</SelectItem>
+                      <SelectItem value="4.5">4.5+ ★</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-[170px]" data-testid="select-sort">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rating">Top Rated</SelectItem>
+                      <SelectItem value="reviews">Most Reviews</SelectItem>
+                      <SelectItem value="price_low">Price: Low to High</SelectItem>
+                      <SelectItem value="price_high">Price: High to Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+                      <X className="w-4 h-4 mr-1" />
+                      Clear
+                    </Button>
+                  )}
+                </div>
 
-                      {/* Mobile Filter Button */}
-                      <Sheet>
-                        <SheetTrigger asChild>
-                          <Button variant="outline" className="lg:hidden" data-testid="button-mobile-filters">
-                            <SlidersHorizontal className="w-4 h-4 mr-2" />
-                            Filters
-                            {hasActiveFilters && (
-                              <Badge variant="secondary" className="ml-2">
-                                Active
-                              </Badge>
-                            )}
-                          </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left">
-                          <SheetHeader>
-                            <SheetTitle>Filters</SheetTitle>
-                            <SheetDescription>
-                              Refine your search results
-                            </SheetDescription>
-                          </SheetHeader>
-                          <div className="mt-6">
-                            {categories && (
-                              <FilterPanel
-                                categories={categories}
-                                selectedCategory={selectedCategory}
-                                setSelectedCategory={setSelectedCategory}
-                                minPrice={minPrice}
-                                setMinPrice={setMinPrice}
-                                maxPrice={maxPrice}
-                                setMaxPrice={setMaxPrice}
-                                minRating={minRating}
-                                setMinRating={setMinRating}
-                                onClear={clearFilters}
-                              />
-                            )}
-                          </div>
-                        </SheetContent>
-                      </Sheet>
-                    </div>
-
+                <div>
                     {/* Active Filters */}
                     {hasActiveFilters && (
                       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -1555,7 +1338,6 @@ export default function DiscoverPage() {
                         </Button>
                       </div>
                     )}
-                  </main>
                 </div>
               </TabsContent>
 
@@ -1870,9 +1652,9 @@ export default function DiscoverPage() {
               <TabsContent value="travelpulse">
                 <CityGrid selectedCityName={urlCity} />
               </TabsContent>
-            </Tabs>
           </div>
         </section>
+        </Tabs>
 
         {/* Still Undecided CTA */}
         <section className="py-16 bg-card border-t">
