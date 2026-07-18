@@ -5262,7 +5262,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.description || "",
           serviceType: "external",
           price: parseFloat(item.price || "0"),
-          rating: item.rating || 4.5,
+          // §13: no fabricated fallback rating — unknown stays unknown.
+          rating: typeof item.rating === "number" ? item.rating : undefined,
           location: item.location || "",
           duration: item.duration || 120,
           dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
@@ -5282,7 +5283,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.description,
           serviceType: item.providerServiceId ? "provider" : "external",
           price: parseFloat(item.price || "0"),
-          rating: 4.5,
+          // §13: user-experience items have no rating source — omit, don't invent.
           location: item.location,
           duration: 120,
           dayNumber: 1,
@@ -5304,7 +5305,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.service?.shortDescription,
           serviceType: item.service?.serviceType,
           price: parseFloat(item.service?.price || "0"),
-          rating: parseFloat(item.service?.averageRating || "4.5"),
+          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
+          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
           location: item.service?.location,
           duration: 120,
           dayNumber: Math.floor(index / 3) + 1,
