@@ -76,8 +76,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Apply database migrations
         # 000_baseline_schema.sql runs first and creates every Drizzle-managed
         # table with IF NOT EXISTS / idempotent FK guards. Subsequent migrations
@@ -198,8 +208,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Apply database migrations
         # drizzle-kit push --force requires an interactive TTY which CI doesn't
         # have (throws "Interactive prompts require a TTY terminal"). Use
