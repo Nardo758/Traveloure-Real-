@@ -39,7 +39,7 @@ or an expert engagement, never a dead end.
 |---|------|------|-------|
 | 2.1 | ✅ **Pre-optimization plan handoff** (PR #235 — plan-snapshot endpoint + expert Trip Plan dialog + ?tripId= thread) | M | Expert receives the cart/plan snapshot. Consumes the `?tripId=` the cart already passes (#229); needs a share endpoint + expert-side view. With 1.2, experts see the plan at every escalation point. |
 | 2.2 | ✅ **Nav "Cart" → "Trip plan"** (PR #236) | XS | Label/tooltip honesty — /cart is a 5-step planner, not a checkout. |
-| 2.3 | **By-Date cards → shared CityCard** (optional) | S–M | Final visual unification of the calendar destination cards with the trending cards (sizing already fixed in place, #225). |
+| 2.3 | ✅ **By-Date cards → shared CityCard** (By-Date destination cards now render the shared CityCard season variant; rich More-info modal preserved via controlled state) | S–M | Final visual unification of the calendar destination cards with the trending cards (sizing already fixed in place, #225). |
 
 ## Sprint 3 — Trust & hardening
 
