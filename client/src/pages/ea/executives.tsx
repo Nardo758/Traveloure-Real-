@@ -6,6 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -40,6 +47,32 @@ interface EaExecutive {
   notes?: string;
 }
 
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
+
+function monthDayToStr(month: string, day: string): string {
+  if (!month || !day) return "";
+  return `${month} ${day}`;
+}
+
+function strToMonthDay(s: string): { month: string; day: string } {
+  if (!s) return { month: "", day: "" };
+  const parts = s.trim().split(/\s+/);
+  if (parts.length < 2) return { month: "", day: "" };
+  const month = MONTHS.find((m) => m.toLowerCase() === parts[0].toLowerCase()) ?? "";
+  const day = parts[1] && !isNaN(parseInt(parts[1], 10)) ? String(parseInt(parts[1], 10)) : "";
+  return { month, day };
+}
+
+interface ImportantDateEntry {
+  label: string;
+  month: string;
+  day: string;
+}
+
 interface EditFormState {
   email: string;
   phone: string;
@@ -49,12 +82,14 @@ interface EditFormState {
   seating: string;
   preferenceNotes: string;
   spouse: string;
-  anniversary: string;
+  anniversaryMonth: string;
+  anniversaryDay: string;
   children: string;
   notes: string;
 }
 
 function buildFormState(exec: EaExecutive): EditFormState {
+  const { month: anniversaryMonth, day: anniversaryDay } = strToMonthDay(exec.family?.anniversary ?? "");
   return {
     email: exec.email ?? "",
     phone: exec.phone ?? "",
@@ -64,7 +99,8 @@ function buildFormState(exec: EaExecutive): EditFormState {
     seating: exec.preferences?.seating ?? "",
     preferenceNotes: exec.preferences?.notes ?? "",
     spouse: exec.family?.spouse ?? "",
-    anniversary: exec.family?.anniversary ?? "",
+    anniversaryMonth,
+    anniversaryDay,
     children: exec.family?.children ?? "",
     notes: exec.notes ?? "",
   };
@@ -74,7 +110,7 @@ export default function EAExecutives() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingExec, setEditingExec] = useState<EaExecutive | null>(null);
   const [formState, setFormState] = useState<EditFormState | null>(null);
-  const [importantDates, setImportantDates] = useState<Array<{ label: string; date: string }>>([]);
+  const [importantDates, setImportantDates] = useState<ImportantDateEntry[]>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -102,14 +138,19 @@ export default function EAExecutives() {
     e.stopPropagation();
     setEditingExec(exec);
     setFormState(buildFormState(exec));
-    setImportantDates(exec.family?.importantDates ?? []);
+    setImportantDates(
+      (exec.family?.importantDates ?? []).map((d) => {
+        const { month, day } = strToMonthDay(d.date);
+        return { label: d.label, month, day };
+      })
+    );
   }
 
   function addImportantDate() {
-    setImportantDates((prev) => [...prev, { label: "", date: "" }]);
+    setImportantDates((prev) => [...prev, { label: "", month: "", day: "" }]);
   }
 
-  function updateImportantDate(idx: number, field: "label" | "date", value: string) {
+  function updateImportantDate(idx: number, field: keyof ImportantDateEntry, value: string) {
     setImportantDates((prev) => prev.map((d, i) => i === idx ? { ...d, [field]: value } : d));
   }
 
@@ -123,6 +164,7 @@ export default function EAExecutives() {
 
   function handleSave() {
     if (!editingExec || !formState) return;
+    const anniversaryStr = monthDayToStr(formState.anniversaryMonth, formState.anniversaryDay);
     const payload = {
       email: formState.email || null,
       phone: formState.phone || null,
@@ -136,9 +178,11 @@ export default function EAExecutives() {
       },
       family: {
         spouse: formState.spouse || null,
-        anniversary: formState.anniversary || null,
+        anniversary: anniversaryStr || null,
         children: formState.children || null,
-        importantDates: importantDates.filter((d) => d.label.trim() || d.date.trim()),
+        importantDates: importantDates
+          .filter((d) => d.label.trim() || d.month || d.day)
+          .map((d) => ({ label: d.label, date: monthDayToStr(d.month, d.day) })),
       },
     };
     updateMutation.mutate({ id: editingExec.id, payload });
@@ -442,14 +486,35 @@ export default function EAExecutives() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="edit-anniversary">Anniversary Date</Label>
-                    <Input
-                      id="edit-anniversary"
-                      data-testid="input-edit-anniversary"
-                      value={formState.anniversary}
-                      onChange={(e) => handleField("anniversary", e.target.value)}
-                      placeholder="e.g. June 12"
-                    />
+                    <Label>Anniversary Date</Label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={formState.anniversaryMonth}
+                        onValueChange={(v) => handleField("anniversaryMonth", v)}
+                      >
+                        <SelectTrigger data-testid="select-anniversary-month" className="flex-1">
+                          <SelectValue placeholder="Month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTHS.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={formState.anniversaryDay}
+                        onValueChange={(v) => handleField("anniversaryDay", v)}
+                      >
+                        <SelectTrigger data-testid="select-anniversary-day" className="w-24">
+                          <SelectValue placeholder="Day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DAYS.map((d) => (
+                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="edit-children">Children</Label>
@@ -481,31 +546,60 @@ export default function EAExecutives() {
                       <p className="text-xs text-gray-400 italic">No important dates added yet.</p>
                     )}
                     {importantDates.map((entry, idx) => (
-                      <div key={idx} className="flex gap-2 items-center" data-testid={`important-date-row-${idx}`}>
-                        <Input
-                          value={entry.label}
-                          onChange={(e) => updateImportantDate(idx, "label", e.target.value)}
-                          placeholder="Label (e.g. Birthday)"
-                          className="flex-1 text-sm"
-                          data-testid={`input-important-date-label-${idx}`}
-                        />
-                        <Input
-                          value={entry.date}
-                          onChange={(e) => updateImportantDate(idx, "date", e.target.value)}
-                          placeholder="Date (e.g. March 5)"
-                          className="flex-1 text-sm"
-                          data-testid={`input-important-date-value-${idx}`}
-                        />
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removeImportantDate(idx)}
-                          data-testid={`button-remove-important-date-${idx}`}
-                          className="h-8 w-8 text-gray-400 hover:text-red-500 flex-shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                      <div key={idx} className="space-y-1" data-testid={`important-date-row-${idx}`}>
+                        <div className="flex gap-2 items-center">
+                          <Input
+                            value={entry.label}
+                            onChange={(e) => updateImportantDate(idx, "label", e.target.value)}
+                            placeholder="Label (e.g. Birthday)"
+                            className="flex-1 text-sm"
+                            data-testid={`input-important-date-label-${idx}`}
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => removeImportantDate(idx)}
+                            data-testid={`button-remove-important-date-${idx}`}
+                            className="h-8 w-8 text-gray-400 hover:text-red-500 flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex gap-2">
+                          <Select
+                            value={entry.month}
+                            onValueChange={(v) => updateImportantDate(idx, "month", v)}
+                          >
+                            <SelectTrigger
+                              data-testid={`select-important-date-month-${idx}`}
+                              className="flex-1 text-sm h-8"
+                            >
+                              <SelectValue placeholder="Month" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MONTHS.map((m) => (
+                                <SelectItem key={m} value={m}>{m}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={entry.day}
+                            onValueChange={(v) => updateImportantDate(idx, "day", v)}
+                          >
+                            <SelectTrigger
+                              data-testid={`select-important-date-day-${idx}`}
+                              className="w-20 text-sm h-8"
+                            >
+                              <SelectValue placeholder="Day" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DAYS.map((d) => (
+                                <SelectItem key={d} value={d}>{d}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     ))}
                   </div>
