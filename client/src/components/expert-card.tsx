@@ -23,6 +23,10 @@ interface ExpertCardProps {
     bio?: string;
     specialties?: string[];
     reviewsCount?: number;
+    /** Roadmap 3.5: real expert-level rating (avg of approved service reviews)
+     *  + its count. null rating → the card shows "New". */
+    expertRating?: number | null;
+    expertReviewCount?: number;
     tripsCount?: number;
     responseTime?: string;
     verified?: boolean;
@@ -90,7 +94,12 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
   
   const languages = expert.expertForm?.languages || [];
   const responseTime = expert.responseTime || expert.expertForm?.responseTime || null;
-  const reviewsCount = expert.reviewsCount || null;
+  // Roadmap 3.5: real expert-level rating (approved service reviews for this
+  // expert). expertRating is null when the expert has no reviews → show "New",
+  // never a fabricated score (§13).
+  const expertRating: number | null =
+    typeof expert.expertRating === "number" ? expert.expertRating : null;
+  const reviewsCount = (expert.expertReviewCount ?? expert.reviewsCount) || null;
   const tripsCount = expert.tripsCount || null;
   // LB-P4b: badge resolves from identityVerificationStatus (set by Stripe Identity /
   // Persona KYB flow). No fallback default — only render the checkmark when the
@@ -184,9 +193,15 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
             <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
               <div className="flex items-center text-amber-500">
                 <Star className="w-3 h-3 fill-amber-500" />
-                <span className="ml-0.5 font-semibold text-[#6B7280]">New</span>
-                {reviewsCount !== null && (
-                  <span className="text-[#6B7280] ml-0.5">({reviewsCount})</span>
+                {expertRating !== null ? (
+                  <>
+                    <span className="ml-0.5 font-semibold text-[#6B7280]">{expertRating.toFixed(1)}</span>
+                    {reviewsCount !== null && (
+                      <span className="text-[#6B7280] ml-0.5">({reviewsCount})</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="ml-0.5 font-semibold text-[#6B7280]">New</span>
                 )}
               </div>
               
