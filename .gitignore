@@ -14,3 +14,5 @@ test-results/
 .playwright/
 # E2E (deploy harness) generated auth state
 e2e/auth/
+# Playwright per-role auth state files (written by globalSetup at runtime)
+playwright/.auth/
