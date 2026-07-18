@@ -94,11 +94,43 @@ test.describe('Navbar link smoke — no broken routes', () => {
       // Collect browser console messages so we can detect uncaught promise
       // rejections and React error-boundary warnings that don't surface as
       // pageerror events.
+      //
+      // ── Why the filter below is intentionally narrow ──────────────────────
+      // Broad substring matches on 'React', 'TypeError', or 'ReferenceError'
+      // produce false positives from third-party scripts that are noisy but
+      // harmless:
+      //
+      //   • Google Maps SDK  — emits TypeError / ReferenceError during lazy
+      //     initialisation and map tile loading; these never crash the app.
+      //   • Stripe.js        — logs internal TypeErrors on certain browsers
+      //     while setting up the payment element iframe.
+      //   • Analytics / tag  — managers routinely log ReferenceError for
+      //     optional globals (e.g. `gtag is not defined`) that don't affect UX.
+      //
+      // We only flag three precise patterns that indicate the *app's own code*
+      // has crashed:
+      //
+      //   (a) "Uncaught …" prefix — an unhandled exception that propagated all
+      //       the way up to the browser console; almost always app code.
+      //   (b) "Minified React error #NNN" — React's production crash codes,
+      //       emitted only when a component tree actually throws during render.
+      //   (c) React caught-an-error — the message React logs when an error
+      //       boundary catches a subtree throw during render.
+      // ──────────────────────────────────────────────────────────────────────
       const uncaughtConsoleErrors: string[] = [];
       page.on('console', (msg) => {
         if (msg.type() === 'error') {
           const text = msg.text();
-          if (text.includes('Uncaught') || text.includes('React') || text.includes('TypeError') || text.includes('ReferenceError')) {
+
+          // (a) Unhandled exception reached the browser surface.
+          const isUncaught = text.startsWith('Uncaught ');
+          // (b) React production crash code (e.g. "Minified React error #130").
+          const isMinifiedReactError = /Minified React error #\d+/.test(text);
+          // (c) React error boundary caught a component-tree throw.
+          const isReactBoundaryCatch =
+            text.includes('React') && text.includes('caught an error');
+
+          if (isUncaught || isMinifiedReactError || isReactBoundaryCatch) {
             uncaughtConsoleErrors.push(text);
           }
         }
