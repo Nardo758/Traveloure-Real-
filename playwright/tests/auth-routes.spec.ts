@@ -9,6 +9,11 @@
  * This spec fixes that blind spot by running the same 404 / content / crash
  * checks with a valid session cookie for each platform role.
  *
+ * Route source of truth: client/src/lib/role-routes-config.ts
+ *   expertRoutesConfig / providerRoutesConfig / adminRoutesConfig
+ *   Adding a new route to those arrays automatically registers it in this
+ *   spec. No manual edits to this file are needed when routes are added.
+ *
  * Three describe blocks run with separate storageState files written by
  * playwright/global-setup.ts:
  *
@@ -30,6 +35,11 @@
  */
 
 import { test, expect } from '@playwright/test';
+import {
+  getExpertRouteHrefs,
+  getProviderRouteHrefs,
+  getAdminRouteHrefs,
+} from '../../client/src/lib/role-routes-config';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 const IS_CI = process.env.CI === 'true';
@@ -130,24 +140,10 @@ async function smokeRoute(
 }
 
 // ── Expert routes ───────────────────────────────────────────────────────────
+// Source of truth: client/src/lib/role-routes-config.ts → expertRoutesConfig
+// Adding a new expert route there automatically includes it in this test.
 
-const EXPERT_ROUTES = [
-  '/expert/dashboard',
-  '/expert/clients',
-  '/expert/bookings',
-  '/expert/services',
-  '/expert/earnings',
-  '/expert/analytics',
-  '/expert/profile',
-  '/expert/assigned-trips',
-  '/expert/content-studio',
-  '/expert/settings',
-  '/expert/verification',
-  '/expert/contract-categories',
-  '/expert/booking-partners',
-  '/expert/workspace',
-  '/expert/dmo-library',
-];
+const EXPERT_ROUTES = getExpertRouteHrefs();
 
 test.describe('Auth smoke — expert routes (travel_expert role)', () => {
   test.use({ storageState: 'playwright/.auth/expert.json' });
@@ -202,19 +198,10 @@ test.describe('Auth smoke — expert routes (travel_expert role)', () => {
 });
 
 // ── Provider routes ─────────────────────────────────────────────────────────
+// Source of truth: client/src/lib/role-routes-config.ts → providerRoutesConfig
+// Adding a new provider route there automatically includes it in this test.
 
-const PROVIDER_ROUTES = [
-  '/provider/dashboard',
-  '/provider/bookings',
-  '/provider/services',
-  '/provider/earnings',
-  '/provider/analytics',
-  '/provider/performance',
-  '/provider/calendar',
-  '/provider/profile',
-  '/provider/settings',
-  '/provider/resources',
-];
+const PROVIDER_ROUTES = getProviderRouteHrefs();
 
 test.describe('Auth smoke — provider routes (service_provider role)', () => {
   test.use({ storageState: 'playwright/.auth/provider.json' });
@@ -268,35 +255,10 @@ test.describe('Auth smoke — provider routes (service_provider role)', () => {
 });
 
 // ── Admin routes ────────────────────────────────────────────────────────────
+// Source of truth: client/src/lib/role-routes-config.ts → adminRoutesConfig
+// Adding a new admin route there automatically includes it in this test.
 
-const ADMIN_ROUTES = [
-  '/admin/dashboard',
-  '/admin/users',
-  '/admin/experts',
-  '/admin/providers',
-  '/admin/plans',
-  '/admin/revenue',
-  '/admin/analytics',
-  '/admin/categories',
-  '/admin/expert-templates',
-  '/admin/template-approvals',
-  '/admin/search',
-  '/admin/notifications',
-  '/admin/system',
-  '/admin/ai-costs',
-  '/admin/payouts',
-  '/admin/fee-config',
-  '/admin/fee-bands',
-  '/admin/offering-types',
-  '/admin/category-fees',
-  '/admin/neighborhoods',
-  '/admin/routing-queue',
-  '/admin/content-tracking',
-  '/admin/services',
-  '/admin/affiliate-partners',
-  '/admin/platform-providers',
-  '/admin/qa-checklist',
-];
+const ADMIN_ROUTES = getAdminRouteHrefs();
 
 test.describe('Auth smoke — admin routes (admin role)', () => {
   test.use({ storageState: 'playwright/.auth/admin.json' });
