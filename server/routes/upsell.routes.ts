@@ -179,8 +179,48 @@ router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
       neighborhoodIds: body.neighborhoodIds ?? [],
       expertEndorsedKeys: mergedEndorsedKeys,
     });
-    const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, raw, req);
-    res.json({ candidates: decorate(candidates, displayLookup), suppressed });
+    // "Frequently booked together" is an ADD-IN-PLACE panel (ratified Jul 17):
+    // every row it shows must be addable to the cart without leaving checkout,
+    // so only platform candidates — which resolve to a concrete approved
+    // listing — enter the cart slate. Affiliate offering types have no platform
+    // listing to add (their only action was a browse redirect out of the cart)
+    // and belong on the Discover surfaces, not here. Filtering BEFORE ranking
+    // keeps the engine's relevance-vs-revenue ordering intact within the slate
+    // and keeps impression logging aligned with what actually renders.
+    const platformOnly = raw.filter(c => c.sourceType === "platform_provider");
+    const { candidates, suppressed, displayLookup } = await rankAndLog("cart", ctx, platformOnly, req);
+
+    // Resolve each candidate's category to its concrete covering approved
+    // listing so the client can offer a real in-place "Add to cart"
+    // (POST /api/cart { serviceId }). Price/name here are DISPLAY-ONLY — the
+    // charge re-derives from the catalog at checkout (§14).
+    const inventory = await loadCoveringInventory({
+      neighborhoodIds: body.neighborhoodIds ?? [],
+      marketCity: null,
+    });
+    const withBookable = decorate(candidates, displayLookup)
+      .map(c => {
+        const inv = inventory.get(c.categoryKey);
+        return {
+          ...c,
+          bookable: inv?.serviceId
+            ? { serviceId: inv.serviceId, serviceName: inv.serviceName, price: inv.price }
+            : null,
+        };
+      })
+      // A platform candidate only exists because covering inventory was found,
+      // so this drop is a belt-and-braces guard, not an expected path.
+      .filter(c => c.bookable);
+    // Two offering types can share a category and therefore resolve to the same
+    // listing — showing both would be two "Add" rows for one service. Keep the
+    // highest-ranked row per resolved listing.
+    const seenServiceIds = new Set<string>();
+    const dedupedBookable = withBookable.filter(c => {
+      if (seenServiceIds.has(c.bookable!.serviceId)) return false;
+      seenServiceIds.add(c.bookable!.serviceId);
+      return true;
+    });
+    res.json({ candidates: dedupedBookable, suppressed });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
     res.status(500).json({ error: err.message });

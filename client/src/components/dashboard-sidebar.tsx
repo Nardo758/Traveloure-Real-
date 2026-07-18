@@ -45,7 +45,7 @@ const menuGroups = [
       { title: "Discover", href: "/discover", icon: Users },
       { title: "Experts", href: "/chat", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
-      { title: "Cart", href: "/cart", icon: ShoppingCart },
+      { title: "Trip plan", href: "/cart", icon: ShoppingCart },
     ],
   },
   {

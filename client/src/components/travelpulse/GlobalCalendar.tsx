@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { CityCard as SharedCityCard } from "@/components/travelpulse/CityCard";
 import {
   Calendar,
   MapPin,
@@ -1012,137 +1013,44 @@ function CityCard({
           : " cover this destination")
       : null;
 
+  // Sprint 2.3: the By-Date destination card is now the SHARED CityCard
+  // (variant="season") — one component behind both the Discover trending grid
+  // and this calendar, so styling never drifts. The rich "More info" modal
+  // (task #55) is preserved, just driven by controlled state off the shared
+  // card's secondary action instead of its own DialogTrigger.
+  const [moreInfoOpen, setMoreInfoOpen] = useState(false);
+  const experiencesForCard = experienceSuggestions.map((s) => ({
+    label: s.label,
+    href: `/experiences/${s.slug}?destination=${destination}`,
+  }));
+
   return (
-    <Card
-      key={city.id}
-      className="overflow-hidden h-full flex flex-col"
-      data-testid={`city-card-${city.id}`}
-    >
-      <div
-        className="cursor-pointer hover-elevate flex-1"
-        onClick={() => onCityClick?.(city.cityName, city.country)}
-      >
-        {/* Photo block ALWAYS renders at h-32 (placeholder when the city has no
-            heroImage) so every card shares the same skeleton — no-image cards used
-            to skip this block entirely and render ~130px shorter than their
-            neighbors (the "cards are all different sizes" bug). */}
-        <div className="h-32 relative">
-          {city.heroImage ? (
-            <img
-              src={city.heroImage}
-              alt={city.cityName}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/60">
-              <MapPin className="h-8 w-8 text-muted-foreground/40" />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          <div className="absolute bottom-2 left-3 right-3">
-            <h4 className="font-semibold text-white">{city.cityName}</h4>
-            <p className="text-xs text-white/80">{city.country}</p>
-          </div>
-        </div>
-        <CardContent className="p-3">
+    <>
+      <SharedCityCard
+        variant="season"
+        cityName={city.cityName}
+        country={city.country}
+        imageUrl={city.heroImage}
+        score={seasonScore > 0 ? seasonScore : null}
+        trendLabel={seasonScore > 0 ? "Ideal month" : (city.pulseScore && city.pulseScore > 70 ? "Trending" : null)}
+        highlight={seasonScore > 0 ? seasonGuidance : (city.highlights?.[0] ?? null)}
+        temp={city.averageTemp}
+        vibeTags={city.vibeTags}
+        eventsCount={eventsCount}
+        packagesCount={packagesCount}
+        expertsCount={expertsCount}
+        experiences={experiencesForCard}
+        primaryLabel={`Explore ${city.cityName}`}
+        onPrimary={() => onCityClick?.(city.cityName, city.country)}
+        secondaryLabel="More info"
+        onSecondary={() => setMoreInfoOpen(true)}
+        onCardClick={() => onCityClick?.(city.cityName, city.country)}
+        testId={`city-card-${city.id}`}
+      />
 
-          {/* Season suitability score (prominent guidance) */}
-          {city.seasonalRating && seasonScore > 0 && (
-            <div className="mb-3 p-2 rounded-lg bg-muted/50 border border-muted">
-              <div className="flex items-center gap-2">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold">{seasonScore}</span>
-                  <span className="text-xs text-muted-foreground">/10</span>
-                </div>
-                <span className="text-xs text-muted-foreground font-medium">Ideal month</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{seasonGuidance}</p>
-            </div>
-          )}
-
-          {/* Seasonal details: weather, crowds, price */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {city.weatherDescription && (
-              <span className="flex items-center gap-1">
-                {getWeatherIcon(city.weatherDescription)}
-                <span className="text-muted-foreground">{city.averageTemp}</span>
-              </span>
-            )}
-            {city.seasonCrowdLevel && (
-              <span className="flex items-center gap-1">
-                <Users className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
-              </span>
-            )}
-            {city.pulseScore && city.pulseScore > 70 && (
-              <span className="flex items-center gap-1">
-                <TrendingUp className="h-3 w-3 text-green-500" />
-                <span className="text-green-600 dark:text-green-400">Trending</span>
-              </span>
-            )}
-          </div>
-
-          {city.events.length > 0 && (
-            <div className="mt-2 pt-2 border-t">
-              <div className="flex items-center gap-1 text-xs">
-                <Ticket className="h-3 w-3 text-muted-foreground" />
-                <span className="font-medium">{city.events[0].title}</span>
-              </div>
-            </div>
-          )}
-
-          {city.vibeTags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {city.vibeTags.slice(0, 3).map((tag) => (
-                <Badge key={tag} variant="outline" className="text-xs capitalize">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          )}
-
-          {/* D3: honest counts row — hidden entirely when everything is 0 (§13) */}
-          {countSegments.length > 0 && (
-            <div className="mt-2 text-xs text-muted-foreground" data-testid={`city-counts-${city.id}`}>
-              {countSegments.join(" · ")}
-            </div>
-          )}
-        </CardContent>
-      </div>
-
-      <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
-        <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
-        <div className="flex flex-wrap gap-2">
-          {experienceSuggestions.map((suggestion, idx) => (
-            <Link
-              key={idx}
-              href={`/experiences/${suggestion.slug}?destination=${destination}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid={`button-plan-${city.id}-${suggestion.slug}`}
-              >
-                <Plane className="h-3 w-3 mr-1" />
-                {suggestion.label}
-              </Button>
-            </Link>
-          ))}
-          {/* D9: More info modal — additive, does not displace the existing buttons */}
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => e.stopPropagation()}
-                data-testid={`button-more-info-${city.id}`}
-              >
-                <Info className="h-3 w-3 mr-1" />
-                More info
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md" onClick={(e) => e.stopPropagation()}>
+      {/* D9/task-55 More-info modal — unchanged content, now controlled. */}
+      <Dialog open={moreInfoOpen} onOpenChange={setMoreInfoOpen}>
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>
                   {city.cityName}{monthName ? ` in ${monthName}` : ""}
@@ -1212,9 +1120,7 @@ function CityCard({
               </div>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
-    </Card>
+    </>
   );
 }
 
