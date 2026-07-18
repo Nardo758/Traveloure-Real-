@@ -138,6 +138,11 @@ export default function ExpertsPage() {
 
   const [favorites, setFavorites] = useState<string[]>([]);
 
+  // Sprint 2.1 plan handoff: the cart's "Find a Trip Planner" link arrives with
+  // ?tripId= — carry it into each expert's detail page so the request the
+  // traveler makes there shares their trip plan with that expert.
+  const handoffTripId = new URLSearchParams(searchString).get("tripId");
+
   useEffect(() => {
     const params = new URLSearchParams(searchString);
     const destParam = params.get("destination");
@@ -524,11 +529,12 @@ export default function ExpertsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
                 >
-                  <ExpertCard 
-                    expert={expert} 
+                  <ExpertCard
+                    expert={expert}
                     showServices={true}
                     experienceTypeFilter={selectedExperienceType || undefined}
                     onNeighbourhoodClick={handleNeighbourhoodChipClick}
+                    detailQuery={handoffTripId ? `?tripId=${encodeURIComponent(handoffTripId)}` : undefined}
                   />
                 </motion.div>
               ))}

@@ -334,13 +334,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Cart icon — visible for all users */}
+              {/* Trip-plan entry (the cart) — visible for all users. Labelled
+                  "Trip plan" for honesty: /cart is the 5-step planner
+                  (cart → trip → optimize → itinerary → payment), not a
+                  checkout (Sprint 2.2). */}
               <Link
                 href="/cart"
-                className="relative inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none"
+                title="Trip plan"
+                aria-label="Trip plan"
+                className="relative inline-flex items-center justify-center gap-1.5 p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none"
                 data-testid="link-nav-cart"
               >
                 <ShoppingCart className="h-5 w-5" />
+                <span className="hidden lg:inline text-sm font-medium">Trip plan</span>
                 {cartCount > 0 && (
                   <span
                     className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white leading-none"

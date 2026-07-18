@@ -69,6 +69,159 @@ interface Booking {
   [key: string]: any;
 }
 
+interface PlanSnapshot {
+  trip: {
+    id: string;
+    title?: string | null;
+    destination?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    numberOfTravelers?: number | null;
+    eventType?: string | null;
+  };
+  itineraryItems: Array<{
+    title?: string | null;
+    description?: string | null;
+    dayNumber?: number | null;
+    itemType?: string | null;
+    scheduledDate?: string | null;
+  }>;
+  cartItems: Array<{
+    name: string;
+    type: string;
+    price?: string | number | null;
+    quantity: number;
+    city?: string | null;
+    scheduledDate?: string | null;
+  }>;
+}
+
+/** Sprint 2.1 expert plan handoff: the traveler's trip + cart snapshot for a
+ *  booking that carries a tripId. Server-gated to the booking's own expert. */
+function TripPlanDialog({
+  bookingId,
+  travelerName,
+  onOpenChange,
+}: {
+  bookingId: string | null;
+  travelerName?: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: snapshot, isLoading, isError } = useQuery<PlanSnapshot>({
+    queryKey: ["/api/expert/bookings", bookingId, "plan-snapshot"],
+    queryFn: async () => {
+      const res = await fetch(`/api/expert/bookings/${bookingId}/plan-snapshot`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load plan");
+      return res.json();
+    },
+    enabled: !!bookingId,
+  });
+
+  return (
+    <Dialog open={!!bookingId} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-trip-plan">
+        <DialogHeader>
+          <DialogTitle>{travelerName ? `${travelerName}'s trip plan` : "Traveler's trip plan"}</DialogTitle>
+          <DialogDescription>
+            The plan this traveler shared when requesting your help.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : isError || !snapshot ? (
+          <p className="text-sm text-console-mid py-4">Could not load the trip plan.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-console-light p-3">
+              <p className="font-semibold text-console-darkest" data-testid="text-plan-trip-title">
+                {snapshot.trip.title || "Untitled trip"}
+              </p>
+              <p className="text-sm text-console-mid mt-0.5">
+                {[
+                  snapshot.trip.destination,
+                  snapshot.trip.startDate && snapshot.trip.endDate
+                    ? `${snapshot.trip.startDate} → ${snapshot.trip.endDate}`
+                    : snapshot.trip.startDate,
+                  snapshot.trip.numberOfTravelers ? `${snapshot.trip.numberOfTravelers} travelers` : null,
+                  snapshot.trip.eventType && snapshot.trip.eventType !== "trip" ? snapshot.trip.eventType : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+
+            {snapshot.cartItems.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-console-mid mb-2">
+                  In their cart ({snapshot.cartItems.length})
+                </p>
+                <div className="space-y-1.5">
+                  {snapshot.cartItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-2 rounded-md border border-console-light px-3 py-2 text-sm"
+                      data-testid={`plan-cart-item-${idx}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-console-darkest truncate">{item.name}</p>
+                        <p className="text-xs text-console-mid">
+                          {[item.type !== "service" ? item.type : null, item.city].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      {item.price != null && (
+                        <span className="text-sm font-semibold text-console-darkest shrink-0">
+                          ${Number(item.price).toFixed(0)}
+                          {item.quantity > 1 ? ` ×${item.quantity}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {snapshot.itineraryItems.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-console-mid mb-2">
+                  Itinerary so far ({snapshot.itineraryItems.length})
+                </p>
+                <div className="space-y-1.5">
+                  {snapshot.itineraryItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-md border border-console-light px-3 py-2 text-sm"
+                      data-testid={`plan-itinerary-item-${idx}`}
+                    >
+                      <p className="font-medium text-console-darkest">
+                        {item.dayNumber ? `Day ${item.dayNumber} — ` : ""}
+                        {item.title || "Item"}
+                      </p>
+                      {item.description && (
+                        <p className="text-xs text-console-mid line-clamp-2">{item.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {snapshot.cartItems.length === 0 && snapshot.itineraryItems.length === 0 && (
+              <p className="text-sm text-console-mid py-2">
+                The trip has no items yet — the traveler is starting from scratch.
+              </p>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const VISA_STATUS_OPTIONS: Array<{ value: VisaBookingMetadata["visaApplicationStatus"]; label: string; icon: any; color: string }> = [
   { value: "pending", label: "Pending", icon: Clock, color: "text-yellow-600" },
   { value: "submitted", label: "Submitted to Embassy", icon: FileCheck, color: "text-blue-600" },
@@ -291,6 +444,7 @@ export default function ExpertBookings() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
   const [selectedVisaBooking, setSelectedVisaBooking] = useState<Booking | null>(null);
+  const [planBooking, setPlanBooking] = useState<Booking | null>(null);
   const { toast } = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -586,6 +740,17 @@ export default function ExpertBookings() {
                             Visa Status
                           </Button>
                         )}
+                        {booking.tripId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPlanBooking(booking)}
+                            data-testid={`button-view-trip-plan-${booking.id}`}
+                          >
+                            <ListChecks className="w-3 h-3 mr-1" />
+                            Trip Plan
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -611,6 +776,11 @@ export default function ExpertBookings() {
         open={visaDialogOpen}
         onOpenChange={setVisaDialogOpen}
         booking={selectedVisaBooking}
+      />
+      <TripPlanDialog
+        bookingId={planBooking?.id ?? null}
+        travelerName={planBooking?.travelerName}
+        onOpenChange={(open) => { if (!open) setPlanBooking(null); }}
       />
     </ExpertLayout>
   );

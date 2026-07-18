@@ -54,7 +54,7 @@ import { db } from "./db";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
-import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
+import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -2233,7 +2233,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const expertIds = Array.from(new Set(filtered.map((e: any) => String(e.id)).filter(Boolean)));
       if (expertIds.length > 0) {
-        const [templateRows, serviceRows] = await Promise.all([
+        const [templateRows, serviceRows, ratingRows] = await Promise.all([
           db
             .select({
               expertId: expertTemplates.expertId,
@@ -2264,18 +2264,43 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               ),
             )
             .groupBy(providerServices.userId),
+          // Roadmap 3.5: expert-level rating aggregate. Experts had NO rating source
+          // (service reviews are service-scoped), so cards honestly showed "New".
+          // service_reviews.provider_id IS the expert's user id for their own
+          // services, so an expert's rating = AVG/COUNT over their APPROVED reviews
+          // (the same moderation gate the service-level aggregate uses — pending/
+          // flagged/removed never count). Real aggregate, never fabricated (§13).
+          db
+            .select({
+              providerId: serviceReviews.providerId,
+              avg: sql<number>`cast(avg(${serviceReviews.rating}) as float)`,
+              count: sql<number>`cast(count(*) as int)`,
+            })
+            .from(serviceReviews)
+            .where(
+              and(
+                inArray(serviceReviews.providerId, expertIds),
+                eq(serviceReviews.status, "approved"),
+              ),
+            )
+            .groupBy(serviceReviews.providerId),
         ]);
         const tplMap = new Map(templateRows.map((r) => [r.expertId, r]));
         const svcMap = new Map(serviceRows.map((r) => [r.userId, r]));
+        const ratingMap = new Map(ratingRows.map((r) => [r.providerId, r]));
         filtered = filtered.map((e: any) => {
           const tpl = tplMap.get(String(e.id));
           const svc = svcMap.get(String(e.id));
+          const rat = ratingMap.get(String(e.id));
           return {
             ...e,
             packagesCount: tpl?.count ?? 0,
             packagesSold: tpl?.sold ?? 0,
             servicesCount: svc?.count ?? 0,
             serviceBookings: svc?.bookings ?? 0,
+            // null (not 0) when there are no reviews → the card shows "New", never a fake score.
+            expertRating: rat && rat.count > 0 ? Number(rat.avg.toFixed(2)) : null,
+            expertReviewCount: rat?.count ?? 0,
           };
         });
       }
@@ -2294,6 +2319,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!expert) {
       return res.status(404).json({ message: "Expert not found" });
     }
+    // Roadmap 3.5: attach the same real expert-level rating aggregate the list
+    // uses (APPROVED service reviews for this expert; null when none → "New").
+    try {
+      const [rat] = await db
+        .select({
+          avg: sql<number>`cast(avg(${serviceReviews.rating}) as float)`,
+          count: sql<number>`cast(count(*) as int)`,
+        })
+        .from(serviceReviews)
+        .where(
+          and(
+            eq(serviceReviews.providerId, req.params.id),
+            eq(serviceReviews.status, "approved"),
+          ),
+        );
+      (expert as any).expertRating = rat && rat.count > 0 ? Number(rat.avg.toFixed(2)) : null;
+      (expert as any).expertReviewCount = rat?.count ?? 0;
+    } catch (err) {
+      console.error("Error attaching expert rating:", err);
+    }
     res.json(expert);
   });
 
@@ -2310,13 +2355,54 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get reviews for a specific expert (public)
+  // Get reviews for a specific expert (public) — roadmap 3.5.
+  // Was a stub returning []. Now returns the expert's REAL approved service
+  // reviews (service_reviews.provider_id = expert id), newest first, with a
+  // sanitized reviewer display name (never the full account). Only 'approved'
+  // reviews surface — the same moderation gate the rating aggregate uses.
   app.get("/api/experts/:id/reviews", async (req, res) => {
     try {
       const expertId = req.params.id;
-      // For now, return empty array - can be implemented with actual review system
-      // TODO: Implement storage.getExpertReviews(expertId)
-      res.json([]);
+      const rows = await db
+        .select({
+          id: serviceReviews.id,
+          rating: serviceReviews.rating,
+          reviewText: serviceReviews.reviewText,
+          responseText: serviceReviews.responseText,
+          createdAt: serviceReviews.createdAt,
+          serviceName: providerServices.serviceName,
+          reviewerFirst: users.firstName,
+          reviewerLast: users.lastName,
+        })
+        .from(serviceReviews)
+        .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+        .leftJoin(users, eq(serviceReviews.travelerId, users.id))
+        .where(
+          and(
+            eq(serviceReviews.providerId, expertId),
+            eq(serviceReviews.status, "approved"),
+          ),
+        )
+        .orderBy(desc(serviceReviews.createdAt))
+        .limit(50);
+
+      const reviews = rows.map((r) => {
+        const first = (r.reviewerFirst || "").trim();
+        const lastInitial = (r.reviewerLast || "").trim().charAt(0);
+        const reviewerName = first
+          ? (lastInitial ? `${first} ${lastInitial}.` : first)
+          : "Traveler";
+        return {
+          id: r.id,
+          rating: r.rating,
+          reviewText: r.reviewText,
+          responseText: r.responseText,
+          createdAt: r.createdAt,
+          serviceName: r.serviceName,
+          reviewerName,
+        };
+      });
+      res.json(reviews);
     } catch (err) {
       console.error("Error fetching expert reviews:", err);
       res.json([]);
@@ -4805,12 +4891,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
-      
-      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug });
-      
-      if (!serviceId && !customVenueId) {
-        return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
+      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta } = req.body;
+
+      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, contentType, contentId, experienceSlug: rawSlug });
+
+      // Funnel consistency: Discover-feed CONTENT items (gems/hotels/activities/
+      // events) add straight to the cart like services — the trip/experience
+      // question is asked once, in the cart's Trip-details step, not at add-time.
+      // Storage + cart UI already supported content rows; this is the missing
+      // write path. contentMeta is DISPLAY-ONLY and whitelisted to string fields —
+      // no price is accepted (§14: a client-supplied price must never reach a charge).
+      const CART_CONTENT_TYPES = new Set(["gem", "hotel", "activity", "event", "neighborhood"]);
+      const isContentAdd =
+        typeof contentType === "string" && CART_CONTENT_TYPES.has(contentType) &&
+        typeof contentId === "string" && contentId.length > 0 && contentId.length <= 200;
+
+      if (!serviceId && !customVenueId && !isContentAdd) {
+        return res.status(400).json({ message: "Service ID, Custom Venue ID, or content item is required" });
       }
       
       // Verify service or custom venue exists
@@ -4835,10 +4932,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       
       // Resolve slug aliases
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
-      
+
+      // Whitelist display metadata for content items (strings only, capped).
+      let safeContentMeta: Record<string, string> | undefined;
+      if (isContentAdd && contentMeta && typeof contentMeta === "object") {
+        safeContentMeta = {};
+        for (const key of ["name", "description", "city", "imageUrl"]) {
+          const v = (contentMeta as Record<string, unknown>)[key];
+          if (typeof v === "string" && v.length > 0) safeContentMeta[key] = v.slice(0, 500);
+        }
+      }
+
       const item = await storage.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
+        ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
         quantity: quantity || 1,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
@@ -5207,7 +5315,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
+
+      // Sprint-1 dislike loop (harvested from the UNMOUNTED trips.routes.ts copy —
+      // the router is imported but never app.use()d, so this inline registration
+      // is the live one; §9 route-shadow class): whitelisted "what to fix" chips
+      // from a re-run flow into TripPreferences.feedback, where
+      // selectVariantStrategy gives them top priority over inferred preferences.
+      const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
+      const dislikeFeedback: string[] = Array.isArray(rawFeedback)
+        ? rawFeedback.filter((f: unknown): f is string => typeof f === "string" && FEEDBACK_CHIPS.has(f)).slice(0, 4)
+        : [];
 
       const comparison = await db.query.itineraryComparisons.findFirst({
         where: eq(itineraryComparisons.id, comparisonId),
@@ -5230,7 +5348,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.description || "",
           serviceType: "external",
           price: parseFloat(item.price || "0"),
-          rating: item.rating || 4.5,
+          // §13: no fabricated fallback rating — unknown stays unknown.
+          rating: typeof item.rating === "number" ? item.rating : undefined,
           location: item.location || "",
           duration: item.duration || 120,
           dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
@@ -5250,7 +5369,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.description,
           serviceType: item.providerServiceId ? "provider" : "external",
           price: parseFloat(item.price || "0"),
-          rating: 4.5,
+          // §13: user-experience items have no rating source — omit, don't invent.
           location: item.location,
           duration: 120,
           dayNumber: 1,
@@ -5272,7 +5391,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.service?.shortDescription,
           serviceType: item.service?.serviceType,
           price: parseFloat(item.service?.price || "0"),
-          rating: parseFloat(item.service?.averageRating || "4.5"),
+          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
+          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
           location: item.service?.location,
           duration: 120,
           dayNumber: Math.floor(index / 3) + 1,
@@ -5292,6 +5412,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       res.json({ message: "Optimization started", status: "generating" });
 
+      // Build trip preferences for the adaptive variant strategy. Dislike
+      // feedback applies even without a trip row (it's an explicit instruction,
+      // not an inferred preference).
+      let tripPreferencesForGen: TripPreferences | undefined =
+        dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : undefined;
+      if (comparison.tripId) {
+        const tripRowForGen = await storage.getTrip(comparison.tripId);
+        if (tripRowForGen) {
+          const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
+          tripPreferencesForGen = {
+            eventType: tripRowForGen.eventType,
+            budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
+            travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
+            ...(dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : {}),
+          };
+        }
+      }
+
       generateOptimizedItineraries(
         comparisonId,
         userId,
@@ -5301,7 +5439,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         comparison.startDate || new Date().toISOString(),
         comparison.endDate || new Date().toISOString(),
         comparison.budget ? parseFloat(comparison.budget) : undefined,
-        comparison.travelers || 1
+        comparison.travelers || 1,
+        comparison.tripId || undefined,
+        undefined,
+        tripPreferencesForGen
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
