@@ -367,7 +367,7 @@ export default function AboutPage() {
               <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-start-planning">
                 Start Planning <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-              <Link href="/partner">
+              <Link href="/partner-with-us">
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-become-expert">
                   Become an Expert
                 </Button>

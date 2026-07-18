@@ -13,6 +13,12 @@ name: Route Coverage Gate
 #                          (client/src/lib/nav-config.ts)
 #   2. footer-links      — every href in footerSectionsConfig
 #                          (client/src/lib/nav-config.ts)
+#   3. hardcoded-links   — all static href="/..." and to="/..." string literals
+#                          found in client/src/ components, cross-checked against
+#                          <Route path="..."> entries in App.tsx.  Catches links
+#                          that were removed from nav-config but still exist in
+#                          component files.  Pure static analysis — no browser
+#                          or server required.
 #
 # Each browser suite visits every resolved URL against a locally-built
 # production bundle and fails if any route renders the NotFound (404)
@@ -25,7 +31,7 @@ name: Route Coverage Gate
 # Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — navbar + footer checks; safe to mark REQUIRED.
+#   * navbar-links-smoke — navbar + footer + hardcoded-links checks; safe to mark REQUIRED.
 #   * report             — PR comment; informational only.
 
 on:
@@ -167,6 +173,20 @@ jobs:
           BASE_URL: http://localhost:5000
           CI: 'true'
 
+
+      - name: Hardcoded-link cross-check (static href/to literals vs App.tsx routes)
+        # Scans every .tsx / .ts file in client/src/ (except nav-config.ts, which
+        # is already covered by the navbar-links and footer-links suites) for
+        # static string literals used as href="/..." or to="/..." attributes.
+        # Each found path is verified against the <Route path="..."> entries in
+        # App.tsx.  Fails if any hardcoded path has no matching route — meaning a
+        # link in a component points to a route that was deleted or never added.
+        # No browser or server needed — pure static source-file analysis.
+        run: npx playwright test hardcoded-links --project=chromium
+        env:
+          CI: 'true'
+
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
@@ -197,11 +217,12 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Two suites run against a locally-built production bundle:',
-              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs) and **footer-links** (all `footerSectionsConfig` hrefs).',
+              '> Three suites run against a locally-built production bundle:',
+              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs), **footer-links** (all `footerSectionsConfig` hrefs),',
+              '> and **hardcoded-links** (static `href="/..."` / `to="/..."` literals in `client/src/` components cross-checked against App.tsx routes).',
               '> App-route coverage (every `<Route path="...">` in `App.tsx`) runs in the separate **app-routes-gate** workflow.',
-              '> A red gate means at least one route renders the 404 (NotFound) page **or** a blank/empty page with no heading or `<main>` content.',
-              allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx` and that the page component renders real content (at least one h1/h2/h3 or a non-empty `<main>`).',
+              '> A red gate means at least one route renders the 404 (NotFound) page, a blank/empty page, or a hardcoded link in a component points to a missing route.',
+              allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx`, the page renders real content, and no component links to a removed route.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
