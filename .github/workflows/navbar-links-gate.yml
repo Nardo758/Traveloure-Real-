@@ -85,6 +85,15 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
+      - name: Seed CI test users
+        # Creates ci-expert@traveloure.test (travel_expert), ci-provider@traveloure.test
+        # (service_provider), and ci-admin@traveloure.test (admin) with hashed passwords
+        # so the authenticated Playwright gate can log in via email/password auth.
+        # Idempotent — safe to re-run (ON CONFLICT DO UPDATE).
+        run: npx tsx scripts/seed-ci-test-users.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
       - name: Build production bundle
         # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
         # Startup seeding still runs (gated on ENVIRONMENT !== "PROD", not
@@ -151,6 +160,17 @@ jobs:
         # Auth-gated routes redirect to "/" rather than rendering NotFound, so
         # they pass the 404 gate and are skipped on the content check.
         run: npx playwright test app-routes --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Authenticated routes smoke (expert / provider / admin)
+        # Runs auth-routes.spec.ts with real session cookies for each platform role.
+        # globalSetup (playwright/global-setup.ts) logs in via /api/auth/login using
+        # the CI test accounts seeded above, then saves per-role storage states.
+        # The spec then visits /expert/*, /provider/*, /admin/* routes with the
+        # matching auth context and fails if any page throws a JS error or crashes.
+        run: npx playwright test auth-routes --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
