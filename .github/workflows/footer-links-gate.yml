@@ -82,10 +82,18 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
+      - name: Cache production build output
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
       - name: Build production bundle
         # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
         # Startup seeding still runs (gated on ENVIRONMENT !== "PROD", not
         # NODE_ENV), so /api/ready flips true as expected.
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: npm run build
 
       - name: Start production server
