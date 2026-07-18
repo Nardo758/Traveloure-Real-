@@ -3,6 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { 
   Search, 
   Plus, 
@@ -13,13 +22,14 @@ import {
   Hotel, 
   Utensils, 
   Gift, 
-  Calendar,
   AlertCircle,
   ChevronDown,
   ChevronUp
 } from "lucide-react";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface EaExecutive {
   id: string; name: string; title?: string; status: string;
@@ -29,12 +39,93 @@ interface EaExecutive {
   notes?: string;
 }
 
+interface EditFormState {
+  email: string;
+  phone: string;
+  travelClass: string;
+  hotelBrands: string;
+  dietary: string;
+  seating: string;
+  preferenceNotes: string;
+  spouse: string;
+  anniversary: string;
+  children: string;
+  notes: string;
+}
+
+function buildFormState(exec: EaExecutive): EditFormState {
+  return {
+    email: exec.email ?? "",
+    phone: exec.phone ?? "",
+    travelClass: exec.preferences?.travelClass ?? "",
+    hotelBrands: exec.preferences?.hotelBrands ?? "",
+    dietary: exec.preferences?.dietary ?? "",
+    seating: exec.preferences?.seating ?? "",
+    preferenceNotes: exec.preferences?.notes ?? "",
+    spouse: exec.family?.spouse ?? "",
+    anniversary: exec.family?.anniversary ?? "",
+    children: exec.family?.children ?? "",
+    notes: exec.notes ?? "",
+  };
+}
+
 export default function EAExecutives() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingExec, setEditingExec] = useState<EaExecutive | null>(null);
+  const [formState, setFormState] = useState<EditFormState | null>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: executives = [] } = useQuery<EaExecutive[]>({
     queryKey: ["/api/ea/executives"],
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: object }) => {
+      return apiRequest("PATCH", `/api/ea/executives/${id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ea/executives"] });
+      toast({ title: "Profile updated", description: "Executive profile saved successfully." });
+      setEditingExec(null);
+      setFormState(null);
+    },
+    onError: () => {
+      toast({ title: "Save failed", description: "Could not save changes. Please try again.", variant: "destructive" });
+    },
+  });
+
+  function openEdit(exec: EaExecutive, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingExec(exec);
+    setFormState(buildFormState(exec));
+  }
+
+  function handleField(field: keyof EditFormState, value: string) {
+    setFormState((prev) => prev ? { ...prev, [field]: value } : prev);
+  }
+
+  function handleSave() {
+    if (!editingExec || !formState) return;
+    const payload = {
+      email: formState.email || null,
+      phone: formState.phone || null,
+      notes: formState.notes || null,
+      preferences: {
+        travelClass: formState.travelClass || null,
+        hotelBrands: formState.hotelBrands || null,
+        dietary: formState.dietary || null,
+        seating: formState.seating || null,
+        notes: formState.preferenceNotes || null,
+      },
+      family: {
+        spouse: formState.spouse || null,
+        anniversary: formState.anniversary || null,
+        children: formState.children || null,
+      },
+    };
+    updateMutation.mutate({ id: editingExec.id, payload });
+  }
 
   return (
     <EALayout title="Executive Management">
@@ -122,7 +213,7 @@ export default function EAExecutives() {
                 </div>
               </CardHeader>
 
-              {expandedId === exec.id && exec.preferences && (
+              {expandedId === exec.id && (
                 <CardContent className="border-t border-gray-100 pt-4 space-y-6">
                   {/* Profile Information */}
                   <div>
@@ -143,19 +234,19 @@ export default function EAExecutives() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                       <p className="text-gray-600">
                         <span className="flex items-center gap-1"><Plane className="w-4 h-4" /> Travel Class:</span>
-                        {exec.preferences.travelClass ?? "—"}
+                        {exec.preferences?.travelClass ?? "—"}
                       </p>
                       <p className="text-gray-600">
                         <span className="flex items-center gap-1"><Hotel className="w-4 h-4" /> Hotels:</span>
-                        {exec.preferences.hotelBrands ?? "—"}
+                        {exec.preferences?.hotelBrands ?? "—"}
                       </p>
                       <p className="text-gray-600">
                         <span className="flex items-center gap-1"><Utensils className="w-4 h-4" /> Dietary:</span>
-                        {exec.preferences.dietary ?? "—"}
+                        {exec.preferences?.dietary ?? "—"}
                       </p>
-                      <p className="text-gray-600">Seating: {exec.preferences.seating ?? "—"}</p>
+                      <p className="text-gray-600">Seating: {exec.preferences?.seating ?? "—"}</p>
                     </div>
-                    {exec.preferences.notes && (
+                    {exec.preferences?.notes && (
                       <p className="text-sm text-yellow-600 mt-2">
                         <AlertCircle className="w-4 h-4 inline mr-1" />
                         {exec.preferences.notes}
@@ -193,7 +284,12 @@ export default function EAExecutives() {
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-100">
-                    <Button size="sm" variant="outline" data-testid={`button-edit-profile-${exec.id}`}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid={`button-edit-profile-${exec.id}`}
+                      onClick={(e) => openEdit(exec, e)}
+                    >
                       Edit Profile
                     </Button>
                     <Button size="sm" variant="outline" data-testid={`button-all-events-${exec.id}`}>
@@ -219,6 +315,172 @@ export default function EAExecutives() {
           Show All 8 Executives
         </Button>
       </div>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={!!editingExec} onOpenChange={(open) => { if (!open) { setEditingExec(null); setFormState(null); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-edit-profile">
+          <DialogHeader>
+            <DialogTitle>Edit Profile — {editingExec?.name}</DialogTitle>
+          </DialogHeader>
+
+          {formState && (
+            <div className="space-y-5 py-2">
+              {/* Contact */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Contact Information</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-email">Email</Label>
+                    <Input
+                      id="edit-email"
+                      data-testid="input-edit-email"
+                      value={formState.email}
+                      onChange={(e) => handleField("email", e.target.value)}
+                      placeholder="email@company.com"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-phone">Phone</Label>
+                    <Input
+                      id="edit-phone"
+                      data-testid="input-edit-phone"
+                      value={formState.phone}
+                      onChange={(e) => handleField("phone", e.target.value)}
+                      placeholder="+1 555 000 0000"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Travel Preferences */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Travel Preferences</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-travel-class">Travel Class</Label>
+                    <Input
+                      id="edit-travel-class"
+                      data-testid="input-edit-travel-class"
+                      value={formState.travelClass}
+                      onChange={(e) => handleField("travelClass", e.target.value)}
+                      placeholder="e.g. Business, First Class"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-hotel-brands">Preferred Hotel Brands</Label>
+                    <Input
+                      id="edit-hotel-brands"
+                      data-testid="input-edit-hotel-brands"
+                      value={formState.hotelBrands}
+                      onChange={(e) => handleField("hotelBrands", e.target.value)}
+                      placeholder="e.g. Four Seasons, Marriott"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-dietary">Dietary Requirements</Label>
+                    <Input
+                      id="edit-dietary"
+                      data-testid="input-edit-dietary"
+                      value={formState.dietary}
+                      onChange={(e) => handleField("dietary", e.target.value)}
+                      placeholder="e.g. Vegetarian, Gluten-free"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-seating">Seating Preference</Label>
+                    <Input
+                      id="edit-seating"
+                      data-testid="input-edit-seating"
+                      value={formState.seating}
+                      onChange={(e) => handleField("seating", e.target.value)}
+                      placeholder="e.g. Aisle, Window"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-preference-notes">Preference Notes</Label>
+                    <Textarea
+                      id="edit-preference-notes"
+                      data-testid="input-edit-preference-notes"
+                      value={formState.preferenceNotes}
+                      onChange={(e) => handleField("preferenceNotes", e.target.value)}
+                      placeholder="Any additional preference details..."
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Family */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Family Information</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-spouse">Spouse / Partner</Label>
+                    <Input
+                      id="edit-spouse"
+                      data-testid="input-edit-spouse"
+                      value={formState.spouse}
+                      onChange={(e) => handleField("spouse", e.target.value)}
+                      placeholder="Spouse name"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-anniversary">Anniversary Date</Label>
+                    <Input
+                      id="edit-anniversary"
+                      data-testid="input-edit-anniversary"
+                      value={formState.anniversary}
+                      onChange={(e) => handleField("anniversary", e.target.value)}
+                      placeholder="e.g. June 12"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-children">Children</Label>
+                    <Input
+                      id="edit-children"
+                      data-testid="input-edit-children"
+                      value={formState.children}
+                      onChange={(e) => handleField("children", e.target.value)}
+                      placeholder="e.g. 2 (ages 8, 11)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* General Notes */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">General Notes</h4>
+                <Textarea
+                  data-testid="input-edit-notes"
+                  value={formState.notes}
+                  onChange={(e) => handleField("notes", e.target.value)}
+                  placeholder="Any notes about this executive..."
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setEditingExec(null); setFormState(null); }}
+              data-testid="button-cancel-edit"
+              disabled={updateMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#FF385C] hover:bg-[#E23350]"
+              onClick={handleSave}
+              data-testid="button-save-profile"
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </EALayout>
   );
 }

@@ -1,8 +1,8 @@
 name: Route Coverage Gate
 
-# Guards against broken or missing routes reaching production.
+# Guards against broken or missing navbar/footer routes reaching production.
 #
-# The navbar-links-smoke job runs four checks in order:
+# The navbar-links-smoke job runs three checks in order:
 #
 #   0. crash-filter-unit — pure unit tests for the console-error filter
 #                          predicates (playwright/utils/console-crash-filter.ts)
@@ -13,21 +13,17 @@ name: Route Coverage Gate
 #                          (client/src/lib/nav-config.ts)
 #   2. footer-links      — every href in footerSectionsConfig
 #                          (client/src/lib/nav-config.ts)
-#   3. app-routes        — every <Route path="..."> in client/src/App.tsx,
-#                          including routes not listed in nav-config.ts
-#                          (detail pages, onboarding flows, public share pages,
-#                          role dashboards, etc.)
 #
 # Each browser suite visits every resolved URL against a locally-built
 # production bundle and fails if any route renders the NotFound (404)
 # component or a blank/empty page with no heading or <main> content.
 #
-# Dynamic segments (:id, :token, :slug, …) in App.tsx routes are replaced
-# with canonical placeholders; duplicate resolved URLs are deduplicated.
+# App-route coverage (every <Route path="..."> in App.tsx) runs in its own
+# dedicated workflow: .github/workflows/app-routes-gate.yml
 # Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — all four checks run here; safe to mark REQUIRED.
+#   * navbar-links-smoke — navbar + footer checks; safe to mark REQUIRED.
 #   * report             — PR comment; informational only.
 
 on:
@@ -84,8 +80,20 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Apply database migrations
         run: npx tsx server/migrations/migrate-entry.ts
@@ -165,19 +173,6 @@ jobs:
           BASE_URL: http://localhost:5000
           CI: 'true'
 
-      - name: App route coverage (all <Route path="..."> entries in App.tsx)
-        # Extracts every path registered in client/src/App.tsx at test-collection
-        # time — including routes that are NOT listed in nav-config.ts (detail
-        # pages, onboarding flows, public share pages, role dashboards, etc.).
-        # Dynamic segments (:id, :token, …) are substituted with canonical
-        # placeholders; duplicate resolved URLs are deduplicated.
-        # Auth-gated routes redirect to "/" rather than rendering NotFound, so
-        # they pass the 404 gate and are skipped on the content check.
-        run: npx playwright test app-routes --project=chromium
-        env:
-          BASE_URL: http://localhost:5000
-          CI: 'true'
-
       - name: Authenticated routes smoke (expert / provider / admin)
         # Runs auth-routes.spec.ts with real session cookies for each platform role.
         # globalSetup (playwright/global-setup.ts) logs in via /api/auth/login using
@@ -219,9 +214,9 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Three suites run against a locally-built production bundle:',
-              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs), **footer-links** (all `footerSectionsConfig` hrefs),',
-              '> and **app-routes** (every `<Route path="...">` in `client/src/App.tsx`, including routes not in nav-config).',
+              '> Two suites run against a locally-built production bundle:',
+              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs) and **footer-links** (all `footerSectionsConfig` hrefs).',
+              '> App-route coverage (every `<Route path="...">` in `App.tsx`) runs in the separate **app-routes-gate** workflow.',
               '> A red gate means at least one route renders the 404 (NotFound) page **or** a blank/empty page with no heading or `<main>` content.',
               allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx` and that the page component renders real content (at least one h1/h2/h3 or a non-empty `<main>`).',
             ].filter(Boolean).join('\n');
