@@ -325,6 +325,22 @@ export default function ItineraryPage() {
     days: generatedDays || defaultDays,
   } : null;
 
+  const { data: plancardData } = useQuery<any>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: !!tripId,
+    staleTime: 30000,
+  });
+
+  const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
+    subtotal: number;
+    platformFeeTotal: number;
+    total: number;
+    itemCount: number;
+  }>({
+    queryKey: ["/api/cart/fee-preview"],
+    staleTime: 30 * 1000,
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center" data-testid="loading-spinner">
@@ -337,7 +353,7 @@ export default function ItineraryPage() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4" data-testid="empty-state">
         <AlertCircle className="w-12 h-12 text-muted-foreground" />
-        <h2 className="text-lg font-semibold text-foreground">Trip not found</h2>
+        <h1 className="text-2xl font-bold text-foreground">Trip Not Found</h1>
         <p className="text-sm text-muted-foreground">The itinerary you're looking for doesn't exist or has been removed.</p>
         <Link href="/dashboard">
           <Button data-testid="button-back-to-dashboard">
@@ -347,25 +363,6 @@ export default function ItineraryPage() {
       </div>
     );
   }
-
-  const { data: plancardData } = useQuery<any>({
-    queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: !!tripId,
-    staleTime: 30000,
-  });
-
-  // Per-item fee preview: mirrors the exact per-item resolution the checkout uses
-  // (source tier, expert override, provider beta_flat, revenueShareRate final override).
-  // GET — no body needed; the server resolves the cart from the authenticated session.
-  const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
-    subtotal: number;
-    platformFeeTotal: number;
-    total: number;
-    itemCount: number;
-  }>({
-    queryKey: ["/api/cart/fee-preview"],
-    staleTime: 30 * 1000,
-  });
 
   const totalBooked = itinerary.days.flatMap((d: any) => d.activities).filter((a: any) => a.booked).length;
   const totalActivities = itinerary.days.flatMap((d: any) => d.activities).length;
