@@ -704,9 +704,13 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       .returning();
 
     const baselineTotal = baselineItems.reduce((sum, item) => sum + (item.price || 0), 0);
-    const baselineAvgRating = baselineItems.length > 0
-      ? baselineItems.reduce((sum, item) => sum + (item.rating || 0), 0) / baselineItems.length
-      : 0;
+    // §13: average only over items that actually HAVE a rating; when none do,
+    // there is no baseline rating — null, never a fabricated stand-in. (The
+    // route-level mapping no longer injects 4.5 for unrated items.)
+    const ratedBaselineItems = baselineItems.filter(item => typeof item.rating === "number");
+    const baselineAvgRating: number | null = ratedBaselineItems.length > 0
+      ? ratedBaselineItems.reduce((sum, item) => sum + (item.rating as number), 0) / ratedBaselineItems.length
+      : null;
 
     // Calculate baseline metrics without reordering (keep user's original order)
     const baselineForMetrics = baselineItems.map(item => ({
@@ -739,7 +743,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       .update(itineraryVariants)
       .set({
         totalCost: baselineTotal.toString(),
-        averageRating: baselineAvgRating.toFixed(2),
+        averageRating: baselineAvgRating !== null ? baselineAvgRating.toFixed(2) : null,
         optimizationScore: Math.round((baselineEnhancedMetrics.balanceScore + baselineEnhancedMetrics.wellnessScore + baselineEnhancedMetrics.paceScore) / 3),
       })
       .where(eq(itineraryVariants.id, baselineVariant[0].id));
@@ -755,7 +759,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         betterIsLower: true,
         description: `Your planned spending: $${baselineTotal.toFixed(0)}`,
       },
-      {
+      // §13: the rating metric only exists when real ratings exist.
+      ...(baselineAvgRating !== null ? [{
         variantId: baselineVariant[0].id,
         metricKey: "average_rating",
         metricLabel: "Average Rating",
@@ -763,7 +768,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         unit: "stars",
         betterIsLower: false,
         description: `Average rating: ${baselineAvgRating.toFixed(1)} stars`,
-      },
+      }] : []),
       {
         variantId: baselineVariant[0].id,
         metricKey: "balance_score",
@@ -1151,7 +1156,11 @@ Respond with valid JSON in this exact format:
         ? ((costSavings / baselineTotal) * 100).toFixed(1) 
         : "0";
 
-      const ratingImprovement = variant.metrics.averageRating - baselineAvgRating;
+      // §13: a rating comparison needs a real baseline; without one the variant
+      // metric states its own average with no invented "improvement" claim.
+      const ratingImprovement = baselineAvgRating !== null
+        ? variant.metrics.averageRating - baselineAvgRating
+        : null;
 
       const metricsToInsert: InsertItineraryVariantMetric[] = [
         {
@@ -1176,13 +1185,19 @@ Respond with valid JSON in this exact format:
           value: variant.metrics.averageRating.toString(),
           unit: "stars",
           betterIsLower: false,
-          comparison: ratingImprovement > 0 ? "better" : ratingImprovement < 0 ? "lower" : "same",
-          improvementPercentage: ratingImprovement.toFixed(1),
-          description: ratingImprovement > 0 
-            ? `+${ratingImprovement.toFixed(1)} stars higher rated` 
-            : ratingImprovement < 0
-            ? `${ratingImprovement.toFixed(1)} stars lower but better value`
-            : "Same rating quality",
+          ...(ratingImprovement !== null
+            ? {
+                comparison: ratingImprovement > 0 ? "better" : ratingImprovement < 0 ? "lower" : "same",
+                improvementPercentage: ratingImprovement.toFixed(1),
+                description: ratingImprovement > 0
+                  ? `+${ratingImprovement.toFixed(1)} stars higher rated`
+                  : ratingImprovement < 0
+                  ? `${ratingImprovement.toFixed(1)} stars lower but better value`
+                  : "Same rating quality",
+              }
+            : {
+                description: `Average rating: ${variant.metrics.averageRating.toFixed(1)} stars`,
+              }),
         },
         {
           variantId: newVariant.id,
