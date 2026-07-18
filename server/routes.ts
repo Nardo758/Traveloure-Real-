@@ -2233,7 +2233,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const expertIds = Array.from(new Set(filtered.map((e: any) => String(e.id)).filter(Boolean)));
       if (expertIds.length > 0) {
-        const [templateRows, serviceRows] = await Promise.all([
+        const [templateRows, serviceRows, ratingRows] = await Promise.all([
           db
             .select({
               expertId: expertTemplates.expertId,
@@ -2264,18 +2264,43 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               ),
             )
             .groupBy(providerServices.userId),
+          // Roadmap 3.5: expert-level rating aggregate. Experts had NO rating source
+          // (service reviews are service-scoped), so cards honestly showed "New".
+          // service_reviews.provider_id IS the expert's user id for their own
+          // services, so an expert's rating = AVG/COUNT over their APPROVED reviews
+          // (the same moderation gate the service-level aggregate uses — pending/
+          // flagged/removed never count). Real aggregate, never fabricated (§13).
+          db
+            .select({
+              providerId: serviceReviews.providerId,
+              avg: sql<number>`cast(avg(${serviceReviews.rating}) as float)`,
+              count: sql<number>`cast(count(*) as int)`,
+            })
+            .from(serviceReviews)
+            .where(
+              and(
+                inArray(serviceReviews.providerId, expertIds),
+                eq(serviceReviews.status, "approved"),
+              ),
+            )
+            .groupBy(serviceReviews.providerId),
         ]);
         const tplMap = new Map(templateRows.map((r) => [r.expertId, r]));
         const svcMap = new Map(serviceRows.map((r) => [r.userId, r]));
+        const ratingMap = new Map(ratingRows.map((r) => [r.providerId, r]));
         filtered = filtered.map((e: any) => {
           const tpl = tplMap.get(String(e.id));
           const svc = svcMap.get(String(e.id));
+          const rat = ratingMap.get(String(e.id));
           return {
             ...e,
             packagesCount: tpl?.count ?? 0,
             packagesSold: tpl?.sold ?? 0,
             servicesCount: svc?.count ?? 0,
             serviceBookings: svc?.bookings ?? 0,
+            // null (not 0) when there are no reviews → the card shows "New", never a fake score.
+            expertRating: rat && rat.count > 0 ? Number(rat.avg.toFixed(2)) : null,
+            expertReviewCount: rat?.count ?? 0,
           };
         });
       }
@@ -2294,6 +2319,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!expert) {
       return res.status(404).json({ message: "Expert not found" });
     }
+    // Roadmap 3.5: attach the same real expert-level rating aggregate the list
+    // uses (APPROVED service reviews for this expert; null when none → "New").
+    try {
+      const [rat] = await db
+        .select({
+          avg: sql<number>`cast(avg(${serviceReviews.rating}) as float)`,
+          count: sql<number>`cast(count(*) as int)`,
+        })
+        .from(serviceReviews)
+        .where(
+          and(
+            eq(serviceReviews.providerId, req.params.id),
+            eq(serviceReviews.status, "approved"),
+          ),
+        );
+      (expert as any).expertRating = rat && rat.count > 0 ? Number(rat.avg.toFixed(2)) : null;
+      (expert as any).expertReviewCount = rat?.count ?? 0;
+    } catch (err) {
+      console.error("Error attaching expert rating:", err);
+    }
     res.json(expert);
   });
 
@@ -2310,13 +2355,54 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get reviews for a specific expert (public)
+  // Get reviews for a specific expert (public) — roadmap 3.5.
+  // Was a stub returning []. Now returns the expert's REAL approved service
+  // reviews (service_reviews.provider_id = expert id), newest first, with a
+  // sanitized reviewer display name (never the full account). Only 'approved'
+  // reviews surface — the same moderation gate the rating aggregate uses.
   app.get("/api/experts/:id/reviews", async (req, res) => {
     try {
       const expertId = req.params.id;
-      // For now, return empty array - can be implemented with actual review system
-      // TODO: Implement storage.getExpertReviews(expertId)
-      res.json([]);
+      const rows = await db
+        .select({
+          id: serviceReviews.id,
+          rating: serviceReviews.rating,
+          reviewText: serviceReviews.reviewText,
+          responseText: serviceReviews.responseText,
+          createdAt: serviceReviews.createdAt,
+          serviceName: providerServices.serviceName,
+          reviewerFirst: users.firstName,
+          reviewerLast: users.lastName,
+        })
+        .from(serviceReviews)
+        .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+        .leftJoin(users, eq(serviceReviews.travelerId, users.id))
+        .where(
+          and(
+            eq(serviceReviews.providerId, expertId),
+            eq(serviceReviews.status, "approved"),
+          ),
+        )
+        .orderBy(desc(serviceReviews.createdAt))
+        .limit(50);
+
+      const reviews = rows.map((r) => {
+        const first = (r.reviewerFirst || "").trim();
+        const lastInitial = (r.reviewerLast || "").trim().charAt(0);
+        const reviewerName = first
+          ? (lastInitial ? `${first} ${lastInitial}.` : first)
+          : "Traveler";
+        return {
+          id: r.id,
+          rating: r.rating,
+          reviewText: r.reviewText,
+          responseText: r.responseText,
+          createdAt: r.createdAt,
+          serviceName: r.serviceName,
+          reviewerName,
+        };
+      });
+      res.json(reviews);
     } catch (err) {
       console.error("Error fetching expert reviews:", err);
       res.json([]);

@@ -49,7 +49,7 @@ or an expert engagement, never a dead end.
 | 3.2 | ✅ **Optimizer fabricated fallback ratings** (PR #237) | S | §13: the generate endpoint's data prep injects `rating: 4.5` fallbacks into LLM input. Feed honest nulls. |
 | 3.3 | ✅ **`process-cart` AI-item price trust** (PR #237 — clamped [0,100000]; buyer's-own-charge residual stays filed) | S | §14 A3 residual; low severity (buyer's own charge), cheap to close. |
 | 3.4 | ✅ **Decide `/api/discover/recommendations`** — DECIDED: removed (proven-dead-then-remove; restore from git history if the AI-matcher growth item revives it) | XS | Consumer-less since #228. |
-| 3.5 | **Expert-level rating aggregate** | M | Experts honestly show "New" today (service reviews are service-scoped). Build the expert-scoped aggregate so expert cards can show real stars. |
+| 3.5 | ✅ **Expert-level rating aggregate** (PR TBD — AVG/COUNT over the expert's APPROVED service reviews, attached to /api/experts list+detail; card & detail show real stars or honest "New"; the stub /api/experts/:id/reviews now returns real approved reviews) | M | Experts honestly show "New" today (service reviews are service-scoped). |
 
 ## Later — Growth (needs scoping with the decision-maker)
 

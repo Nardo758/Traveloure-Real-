@@ -187,8 +187,15 @@ export default function ExpertDetailPage() {
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim();
   const initials = `${expert.firstName?.[0] || ""}${expert.lastName?.[0] || ""}`.toUpperCase();
-  const averageRating = expert.averageRating ? parseFloat(expert.averageRating) : 0;
-  const totalReviews = expert.reviewCount || reviews.length || 0;
+  // Roadmap 3.5: the server now attaches a REAL expert-level rating aggregate
+  // (avg of the expert's approved service reviews). expertRating is null when
+  // the expert has no reviews → the honest "New" state renders. (Legacy
+  // averageRating/reviewCount kept as a fallback for any stale caller.)
+  const averageRating =
+    typeof expert.expertRating === "number"
+      ? expert.expertRating
+      : expert.averageRating ? parseFloat(expert.averageRating) : 0;
+  const totalReviews = expert.expertReviewCount ?? expert.reviewCount ?? reviews.length ?? 0;
   const responseTime = expert.expertForm?.responseTime || "< 24 hours";
   const languages = expert.expertForm?.languages || ["English"];
   const specializations = expert.expertForm?.specializations || [];
@@ -558,12 +565,12 @@ export default function ExpertDetailPage() {
                               <div className="flex items-start gap-4">
                                 <Avatar>
                                   <AvatarFallback>
-                                    {review.userName?.[0]?.toUpperCase() || "U"}
+                                    {review.reviewerName?.[0]?.toUpperCase() || "T"}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="font-semibold">{review.userName || "Anonymous"}</span>
+                                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span className="font-semibold">{review.reviewerName || "Traveler"}</span>
                                     <div className="flex items-center gap-1">
                                       {[...Array(5)].map((_, i) => (
                                         <Star
@@ -576,11 +583,24 @@ export default function ExpertDetailPage() {
                                         />
                                       ))}
                                     </div>
+                                    {review.serviceName && (
+                                      <span className="text-xs text-muted-foreground">· {review.serviceName}</span>
+                                    )}
                                   </div>
-                                  <p className="text-muted-foreground text-sm mb-2">{review.comment}</p>
-                                  <span className="text-xs text-muted-foreground">
-                                    {new Date(review.createdAt).toLocaleDateString()}
-                                  </span>
+                                  {review.reviewText && (
+                                    <p className="text-muted-foreground text-sm mb-2">{review.reviewText}</p>
+                                  )}
+                                  {review.responseText && (
+                                    <div className="mt-2 pl-3 border-l-2 border-muted text-sm">
+                                      <span className="font-medium text-foreground">Response: </span>
+                                      <span className="text-muted-foreground">{review.responseText}</span>
+                                    </div>
+                                  )}
+                                  {review.createdAt && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(review.createdAt).toLocaleDateString()}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </CardContent>
