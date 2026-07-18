@@ -1,0 +1,157 @@
+name: Footer Links Gate
+
+# Guards against broken or missing footer routes reaching production.
+#
+# Every href in footerSectionsConfig (client/src/lib/nav-config.ts)
+# is visited against a locally-built production bundle. The test fails if
+# any href renders the NotFound (404) component.
+#
+# What this catches:
+#   - A href typo pointing at a path with no matching <Route>
+#   - A <Route> deleted from App.tsx while a footer link remained
+#   - A new footer link added without a corresponding route
+#
+# Status contexts (for branch-protection required checks):
+#   * footer-links-smoke — Playwright DOM gate; safe to mark REQUIRED.
+#   * report             — PR comment; informational only.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  footer-links-smoke:
+    name: footer-links-smoke (Playwright DOM gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Apply database migrations
+        run: npx tsx server/migrations/migrate-entry.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Create sessions table (connect-pg-simple workaround)
+        # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
+        # incompatible with Postgres 12+. Pre-create the table here.
+        run: npx tsx scripts/create-sessions-table.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Build production bundle
+        # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
+        # Startup seeding still runs (gated on ENVIRONMENT !== "PROD", not
+        # NODE_ENV), so /api/ready flips true as expected.
+        run: npm run build
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Footer links smoke (all footerSectionsConfig hrefs)
+        # Uses the default playwright.config.ts (testDir: ./playwright/tests).
+        # No globalSetup / auth required — 404-checking works for all routes
+        # (auth-gated ones redirect to "/" rather than rendering NotFound).
+        run: npx playwright test footer-links --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: footer-links-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR comment)
+    runs-on: ubuntu-latest
+    needs: [footer-links-smoke]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Footer Links Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> Every href in footerSectionsConfig (client/src/lib/nav-config.ts) is visited against',
+              '> a locally-built production bundle. A red gate means at least one footer',
+              '> link renders the 404 (NotFound) page.',
+              allGreen ? '' : '> Fix: ensure every failing href has a matching <Route> in client/src/App.tsx.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
