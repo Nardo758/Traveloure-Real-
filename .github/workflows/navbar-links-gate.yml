@@ -1,26 +1,28 @@
-name: Navbar & Footer Links Gate
+name: Route Coverage Gate
 
-# Guards against broken or missing navbar and footer routes reaching production.
+# Guards against broken or missing routes reaching production.
 #
-# Every href in navGroupsConfig and authNavConfig (client/src/lib/nav-config.ts)
-# and every href in footerSectionsConfig (also in nav-config.ts) is visited
-# against a locally-built production bundle. The tests fail if any href
-# renders the NotFound (404) component.
+# Three Playwright smoke suites run inside the single navbar-links-smoke job:
 #
-# nav-config.ts is the SINGLE SOURCE OF TRUTH for all navbar and footer hrefs.
-# client/src/components/layout.tsx (UI) and both Playwright smoke tests import
-# from it, so adding or renaming a link automatically propagates to this gate.
+#   1. navbar-links  — every href in navGroupsConfig + authNavConfig
+#                      (client/src/lib/nav-config.ts)
+#   2. footer-links  — every href in footerSectionsConfig
+#                      (client/src/lib/nav-config.ts)
+#   3. app-routes    — every <Route path="..."> in client/src/App.tsx,
+#                      including routes not listed in nav-config.ts
+#                      (detail pages, onboarding flows, public share pages,
+#                      role dashboards, etc.)
 #
-# What this catches:
-#   - A href typo pointing at a path with no matching <Route>
-#   - A <Route> deleted from App.tsx while a nav or footer item remained
-#   - A new nav or footer item added without a corresponding route
-#   - A stub/empty page component that passes the 404 gate but shows
-#     a blank screen (no visible h1/h2/h3 heading and no <main> with text)
+# Each suite visits every resolved URL against a locally-built production
+# bundle and fails if any route renders the NotFound (404) component or
+# a blank/empty page with no heading or <main> content.
+#
+# Dynamic segments (:id, :token, :slug, …) in App.tsx routes are replaced
+# with canonical placeholders; duplicate resolved URLs are deduplicated.
+# Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — Playwright DOM gate for navbar; safe to mark REQUIRED.
-#   * footer-links-smoke — Playwright DOM gate for footer; safe to mark REQUIRED.
+#   * navbar-links-smoke — all three suites run here; safe to mark REQUIRED.
 #   * report             — PR comment; informational only.
 
 on:
@@ -140,6 +142,19 @@ jobs:
           BASE_URL: http://localhost:5000
           CI: 'true'
 
+      - name: App route coverage (all <Route path="..."> entries in App.tsx)
+        # Extracts every path registered in client/src/App.tsx at test-collection
+        # time — including routes that are NOT listed in nav-config.ts (detail
+        # pages, onboarding flows, public share pages, role dashboards, etc.).
+        # Dynamic segments (:id, :token, …) are substituted with canonical
+        # placeholders; duplicate resolved URLs are deduplicated.
+        # Auth-gated routes redirect to "/" rather than rendering NotFound, so
+        # they pass the 404 gate and are skipped on the content check.
+        run: npx playwright test app-routes --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
@@ -164,16 +179,17 @@ jobs:
             const allGreen = Object.values(needs).every((d) => d.result === 'success');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
-              `## Navbar & Footer Links Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              `## Route Coverage Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
               '',
               ...rows,
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Every href in `navGroupsConfig`, `authNavConfig`, and `footerSectionsConfig` (`client/src/lib/nav-config.ts`) is visited against',
-              '> a locally-built production bundle. A red gate means at least one navbar or footer',
-              '> link renders the 404 (NotFound) page **or** a blank/empty page with no heading or `<main>` content.',
-              allGreen ? '' : '> Fix: ensure every failing href has a matching `<Route>` in `client/src/App.tsx` and that the page component renders real content (at least one h1/h2/h3 or a non-empty `<main>`).',
+              '> Three suites run against a locally-built production bundle:',
+              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs), **footer-links** (all `footerSectionsConfig` hrefs),',
+              '> and **app-routes** (every `<Route path="...">` in `client/src/App.tsx`, including routes not in nav-config).',
+              '> A red gate means at least one route renders the 404 (NotFound) page **or** a blank/empty page with no heading or `<main>` content.',
+              allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx` and that the page component renders real content (at least one h1/h2/h3 or a non-empty `<main>`).',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
