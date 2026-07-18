@@ -93,11 +93,13 @@ export default function EAExecutives() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <CardTitle className="text-lg">{exec.name} - {exec.title}</CardTitle>
+                        <CardTitle className="text-lg">
+                          {exec.name ?? "Unknown Executive"}{exec.title ? ` — ${exec.title}` : ""}
+                        </CardTitle>
                         <Badge className="bg-green-100 text-green-700">Active</Badge>
                       </div>
                       <p className="text-sm text-gray-500">
-                        Status: {exec.status}
+                        Status: {exec.status ?? "—"}
                         {exec.notes && (
                           <span className="text-yellow-600 ml-2">
                             <AlertCircle className="w-3 h-3 inline mr-1" />
@@ -127,10 +129,10 @@ export default function EAExecutives() {
                     <h3 className="font-semibold text-gray-900 mb-3">Profile Information</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                       <p className="flex items-center gap-2 text-gray-600">
-                        <Mail className="w-4 h-4" /> {exec.email}
+                        <Mail className="w-4 h-4" /> {exec.email ?? "—"}
                       </p>
                       <p className="flex items-center gap-2 text-gray-600">
-                        <Phone className="w-4 h-4" /> {exec.phone}
+                        <Phone className="w-4 h-4" /> {exec.phone ?? "—"}
                       </p>
                     </div>
                   </div>
@@ -140,18 +142,18 @@ export default function EAExecutives() {
                     <h3 className="font-semibold text-gray-900 mb-3">Preferences</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                       <p className="text-gray-600">
-                        <span className="flex items-center gap-1"><Plane className="w-4 h-4" /> Travel Class:</span> 
-                        {exec.preferences.travelClass}
+                        <span className="flex items-center gap-1"><Plane className="w-4 h-4" /> Travel Class:</span>
+                        {exec.preferences.travelClass ?? "—"}
                       </p>
                       <p className="text-gray-600">
-                        <span className="flex items-center gap-1"><Hotel className="w-4 h-4" /> Hotels:</span> 
-                        {exec.preferences.hotelBrands}
+                        <span className="flex items-center gap-1"><Hotel className="w-4 h-4" /> Hotels:</span>
+                        {exec.preferences.hotelBrands ?? "—"}
                       </p>
                       <p className="text-gray-600">
-                        <span className="flex items-center gap-1"><Utensils className="w-4 h-4" /> Dietary:</span> 
-                        {exec.preferences.dietary}
+                        <span className="flex items-center gap-1"><Utensils className="w-4 h-4" /> Dietary:</span>
+                        {exec.preferences.dietary ?? "—"}
                       </p>
-                      <p className="text-gray-600">Seating: {exec.preferences.seating}</p>
+                      <p className="text-gray-600">Seating: {exec.preferences.seating ?? "—"}</p>
                     </div>
                     {exec.preferences.notes && (
                       <p className="text-sm text-yellow-600 mt-2">
@@ -166,8 +168,8 @@ export default function EAExecutives() {
                     <div>
                       <h3 className="font-semibold text-gray-900 mb-3">Family Information</h3>
                       <div className="text-sm space-y-1 text-gray-600">
-                        <p>Spouse: {exec.family.spouse} (Anniversary: {exec.family.anniversary})</p>
-                        <p>Children: {exec.family.children}</p>
+                        <p>Spouse: {exec.family.spouse ?? "—"}{exec.family.anniversary ? ` (Anniversary: ${exec.family.anniversary})` : ""}</p>
+                        <p>Children: {exec.family.children ?? "—"}</p>
                         <div className="flex flex-wrap gap-2 mt-2">
                           {(exec.family?.importantDates ?? []).map((date, idx) => (
                             <Badge key={idx} variant="outline" className="text-xs">
