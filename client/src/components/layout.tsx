@@ -137,14 +137,14 @@ const navItems = [
       {
         title: "TOOLS",
         items: [
-          { name: "AI Plan Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
+          { name: "AI Plan Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries", requiresAuth: true },
           { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },
       {
         title: "EXPLORE",
         items: [
-          { name: "Live Intel", href: "/spontaneous", icon: Sparkles, description: "Real-time local insights" },
+          { name: "Live Intel", href: "/discover", icon: Sparkles, description: "Real-time local insights" },
           { name: "Today's Deals", href: "/deals", icon: CreditCard, description: "Special offers & discounts" },
         ],
       },
@@ -165,6 +165,8 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   const [isOpen, setIsOpen] = useState(false);
   const [megaStyle, setMegaStyle] = useState<CSSProperties>({});
   const recentCities = useRecentlyViewed();
+  const { user } = useAuth();
+  const { openSignInModal } = useSignInModal();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -260,25 +262,46 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                   )}>
                     {section.title}
                   </div>
-                  {section.items.map((child) => (
-                    <Link
-                      key={child.name}
-                      href={child.href || "#"}
-                      className={cn(
-                        "flex items-start gap-2 text-sm hover-elevate transition-colors group rounded-md",
-                        item.sections.length > 2 ? "px-2 py-2" : "px-4 py-2.5 gap-3"
-                      )}
-                      data-testid={`link-nav-${slugify(child.name)}`}
-                    >
-                      {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />}
-                      <div className="min-w-0">
-                        <div className="text-foreground font-medium truncate">{child.name}</div>
-                        {child.description && item.sections.length <= 2 && (
-                          <div className="text-xs text-muted-foreground">{child.description}</div>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
+                  {section.items.map((child) => {
+                    const sharedClass = cn(
+                      "flex items-start gap-2 text-sm hover-elevate transition-colors group rounded-md w-full text-left",
+                      item.sections.length > 2 ? "px-2 py-2" : "px-4 py-2.5 gap-3"
+                    );
+                    const inner = (
+                      <>
+                        {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />}
+                        <div className="min-w-0">
+                          <div className="text-foreground font-medium truncate">{child.name}</div>
+                          {child.description && item.sections.length <= 2 && (
+                            <div className="text-xs text-muted-foreground">{child.description}</div>
+                          )}
+                        </div>
+                      </>
+                    );
+                    if ((child as any).requiresAuth && !user) {
+                      return (
+                        <button
+                          key={child.name}
+                          type="button"
+                          className={sharedClass}
+                          data-testid={`link-nav-${slugify(child.name)}`}
+                          onClick={() => { setIsOpen(false); openSignInModal(); }}
+                        >
+                          {inner}
+                        </button>
+                      );
+                    }
+                    return (
+                      <Link
+                        key={child.name}
+                        href={child.href || "#"}
+                        className={sharedClass}
+                        data-testid={`link-nav-${slugify(child.name)}`}
+                      >
+                        {inner}
+                      </Link>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -460,18 +483,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           <div className="px-6 py-1.5 text-xs font-semibold text-muted-foreground uppercase">
                             {section.title}
                           </div>
-                          {section.items.map((child) => (
-                            <Link
-                              key={child.name}
-                              href={child.href || "#"}
-                              className="flex items-center gap-3 px-8 py-2.5 text-base font-medium text-muted-foreground hover-elevate rounded-lg transition-colors"
-                              onClick={() => setIsMobileMenuOpen(false)}
-                              data-testid={`link-mobile-${child.name.toLowerCase().replace(/\s+/g, '-')}`}
-                            >
-                              {child.icon && <child.icon className="w-5 h-5" />}
-                              {child.name}
-                            </Link>
-                          ))}
+                          {section.items.map((child) => {
+                            const mobileClass = "flex items-center gap-3 px-8 py-2.5 text-base font-medium text-muted-foreground hover-elevate rounded-lg transition-colors w-full text-left";
+                            const testId = `link-mobile-${child.name.toLowerCase().replace(/\s+/g, '-')}`;
+                            if ((child as any).requiresAuth && !user) {
+                              return (
+                                <button
+                                  key={child.name}
+                                  type="button"
+                                  className={mobileClass}
+                                  data-testid={testId}
+                                  onClick={() => { setIsMobileMenuOpen(false); openSignInModal(); }}
+                                >
+                                  {child.icon && <child.icon className="w-5 h-5" />}
+                                  {child.name}
+                                </button>
+                              );
+                            }
+                            return (
+                              <Link
+                                key={child.name}
+                                href={child.href || "#"}
+                                className={mobileClass}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                data-testid={testId}
+                              >
+                                {child.icon && <child.icon className="w-5 h-5" />}
+                                {child.name}
+                              </Link>
+                            );
+                          })}
                         </div>
                       ))}
                     </div>
