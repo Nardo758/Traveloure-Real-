@@ -20,6 +20,8 @@ name: Route Coverage Gate
 #
 # App-route coverage (every <Route path="..."> in App.tsx) runs in its own
 # dedicated workflow: .github/workflows/app-routes-gate.yml
+# Authenticated role-route coverage (expert/provider/admin/EA routes with real
+# session cookies) runs in: .github/workflows/auth-routes-gate.yml
 # Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status contexts (for branch-protection required checks):
@@ -116,10 +118,18 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
+      - name: Cache production build output
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
       - name: Build production bundle
         # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
         # Startup seeding still runs (gated on ENVIRONMENT !== "PROD", not
         # NODE_ENV), so /api/ready flips true as expected.
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: npm run build
 
       - name: Start production server
@@ -169,17 +179,6 @@ jobs:
         # No globalSetup / auth required — 404-checking works for all routes
         # (auth-gated ones redirect to "/" rather than rendering NotFound).
         run: npx playwright test footer-links --project=chromium
-        env:
-          BASE_URL: http://localhost:5000
-          CI: 'true'
-
-      - name: Authenticated routes smoke (expert / provider / admin)
-        # Runs auth-routes.spec.ts with real session cookies for each platform role.
-        # globalSetup (playwright/global-setup.ts) logs in via /api/auth/login using
-        # the CI test accounts seeded above, then saves per-role storage states.
-        # The spec then visits /expert/*, /provider/*, /admin/* routes with the
-        # matching auth context and fails if any page throws a JS error or crashes.
-        run: npx playwright test auth-routes --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
