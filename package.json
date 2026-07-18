@@ -6,6 +6,7 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "scrub-lockfile": "node scripts/scrub-lockfile.cjs",
+    "test": "tsx --test client/src/lib/__tests__/footer-route-coverage.test.ts",
     "test:upsell-contract": "tsx --test server/services/__tests__/upsell-engine.test.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
