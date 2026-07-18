@@ -14,12 +14,13 @@
  *   Adding a new route to those arrays automatically registers it in this
  *   spec. No manual edits to this file are needed when routes are added.
  *
- * Three describe blocks run with separate storageState files written by
+ * Four describe blocks run with separate storageState files written by
  * playwright/global-setup.ts:
  *
  *   playwright/.auth/expert.json   — travel_expert role (ci-expert@traveloure.test)
  *   playwright/.auth/provider.json — service_provider role
  *   playwright/.auth/admin.json    — admin role
+ *   playwright/.auth/ea.json       — executive_assistant role
  *
  * Session guard (beforeAll in each block):
  *   Before visiting any route, the spec calls GET /api/auth/session to verify
@@ -39,6 +40,7 @@ import {
   getExpertRouteHrefs,
   getProviderRouteHrefs,
   getAdminRouteHrefs,
+  getEARouteHrefs,
 } from '../../client/src/lib/role-routes-config';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
@@ -248,6 +250,62 @@ test.describe('Auth smoke — provider routes (service_provider role)', () => {
       test.skip(
         !providerSessionOk,
         'Provider session not authenticated — skipped in local dev (throws in CI)',
+      );
+      await smokeRoute(page, href);
+    });
+  }
+});
+
+// ── Executive Assistant routes ───────────────────────────────────────────────
+// Source of truth: client/src/lib/role-routes-config.ts → eaRoutesConfig
+// Adding a new EA route there automatically includes it in this test.
+
+const EA_ROUTES = getEARouteHrefs();
+
+test.describe('Auth smoke — EA routes (executive_assistant role)', () => {
+  test.use({ storageState: 'playwright/.auth/ea.json' });
+
+  let eaSessionOk = false;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/api/auth/session`);
+    const body = await res.json().catch(() => ({})) as Record<string, any>;
+    const authenticated: boolean = body.authenticated === true;
+    const role: string = body.user?.role ?? '';
+    const roleOk = authenticated && role === 'executive_assistant';
+
+    console.log(
+      `[auth-routes] EA session check — authenticated=${authenticated}, role=${role}`,
+    );
+
+    if (IS_CI) {
+      if (!authenticated) {
+        throw new Error(
+          `[auth-check] EA storageState did not yield an authenticated session. ` +
+            `Got: ${JSON.stringify(body)}. ` +
+            `Ensure scripts/seed-ci-test-users.ts ran and globalSetup completed successfully.`,
+        );
+      }
+      if (!roleOk) {
+        throw new Error(
+          `[auth-check] EA session has unexpected role "${role}". Expected "executive_assistant".`,
+        );
+      }
+    } else if (!roleOk) {
+      console.warn(
+        `[auth-routes] EA session is not authenticated or has wrong role. ` +
+          'Tests will be skipped. Run scripts/seed-ci-test-users.ts and restart the server.',
+      );
+    }
+
+    eaSessionOk = roleOk;
+  });
+
+  for (const href of EA_ROUTES) {
+    test(`${href} does not 404 or crash`, async ({ page }) => {
+      test.skip(
+        !eaSessionOk,
+        'EA session not authenticated — skipped in local dev (throws in CI)',
       );
       await smokeRoute(page, href);
     });
