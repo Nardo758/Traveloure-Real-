@@ -2,9 +2,14 @@ name: Navbar Links Gate
 
 # Guards against broken or missing navbar routes reaching production.
 #
-# Every href in navItems and authNavItems (client/src/components/layout.tsx)
+# Every href in navGroupsConfig and authNavConfig (client/src/lib/nav-config.ts)
 # is visited against a locally-built production bundle. The test fails if
 # any href renders the NotFound (404) component.
+#
+# nav-config.ts is the SINGLE SOURCE OF TRUTH for all navbar hrefs.
+# Both client/src/components/layout.tsx (UI) and
+# playwright/tests/navbar-links.spec.ts (smoke test) import from it,
+# so adding or renaming a link automatically propagates to this gate.
 #
 # What this catches:
 #   - A href typo pointing at a path with no matching <Route>
@@ -21,6 +26,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+
+# Cancel in-progress runs for the same ref to avoid redundant gate checks.
+concurrency:
+  group: navbar-links-gate-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -82,8 +92,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
           AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
           AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           PORT: 5000
@@ -105,8 +119,8 @@ jobs:
           pgrep -a node || true
           exit 1
 
-      - name: Navbar links smoke (all navItems + authNavItems hrefs)
-        # Uses the default playwright.config.ts (testDir: ./playwright/tests).
+      - name: Navbar links smoke (all navGroupsConfig + authNavConfig hrefs)
+        # Derives hrefs from client/src/lib/nav-config.ts (single source of truth).
         # No globalSetup / auth required — 404-checking works for all routes
         # (auth-gated ones redirect to "/" rather than rendering NotFound).
         run: npx playwright test navbar-links --project=chromium
@@ -144,10 +158,10 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Every href in navItems and authNavItems (layout.tsx) is visited against',
+              '> Every href in `navGroupsConfig` and `authNavConfig` (`client/src/lib/nav-config.ts`) is visited against',
               '> a locally-built production bundle. A red gate means at least one navbar',
               '> link renders the 404 (NotFound) page.',
-              allGreen ? '' : '> Fix: ensure every failing href has a matching <Route> in client/src/App.tsx.',
+              allGreen ? '' : '> Fix: ensure every failing href has a matching `<Route>` in `client/src/App.tsx`.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,

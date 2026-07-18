@@ -92,3 +92,21 @@ The application uses a modern, responsive design built with React, Tailwind CSS,
 - **SERP API Hybrid Search System**: Integrates external providers via SerpAPI with native provider prioritization.
 - **SerpAPI**: For venue searches (restaurants, attractions, nightlife).
 - **Instagram Business API**: OAuth flow for Instagram Business/Creator accounts, single and carousel image publishing, AI-generated hashtags.
+
+## CI Checks
+
+Automated checks run on every pull request targeting `main` via GitHub Actions (`.github/workflows/`).
+
+### Navbar Links Gate (`navbar-links-gate.yml`)
+Guards against broken or missing navbar routes reaching production.
+
+- **What it checks**: Every `href` in `navGroupsConfig` and `authNavConfig` (defined in `client/src/lib/nav-config.ts`) is visited against a locally-built production bundle. The test fails if any href renders the NotFound (404) component.
+- **Spec file**: `playwright/tests/navbar-links.spec.ts` — auto-derives all hrefs from `nav-config.ts` at test time. Adding or renaming a link in `nav-config.ts` automatically adds it to the test on the next PR.
+- **Status context**: `navbar-links-smoke` — safe to mark as a **required** branch-protection check.
+- **What it catches**:
+  - A `href` typo pointing at a path with no matching `<Route>`
+  - A `<Route>` deleted from `App.tsx` while a nav item remained
+  - A new nav item added without a corresponding route
+- **Auth-gated routes**: Routes that redirect to `/` rather than 404ing are allowed — a redirect to a valid page is acceptable; a 404 is not.
+
+**Single source of truth**: `client/src/lib/nav-config.ts` exports `navGroupsConfig`, `authNavConfig`, and `getAllNavHrefs()`. The layout component (`client/src/components/layout.tsx`) and the Playwright smoke test both import from this file, so the navbar UI and the CI gate are always in sync.
