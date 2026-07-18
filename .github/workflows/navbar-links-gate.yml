@@ -1,23 +1,24 @@
-name: Navbar Links Gate
+name: Navbar & Footer Links Gate
 
-# Guards against broken or missing navbar routes reaching production.
+# Guards against broken or missing navbar and footer routes reaching production.
 #
 # Every href in navGroupsConfig and authNavConfig (client/src/lib/nav-config.ts)
-# is visited against a locally-built production bundle. The test fails if
-# any href renders the NotFound (404) component.
+# and every href in footerSectionsConfig (also in nav-config.ts) is visited
+# against a locally-built production bundle. The tests fail if any href
+# renders the NotFound (404) component.
 #
-# nav-config.ts is the SINGLE SOURCE OF TRUTH for all navbar hrefs.
-# Both client/src/components/layout.tsx (UI) and
-# playwright/tests/navbar-links.spec.ts (smoke test) import from it,
-# so adding or renaming a link automatically propagates to this gate.
+# nav-config.ts is the SINGLE SOURCE OF TRUTH for all navbar and footer hrefs.
+# client/src/components/layout.tsx (UI) and both Playwright smoke tests import
+# from it, so adding or renaming a link automatically propagates to this gate.
 #
 # What this catches:
 #   - A href typo pointing at a path with no matching <Route>
-#   - A <Route> deleted from App.tsx while a nav item remained
-#   - A new nav item added without a corresponding route
+#   - A <Route> deleted from App.tsx while a nav or footer item remained
+#   - A new nav or footer item added without a corresponding route
 #
 # Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — Playwright DOM gate; safe to mark REQUIRED.
+#   * navbar-links-smoke — Playwright DOM gate for navbar; safe to mark REQUIRED.
+#   * footer-links-smoke — Playwright DOM gate for footer; safe to mark REQUIRED.
 #   * report             — PR comment; informational only.
 
 on:
@@ -128,6 +129,15 @@ jobs:
           BASE_URL: http://localhost:5000
           CI: 'true'
 
+      - name: Footer links smoke (all footerSectionsConfig hrefs)
+        # Derives hrefs from client/src/lib/nav-config.ts (footerSectionsConfig).
+        # No globalSetup / auth required — 404-checking works for all routes
+        # (auth-gated ones redirect to "/" rather than rendering NotFound).
+        run: npx playwright test footer-links --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
@@ -152,14 +162,14 @@ jobs:
             const allGreen = Object.values(needs).every((d) => d.result === 'success');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
-              `## Navbar Links Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              `## Navbar & Footer Links Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
               '',
               ...rows,
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Every href in `navGroupsConfig` and `authNavConfig` (`client/src/lib/nav-config.ts`) is visited against',
-              '> a locally-built production bundle. A red gate means at least one navbar',
+              '> Every href in `navGroupsConfig`, `authNavConfig`, and `footerSectionsConfig` (`client/src/lib/nav-config.ts`) is visited against',
+              '> a locally-built production bundle. A red gate means at least one navbar or footer',
               '> link renders the 404 (NotFound) page.',
               allGreen ? '' : '> Fix: ensure every failing href has a matching `<Route>` in `client/src/App.tsx`.',
             ].filter(Boolean).join('\n');
