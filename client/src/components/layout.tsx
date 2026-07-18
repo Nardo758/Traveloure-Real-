@@ -60,106 +60,65 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
+import { navGroupsConfig, authNavConfig } from "@/lib/nav-config";
 
-const navItems = [
-  {
-    name: "Discover",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "BROWSE",
-        items: [
-          { name: "By Location", href: "/discover", icon: MapPin, description: "Explore destinations & trending cities" },
-          { name: "By Date", href: "/discover?tab=events", icon: Calendar, description: "Upcoming events & activities" },
-        ],
-      },
-    ],
-  },
-  {
-    name: "Experts & Services",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "FIND HELP",
-        items: [
-          { name: "Local Experts", href: "/experts?role=local_expert", icon: MapPin, description: "City guides & neighbourhood specialists" },
-          { name: "Travel Advisors", href: "/experts?role=travel_expert", icon: User, description: "Trip planners who handle every detail" },
-          { name: "Service Providers", href: "/discover?tab=services", icon: Building2, description: "Book tours, photography, transport & more" },
-        ],
-      },
-    ],
-  },
-  {
-    name: "Experiences",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "TRAVEL & GETAWAYS",
-        items: [
-          { name: "Travel Planning", href: "/experiences/travel", icon: Plane, description: "Plan your perfect trip" },
-          { name: "Romantic Getaways", href: "/experiences/romance", icon: Sparkles, description: "Special romantic escapes" },
-          { name: "Date Night", href: "/experiences/date-night", icon: Wine, description: "Perfect evening plans" },
-          { name: "Retreats", href: "/experiences/retreats", icon: Palmtree, description: "Relaxation & wellness" },
-        ],
-      },
-      {
-        title: "CELEBRATIONS",
-        items: [
-          { name: "Birthday Party", href: "/experiences/birthday", icon: Cake, description: "Unforgettable celebrations" },
-        ],
-      },
-      {
-        title: "LIFE MILESTONES",
-        items: [
-          { name: "Wedding", href: "/experiences/wedding", icon: Heart, description: "Dream wedding planning" },
-          { name: "Proposal", href: "/experiences/proposal", icon: Gem, description: "Perfect proposal moment" },
-          { name: "Engagement Party", href: "/experiences/engagement-party", icon: Flower2, description: "Celebrate your love" },
-          { name: "Baby Shower", href: "/experiences/baby-shower", icon: Baby, description: "Welcome the new arrival" },
-          { name: "Anniversary", href: "/experiences/wedding-anniversaries", icon: Gift, description: "Celebrate your journey" },
-        ],
-      },
-      {
-        title: "GROUP EVENTS",
-        items: [
-          { name: "Corporate Events", href: "/experiences/corporate-events", icon: Building2, description: "Team events & meetings" },
-          { name: "Corporate Retreats", href: "/experiences/corporate", icon: Briefcase, description: "Team building retreats" },
-          { name: "Boys Trip", href: "/experiences/boys-trip", icon: Users, description: "Epic adventures" },
-          { name: "Girls Trip", href: "/experiences/girls-trip", icon: UsersRound, description: "Getaways with friends" },
-          { name: "Reunions", href: "/experiences/reunions", icon: PartyPopper, description: "Reconnect & celebrate" },
-        ],
-      },
-    ],
-  },
-  {
-    name: "Planning Tools",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "TOOLS",
-        items: [
-          { name: "AI Plan Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries", requiresAuth: true },
-          { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
-        ],
-      },
-      {
-        title: "EXPLORE",
-        items: [
-          { name: "Live Intel", href: "/discover", icon: Sparkles, description: "Real-time local insights" },
-          { name: "Today's Deals", href: "/deals", icon: CreditCard, description: "Special offers & discounts" },
-        ],
-      },
-    ],
-  },
-  { name: "Ways to earn", href: "/earn" },
-  { name: "Contact", href: "/contact" },
-];
+// ── Icon maps ─────────────────────────────────────────────────────────────────
+// Icons are bound here so nav-config.ts stays a pure-data module with no React
+// deps (making it importable by the Playwright smoke test as well as layout.tsx).
 
-const authNavItems = [
-  { href: "/dashboard", label: "My Plans", icon: Map },
-  { href: "/discover", label: "Discover", icon: Compass },
-  { href: "/concierge", label: "Concierge", icon: Sparkles },
-  { href: "/chat", label: "Expert Chat", icon: MessageSquare },
-];
+const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "By Location":       MapPin,
+  "By Date":           Calendar,
+  "Local Experts":     MapPin,
+  "Travel Advisors":   User,
+  "Service Providers": Building2,
+  "Travel Planning":   Plane,
+  "Romantic Getaways": Sparkles,
+  "Date Night":        Wine,
+  "Retreats":          Palmtree,
+  "Birthday Party":    Cake,
+  "Wedding":           Heart,
+  "Proposal":          Gem,
+  "Engagement Party":  Flower2,
+  "Baby Shower":       Baby,
+  "Anniversary":       Gift,
+  "Corporate Events":  Building2,
+  "Corporate Retreats": Briefcase,
+  "Boys Trip":         Users,
+  "Girls Trip":        UsersRound,
+  "Reunions":          PartyPopper,
+  "AI Plan Planner":   Bot,
+  "Visa Help":         FileText,
+  "Live Intel":        Sparkles,
+  "Today's Deals":     CreditCard,
+};
+
+const AUTH_NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "My Plans":    Map,
+  "Discover":    Compass,
+  "Concierge":   Sparkles,
+  "Expert Chat": MessageSquare,
+};
+
+// ── Composed nav arrays (data from nav-config.ts + icons from above) ──────────
+
+const navItems = navGroupsConfig.map((group) => ({
+  name: group.name,
+  href: group.href,
+  icon: ChevronDown,
+  sections: group.sections?.map((section) => ({
+    title: section.title,
+    items: section.items.map((item) => ({
+      ...item,
+      icon: NAV_LEAF_ICONS[item.name] ?? MapPin,
+    })),
+  })),
+}));
+
+const authNavItems = authNavConfig.map((item) => ({
+  ...item,
+  icon: AUTH_NAV_ICONS[item.label] ?? User,
+}));
 
 function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
