@@ -15,6 +15,8 @@ name: Navbar & Footer Links Gate
 #   - A href typo pointing at a path with no matching <Route>
 #   - A <Route> deleted from App.tsx while a nav or footer item remained
 #   - A new nav or footer item added without a corresponding route
+#   - A stub/empty page component that passes the 404 gate but shows
+#     a blank screen (no visible h1/h2/h3 heading and no <main> with text)
 #
 # Status contexts (for branch-protection required checks):
 #   * navbar-links-smoke — Playwright DOM gate for navbar; safe to mark REQUIRED.
@@ -170,8 +172,8 @@ jobs:
               '',
               '> Every href in `navGroupsConfig`, `authNavConfig`, and `footerSectionsConfig` (`client/src/lib/nav-config.ts`) is visited against',
               '> a locally-built production bundle. A red gate means at least one navbar or footer',
-              '> link renders the 404 (NotFound) page.',
-              allGreen ? '' : '> Fix: ensure every failing href has a matching `<Route>` in `client/src/App.tsx`.',
+              '> link renders the 404 (NotFound) page **or** a blank/empty page with no heading or `<main>` content.',
+              allGreen ? '' : '> Fix: ensure every failing href has a matching `<Route>` in `client/src/App.tsx` and that the page component renders real content (at least one h1/h2/h3 or a non-empty `<main>`).',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
