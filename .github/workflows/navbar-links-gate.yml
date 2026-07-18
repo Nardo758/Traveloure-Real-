@@ -2,23 +2,29 @@ name: Route Coverage Gate
 
 # Guards against broken or missing navbar/footer routes reaching production.
 #
-# The navbar-links-smoke job runs three checks in order:
+# Jobs in this workflow:
 #
-#   0. crash-filter-unit — pure unit tests for the console-error filter
-#                          predicates (playwright/utils/console-crash-filter.ts)
-#                          used by the smoke test. No browser or server needed;
-#                          runs fast as an early gate.
+#   navbar-links-smoke (Playwright DOM gate) — suites 0–2:
 #
-#   1. navbar-links      — every href in navGroupsConfig + authNavConfig
-#                          (client/src/lib/nav-config.ts)
-#   2. footer-links      — every href in footerSectionsConfig
-#                          (client/src/lib/nav-config.ts)
-#   3. hardcoded-links   — all static href="/..." and to="/..." string literals
-#                          found in client/src/ components, cross-checked against
-#                          <Route path="..."> entries in App.tsx.  Catches links
-#                          that were removed from nav-config but still exist in
-#                          component files.  Pure static analysis — no browser
-#                          or server required.
+#     0. crash-filter-unit — pure unit tests for the console-error filter
+#                            predicates (playwright/utils/console-crash-filter.ts)
+#                            used by the smoke test. No browser or server needed;
+#                            runs fast as an early gate.
+#
+#     1. navbar-links      — every href in navGroupsConfig + authNavConfig
+#                            (client/src/lib/nav-config.ts)
+#     2. footer-links      — every href in footerSectionsConfig
+#                            (client/src/lib/nav-config.ts)
+#
+#   hardcoded-links-check (static analysis, no server or browser) — suite 3:
+#
+#     3. hardcoded-links   — all static href="/..." and to="/..." string literals
+#                            found in client/src/ components, cross-checked against
+#                            <Route path="..."> entries in App.tsx.  Catches links
+#                            that were removed from nav-config but still exist in
+#                            component files.  Pure static analysis — no DB, no
+#                            server, no Playwright browser required.  Gives
+#                            sub-30-second feedback on broken links.
 #
 # Each browser suite visits every resolved URL against a locally-built
 # production bundle and fails if any route renders the NotFound (404)
@@ -31,8 +37,9 @@ name: Route Coverage Gate
 # Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — navbar + footer + hardcoded-links checks; safe to mark REQUIRED.
-#   * report             — PR comment; informational only.
+#   * navbar-links-smoke      — navbar + footer checks; safe to mark REQUIRED.
+#   * hardcoded-links-check   — static link analysis; safe to mark REQUIRED.
+#   * report                  — PR comment; informational only.
 
 on:
   pull_request:
@@ -173,20 +180,6 @@ jobs:
           BASE_URL: http://localhost:5000
           CI: 'true'
 
-
-      - name: Hardcoded-link cross-check (static href/to literals vs App.tsx routes)
-        # Scans every .tsx / .ts file in client/src/ (except nav-config.ts, which
-        # is already covered by the navbar-links and footer-links suites) for
-        # static string literals used as href="/..." or to="/..." attributes.
-        # Each found path is verified against the <Route path="..."> entries in
-        # App.tsx.  Fails if any hardcoded path has no matching route — meaning a
-        # link in a component points to a route that was deleted or never added.
-        # No browser or server needed — pure static source-file analysis.
-        run: npx playwright test hardcoded-links --project=chromium
-        env:
-          CI: 'true'
-
-
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
@@ -195,10 +188,46 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+  hardcoded-links-check:
+    name: hardcoded-links-check (static analysis)
+    runs-on: ubuntu-latest
+    # No PostgreSQL service — pure file-system analysis, no DB or server needed.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Hardcoded-link cross-check (static href/to literals vs App.tsx routes)
+        # Scans every .tsx / .ts file in client/src/ (except nav-config.ts, which
+        # is already covered by the navbar-links and footer-links suites) for
+        # static string literals used as href="/..." or to="/..." attributes.
+        # Each found path is verified against the <Route path="..."> entries in
+        # App.tsx.  Fails if any hardcoded path has no matching route — meaning a
+        # link in a component points to a route that was deleted or never added.
+        # No browser, no server, no database — pure static source-file analysis.
+        # Typically completes in under 30 seconds.
+        run: npx playwright test hardcoded-links
+        env:
+          CI: 'true'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardcoded-links-report
+          path: playwright-report/
+          retention-days: 14
+
   report:
     name: report (PR comment)
     runs-on: ubuntu-latest
-    needs: [navbar-links-smoke]
+    needs: [navbar-links-smoke, hardcoded-links-check]
     if: ${{ always() && github.event_name == 'pull_request' }}
     steps:
       - name: Post pass/fail summary to the PR
@@ -217,9 +246,9 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Three suites run against a locally-built production bundle:',
-              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs), **footer-links** (all `footerSectionsConfig` hrefs),',
-              '> and **hardcoded-links** (static `href="/..."` / `to="/..."` literals in `client/src/` components cross-checked against App.tsx routes).',
+              '> Two jobs guard this gate:',
+              '> **navbar-links-smoke** (suites 0–2: crash-filter unit tests, `navGroupsConfig` + `authNavConfig` hrefs, `footerSectionsConfig` hrefs) runs against a locally-built production bundle.',
+              '> **hardcoded-links-check** (suite 3: static `href="/..."` / `to="/..."` literals in `client/src/` components cross-checked against App.tsx routes) runs as a fast static-analysis job — no server or browser needed.',
               '> App-route coverage (every `<Route path="...">` in `App.tsx`) runs in the separate **app-routes-gate** workflow.',
               '> A red gate means at least one route renders the 404 (NotFound) page, a blank/empty page, or a hardcoded link in a component points to a missing route.',
               allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx`, the page renders real content, and no component links to a removed route.',
