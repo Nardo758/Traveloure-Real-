@@ -316,7 +316,9 @@ function Router() {
       </Route>
 
       <Route path="/itinerary-view/:token">
-        <ItineraryViewPage />
+        <PageErrorBoundary fallbackHeading="Link Not Found or Expired">
+          <ItineraryViewPage />
+        </PageErrorBoundary>
       </Route>
       <Route path="/trips/shared/:token">
         <SharedTripPage />
