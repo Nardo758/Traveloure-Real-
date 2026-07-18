@@ -107,8 +107,11 @@ export function SignInModal({
 
       onOpenChange(false);
 
+      const sessionReturnTo = sessionStorage.getItem("traveloure_return_to");
+      if (sessionReturnTo) sessionStorage.removeItem("traveloure_return_to");
+
       const role = data.user?.role ?? "user";
-      window.location.href = returnTo ?? getRoleHomePath(role);
+      window.location.href = returnTo ?? sessionReturnTo ?? getRoleHomePath(role);
     } catch (error: any) {
       toast({
         title: "Error",
