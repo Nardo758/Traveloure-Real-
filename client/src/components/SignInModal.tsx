@@ -20,6 +20,7 @@ interface SignInModalProps {
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
+  returnTo?: string;
 }
 
 export function SignInModal({
@@ -27,6 +28,7 @@ export function SignInModal({
   onOpenChange,
   title = "Sign in to continue",
   description = "Create an account or sign in to access this feature and personalize your travel experience.",
+  returnTo,
 }: SignInModalProps) {
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
@@ -106,7 +108,7 @@ export function SignInModal({
       onOpenChange(false);
 
       const role = data.user?.role ?? "user";
-      window.location.href = getRoleHomePath(role);
+      window.location.href = returnTo ?? getRoleHomePath(role);
     } catch (error: any) {
       toast({
         title: "Error",
