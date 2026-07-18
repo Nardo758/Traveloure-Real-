@@ -47,7 +47,7 @@ export default function ExpertDetailPage() {
   const handoffTripId = new URLSearchParams(searchString).get("tripId");
 
   // Fetch expert details
-  const { data: expert, isLoading } = useQuery<any>({
+  const { data: expert, isLoading, isError } = useQuery<any>({
     queryKey: ["/api/experts", expertId],
     queryFn: async () => {
       const res = await fetch(`/api/experts/${expertId}`);
@@ -167,7 +167,7 @@ export default function ExpertDetailPage() {
     );
   }
 
-  if (!expert) {
+  if (isError || !expert) {
     return (
       <Layout>
         <div className="min-h-screen bg-background py-16">

@@ -94,7 +94,7 @@ export default function ServiceDetailPage() {
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
 
-  const { data: service, isLoading: serviceLoading } = useQuery<Service>({
+  const { data: service, isLoading: serviceLoading, isError: serviceError } = useQuery<Service>({
     queryKey: ["/api/services", id],
     enabled: !!id,
   });
@@ -168,7 +168,7 @@ export default function ServiceDetailPage() {
     );
   }
 
-  if (!service) {
+  if (serviceError || !service) {
     return (
       <Layout>
         <div className="container py-8 max-w-4xl mx-auto text-center">
