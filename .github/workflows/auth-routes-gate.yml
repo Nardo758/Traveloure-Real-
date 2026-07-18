@@ -1,32 +1,21 @@
-name: Route Coverage Gate
+name: Authenticated Route Coverage Gate
 
-# Guards against broken or missing navbar/footer routes reaching production.
+# Guards against crashes that only surface when a real logged-in user visits a
+# role-gated page and the component receives actual API data.
 #
-# The navbar-links-smoke job runs three checks in order:
+# The unauthenticated navbar-links gate cannot catch these bugs because
+# auth-gated routes redirect to "/" before any data loads. This workflow fixes
+# that blind spot by running the same 404 / content / crash checks with a valid
+# session cookie for each platform role.
 #
-#   0. crash-filter-unit — pure unit tests for the console-error filter
-#                          predicates (playwright/utils/console-crash-filter.ts)
-#                          used by the smoke test. No browser or server needed;
-#                          runs fast as an early gate.
+# Route source of truth: client/src/lib/role-routes-config.ts
+#   expertRoutesConfig / providerRoutesConfig / adminRoutesConfig / eaRoutesConfig
+#   Adding a new route to those arrays automatically registers it in auth-routes.spec.ts.
+#   No manual edits to that spec are needed when routes are added.
 #
-#   1. navbar-links      — every href in navGroupsConfig + authNavConfig
-#                          (client/src/lib/nav-config.ts)
-#   2. footer-links      — every href in footerSectionsConfig
-#                          (client/src/lib/nav-config.ts)
-#
-# Each browser suite visits every resolved URL against a locally-built
-# production bundle and fails if any route renders the NotFound (404)
-# component or a blank/empty page with no heading or <main> content.
-#
-# App-route coverage (every <Route path="..."> in App.tsx) runs in its own
-# dedicated workflow: .github/workflows/app-routes-gate.yml
-# Authenticated role-route coverage (expert/provider/admin/EA routes with real
-# session cookies) runs in: .github/workflows/auth-routes-gate.yml
-# Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
-#
-# Status contexts (for branch-protection required checks):
-#   * navbar-links-smoke — navbar + footer checks; safe to mark REQUIRED.
-#   * report             — PR comment; informational only.
+# Status context (for branch-protection required checks):
+#   * auth-routes-smoke — safe to mark as a REQUIRED branch-protection check,
+#                         independently of navbar-links-smoke and app-routes-smoke.
 
 on:
   pull_request:
@@ -37,7 +26,7 @@ on:
 
 # Cancel in-progress runs for the same ref to avoid redundant gate checks.
 concurrency:
-  group: navbar-links-gate-${{ github.ref }}
+  group: auth-routes-gate-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -45,8 +34,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  navbar-links-smoke:
-    name: navbar-links-smoke (Playwright DOM gate)
+  auth-routes-smoke:
+    name: auth-routes-smoke (Playwright DOM gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -72,15 +61,6 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
-
-      - name: Crash-filter unit tests (pure logic, no browser needed)
-        # Verifies the console-error filter predicates in
-        # playwright/utils/console-crash-filter.ts that the navbar-links smoke
-        # test depends on. These are pure JS unit tests — no server or browser
-        # required — so they run fast and act as an early gate.
-        run: npx playwright test crash-filter-unit
-        env:
-          CI: 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -157,20 +137,14 @@ jobs:
           pgrep -a node || true
           exit 1
 
-      - name: Navbar links smoke (all navGroupsConfig + authNavConfig hrefs)
-        # Derives hrefs from client/src/lib/nav-config.ts (single source of truth).
-        # No globalSetup / auth required — 404-checking works for all routes
-        # (auth-gated ones redirect to "/" rather than rendering NotFound).
-        run: npx playwright test navbar-links --project=chromium
-        env:
-          BASE_URL: http://localhost:5000
-          CI: 'true'
-
-      - name: Footer links smoke (all footerSectionsConfig hrefs)
-        # Derives hrefs from client/src/lib/nav-config.ts (footerSectionsConfig).
-        # No globalSetup / auth required — 404-checking works for all routes
-        # (auth-gated ones redirect to "/" rather than rendering NotFound).
-        run: npx playwright test footer-links --project=chromium
+      - name: Authenticated routes smoke (expert / provider / EA / admin)
+        # Runs auth-routes.spec.ts with real session cookies for each platform role.
+        # globalSetup (playwright/global-setup.ts) logs in via /api/auth/login using
+        # the CI test accounts seeded above, then saves per-role storage states.
+        # The spec then visits /expert/*, /provider/*, /admin/* routes with the
+        # matching auth context and fails if any page throws a JS error or crashes.
+        # Route source of truth: client/src/lib/role-routes-config.ts
+        run: npx playwright test auth-routes --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
@@ -179,14 +153,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: navbar-links-report
+          name: auth-routes-report
           path: playwright-report/
           retention-days: 14
 
   report:
     name: report (PR comment)
     runs-on: ubuntu-latest
-    needs: [navbar-links-smoke]
+    needs: [auth-routes-smoke]
     if: ${{ always() && github.event_name == 'pull_request' }}
     steps:
       - name: Post pass/fail summary to the PR
@@ -199,17 +173,17 @@ jobs:
             const allGreen = Object.values(needs).every((d) => d.result === 'success');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
-              `## Route Coverage Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              `## Authenticated Route Coverage Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
               '',
               ...rows,
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Two suites run against a locally-built production bundle:',
-              '> **navbar-links** (all `navGroupsConfig` + `authNavConfig` hrefs) and **footer-links** (all `footerSectionsConfig` hrefs).',
-              '> App-route coverage (every `<Route path="...">` in `App.tsx`) runs in the separate **app-routes-gate** workflow.',
-              '> A red gate means at least one route renders the 404 (NotFound) page **or** a blank/empty page with no heading or `<main>` content.',
-              allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx` and that the page component renders real content (at least one h1/h2/h3 or a non-empty `<main>`).',
+              '> Visits every role-gated route in `client/src/lib/role-routes-config.ts` with real session cookies',
+              '> for each platform role (travel_expert, service_provider, executive_assistant, admin).',
+              '> A red gate means at least one authenticated route renders the 404 (NotFound) page,',
+              '> a blank/empty page with no heading or `<main>` content, or throws an unhandled JS error.',
+              allGreen ? '' : '> Fix: ensure the failing page component renders real content when a real API response is received.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
