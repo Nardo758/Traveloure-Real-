@@ -86,13 +86,33 @@ async function assertMeaningfulContent(
 test.describe('Navbar link smoke — no broken routes', () => {
   for (const href of NAVBAR_HREFS) {
     test(`${href} does not render NotFound`, async ({ page }) => {
+      // Collect unhandled JS errors thrown on this page (e.g. React component
+      // crashes that happen after the initial render / loading skeleton).
+      const pageErrors: Error[] = [];
+      page.on('pageerror', (err) => pageErrors.push(err));
+
+      // Collect browser console messages so we can detect uncaught promise
+      // rejections and React error-boundary warnings that don't surface as
+      // pageerror events.
+      const uncaughtConsoleErrors: string[] = [];
+      page.on('console', (msg) => {
+        if (msg.type() === 'error') {
+          const text = msg.text();
+          if (text.includes('Uncaught') || text.includes('React') || text.includes('TypeError') || text.includes('ReferenceError')) {
+            uncaughtConsoleErrors.push(text);
+          }
+        }
+      });
+
       await page.goto(`${BASE_URL}${href}`, {
         waitUntil: 'domcontentloaded',
         timeout: 30_000,
       });
 
       // Allow a short moment for client-side navigation / redirects to settle.
-      // 3 s is enough for a React redirect (ProtectedRoute → window.location.replace("/")).
+      // 3 s is enough for a React redirect (ProtectedRoute → window.location.replace("/"))
+      // and also long enough for post-render crashes (e.g. bad API response
+      // causing a component to throw after the loading skeleton disappears).
       await page.waitForTimeout(3_000);
 
       // Assert the 404 heading is NOT present anywhere on the page.
@@ -109,6 +129,24 @@ test.describe('Navbar link smoke — no broken routes', () => {
         // Content check: the page must have at least one heading or a populated
         // <main>. This catches blank stub pages that pass the 404 gate.
         await assertMeaningfulContent(page, href);
+
+        // Crash check: fail if any unhandled JS error was thrown after the page
+        // loaded. A page may briefly show a loading skeleton (satisfying the
+        // content check above), then crash into a blank error state. This gate
+        // catches that second failure mode.
+        if (pageErrors.length > 0) {
+          const messages = pageErrors.map((e) => e.message).join('\n  ');
+          throw new Error(
+            `[crash-check] ${href} threw ${pageErrors.length} unhandled JS error(s) after load:\n  ${messages}`,
+          );
+        }
+
+        if (uncaughtConsoleErrors.length > 0) {
+          const messages = uncaughtConsoleErrors.join('\n  ');
+          throw new Error(
+            `[crash-check] ${href} logged ${uncaughtConsoleErrors.length} uncaught console error(s) after load:\n  ${messages}`,
+          );
+        }
       }
 
       console.log(
