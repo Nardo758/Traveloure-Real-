@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -464,6 +464,27 @@ export default function CartPage() {
     onError: () => {
       toast({ variant: "destructive", title: "Failed to remove item" });
     },
+  });
+
+  // "Frequently booked together" in-place add: the upsell slot resolves each
+  // candidate to a concrete approved listing server-side; adding it is the same
+  // POST /api/cart { serviceId } as any service add — the server derives the
+  // price from the catalog, never from this client (§14).
+  const [addingUpsellId, setAddingUpsellId] = useState<string | null>(null);
+  const addUpsellMutation = useMutation({
+    mutationFn: async (c: { offeringId: string; bookable?: { serviceId: string } | null }) => {
+      if (!c.bookable?.serviceId) throw new Error("No bookable service");
+      setAddingUpsellId(c.offeringId);
+      return apiRequest("POST", "/api/cart", { serviceId: c.bookable.serviceId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      toast({ title: "Added to your cart" });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Could not add item", description: "Please try again." });
+    },
+    onSettled: () => setAddingUpsellId(null),
   });
 
   const checkoutMutation = useMutation({
@@ -1110,38 +1131,50 @@ export default function CartPage() {
   return (
     <>
     <div className="container py-8 max-w-5xl mx-auto">
-        {/* Flow Steps Indicator */}
-        <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "cart" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
-            <ShoppingCart className="w-4 h-4" />
-            <span className="text-sm font-medium">Cart</span>
-          </div>
-          <div className="w-8 h-px bg-border" />
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "trip-details" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
-            <MapPin className="w-4 h-4" />
-            <span className="text-sm font-medium">Trip</span>
-          </div>
-          <div className="w-8 h-px bg-border" />
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "optimize" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
-            <Lock className="w-4 h-4" />
-            <span className="text-sm font-medium">Optimize</span>
-          </div>
-          <div className="w-8 h-px bg-border" />
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "itinerary" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
-            <Sparkles className="w-4 h-4" />
-            <span className="text-sm font-medium">Itinerary</span>
-          </div>
-          <div className="w-8 h-px bg-border" />
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${flowStep === "payment" ? "bg-[#FF385C] text-white" : "bg-muted"}`}>
-            <CreditCard className="w-4 h-4" />
-            <span className="text-sm font-medium">Payment</span>
-          </div>
-        </div>
+        {/* Flow Steps Indicator — visited/reachable steps are clickable so the
+            stepper doubles as navigation; steps the user hasn't unlocked yet
+            stay muted and inert (you can't jump to Optimize before Trip
+            details, or to Itinerary before an optimization exists). */}
+        {(() => {
+          const steps: Array<{ key: FlowStep; label: string; icon: ReactNode; reachable: boolean }> = [
+            { key: "cart", label: "Cart", icon: <ShoppingCart className="w-4 h-4" />, reachable: true },
+            { key: "trip-details", label: "Trip", icon: <MapPin className="w-4 h-4" />, reachable: !!resolvedTrip },
+            { key: "optimize", label: "Optimize", icon: <Lock className="w-4 h-4" />, reachable: !!optimizationPreview },
+            { key: "itinerary", label: "Itinerary", icon: <Sparkles className="w-4 h-4" />, reachable: !!optimizationResult },
+            { key: "payment", label: "Payment", icon: <CreditCard className="w-4 h-4" />, reachable: (cart?.items?.length || 0) > 0 || !!checkoutPaymentIntent },
+          ];
+          return (
+            <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
+              {steps.map((s, i) => (
+                <div key={s.key} className="flex items-center gap-2">
+                  {i > 0 && <div className="w-8 h-px bg-border" />}
+                  <button
+                    type="button"
+                    onClick={() => { if (s.reachable && s.key !== flowStep) setFlowStep(s.key); }}
+                    disabled={!s.reachable}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors ${
+                      flowStep === s.key
+                        ? "bg-[#FF385C] text-white"
+                        : s.reachable
+                          ? "bg-muted hover:bg-[#FF385C]/15 hover:text-[#FF385C] cursor-pointer"
+                          : "bg-muted/60 text-muted-foreground/60 cursor-default"
+                    }`}
+                    data-testid={`step-pill-${s.key}`}
+                  >
+                    {s.icon}
+                    <span className="text-sm font-medium">{s.label}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         <div className="flex items-center gap-4 mb-6">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full gap-1.5 px-3"
             onClick={() => {
               if (flowStep === "cart") {
                 window.history.back();
@@ -1155,12 +1188,22 @@ export default function CartPage() {
               } else if (flowStep === "itinerary") {
                 setFlowStep("cart");
               } else {
-                setFlowStep("itinerary");
+                // Payment: return to where the user actually came from — an
+                // optimized itinerary if one exists, otherwise straight back to
+                // the cart (the "Proceed to Payment" skip path). Previously this
+                // always went to the Itinerary step, which is empty when the
+                // user never optimized.
+                setFlowStep(optimizationResult ? "itinerary" : "cart");
               }
             }}
             data-testid="button-back"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
+            {flowStep === "cart" ? "Back" :
+              flowStep === "trip-details" ? "Cart" :
+              flowStep === "optimize" ? "Trip Details" :
+              flowStep === "itinerary" ? "Cart" :
+              optimizationResult ? "Itinerary" : "Cart"}
           </Button>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
@@ -1583,6 +1626,8 @@ export default function CartPage() {
                     <div className="px-6 pb-0">
                       <UpsellSlot
                         surface="cart"
+                        onAddBookable={(c) => addUpsellMutation.mutate(c)}
+                        addingOfferingId={addingUpsellId}
                         contextPayload={user ? {
                           cartItems: (cart?.items ?? []).map((item: any) => ({
                             offeringId: item.serviceId ?? item.contentId ?? item.offeringId ?? String(item.id ?? ""),
@@ -1620,13 +1665,18 @@ export default function CartPage() {
                           </Button>
                         </div>
                       )}
+                      {/* Cart-step primary: an honest step-forward CTA. The itinerary
+                          cannot be generated from here — it needs confirmed trip
+                          details and the optimize step first — so the "Generate
+                          Itinerary" label lives on the step where generation
+                          actually fires, not in the cart. */}
                       <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-[#FF385C]/20">
                         <div className="flex items-start gap-2 mb-2">
                           <Sparkles className="w-4 h-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
                           <div>
-                            <h4 className="text-sm font-medium">Generate Your Itinerary</h4>
+                            <h4 className="text-sm font-medium">Plan &amp; optimize this trip</h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              See your selections organized into an itinerary, plus AI-optimized alternatives that could save you money or time.
+                              Next: confirm your trip details, then our AI organizes your selections into an itinerary with optimized alternatives.
                             </p>
                           </div>
                         </div>
@@ -1640,9 +1690,9 @@ export default function CartPage() {
                           {(previewLoading || resolvingTrip) ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           ) : (
-                            <Sparkles className="w-4 h-4 mr-2" />
+                            <MapPin className="w-4 h-4 mr-2" />
                           )}
-                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing..." : "Generate Itinerary"}
+                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing..." : "Continue — Trip Details"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (

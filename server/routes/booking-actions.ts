@@ -11,6 +11,7 @@ import { trackFunnelEvent } from '../utils/funnelTracker';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from '../utils/auth';
+import { storage } from '../storage';
 import {
   completeExpertRequest,
   getExpertRequestsByUser,
@@ -549,6 +550,79 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
     res.json(trips);
   } catch (error: any) {
     console.error('Get expert assigned trips error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/expert/bookings/:id/plan-snapshot — Sprint 2.1 expert plan handoff.
+ *
+ * The expert side of the funnel's "Find a Trip Planner" escalation: when a
+ * booking request carries a tripId (the cart passes it at every escalation
+ * point), the receiving expert can view the traveler's plan — trip basics,
+ * itinerary items, and the cart items tied to that trip (plus the traveler's
+ * unassigned basket, which is the pre-Trip-details cart state).
+ *
+ * Access gate: the session user must be the booking's provider/expert (or an
+ * admin). The traveler consented to the share by requesting help with this
+ * trip. Read-only; all fields server-derived; nothing from req.body.
+ */
+router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const booking = await storage.getServiceBooking(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    if (booking.providerId !== userId) {
+      const requester = await storage.getUser(userId);
+      if (requester?.role !== 'admin') {
+        return res.status(403).json({ message: 'Not your booking' });
+      }
+    }
+
+    if (!booking.tripId) {
+      return res.status(404).json({ message: 'No trip plan attached to this booking' });
+    }
+
+    const trip = await storage.getTrip(booking.tripId);
+    if (!trip) return res.status(404).json({ message: 'Trip not found' });
+
+    const itineraryItems = await storage.getItineraryItems(trip.id);
+    const travelerCart = booking.travelerId ? await storage.getCartItems(booking.travelerId) : [];
+    const cartItems = travelerCart.filter(
+      (i: any) => i.tripId === trip.id || !i.tripId,
+    );
+
+    res.json({
+      trip: {
+        id: trip.id,
+        title: trip.title,
+        destination: trip.destination,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        numberOfTravelers: trip.numberOfTravelers,
+        eventType: (trip as any).eventType ?? null,
+      },
+      itineraryItems: itineraryItems.slice(0, 100).map((i: any) => ({
+        title: i.title,
+        description: i.description,
+        dayNumber: i.dayNumber,
+        itemType: i.itemType,
+        scheduledDate: i.scheduledDate ?? null,
+      })),
+      cartItems: cartItems.slice(0, 100).map((i: any) => ({
+        name: i.service?.serviceName ?? (i.contentMeta as any)?.name ?? 'Item',
+        type: i.serviceId ? 'service' : (i.contentType ?? 'item'),
+        price: i.service?.price ?? null,
+        quantity: i.quantity ?? 1,
+        city: i.service?.location ?? (i.contentMeta as any)?.city ?? null,
+        scheduledDate: i.scheduledDate ?? null,
+      })),
+    });
+  } catch (error: any) {
+    console.error('Get plan snapshot error:', error);
     res.status(500).json({ error: error.message });
   }
 });

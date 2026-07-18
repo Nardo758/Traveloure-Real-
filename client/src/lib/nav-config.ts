@@ -131,6 +131,81 @@ export const authNavConfig: AuthNavConfig[] = [
 ];
 
 /**
+ * footer-config.ts (inline) — single source of truth for every href that
+ * appears in the site footer (layout.tsx).
+ *
+ * Imported by:
+ *   - client/src/components/layout.tsx  (renders the UI)
+ *   - playwright/tests/footer-links.spec.ts  (smoke-tests every route)
+ *
+ * Adding or renaming a link here automatically propagates to the smoke
+ * test on the next PR, so broken routes are caught in CI before they
+ * reach production.
+ */
+
+export interface FooterLinkConfig {
+  label: string;
+  href: string;
+}
+
+export interface FooterSectionConfig {
+  title: string;
+  links: FooterLinkConfig[];
+}
+
+export const footerSectionsConfig: FooterSectionConfig[] = [
+  {
+    title: 'Product',
+    links: [
+      { label: 'Plan an Experience',     href: '/experiences' },
+      { label: 'Discover Services',      href: '/discover' },
+      { label: 'Talk to Experts',        href: '/chat' },
+      { label: 'How It Works',           href: '/how-it-works' },
+      { label: 'Pricing',                href: '/pricing' },
+      { label: 'Features',               href: '/features' },
+      { label: 'Global Calendar',        href: '/global-calendar' },
+      { label: 'Executive Assistant',    href: '/executive-assistant' },
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      { label: 'About Us',       href: '/about' },
+      { label: 'Ways to earn',   href: '/earn' },
+      { label: 'Careers',        href: '/careers' },
+      { label: 'Blog',           href: '/blog' },
+      { label: 'Press',          href: '/press' },
+    ],
+  },
+  {
+    title: 'Support',
+    links: [
+      { label: 'Help Center',       href: '/help' },
+      { label: 'Contact Us',        href: '/contact' },
+      { label: 'Visa Help',         href: '/visa-help' },
+      { label: 'Privacy Policy',    href: '/privacy' },
+      { label: 'Terms of Service',  href: '/terms' },
+      { label: 'FAQ',               href: '/faq' },
+    ],
+  },
+];
+
+/**
+ * Returns a de-duplicated array of every href referenced in the footer.
+ * Auth-gated hrefs are included — they redirect to "/" rather than 404ing,
+ * so the smoke test still passes for them.
+ */
+export function getAllFooterHrefs(): string[] {
+  const seen = new Set<string>();
+  for (const section of footerSectionsConfig) {
+    for (const link of section.links) {
+      seen.add(link.href);
+    }
+  }
+  return Array.from(seen);
+}
+
+/**
  * Returns a de-duplicated array of every href referenced in the navbar.
  * Auth-gated hrefs are included — they redirect to "/" rather than 404ing,
  * so the smoke test still passes for them.
@@ -148,5 +223,25 @@ export function getAllNavHrefs(): string[] {
   for (const item of authNavConfig) {
     seen.add(item.href);
   }
+  return Array.from(seen);
+}
+
+/**
+ * Returns a de-duplicated union of every href that appears in EITHER the
+ * navbar OR the footer.
+ *
+ * Both CI smoke-test gates (navbar-links-gate.yml and footer-links-gate.yml)
+ * import this function so that a stale link in *either* config causes *both*
+ * gates to fail.  Concretely:
+ *
+ *   - Route /foo is in App.tsx, navGroupsConfig, and footerSectionsConfig.
+ *   - Developer removes /foo from App.tsx and from navGroupsConfig only.
+ *   - getAllHrefs() still contains /foo (pulled from footerSectionsConfig).
+ *   - Both navbar-links and footer-links gate runs attempt /foo → 404 → fail.
+ *
+ * This makes it impossible for a removed route to slip past only one gate.
+ */
+export function getAllHrefs(): string[] {
+  const seen = new Set<string>([...getAllNavHrefs(), ...getAllFooterHrefs()]);
   return Array.from(seen);
 }
