@@ -1,20 +1,26 @@
 import { test, expect } from '@playwright/test';
-import { getAllFooterHrefs } from '../../client/src/lib/nav-config';
+import { getAllHrefs } from '../../client/src/lib/nav-config';
 
 /**
  * Footer link smoke test — guards against broken or missing routes.
  *
  * Derives every href from the single source of truth:
- *   client/src/lib/nav-config.ts  (footerSectionsConfig)
+ *   client/src/lib/nav-config.ts  (footerSectionsConfig + navGroupsConfig + authNavConfig)
  *
- * Adding or renaming a link in nav-config.ts automatically adds it to
- * this test on the next PR. A href with no matching <Route> in App.tsx
- * will render the NotFound (404) page and fail the assertion here.
+ * Uses getAllHrefs() — the union of footer AND navbar hrefs — so that a stale
+ * link removed from the footer config but left in the navbar config (or vice
+ * versa) is still caught by BOTH gate runs.  Concretely:
+ *
+ *   - Route /foo exists in App.tsx, footer config, and nav config.
+ *   - Dev removes /foo from App.tsx + footer config but forgets nav config.
+ *   - getAllHrefs() still contains /foo (pulled from nav config).
+ *   - This gate fails → the stale entry is surfaced even though it was
+ *     cleaned from the footer config.
  *
  * What this catches:
  *   - A href typo pointing at a path with no matching <Route>
- *   - A <Route> deleted from App.tsx while a footer link remained
- *   - A new footer link added without a corresponding route
+ *   - A <Route> deleted from App.tsx while a footer or nav link remained
+ *   - A new footer/nav link added without a corresponding route
  *
  * Auth-protected routes that redirect to "/" rather than 404ing pass
  * this check — a redirect to a valid page is acceptable; a 404 is not.
@@ -26,8 +32,9 @@ import { getAllFooterHrefs } from '../../client/src/lib/nav-config';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 
-// Derive hrefs from the shared footer config — the same list layout.tsx uses.
-const FOOTER_HREFS: string[] = getAllFooterHrefs();
+// Union of footer + navbar hrefs — shared with navbar-links gate so both
+// gates always test the same complete set of protected links.
+const FOOTER_HREFS: string[] = getAllHrefs();
 
 // ── 404 fingerprint ────────────────────────────────────────────────────────────
 // The NotFound component renders an <h1> with this exact text.
