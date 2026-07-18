@@ -16,10 +16,12 @@
  *   playwright/.auth/provider.json — service_provider role
  *   playwright/.auth/admin.json    — admin role
  *
- * If globalSetup could not obtain a valid session (e.g. seed not run locally),
- * the storageState will be empty and routes will redirect as unauthenticated —
- * the tests will still pass (redirect ≠ 404), so local dev workflows are not
- * broken. CI always seeds the accounts before running Playwright.
+ * Session guard (beforeAll in each block):
+ *   Before visiting any route, the spec calls GET /api/auth/session to verify
+ *   the stored cookies yield a real authenticated session. In CI this guard
+ *   throws if the session check fails, so the gate cannot silently pass with
+ *   guest sessions masquerading as authenticated ones. In local dev it emits a
+ *   warning and skips the block so the developer workflow is not blocked.
  *
  * What this catches:
  *   - A page that crash-renders when a real API response contains a null field
@@ -30,7 +32,13 @@
 import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
+const IS_CI = process.env.CI === 'true';
+
 const NOT_FOUND_HEADING = '404 - Lost at Sea?';
+
+// ── Role membership mirrors client/src/lib/role-utils.ts ───────────────────
+const EXPERT_ROLES = ['expert', 'local_expert', 'travel_expert', 'event_planner'];
+const PROVIDER_ROLES = ['service_provider'];
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -144,8 +152,50 @@ const EXPERT_ROUTES = [
 test.describe('Auth smoke — expert routes (travel_expert role)', () => {
   test.use({ storageState: 'playwright/.auth/expert.json' });
 
+  // Block-scoped: each describe callback has its own closure.
+  let expertSessionOk = false;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/api/auth/session`);
+    const body = await res.json().catch(() => ({})) as Record<string, any>;
+    const authenticated: boolean = body.authenticated === true;
+    const role: string = body.user?.role ?? '';
+    const roleOk = authenticated && EXPERT_ROLES.includes(role);
+
+    console.log(
+      `[auth-routes] Expert session check — authenticated=${authenticated}, role=${role}`,
+    );
+
+    if (IS_CI) {
+      if (!authenticated) {
+        throw new Error(
+          `[auth-check] Expert storageState did not yield an authenticated session. ` +
+            `Got: ${JSON.stringify(body)}. ` +
+            `Ensure scripts/seed-ci-test-users.ts ran and globalSetup completed successfully.`,
+        );
+      }
+      if (!roleOk) {
+        throw new Error(
+          `[auth-check] Expert session has unexpected role "${role}". ` +
+            `Expected one of: ${EXPERT_ROLES.join(', ')}.`,
+        );
+      }
+    } else if (!roleOk) {
+      console.warn(
+        `[auth-routes] Expert session is not authenticated or has wrong role. ` +
+          'Tests will be skipped. Run scripts/seed-ci-test-users.ts and restart the server.',
+      );
+    }
+
+    expertSessionOk = roleOk;
+  });
+
   for (const href of EXPERT_ROUTES) {
     test(`${href} does not 404 or crash`, async ({ page }) => {
+      test.skip(
+        !expertSessionOk,
+        'Expert session not authenticated — skipped in local dev (throws in CI)',
+      );
       await smokeRoute(page, href);
     });
   }
@@ -169,8 +219,49 @@ const PROVIDER_ROUTES = [
 test.describe('Auth smoke — provider routes (service_provider role)', () => {
   test.use({ storageState: 'playwright/.auth/provider.json' });
 
+  let providerSessionOk = false;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/api/auth/session`);
+    const body = await res.json().catch(() => ({})) as Record<string, any>;
+    const authenticated: boolean = body.authenticated === true;
+    const role: string = body.user?.role ?? '';
+    const roleOk = authenticated && (PROVIDER_ROLES.includes(role) || role === 'admin');
+
+    console.log(
+      `[auth-routes] Provider session check — authenticated=${authenticated}, role=${role}`,
+    );
+
+    if (IS_CI) {
+      if (!authenticated) {
+        throw new Error(
+          `[auth-check] Provider storageState did not yield an authenticated session. ` +
+            `Got: ${JSON.stringify(body)}. ` +
+            `Ensure scripts/seed-ci-test-users.ts ran and globalSetup completed successfully.`,
+        );
+      }
+      if (!roleOk) {
+        throw new Error(
+          `[auth-check] Provider session has unexpected role "${role}". ` +
+            `Expected one of: ${PROVIDER_ROLES.join(', ')}.`,
+        );
+      }
+    } else if (!roleOk) {
+      console.warn(
+        `[auth-routes] Provider session is not authenticated or has wrong role. ` +
+          'Tests will be skipped. Run scripts/seed-ci-test-users.ts and restart the server.',
+      );
+    }
+
+    providerSessionOk = roleOk;
+  });
+
   for (const href of PROVIDER_ROUTES) {
     test(`${href} does not 404 or crash`, async ({ page }) => {
+      test.skip(
+        !providerSessionOk,
+        'Provider session not authenticated — skipped in local dev (throws in CI)',
+      );
       await smokeRoute(page, href);
     });
   }
@@ -210,8 +301,48 @@ const ADMIN_ROUTES = [
 test.describe('Auth smoke — admin routes (admin role)', () => {
   test.use({ storageState: 'playwright/.auth/admin.json' });
 
+  let adminSessionOk = false;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/api/auth/session`);
+    const body = await res.json().catch(() => ({})) as Record<string, any>;
+    const authenticated: boolean = body.authenticated === true;
+    const role: string = body.user?.role ?? '';
+    const roleOk = authenticated && role === 'admin';
+
+    console.log(
+      `[auth-routes] Admin session check — authenticated=${authenticated}, role=${role}`,
+    );
+
+    if (IS_CI) {
+      if (!authenticated) {
+        throw new Error(
+          `[auth-check] Admin storageState did not yield an authenticated session. ` +
+            `Got: ${JSON.stringify(body)}. ` +
+            `Ensure scripts/seed-ci-test-users.ts ran and globalSetup completed successfully.`,
+        );
+      }
+      if (!roleOk) {
+        throw new Error(
+          `[auth-check] Admin session has unexpected role "${role}". Expected "admin".`,
+        );
+      }
+    } else if (!roleOk) {
+      console.warn(
+        `[auth-routes] Admin session is not authenticated or has wrong role. ` +
+          'Tests will be skipped. Run scripts/seed-ci-test-users.ts and restart the server.',
+      );
+    }
+
+    adminSessionOk = roleOk;
+  });
+
   for (const href of ADMIN_ROUTES) {
     test(`${href} does not 404 or crash`, async ({ page }) => {
+      test.skip(
+        !adminSessionOk,
+        'Admin session not authenticated — skipped in local dev (throws in CI)',
+      );
       await smokeRoute(page, href);
     });
   }

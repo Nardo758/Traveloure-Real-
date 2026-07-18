@@ -18,11 +18,15 @@
  *   playwright/.auth/provider.json — service_provider role
  *   playwright/.auth/admin.json    — admin role
  *
- * Failure modes handled gracefully:
- *   - Server not reachable → warns and writes empty auth states (safe for
- *     unauthenticated tests; auth-routes tests will redirect as guest).
- *   - Login endpoint returns non-200 → same empty-state fallback.
- *   - Any unexpected error → logs and continues.
+ * Failure policy:
+ *   CI (process.env.CI === 'true'): any login failure OR unreachable server
+ *   throws immediately — the gate cannot silently pass with guest sessions
+ *   masquerading as authenticated ones.
+ *
+ *   Local dev: if the server is unreachable, writes empty auth states so the
+ *   unauthenticated navbar/footer gates continue to work without a running
+ *   server. If the server IS reachable but a login fails, throws regardless
+ *   (the developer needs to know their seed is missing or wrong).
  */
 
 import { chromium, type FullConfig } from '@playwright/test';
@@ -30,6 +34,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
+const IS_CI = process.env.CI === 'true';
 
 const EMPTY_STATE = JSON.stringify({ cookies: [], origins: [] });
 
@@ -58,8 +63,7 @@ function writeEmptyState(filePath: string) {
   try {
     fs.writeFileSync(filePath, EMPTY_STATE, 'utf-8');
   } catch {
-    // Best-effort — if we can't write, the spec will fail to read the state
-    // and Playwright will handle it with a descriptive error.
+    // Best-effort — non-fatal
   }
 }
 
@@ -69,60 +73,72 @@ async function globalSetup(_config: FullConfig) {
     fs.mkdirSync(authDir, { recursive: true });
   }
 
-  // Pre-flight: check if the server is reachable. If not (e.g. local dev
-  // without a running server), skip auth setup silently so the unauthenticated
-  // navbar/footer tests can still run without blockage.
+  // Pre-flight: check if the server is reachable.
+  let serverReady = false;
   try {
-    const ping = await fetch(`${BASE_URL}/api/ready`, { signal: AbortSignal.timeout(5_000) });
-    if (!ping.ok) {
-      console.warn(
-        `[global-setup] Server at ${BASE_URL} is not ready (${ping.status}). ` +
-          'Writing empty auth states — auth-gated routes will redirect as unauthenticated.',
-      );
-      for (const user of CI_USERS) writeEmptyState(user.authFile);
-      return;
-    }
+    const ping = await fetch(`${BASE_URL}/api/ready`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    serverReady = ping.ok;
   } catch {
+    // fetch threw — server not reachable
+  }
+
+  if (!serverReady) {
+    const msg =
+      `[global-setup] Server at ${BASE_URL} is not reachable or not ready. ` +
+      'Cannot obtain authenticated sessions.';
+
+    if (IS_CI) {
+      throw new Error(
+        `${msg}\n` +
+          'Ensure the server is started and /api/ready returns { ready: true } ' +
+          'before running Playwright in CI.',
+      );
+    }
+
+    // In local dev it's common to run `npx playwright test navbar-links`
+    // without a running server — degrade gracefully so those tests still work.
     console.warn(
-      `[global-setup] Could not reach ${BASE_URL}. ` +
-        'Writing empty auth states — auth-gated routes will redirect as unauthenticated.',
+      `${msg}\n` +
+        'Writing empty auth states — auth-gated routes will redirect as ' +
+        'unauthenticated. Start the dev server to test authenticated routes.',
     );
     for (const user of CI_USERS) writeEmptyState(user.authFile);
     return;
   }
 
+  // Server is up — log in as each CI user and persist their session cookies.
   const browser = await chromium.launch();
+  try {
+    for (const user of CI_USERS) {
+      const context = await browser.newContext();
+      try {
+        const response = await context.request.post(`${BASE_URL}/api/auth/login`, {
+          data: { email: user.email, password: user.password },
+          headers: { 'Content-Type': 'application/json' },
+        });
 
-  for (const user of CI_USERS) {
-    const context = await browser.newContext();
+        if (!response.ok()) {
+          const body = await response.text().catch(() => '<unreadable>');
+          throw new Error(
+            `[global-setup] Login failed for ${user.email} (${user.label}): ` +
+              `HTTP ${response.status()} — ${body}.\n` +
+              `Run scripts/seed-ci-test-users.ts against the target database first.`,
+          );
+        }
 
-    try {
-      const response = await context.request.post(`${BASE_URL}/api/auth/login`, {
-        data: { email: user.email, password: user.password },
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!response.ok()) {
-        const body = await response.text().catch(() => '<unreadable>');
-        console.warn(
-          `[global-setup] Login failed for ${user.email} (${user.label}): ` +
-            `HTTP ${response.status()} — ${body}. ` +
-            `Auth-gated routes will redirect as unauthenticated (safe for CI).`,
-        );
-        writeEmptyState(user.authFile);
-      } else {
         await context.storageState({ path: user.authFile });
-        console.log(`[global-setup] Auth state saved for ${user.email} (${user.label}) → ${user.authFile}`);
+        console.log(
+          `[global-setup] Auth state saved for ${user.email} (${user.label}) → ${user.authFile}`,
+        );
+      } finally {
+        await context.close().catch(() => {});
       }
-    } catch (err) {
-      console.warn(`[global-setup] Unexpected error for ${user.email} (${user.label}):`, err);
-      writeEmptyState(user.authFile);
-    } finally {
-      await context.close();
     }
+  } finally {
+    await browser.close().catch(() => {});
   }
-
-  await browser.close();
 }
 
 export default globalSetup;
