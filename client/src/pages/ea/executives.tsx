@@ -24,7 +24,8 @@ import {
   Gift, 
   AlertCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -73,6 +74,7 @@ export default function EAExecutives() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingExec, setEditingExec] = useState<EaExecutive | null>(null);
   const [formState, setFormState] = useState<EditFormState | null>(null);
+  const [importantDates, setImportantDates] = useState<Array<{ label: string; date: string }>>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -99,6 +101,19 @@ export default function EAExecutives() {
     e.stopPropagation();
     setEditingExec(exec);
     setFormState(buildFormState(exec));
+    setImportantDates(exec.family?.importantDates ?? []);
+  }
+
+  function addImportantDate() {
+    setImportantDates((prev) => [...prev, { label: "", date: "" }]);
+  }
+
+  function updateImportantDate(idx: number, field: "label" | "date", value: string) {
+    setImportantDates((prev) => prev.map((d, i) => i === idx ? { ...d, [field]: value } : d));
+  }
+
+  function removeImportantDate(idx: number) {
+    setImportantDates((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function handleField(field: keyof EditFormState, value: string) {
@@ -122,6 +137,7 @@ export default function EAExecutives() {
         spouse: formState.spouse || null,
         anniversary: formState.anniversary || null,
         children: formState.children || null,
+        importantDates: importantDates.filter((d) => d.label.trim() || d.date.trim()),
       },
     };
     updateMutation.mutate({ id: editingExec.id, payload });
@@ -317,7 +333,7 @@ export default function EAExecutives() {
       </div>
 
       {/* Edit Profile Dialog */}
-      <Dialog open={!!editingExec} onOpenChange={(open) => { if (!open) { setEditingExec(null); setFormState(null); } }}>
+      <Dialog open={!!editingExec} onOpenChange={(open) => { if (!open) { setEditingExec(null); setFormState(null); setImportantDates([]); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-edit-profile">
           <DialogHeader>
             <DialogTitle>Edit Profile — {editingExec?.name}</DialogTitle>
@@ -443,6 +459,54 @@ export default function EAExecutives() {
                       onChange={(e) => handleField("children", e.target.value)}
                       placeholder="e.g. 2 (ages 8, 11)"
                     />
+                  </div>
+
+                  {/* Important Dates */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Important Dates</Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={addImportantDate}
+                        data-testid="button-add-important-date"
+                        className="h-7 text-xs"
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add Date
+                      </Button>
+                    </div>
+                    {importantDates.length === 0 && (
+                      <p className="text-xs text-gray-400 italic">No important dates added yet.</p>
+                    )}
+                    {importantDates.map((entry, idx) => (
+                      <div key={idx} className="flex gap-2 items-center" data-testid={`important-date-row-${idx}`}>
+                        <Input
+                          value={entry.label}
+                          onChange={(e) => updateImportantDate(idx, "label", e.target.value)}
+                          placeholder="Label (e.g. Birthday)"
+                          className="flex-1 text-sm"
+                          data-testid={`input-important-date-label-${idx}`}
+                        />
+                        <Input
+                          value={entry.date}
+                          onChange={(e) => updateImportantDate(idx, "date", e.target.value)}
+                          placeholder="Date (e.g. March 5)"
+                          className="flex-1 text-sm"
+                          data-testid={`input-important-date-value-${idx}`}
+                        />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeImportantDate(idx)}
+                          data-testid={`button-remove-important-date-${idx}`}
+                          className="h-8 w-8 text-gray-400 hover:text-red-500 flex-shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
