@@ -320,6 +320,10 @@ const EA_ROUTES = [
   '/ea/travel',
   '/ea/trips',
   '/ea/reports',
+  '/ea/events',
+  '/ea/venues',
+  '/ea/gifts',
+  '/ea/communications',
 ];
 
 test.describe('Auth smoke — EA routes (executive_assistant role)', () => {
