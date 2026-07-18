@@ -225,3 +225,23 @@ export function getAllNavHrefs(): string[] {
   }
   return Array.from(seen);
 }
+
+/**
+ * Returns a de-duplicated union of every href that appears in EITHER the
+ * navbar OR the footer.
+ *
+ * Both CI smoke-test gates (navbar-links-gate.yml and footer-links-gate.yml)
+ * import this function so that a stale link in *either* config causes *both*
+ * gates to fail.  Concretely:
+ *
+ *   - Route /foo is in App.tsx, navGroupsConfig, and footerSectionsConfig.
+ *   - Developer removes /foo from App.tsx and from navGroupsConfig only.
+ *   - getAllHrefs() still contains /foo (pulled from footerSectionsConfig).
+ *   - Both navbar-links and footer-links gate runs attempt /foo → 404 → fail.
+ *
+ * This makes it impossible for a removed route to slip past only one gate.
+ */
+export function getAllHrefs(): string[] {
+  const seen = new Set<string>([...getAllNavHrefs(), ...getAllFooterHrefs()]);
+  return Array.from(seen);
+}
