@@ -16,7 +16,7 @@ name: Route Coverage Gate
 #     2. footer-links      — every href in footerSectionsConfig
 #                            (client/src/lib/nav-config.ts)
 #
-#   hardcoded-links-check (static analysis, no server or browser) — suite 3:
+#   hardcoded-links-check (static analysis, no server or browser) — suites 3–4:
 #
 #     3. hardcoded-links   — all static href="/..." and to="/..." string literals
 #                            found in client/src/ components, cross-checked against
@@ -25,6 +25,12 @@ name: Route Coverage Gate
 #                            component files.  Pure static analysis — no DB, no
 #                            server, no Playwright browser required.  Gives
 #                            sub-30-second feedback on broken links.
+#
+#     4. dynamic-links     — same as hardcoded-links but for template literal hrefs
+#                            (href={`/path/${id}`}).  Substitutes ${...} with "X",
+#                            strips query/hash, then checks the resulting path
+#                            against App.tsx routes.  Skips nested template literals
+#                            that cannot be safely resolved statically.
 #
 # Each browser suite visits every resolved URL against a locally-built
 # production bundle and fails if any route renders the NotFound (404)
@@ -216,6 +222,22 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Dynamic-link cross-check (template literal hrefs vs App.tsx routes)
+        # Extends Suite 3 (hardcoded-links) to cover links built from template
+        # literals — href={`/path/${id}/suffix`} and to={`/path/${var}`}.
+        # For each template literal the scanner:
+        #   1. Replaces every ${...} expression with the placeholder "X"
+        #   2. Strips query string and hash
+        #   3. Skips paths that still contain "${" (nested template literals —
+        #      unresolvable at static-analysis time; not false-failed)
+        #   4. Checks the resulting path against <Route path="..."> in App.tsx
+        # Catches: a Route deleted while a component still links via a template
+        # literal — invisible to the static-string scanner in Suite 3.
+        # No browser, no server, no database — pure static source-file analysis.
+        run: npx playwright test dynamic-links
+        env:
+          CI: 'true'
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
@@ -248,7 +270,7 @@ jobs:
               '',
               '> Two jobs guard this gate:',
               '> **navbar-links-smoke** (suites 0–2: crash-filter unit tests, `navGroupsConfig` + `authNavConfig` hrefs, `footerSectionsConfig` hrefs) runs against a locally-built production bundle.',
-              '> **hardcoded-links-check** (suite 3: static `href="/..."` / `to="/..."` literals in `client/src/` components cross-checked against App.tsx routes) runs as a fast static-analysis job — no server or browser needed.',
+              '> **hardcoded-links-check** (suites 3–4: static `href="/..."` / `to="/..."` literals and template-literal `href={`/path/${id}`}` links in `client/src/` components cross-checked against App.tsx routes) runs as a fast static-analysis job — no server or browser needed.',
               '> App-route coverage (every `<Route path="...">` in `App.tsx`) runs in the separate **app-routes-gate** workflow.',
               '> A red gate means at least one route renders the 404 (NotFound) page, a blank/empty page, or a hardcoded link in a component points to a missing route.',
               allGreen ? '' : '> Fix: ensure every failing path has a matching `<Route>` in `client/src/App.tsx`, the page renders real content, and no component links to a removed route.',
