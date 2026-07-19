@@ -67,6 +67,44 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Assert spec file exists (sessions)
+        # Guard: if playwright/tests/sessions.spec.ts is renamed or deleted,
+        # `npx playwright test sessions` silently reports "0 passed" and exits 0
+        # — the gate goes green with no assertions actually run.  This step fails
+        # fast before the Playwright invocation so the breakage is explicit.
+        #
+        # Fix when this fails:
+        #   Either restore playwright/tests/sessions.spec.ts to that path, OR update
+        #   the path in this check AND in the "Sessions spec integrity" step below
+        #   to match the new location.
+        run: |
+          if [ ! -f "playwright/tests/sessions.spec.ts" ]; then
+            echo "::error file=.github/workflows/sessions-table-smoke.yml::Spec file not found: playwright/tests/sessions.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Sessions spec integrity (static analysis, no browser or DB)
+        # Runs playwright/tests/sessions.spec.ts — a pure static-analysis suite that
+        # verifies scripts/create-sessions-table.ts contains the correct SQL DDL,
+        # idempotency guards (IF NOT EXISTS / DO $$), and error-exit behaviour.
+        # No browser, server, or database required — runs before DB setup for fast feedback.
+        run: npx playwright test sessions
+        env:
+          CI: 'true'
+
+      - name: Assert spec file exists (create-sessions-table)
+        # Guards against scripts/create-sessions-table.ts being renamed or deleted.
+        # This script is called by ci-db-setup (shared by every Playwright workflow)
+        # so a missing-file error here would break all downstream CI gates with an
+        # opaque exit-1.  This step surfaces the breakage with a clear annotation.
+        run: |
+          if [ ! -f "scripts/create-sessions-table.ts" ]; then
+            echo "::error file=.github/workflows/sessions-table-smoke.yml::Script not found: scripts/create-sessions-table.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "✅  scripts/create-sessions-table.ts exists"
+
       - name: Run create-sessions-table.ts
         run: npx tsx scripts/create-sessions-table.ts
 
