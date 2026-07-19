@@ -330,10 +330,22 @@ This document captures architectural decisions to maintain consistency across co
       the loop the server already enforced: `POST /content/:id/edit` then `PATCH /edits/:id/submit` then
       `POST /content/:id/publish` (publish is server-gated on a submitted edit existing — D1a) or
       `POST /content/:id/reject`. Rides the already-mounted `/api/expert-workspace` endpoints, no server
-      change. **NOT built (filed, Kyoto-first build order):** ingestion scheduler + live scrape wiring (D3).
-      Env for live scraping: `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY` (crawler warns-only if
-      absent). No Smartvel/ATDW per-API client exists yet (only generic scraping). Migration 117 has **no
-      CHECK constraints** → no publish-time push trap.
+      change. **D3 LANDED (Jul 19, 2026) — Tavily-only Kyoto ingestion.** The live scrape wiring is built
+      as an **isolated, key-gated** path (`server/services/dmo-ingestion.service.ts`) that uses **Tavily for
+      BOTH stages** — `tavily.search` (discover the best source per site) + `tavily.extract` (scrape) — so
+      the whole pipeline runs on a **single `TAVILY_API_KEY`, no Firecrawl/Brave key required**. The
+      Firecrawl-coupled `DMOCrawler` is left untouched. `ingestKyotoHeritage()` enriches the D1-seeded Kyoto
+      stubs **in place**, born-hidden (D1a preserved: `status='pending_expert_review'` +
+      `discover_page_visible=false` are never touched); the not-force query filters out already-Tavily-enriched
+      rows so passes progress through the set and re-runs are a true no-op (idempotent). **§13-safe:** no
+      `TAVILY_API_KEY` ⇒ `ready:false`, **zero writes, never fabricates**. Triggers (both, per decision):
+      admin **button** (`POST /api/admin/dmo/ingest-kyoto`, adminApiGuard, on `admin/data`) for on-demand
+      controlled spend, **and** a **scheduler** (`dmo-ingest-scheduler.service.ts`, daily) that is **OFF unless
+      `DMO_INGEST_ENABLED=1` AND a Tavily key is set**. Proven behaviorally against the real seed (no-key gate,
+      10/10 enrich, D1a preserved, idempotent re-run, force). **Live run is deploy-only** (the agent proxy
+      403s Tavily + source domains). **Still filed:** Brave/Firecrawl discovery for content *beyond* the seeded
+      set (optional — add keys to enable auto-discovery); Smartvel/ATDW per-API clients; other-market ingestion
+      (paused per §12). Migration 117 has **no CHECK constraints** → no publish-time push trap.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

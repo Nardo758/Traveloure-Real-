@@ -60,6 +60,7 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
+import { ingestKyotoHeritage, isDmoIngestReady } from "../services/dmo-ingestion.service";
 import { cityNeighborhoods, expertNeighborhoods } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
@@ -635,6 +636,39 @@ router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, 
   } catch (err: any) {
     console.error("Manual auto-cancel sweep error:", err);
     res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
+  }
+});
+
+// ── DMO ingestion (D3, Kyoto-first, Tavily-only) ─────────────────────────────
+// Readiness probe for the admin UI — tells the button whether a Tavily key is configured.
+router.get("/api/admin/dmo/ingest-kyoto/status", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  res.json({
+    ready: isDmoIngestReady(),
+    reason: isDmoIngestReady() ? undefined : "TAVILY_API_KEY not set on this environment.",
+  });
+});
+
+// Runs one Kyoto DMO enrichment pass on demand (Tavily search + extract). Enriched rows stay
+// born-hidden (D1a); if no Tavily key, writes nothing and reports ready:false (§13, no fabrication).
+router.post("/api/admin/dmo/ingest-kyoto", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const force = req.body?.force === true;
+    const stats = await ingestKyotoHeritage({ force });
+    if (!stats.ready) {
+      return res.status(200).json({ message: stats.reason || "DMO ingestion not ready", stats });
+    }
+    res.json({ message: "Kyoto DMO ingestion complete", stats });
+  } catch (err: any) {
+    console.error("Kyoto DMO ingestion error:", err);
+    res.status(500).json({ message: "DMO ingestion failed", error: err.message });
   }
 });
 
