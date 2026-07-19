@@ -20,18 +20,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  *   Suite 2 — footer-links   : footerSectionsConfig → App.tsx
  *   Suite 3 — app-routes     : every App.tsx <Route path> renders real content
  *   Suite 4 — hardcoded-links (THIS FILE)
- *             All static href="/..." and to="/..." string literals in
- *             client/src/ → verified against App.tsx <Route path> entries
+ *             All static href="/..." and to="/..." string literals AND static
+ *             string arguments to history.push('/...') and
+ *             window.location.assign('/...') in client/src/ → verified against
+ *             App.tsx <Route path> entries
  *
  * What it catches:
  *   - A <Link to="/old-page"> left behind after its <Route> was deleted from
  *     App.tsx (and also removed from nav-config, so the other suites miss it)
  *   - A hardcoded <a href="/forgot-feature"> that never had a matching Route
  *   - A new to="/coming-soon" added to a component before its Route was wired
+ *   - history.push('/deleted-route') or window.location.assign('/gone') left
+ *     behind after the target <Route> was removed from App.tsx
  *
  * What it intentionally skips:
- *   - Dynamic paths (href={`/...`}, href={someVar}) — not string literals, not
- *     captured by the regex
+ *   - Dynamic paths (href={`/...`}, href={someVar}, history.push(`/...`)) —
+ *     not string literals, not captured by the regexes
  *   - External URLs, hash-only links, mailto/tel links
  *   - /api/* paths (backend endpoints, not frontend routes)
  *   - client/src/lib/nav-config.ts (already covered by navbar-links + footer-links)
@@ -75,34 +79,56 @@ function collectTsxFiles(dir: string, result: string[] = []): string[] {
   return result;
 }
 
-// ── Regex to capture static string-literal href/to attributes ─────────────────
-// Matches: href="/...", to="/..."
+// ── Regexes to capture static string-literal paths ────────────────────────────
+// HREF_ATTR_RE  — href="/..." and to="/..." JSX attributes
 // Does NOT match: href={...}, to={`...`} (dynamic / template literal forms)
 // Captures group 1 = the raw attribute value (may include query string / hash).
-const HREF_RE = /(?:href|to)="(\/[^"]*)"/g;
+const HREF_ATTR_RE = /(?:href|to)="(\/[^"]*)"/g;
+
+// LOCATION_CALL_RE — static string arguments to history.push() and
+// window.location.assign().  Matches both single- and double-quoted strings.
+// Does NOT match template literals (history.push(`/...`)) — those are dynamic.
+// Captures group 1 = the raw path argument.
+const LOCATION_CALL_RE =
+  /(?:history\.push|window\.location\.assign)\s*\(\s*['"](\/[^'"]*)['"]/g;
+
+function recordPath(
+  raw: string,
+  file: string,
+  result: Map<string, string[]>,
+): void {
+  // Strip query string and hash fragment — only the pathname matters.
+  const clean = raw.split(/[?#]/)[0];
+
+  // Skip the root "/" — always valid, ubiquitous in back-links.
+  if (clean === '/') return;
+  // Skip backend API endpoints.
+  if (clean.startsWith('/api/')) return;
+  // Skip explicitly excluded paths.
+  if (SKIP_PATHS.has(clean)) return;
+
+  const existing = result.get(clean) ?? [];
+  if (!existing.includes(file)) existing.push(file);
+  result.set(clean, existing);
+}
 
 function extractHardcodedPaths(files: string[]): Map<string, string[]> {
   const result = new Map<string, string[]>();
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf-8');
-    HREF_RE.lastIndex = 0;
+
+    // 1. JSX attribute forms: href="/..." and to="/..."
+    HREF_ATTR_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = HREF_RE.exec(source)) !== null) {
-      const raw = m[1];
-      // Strip query string and hash fragment — only the pathname matters.
-      const clean = raw.split(/[?#]/)[0];
+    while ((m = HREF_ATTR_RE.exec(source)) !== null) {
+      recordPath(m[1], file, result);
+    }
 
-      // Skip the root "/" — always valid, ubiquitous in back-links.
-      if (clean === '/') continue;
-      // Skip backend API endpoints.
-      if (clean.startsWith('/api/')) continue;
-      // Skip explicitly excluded paths.
-      if (SKIP_PATHS.has(clean)) continue;
-
-      const existing = result.get(clean) ?? [];
-      if (!existing.includes(file)) existing.push(file);
-      result.set(clean, existing);
+    // 2. Imperative navigation: history.push('/...') / window.location.assign('/...')
+    LOCATION_CALL_RE.lastIndex = 0;
+    while ((m = LOCATION_CALL_RE.exec(source)) !== null) {
+      recordPath(m[1], file, result);
     }
   }
 
