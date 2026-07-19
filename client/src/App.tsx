@@ -128,6 +128,7 @@ const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-anal
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
+const ExpertTemplates = lazy(() => import("@/pages/expert/templates"));
 const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertVerification = lazy(() => import("@/pages/expert/verification"));
@@ -550,7 +551,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
       <Route path="/expert/templates">
-        <Redirect to="/expert/services/new" />
+        {() => <ProtectedRoute component={ExpertTemplates} requiredRole="expert" />}
       </Route>
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}

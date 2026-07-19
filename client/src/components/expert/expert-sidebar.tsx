@@ -31,6 +31,7 @@ import {
   MapPin,
   PenSquare,
   Library,
+  Map,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -54,6 +55,7 @@ function buildMenuGroups(expertType?: string | null) {
       label: "Business",
       items: [
         { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
+        { title: "Ready Made Trips", href: "/expert/templates", icon: Map },
         { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
