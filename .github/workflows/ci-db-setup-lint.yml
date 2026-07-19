@@ -121,6 +121,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Assert excluded workflow files still exist at their expected paths
+        # Guards against the exclusion list going silently stale.  If an excluded
+        # file is renamed or deleted, the exclusion entry becomes a no-op: the
+        # renamed file would be scanned and incorrectly flagged (false positive),
+        # or the dedicated smoke test disappears unnoticed.  This step surfaces
+        # the breakage immediately with a message that points directly at the
+        # EXCLUDED array below.
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update the path in
+        #   the EXCLUDED array in this workflow to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_excluded() {
+            local FILE="$1"
+            local REASON="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/workflows/ci-db-setup-lint.yml::Excluded file no longer exists at expected path: $FILE"
+              echo "  This file is excluded from the inline-step scan because: $REASON"
+              echo "  Either restore the file to that path, or update the EXCLUDED array"
+              echo "  in .github/workflows/ci-db-setup-lint.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  Excluded file confirmed present: $FILE"
+            fi
+          }
+
+          # *** KEEP IN SYNC WITH THE EXCLUDED ARRAY IN THE NEXT STEP ***
+          # Add a check_excluded call here for every non-self entry in EXCLUDED.
+          # (ci-db-setup-lint.yml — this file — is always present by definition.)
+          check_excluded ".github/workflows/sessions-table-smoke.yml" \
+            "it is the dedicated smoke test for create-sessions-table.ts and legitimately invokes it directly"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more excluded workflow files are missing from their expected paths."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All excluded workflow files are present at their expected paths ✅"
+
       - name: Reject inline migration / session-table run steps in Playwright workflow files
         # Auto-discovers every .github/workflows/*.yml file that declares a
         # Postgres service (detected via "image: postgres:") and checks each one
@@ -154,6 +199,8 @@ jobs:
           set -euo pipefail
 
           # Files that are legitimately exempt from the inline-step check.
+          # *** KEEP IN SYNC WITH THE check_excluded CALLS IN THE PREVIOUS STEP ***
+          # When adding a new exclusion, add a matching check_excluded call above.
           EXCLUDED=(
             ".github/workflows/ci-db-setup-lint.yml"
             ".github/workflows/sessions-table-smoke.yml"
