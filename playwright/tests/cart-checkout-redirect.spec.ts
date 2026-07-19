@@ -25,11 +25,11 @@ function uid(prefix = "") {
  * copy-paste error cannot slip through undetected.
  *
  * Tests:
- *   A. Static — cart.tsx and EnhancedPlanningModal.tsx must NOT contain the
- *      broken `/trips/${…}` pattern and MUST contain the correct `/trip/${…}`.
- *   B. Static — App.tsx must declare a `/trip/:id` route.
- *   C. API   — POST /api/cart/convert-to-itinerary returns a valid tripId that
- *              matches the /trip/:id route shape (no browser required).
+ *   A. Static — cart.tsx must NOT use the broken /trips/${…} pattern
+ *   B. Static — EnhancedPlanningModal.tsx must NOT use the broken /trips/${…}
+ *   C. Static — App.tsx must declare a /trip/:id route
+ *   D. Browser — register user → add cart item via API → convert-to-itinerary →
+ *      navigate to /trip/:id → confirm trip page renders, not 404 NotFound
  */
 
 // ── Source paths ─────────────────────────────────────────────────────────────
@@ -38,61 +38,24 @@ const CART_FILE = path.join(CLIENT_SRC, "pages/cart.tsx");
 const MODAL_FILE = path.join(CLIENT_SRC, "components/EnhancedPlanningModal.tsx");
 const APP_FILE = path.join(CLIENT_SRC, "App.tsx");
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function readSource(filePath: string): string {
   return fs.readFileSync(filePath, "utf-8");
 }
 
-/** Tiny fetch wrapper that reuses the session cookie set by register/login. */
-async function apiCall(
-  path: string,
-  method: "POST" | "GET",
-  body?: unknown,
-  cookie?: string
-): Promise<{ status: number; json: unknown; cookie?: string }> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (cookie) headers["Cookie"] = cookie;
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    redirect: "follow",
-  });
-
-  // Capture Set-Cookie from registration/login responses
-  const setCookie = res.headers.get("set-cookie") ?? undefined;
-
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    json = null;
-  }
-
-  return { status: res.status, json, cookie: setCookie };
-}
-
-// ── Suite ─────────────────────────────────────────────────────────────────────
+// ── Static analysis tests (no browser needed) ─────────────────────────────
 test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
-  // ── A. Source: correct route used in cart.tsx ─────────────────────────────
+  // ── A. cart.tsx uses the correct singular /trip/ route ───────────────────
   test("cart.tsx uses /trip/${…} (singular) — not the broken /trips/${…}", () => {
     const src = readSource(CART_FILE);
 
-    // Must NOT contain the broken pattern
-    const brokenPattern = /setLocation\(`\/trips\/\$\{/;
     expect(
-      brokenPattern.test(src),
-      `cart.tsx still contains the broken setLocation(\`/trips/\${…}\`) pattern. ` +
+      /setLocation\(`\/trips\/\$\{/.test(src),
+      "cart.tsx still contains the broken setLocation(`/trips/${…}`) pattern. " +
         "It must use /trip/:id (singular) to match the App.tsx route."
     ).toBe(false);
 
-    // MUST contain the correct pattern
-    const correctPattern = /setLocation\(`\/trip\/\$\{/;
     expect(
-      correctPattern.test(src),
+      /setLocation\(`\/trip\/\$\{/.test(src),
       "cart.tsx does not contain setLocation(`/trip/${…}`) — the redirect to the " +
         "trip page after cart conversion may be missing or broken."
     ).toBe(true);
@@ -100,37 +63,29 @@ test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
     console.log("[cart-checkout-redirect] PASS cart.tsx redirect uses /trip/:id");
   });
 
-  // ── B. Source: correct route used in EnhancedPlanningModal.tsx ───────────
+  // ── B. EnhancedPlanningModal.tsx uses the correct singular /trip/ route ──
   test("EnhancedPlanningModal.tsx uses /trip/${…} (singular) — not /trips/${…}", () => {
     const src = readSource(MODAL_FILE);
 
-    const brokenPattern = /setLocation\(`\/trips\/\$\{/;
     expect(
-      brokenPattern.test(src),
+      /setLocation\(`\/trips\/\$\{/.test(src),
       "EnhancedPlanningModal.tsx still contains the broken setLocation(`/trips/${…}`) pattern."
     ).toBe(false);
 
-    const correctPattern = /setLocation\(`\/trip\/\$\{/;
     expect(
-      correctPattern.test(src),
+      /setLocation\(`\/trip\/\$\{/.test(src),
       "EnhancedPlanningModal.tsx does not contain setLocation(`/trip/${…}`) — the post-planning redirect may be broken."
     ).toBe(true);
 
-    console.log(
-      "[cart-checkout-redirect] PASS EnhancedPlanningModal.tsx redirect uses /trip/:id"
-    );
+    console.log("[cart-checkout-redirect] PASS EnhancedPlanningModal.tsx redirect uses /trip/:id");
   });
 
-  // ── C. Source: /trip/:id route declared in App.tsx ────────────────────────
+  // ── C. App.tsx declares /trip/:id ────────────────────────────────────────
   test('App.tsx declares a <Route path="/trip/:id"> (the target of the cart redirect)', () => {
     const src = readSource(APP_FILE);
 
-    // Match both exact and with query-string redirect variants:
-    //   <Route path="/trip/:id">
-    //   path="/trip/:id"
-    const routePattern = /path="\/trip\/:id"/;
     expect(
-      routePattern.test(src),
+      /path="\/trip\/:id"/.test(src),
       'App.tsx is missing a <Route path="/trip/:id"> — navigating to /trip/<id> after ' +
         "cart conversion would land on the 404 Not-Found page."
     ).toBe(true);
@@ -138,99 +93,102 @@ test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
     console.log('[cart-checkout-redirect] PASS App.tsx has <Route path="/trip/:id">');
   });
 
-  // ── D. API: convert-to-itinerary returns a valid tripId ──────────────────
+  // ── D. Browser end-to-end: cart → convert-to-itinerary → /trip/:id ───────
+  // Exercises the complete happy path that mimics what cart.tsx does after
+  // a successful convert-to-itinerary call:  setLocation(`/trip/${data.tripId}`)
   test(
-    "POST /api/cart/convert-to-itinerary returns a tripId that matches the /trip/:id route shape",
-    async () => {
-      // 1. Register a fresh user
+    "convert-to-itinerary → navigating to /trip/:id renders the trip page, not NotFound",
+    async ({ page }) => {
       const email = `e2e-cart-redirect-${uid()}@example.com`;
       const password = "TestRedirect123!";
 
-      const registerResult = await apiCall("/api/auth/register", "POST", {
-        email,
-        password,
-        firstName: "Cart",
-        lastName: "Tester",
-        userType: "user",
+      // 1. Register a fresh user via API (establishes session cookie automatically
+      //    because page.request shares the browser cookie jar with page navigation)
+      const registerRes = await page.request.post(`${BASE_URL}/api/auth/register`, {
+        data: {
+          email,
+          password,
+          firstName: "Cart",
+          lastName: "Tester",
+          userType: "user",
+        },
       });
+      expect(
+        registerRes.status(),
+        `User registration failed (${registerRes.status()}): ${await registerRes.text()}`
+      ).toBe(201);
 
-      if (registerResult.status !== 201) {
-        console.warn(
-          `[cart-checkout-redirect] Server returned ${registerResult.status} for registration — ` +
-            "skipping API integration assertions (server may not be running)."
-        );
-        test.skip();
-        return;
-      }
-
-      // Extract session cookie from registration response
-      const sessionCookie = registerResult.cookie ?? "";
-
-      // 2. Add a content cart item (contentType=activity, free-form contentId)
-      const cartResult = await apiCall(
-        "/api/cart",
-        "POST",
-        {
+      // 2. Add a content item to the cart
+      //    POST /api/cart accepts contentType=activity with a free-form contentId
+      //    (no real DB record required for the contentId)
+      const cartRes = await page.request.post(`${BASE_URL}/api/cart`, {
+        data: {
           contentType: "activity",
-          contentId: `e2e-test-activity-${uid()}`,
+          contentId: `e2e-activity-${uid()}`,
           contentMeta: {
             name: "E2E Test Activity",
-            description: "Playwright test cart item",
+            description: "Playwright regression test",
             city: "Tokyo",
           },
           quantity: 1,
         },
-        sessionCookie
-      );
-
+      });
       expect(
-        cartResult.status,
-        `POST /api/cart failed (${cartResult.status}): ${JSON.stringify(cartResult.json)}`
+        cartRes.status(),
+        `POST /api/cart failed (${cartRes.status()}): ${await cartRes.text()}`
       ).toBe(201);
 
-      const cartItem = cartResult.json as { id: string };
+      const cartItem = await cartRes.json();
       expect(cartItem.id, "Cart item must have an id").toBeTruthy();
 
-      // 3. Convert the cart item into a new trip
-      const convertResult = await apiCall(
-        "/api/cart/convert-to-itinerary",
-        "POST",
+      // 3. Convert cart → new trip (same endpoint cart.tsx calls)
+      const convertRes = await page.request.post(
+        `${BASE_URL}/api/cart/convert-to-itinerary`,
         {
-          newTripName: "E2E Cart Redirect Test Trip",
-          destination: "Tokyo, Japan",
-          cartItemIds: [cartItem.id],
-        },
-        sessionCookie
+          data: {
+            newTripName: "E2E Cart Redirect Test Trip",
+            destination: "Tokyo, Japan",
+            cartItemIds: [cartItem.id],
+          },
+        }
       );
-
       expect(
-        convertResult.status,
-        `POST /api/cart/convert-to-itinerary failed (${convertResult.status}): ` +
-          JSON.stringify(convertResult.json)
+        convertRes.status(),
+        `POST /api/cart/convert-to-itinerary failed (${convertRes.status()}): ${await convertRes.text()}`
       ).toBe(200);
 
-      const { tripId, convertedCount } = convertResult.json as {
-        tripId: string;
-        convertedCount: number;
-      };
-
+      const { tripId, convertedCount } = await convertRes.json();
       expect(tripId, "convert-to-itinerary must return a non-empty tripId").toBeTruthy();
+      console.log(
+        `[cart-checkout-redirect] API returned tripId=${tripId}, convertedCount=${convertedCount}`
+      );
 
-      // 4. Verify the tripId produces a valid /trip/:id URL (not the /trips/:id typo)
-      //    The frontend will navigate to exactly this URL:
-      const redirectUrl = `/trip/${tripId}`;
+      // 4. Navigate the browser to exactly the URL cart.tsx produces:
+      //    setLocation(`/trip/${data.tripId}`)
+      await page.goto(`${BASE_URL}/trip/${tripId}`);
+      await page.waitForLoadState("networkidle");
+
+      // 5. Assert the trip-details page rendered — NOT the 404 "Lost at Sea" page.
+      //    The not-found page has an h1 starting with "404".
+      await expect(
+        page.locator('h1').filter({ hasText: /^404/ }),
+        "The browser must NOT land on the 404 Not-Found page after cart conversion"
+      ).not.toBeVisible();
+
+      await expect(
+        page.locator('text="Lost at Sea"'),
+        "The browser must NOT show the 404 'Lost at Sea?' message"
+      ).not.toBeVisible();
+
+      // 6. Confirm the URL stayed at /trip/<id> (not redirected to / or /login)
+      const finalUrl = new URL(page.url());
       expect(
-        redirectUrl,
-        "The redirect URL should be /trip/<id> (singular)"
+        finalUrl.pathname,
+        `After navigation the URL should remain under /trip/, got: ${finalUrl.pathname}`
       ).toMatch(/^\/trip\//);
-      expect(
-        redirectUrl,
-        "The redirect URL must NOT be /trips/<id> (plural — broken route)"
-      ).not.toMatch(/^\/trips\//);
 
       console.log(
-        `[cart-checkout-redirect] PASS API → tripId=${tripId}, ` +
-          `convertedCount=${convertedCount}, redirect=${redirectUrl}`
+        `[cart-checkout-redirect] PASS — browser at ${finalUrl.pathname} with no 404`
       );
     }
   );
