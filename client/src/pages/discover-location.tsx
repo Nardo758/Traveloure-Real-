@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info, MapPin, ExternalLink, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
@@ -1601,6 +1601,154 @@ function TripComplementsStrip({
   );
 }
 
+// ─── D4: Local guides (expert-published DMO content) ────────────────────────────
+
+interface LocalGuide {
+  id: string;
+  name: string;
+  description: string | null;
+  shortDescription: string | null;
+  contentType: string;
+  neighborhood: string | null;
+  city: string;
+  images: string[];
+  primaryImageUrl: string | null;
+  tags: string[];
+  sourceUrl: string | null;
+  publishedAt: string | null;
+  expertName: string | null;
+}
+
+const GUIDE_TYPE_LABEL: Record<string, string> = {
+  attraction: "Attraction",
+  venue: "Venue",
+  restaurant: "Restaurant",
+  event: "Event",
+  destination: "Neighborhood",
+  itinerary: "Itinerary",
+  transport: "Getting around",
+  other: "Local pick",
+};
+
+/**
+ * Traveler-facing strip of expert-published DMO content for the city (D4). Renders nothing until an
+ * expert publishes at least one guide (the common case early on) — no fabricated/empty state. Each
+ * card opens a dialog with the expert's full curated description.
+ */
+function LocalGuidesSection({ city }: { city: string }) {
+  const [openGuide, setOpenGuide] = useState<LocalGuide | null>(null);
+  const { data } = useQuery<{ city: string; count: number; guides: LocalGuide[] }>({
+    queryKey: ["/api/discover/location", city, "guides"],
+    queryFn: async () => {
+      const res = await fetch(`/api/discover/location/${encodeURIComponent(city)}/guides`);
+      if (!res.ok) throw new Error("Failed to load local guides");
+      return res.json();
+    },
+    enabled: !!city,
+  });
+
+  const guides = data?.guides ?? [];
+  if (guides.length === 0) return null;
+
+  return (
+    <div data-testid="section-local-guides">
+      <div className="flex items-center gap-2 mb-1 px-0.5">
+        <Compass className="w-4 h-4 text-teal-600" />
+        <h2 className="text-lg font-bold tracking-tight">Local guides in {toTitleCase(city)}</h2>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3 px-0.5">
+        Places worth knowing, curated and published by local experts.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {guides.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            onClick={() => setOpenGuide(g)}
+            className="text-left bg-card border border-border rounded-xl overflow-hidden hover:shadow-sm transition-shadow flex flex-col"
+            data-testid={`local-guide-${g.id}`}
+          >
+            <div className="relative h-32 overflow-hidden bg-gradient-to-br from-teal-500/15 to-teal-500/5 flex items-center justify-center">
+              {g.primaryImageUrl ? (
+                <img src={g.primaryImageUrl} alt={g.name} className="w-full h-full object-cover" />
+              ) : (
+                <Compass className="w-8 h-8 text-teal-500/30" />
+              )}
+              <span className="absolute top-2 left-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 tracking-wide">
+                {GUIDE_TYPE_LABEL[g.contentType] ?? "Local pick"}
+              </span>
+            </div>
+            <div className="p-3 flex flex-col gap-1 flex-1">
+              <span className="font-semibold text-[14px] leading-tight line-clamp-2">{g.name}</span>
+              {g.neighborhood && (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <MapPin className="w-3 h-3" /> {g.neighborhood}
+                </span>
+              )}
+              {g.shortDescription && (
+                <span className="text-[12px] text-muted-foreground line-clamp-2">{g.shortDescription}</span>
+              )}
+              {g.expertName && (
+                <span className="mt-auto pt-1 text-[10px] text-muted-foreground/80">
+                  Curated by {g.expertName}
+                </span>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <Dialog open={!!openGuide} onOpenChange={(o) => !o && setOpenGuide(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          {openGuide && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 tracking-wide">
+                    {GUIDE_TYPE_LABEL[openGuide.contentType] ?? "Local pick"}
+                  </span>
+                  {openGuide.name}
+                </DialogTitle>
+              </DialogHeader>
+              {openGuide.primaryImageUrl && (
+                <img
+                  src={openGuide.primaryImageUrl}
+                  alt={openGuide.name}
+                  className="w-full h-44 object-cover rounded-lg"
+                />
+              )}
+              {openGuide.neighborhood && (
+                <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <MapPin className="w-3.5 h-3.5" /> {openGuide.neighborhood}, {toTitleCase(openGuide.city)}
+                </p>
+              )}
+              {openGuide.description && (
+                <p className="text-sm leading-relaxed whitespace-pre-line">{openGuide.description}</p>
+              )}
+              <div className="flex items-center justify-between pt-1">
+                {openGuide.expertName ? (
+                  <span className="text-xs text-muted-foreground">Curated by {openGuide.expertName}</span>
+                ) : <span />}
+                {openGuide.sourceUrl && (
+                  <a
+                    href={openGuide.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 underline underline-offset-2"
+                    data-testid="link-guide-source"
+                  >
+                    Source <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DiscoverLocationPage() {
@@ -2101,6 +2249,9 @@ export default function DiscoverLocationPage() {
                 activeFilter={activeFilter}
               />
             )}
+
+            {/* ── D4: expert-published local guides (hidden until published) ── */}
+            <LocalGuidesSection city={city} />
           </div>
         )}
 
