@@ -44,3 +44,16 @@ jobs:
       # amount/price/userId from req.body. Node built-ins only — no npm ci needed. See §14.
       - name: Client-trusted amount/identity guard
         run: node scripts/check-money-endpoints.cjs
+
+  unmounted-router-guard:
+    name: unmounted-router-guard (CLAUDE.md §9)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a server/routes/*.ts router is imported into routes.ts but never app.use()d
+      # (dead → 200-HTML). Node built-ins only — no npm ci needed. See §9.
+      - name: Unmounted-router guard
+        run: node scripts/check-unmounted-routers.cjs
