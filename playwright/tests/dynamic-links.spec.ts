@@ -260,18 +260,13 @@ test.describe('Dynamic-link cross-check — template literal hrefs vs App.tsx ro
     });
   }
 
-  // ── Informational: skipped nested-template-literal paths ───────────────────
-  // This test always passes.  Its sole purpose is to make the CI log visible
-  // when paths are silently skipped because their ${…} expressions contain
-  // nested template literals that cannot be statically resolved.
-  //
-  // A developer who spots a path in this list and knows it is a real route
-  // should refactor it to use a simple ${expression} (no inner backticks) so
-  // the scanner can pick it up automatically.
-  test('informational: nested-template-literal paths skipped by scanner (always passes)', () => {
-    if (SKIPPED_NESTED.length === 0) {
-      console.log('[dynamic-links] No nested-template-literal paths were skipped.');
-    } else {
+  // ── Enforce zero skipped nested-template-literal paths ────────────────────
+  // Zero is the required count. This test fails if any href uses a nested
+  // template literal (backtick inside ${…}) that the scanner cannot statically
+  // resolve. When this count rises, refactor the offending link to use a simple
+  // ${expression} (no inner backticks) so the scanner can validate it too.
+  test('zero nested-template-literal paths are skipped by the scanner', () => {
+    if (SKIPPED_NESTED.length > 0) {
       console.log(
         `[dynamic-links] ${SKIPPED_NESTED.length} path(s) were skipped because they contain` +
           ' nested template literals and cannot be statically resolved:\n' +
@@ -279,12 +274,15 @@ test.describe('Dynamic-link cross-check — template literal hrefs vs App.tsx ro
             const rel = path.relative(CLIENT_SRC_DIR, file);
             return `  • \`${raw}\`  (${rel})`;
           }).join('\n') +
-          '\n[dynamic-links] These links are NOT validated by this suite.' +
-          ' Consider refactoring them to use simple ${…} expressions so the' +
+          '\n[dynamic-links] Refactor these links to use simple ${…} expressions so the' +
           ' scanner can check them automatically.',
       );
     }
-    // Always passes — this is an informational summary, not an assertion.
-    expect(true).toBe(true);
+
+    expect(
+      SKIPPED_NESTED.length,
+      'One or more hrefs contain nested template literals that the scanner cannot resolve. ' +
+        'Refactor them to use simple ${expression} (no inner backticks) so this suite can validate them.',
+    ).toBe(0);
   });
 });
