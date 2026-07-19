@@ -148,6 +148,9 @@ jobs:
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
+          # Enable globalSetup (auth-state creation) — this workflow seeds the
+          # ci-* users above, so login will succeed.
+          PW_AUTH_SETUP: '1'
 
       - name: Upload report
         if: always()
