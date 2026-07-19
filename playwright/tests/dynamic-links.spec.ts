@@ -114,6 +114,17 @@ function normalizeDynamicPath(templateBody: string): string | null {
   return pathname;
 }
 
+// ── Skipped-path tracking ─────────────────────────────────────────────────────
+// Paths that contain nested template literals cannot be statically resolved.
+// We collect them here so they can be surfaced in CI output instead of silently
+// disappearing.  Each entry is { raw, file } so the informational test can print
+// them with enough context to act on.
+interface SkippedEntry {
+  raw: string;
+  file: string;
+}
+const SKIPPED_NESTED: SkippedEntry[] = [];
+
 // ── Extract all dynamic template-literal paths ────────────────────────────────
 function extractDynamicPaths(files: string[]): Map<string, string[]> {
   const result = new Map<string, string[]>();
@@ -128,6 +139,16 @@ function extractDynamicPaths(files: string[]): Map<string, string[]> {
       // Only process paths that contain at least one ${…} expression.
       // Paths without expressions are static strings — Suite 4 handles those.
       if (!raw.includes('${')) continue;
+
+      // Detect nested template literals before normalization so we can record them.
+      const substituted = raw.replace(EXPR_RE, 'X');
+      const pathname = substituted.split(/[?#]/)[0];
+      if (pathname.includes('${')) {
+        // This path has a nested template literal — unresolvable at static-analysis
+        // time.  Record it for the informational test rather than silently dropping.
+        SKIPPED_NESTED.push({ raw, file });
+        continue;
+      }
 
       const normalized = normalizeDynamicPath(raw);
       if (normalized === null) continue;
@@ -207,4 +228,32 @@ test.describe('Dynamic-link cross-check — template literal hrefs vs App.tsx ro
       console.log(`[dynamic-links] PASS ${normalizedPath}  (refs: ${relFiles})`);
     });
   }
+
+  // ── Informational: skipped nested-template-literal paths ───────────────────
+  // This test always passes.  Its sole purpose is to make the CI log visible
+  // when paths are silently skipped because their ${…} expressions contain
+  // nested template literals that cannot be statically resolved.
+  //
+  // A developer who spots a path in this list and knows it is a real route
+  // should refactor it to use a simple ${expression} (no inner backticks) so
+  // the scanner can pick it up automatically.
+  test('informational: nested-template-literal paths skipped by scanner (always passes)', () => {
+    if (SKIPPED_NESTED.length === 0) {
+      console.log('[dynamic-links] No nested-template-literal paths were skipped.');
+    } else {
+      console.log(
+        `[dynamic-links] ${SKIPPED_NESTED.length} path(s) were skipped because they contain` +
+          ' nested template literals and cannot be statically resolved:\n' +
+          SKIPPED_NESTED.map(({ raw, file }) => {
+            const rel = path.relative(CLIENT_SRC_DIR, file);
+            return `  • \`${raw}\`  (${rel})`;
+          }).join('\n') +
+          '\n[dynamic-links] These links are NOT validated by this suite.' +
+          ' Consider refactoring them to use simple ${…} expressions so the' +
+          ' scanner can check them automatically.',
+      );
+    }
+    // Always passes — this is an informational summary, not an assertion.
+    expect(true).toBe(true);
+  });
 });
