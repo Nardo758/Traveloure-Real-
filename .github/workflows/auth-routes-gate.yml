@@ -8,6 +8,24 @@ name: Authenticated Route Coverage Gate
 # that blind spot by running the same 404 / content / crash checks with a valid
 # session cookie for each platform role.
 #
+# Jobs in this workflow:
+#
+#   setup (build + browser cache warm-up):
+#
+#     Runs immediately on push/PR. Installs deps, populates the Playwright
+#     browser cache, and builds the production bundle. Both outputs are saved
+#     via actions/cache so auth-routes-smoke can restore them without repeating
+#     the work. On a cache hit (same lock-file and source hash) this job
+#     completes in under 60 seconds.
+#
+#   auth-routes-smoke (Playwright DOM gate):
+#
+#     Depends on `setup` so both browser binaries and the production bundle are
+#     guaranteed to be in cache before this job starts. The job restores them,
+#     skips the expensive install/build, seeds CI test users, starts the server,
+#     and runs auth-routes.spec.ts with real session cookies for each platform
+#     role (travel_expert, service_provider, executive_assistant, admin).
+#
 # Route source of truth: client/src/lib/role-routes-config.ts
 #   expertRoutesConfig / providerRoutesConfig / adminRoutesConfig / eaRoutesConfig
 #   Adding a new route to those arrays automatically registers it in auth-routes.spec.ts.
@@ -34,9 +52,67 @@ permissions:
   pull-requests: write
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # setup: pre-warm Playwright browser cache + production build cache.
+  #
+  # No PostgreSQL service needed — this job only builds the bundle and
+  # installs browser binaries. auth-routes-smoke depends on this job and
+  # restores both caches, so it never has to re-install browsers or re-build
+  # the bundle — even on retries.
+  # ─────────────────────────────────────────────────────────────────────────
+  setup:
+    name: setup (build + browser cache warm-up)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium + system deps)
+        # Full --with-deps install only on a cache miss; subsequent runs
+        # (including auth-routes-smoke) restore the browser binaries from
+        # cache and only need install-deps (which is fast, ~10 s).
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Cache production build output
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
+      - name: Build production bundle
+        # Skipped on a cache hit — dist/ is fully restored from the cache
+        # entry saved by a previous run with the same source hash.
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # auth-routes-smoke: Playwright DOM gate with real session cookies.
+  #
+  # Depends on `setup` so both the browser binaries and the production bundle
+  # are guaranteed to be in the cache before this job starts. The job restores
+  # them, skips the expensive install/build, and goes straight to seeding CI
+  # users and running the authenticated-route checks.
+  # ─────────────────────────────────────────────────────────────────────────
   auth-routes-smoke:
     name: auth-routes-smoke (Playwright DOM gate)
     runs-on: ubuntu-latest
+    needs: [setup]
     timeout-minutes: 20
     services:
       postgres:
@@ -62,32 +138,33 @@ jobs:
 
       - run: npm ci
 
-      - name: Cache Playwright browsers
+      - name: Restore Playwright browser cache
+        # The setup job already populated this cache entry; this step should
+        # always be a hit, making browser availability near-instant.
         uses: actions/cache@v4
-        id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Install Playwright (chromium)
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright system deps (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      - name: Install Playwright system deps
+        # Browser binaries come from the restored cache; only the OS-level
+        # system dependencies (shared libs, fonts, etc.) need to be installed.
+        # This is always fast (~10 s) compared to the full --with-deps install.
         run: npx playwright install-deps chromium
+
+      - name: Restore production build cache
+        # The setup job built and cached dist/; this restores it so no
+        # re-compilation is needed even on job retries.
+        uses: actions/cache@v4
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
 
       - name: Set up CI database (migrations, sessions table, test users)
         uses: ./.github/actions/ci-db-setup
         with:
           database-url: postgresql://postgres:postgres@localhost:5432/traveloure
           seed-ci-users: 'true'
-
-      - name: Build production bundle
-        # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
-        # Startup seeding still runs (gated on ENVIRONMENT !== "PROD", not
-        # NODE_ENV), so /api/ready flips true as expected.
-        run: npm run build
 
       - name: Start production server
         run: node dist/index.cjs &
