@@ -1,0 +1,120 @@
+name: CI DB Setup Lint
+
+# Ensures all Playwright-based workflow jobs that need a database always
+# delegate to the composite action (.github/actions/ci-db-setup/) rather
+# than copying the migration/session-table steps inline.
+#
+# A future contributor who pastes the inline run: commands from the composite
+# action into a workflow file would bypass the single source of truth — any
+# subsequent change to the migration or session-table scripts would then
+# require updating every duplicated copy. This lint gate catches that drift
+# before it reaches production.
+#
+# Implementation: pure grep — no Node.js install, no DB, no browser.
+# Typically completes in under 10 seconds.
+#
+# The two patterns this gate rejects correspond to the two shell commands
+# encapsulated by the composite action:
+#   migrate-entry.ts         — run: npx tsx server/migrations/migrate-entry.ts
+#   create-sessions-table.ts — run: npx tsx scripts/create-sessions-table.ts
+#
+# Note: sessions-table-smoke.yml legitimately invokes create-sessions-table.ts
+# directly (it is the dedicated smoke test for that script); it is intentionally
+# excluded from the list of files checked here.
+#
+# Status context (for branch-protection required checks):
+#   * ci-db-setup-lint (no inline migration steps) — fast, pure-grep lint;
+#     safe to mark as a REQUIRED branch-protection check immediately.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref — this check is idempotent.
+concurrency:
+  group: ci-db-setup-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci-db-setup-lint:
+    name: ci-db-setup-lint (no inline migration steps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject inline migration / session-table run steps in Playwright workflow files
+        # Scans the 6 Playwright-based CI workflow files for bare run: commands
+        # that invoke migrate-entry.ts or create-sessions-table.ts directly.
+        # Either pattern indicates the DB setup was copied inline rather than
+        # delegated to the composite action — which defeats the single-source-of-truth
+        # goal and risks the files drifting out of sync with future changes.
+        #
+        # Fix when this fails:
+        #   Remove the inline run: step(s) and replace with:
+        #     - name: Set up CI database (migrations + sessions table)
+        #       uses: ./.github/actions/ci-db-setup
+        #       with:
+        #         database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+        run: |
+          set -euo pipefail
+
+          WORKFLOW_FILES=(
+            ".github/workflows/navbar-links-gate.yml"
+            ".github/workflows/app-routes-gate.yml"
+            ".github/workflows/auth-routes-gate.yml"
+            ".github/workflows/selection-controls-gate.yml"
+            ".github/workflows/service-offering-types-gate.yml"
+            ".github/workflows/footer-links-gate.yml"
+          )
+
+          # These are the two shell commands the composite action encapsulates.
+          # Their presence in any of the workflow files means the steps were
+          # copied inline instead of delegated to the action.
+          PATTERNS=(
+            "migrate-entry\.ts"
+            "create-sessions-table\.ts"
+          )
+
+          FAIL=0
+
+          for FILE in "${WORKFLOW_FILES[@]}"; do
+            if [ ! -f "$FILE" ]; then
+              echo "::error::Expected workflow file not found: $FILE"
+              echo "  If this file was renamed or removed, update the WORKFLOW_FILES list"
+              echo "  in .github/workflows/ci-db-setup-lint.yml to match."
+              FAIL=1
+              continue
+            fi
+
+            for PATTERN in "${PATTERNS[@]}"; do
+              MATCHES=$(grep -nE "$PATTERN" "$FILE" 2>/dev/null || true)
+              if [ -n "$MATCHES" ]; then
+                echo "::error file=$FILE::Inline DB setup step detected (matched pattern: $PATTERN)"
+                echo "$MATCHES"
+                echo ""
+                echo "  Replace the inline step with the composite action:"
+                echo "    - name: Set up CI database (migrations + sessions table)"
+                echo "      uses: ./.github/actions/ci-db-setup"
+                echo "      with:"
+                echo "        database-url: postgresql://postgres:postgres@localhost:5432/traveloure"
+                echo "        # seed-ci-users: 'true'  # only if this job tests authenticated routes"
+                FAIL=1
+              fi
+            done
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more Playwright workflow files contain inline DB setup steps."
+            echo "See the error annotations above for the affected files and the fix."
+            exit 1
+          fi
+
+          echo "All 6 Playwright workflow files delegate DB setup to the composite action ✅"
