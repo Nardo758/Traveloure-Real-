@@ -34,6 +34,20 @@ name: CI DB Setup Lint
 # directly (it is the dedicated smoke test for that script); it is intentionally
 # excluded from this check via the EXCLUDE_FILES list below.
 #
+# TWO checks run in the ci-db-setup-lint job:
+#
+#   Check 1 — No inline migration steps:
+#     Any workflow file that has a Postgres service AND contains a bare run:
+#     referencing migrate-entry.ts / create-sessions-table.ts /
+#     seed-ci-test-users.ts fails. These patterns indicate DB setup was copied
+#     inline instead of delegated to the composite action.
+#
+#   Check 2 — Composite action must be referenced:
+#     Any workflow file that has a Postgres service AND does NOT reference
+#     uses: ./.github/actions/ci-db-setup fails. This catches new workflows
+#     that use postgres under a different step name — even when none of the
+#     known inline patterns appear.
+#
 # Status context (for branch-protection required checks):
 #   * ci-db-setup-lint (no inline migration steps) — fast, pure-grep lint;
 #     safe to mark as a REQUIRED branch-protection check immediately.
@@ -121,6 +135,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Assert excluded workflow files still exist at their expected paths
+        # Guards against the exclusion list going silently stale.  If an excluded
+        # file is renamed or deleted, the exclusion entry becomes a no-op: the
+        # renamed file would be scanned and incorrectly flagged (false positive),
+        # or the dedicated smoke test disappears unnoticed.  This step surfaces
+        # the breakage immediately with a message that points directly at the
+        # EXCLUDED array below.
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update the path in
+        #   the EXCLUDED array in this workflow to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_excluded() {
+            local FILE="$1"
+            local REASON="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/workflows/ci-db-setup-lint.yml::Excluded file no longer exists at expected path: $FILE"
+              echo "  This file is excluded from the inline-step scan because: $REASON"
+              echo "  Either restore the file to that path, or update the EXCLUDED array"
+              echo "  in .github/workflows/ci-db-setup-lint.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  Excluded file confirmed present: $FILE"
+            fi
+          }
+
+          # *** KEEP IN SYNC WITH THE EXCLUDED ARRAY IN THE NEXT STEP ***
+          # Add a check_excluded call here for every non-self entry in EXCLUDED.
+          # (ci-db-setup-lint.yml — this file — is always present by definition.)
+          check_excluded ".github/workflows/sessions-table-smoke.yml" \
+            "it is the dedicated smoke test for create-sessions-table.ts and legitimately invokes it directly"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more excluded workflow files are missing from their expected paths."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All excluded workflow files are present at their expected paths ✅"
+
       - name: Reject inline migration / session-table run steps in Playwright workflow files
         # Auto-discovers every .github/workflows/*.yml file that declares a
         # Postgres service (detected via "image: postgres:") and checks each one
@@ -154,6 +213,8 @@ jobs:
           set -euo pipefail
 
           # Files that are legitimately exempt from the inline-step check.
+          # *** KEEP IN SYNC WITH THE check_excluded CALLS IN THE PREVIOUS STEP ***
+          # When adding a new exclusion, add a matching check_excluded call above.
           EXCLUDED=(
             ".github/workflows/ci-db-setup-lint.yml"
             ".github/workflows/sessions-table-smoke.yml"
@@ -231,3 +292,212 @@ jobs:
           fi
 
           echo "All ${#WORKFLOW_FILES[@]} workflow file(s) pass the inline DB setup check ✅"
+
+      - name: Reject postgres-service workflows that do not reference the composite action
+        # Complements the inline-pattern check above: while that check catches
+        # known copy-pasted scripts, this check catches any workflow that uses a
+        # Postgres service container but has never wired up the composite action
+        # at all — even when none of the known inline patterns are present.
+        #
+        # A new workflow that starts postgres under a different step name (or via
+        # a wrapper script not in PATTERNS) would pass the inline check but fail
+        # here, ensuring the composite action is always the single entry point for
+        # CI database setup.
+        #
+        # Excluded files:
+        #   ci-db-setup-lint.yml      — this file itself
+        #   sessions-table-smoke.yml  — the dedicated smoke test for
+        #                               create-sessions-table.ts; it intentionally
+        #                               invokes that script directly rather than
+        #                               via the composite action.
+        #
+        # Fix when this fails:
+        #   Add the composite action step to the failing workflow file:
+        #     - name: Set up CI database (migrations + sessions table)
+        #       uses: ./.github/actions/ci-db-setup
+        #       with:
+        #         database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+        #         # seed-ci-users: 'true'  # only if this job tests authenticated routes
+        #   Or, if this workflow legitimately should NOT use the composite action,
+        #   add it to the EXCLUDED list in this step.
+        run: |
+          set -euo pipefail
+
+          # Files that are legitimately exempt from the composite-action reference check.
+          EXCLUDED=(
+            ".github/workflows/ci-db-setup-lint.yml"
+            ".github/workflows/sessions-table-smoke.yml"
+          )
+
+          # Auto-discover all workflow files that spin up a Postgres service.
+          WORKFLOW_FILES=()
+          for f in .github/workflows/*.yml; do
+            skip=0
+            for excl in "${EXCLUDED[@]}"; do
+              if [ "$f" = "$excl" ]; then skip=1; break; fi
+            done
+            [ "$skip" -eq 1 ] && continue
+
+            if grep -qE "image: postgres:" "$f"; then
+              WORKFLOW_FILES+=("$f")
+            fi
+          done
+
+          if [ "${#WORKFLOW_FILES[@]}" -eq 0 ]; then
+            echo "No workflow files with a Postgres service found outside exclusions — nothing to check."
+            exit 0
+          fi
+
+          echo "Checking ${#WORKFLOW_FILES[@]} workflow file(s) for composite action reference:"
+          for f in "${WORKFLOW_FILES[@]}"; do
+            echo "  $f"
+          done
+          echo ""
+
+          FAIL=0
+
+          for FILE in "${WORKFLOW_FILES[@]}"; do
+            if grep -qE "uses: \./.github/actions/ci-db-setup" "$FILE"; then
+              echo "✅  $FILE references the composite action"
+            else
+              echo "::error file=$FILE::This workflow starts a Postgres service but does not reference the composite action (.github/actions/ci-db-setup)."
+              echo "  All workflows that spin up a Postgres service must delegate DB setup to:"
+              echo "    - name: Set up CI database (migrations + sessions table)"
+              echo "      uses: ./.github/actions/ci-db-setup"
+              echo "      with:"
+              echo "        database-url: postgresql://postgres:postgres@localhost:5432/traveloure"
+              echo "        # seed-ci-users: 'true'  # only if this job tests authenticated routes"
+              echo "  If this workflow is a legitimate exception, add it to the EXCLUDED list in"
+              echo "  the 'Reject postgres-service workflows that do not reference the composite action'"
+              echo "  step of .github/workflows/ci-db-setup-lint.yml."
+              FAIL=1
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more workflow files use a Postgres service without referencing the composite action."
+            echo "See the error annotations above for the affected files and the fix."
+            exit 1
+          fi
+
+          echo ""
+          echo "All ${#WORKFLOW_FILES[@]} workflow file(s) correctly reference the composite action ✅"
+
+  ci-db-setup-lint-self-test:
+    name: ci-db-setup-lint-self-test (verify lint catches inline steps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Self-test — lint patterns must flag a synthetic bad workflow
+        # Creates two temporary workflow files (one "bad", one "clean") outside
+        # .github/workflows/ so the real lint job never sees them, then asserts:
+        #   1. Every PATTERN in PATTERNS matches the bad file   → no silent miss
+        #   2. No  PATTERN in PATTERNS matches the clean file   → no false-positive
+        #
+        # Why this job exists
+        # -------------------
+        # The ci-db-setup-lint job uses a PATTERNS array to detect inline DB
+        # setup steps in workflow files.  If a pattern is accidentally removed,
+        # misspelled, or the regex is broken, the lint silently stops catching
+        # violations — new workflow files with inline steps sail through
+        # undetected.  This self-test closes that gap: it fails immediately
+        # whenever the detection logic itself is broken, before any bad file
+        # can reach main.
+        #
+        # *** KEEP IN SYNC WITH the PATTERNS list in the ci-db-setup-lint job ***
+        # When you add or remove a pattern there, add/remove the corresponding
+        # inline step in the BAD_WORKFLOW heredoc below so this test stays valid.
+        run: |
+          set -euo pipefail
+
+          # -----------------------------------------------------------------
+          # 1. Synthetic "bad" workflow — contains every inline step the lint
+          #    must reject.  Written to /tmp so the real lint job glob never
+          #    picks it up from .github/workflows/.
+          # -----------------------------------------------------------------
+          BAD=$(mktemp /tmp/bad-workflow-XXXXXX.yml)
+          trap 'rm -f "$BAD"' EXIT
+
+          cat > "$BAD" <<'YAML'
+          name: Bad Synthetic Workflow (ci-db-setup-lint self-test)
+          on: [push]
+          jobs:
+            bad-job:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Inline migration step
+                  run: npx tsx server/migrations/migrate-entry.ts
+                - name: Inline sessions-table step
+                  run: npx tsx scripts/create-sessions-table.ts
+                - name: Inline seed step
+                  run: npx tsx scripts/seed-ci-test-users.ts
+          YAML
+
+          # -----------------------------------------------------------------
+          # 2. Synthetic "clean" workflow — uses the composite action correctly;
+          #    no pattern should match here (false-positive guard).
+          # -----------------------------------------------------------------
+          CLEAN=$(mktemp /tmp/clean-workflow-XXXXXX.yml)
+          trap 'rm -f "$CLEAN"' EXIT
+
+          cat > "$CLEAN" <<'YAML'
+          name: Clean Synthetic Workflow (ci-db-setup-lint self-test)
+          on: [push]
+          jobs:
+            clean-job:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Set up CI database
+                  uses: ./.github/actions/ci-db-setup
+                  with:
+                    database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          YAML
+
+          # -----------------------------------------------------------------
+          # *** KEEP IN SYNC WITH the PATTERNS list in the ci-db-setup-lint job ***
+          # Add a pattern here for every new `npx tsx <script>` step added to
+          # .github/actions/ci-db-setup/action.yml.  Remove patterns when steps
+          # are deleted.  The BAD heredoc above must also contain a matching line.
+          # -----------------------------------------------------------------
+          PATTERNS=(
+            "migrate-entry\.ts"
+            "create-sessions-table\.ts"
+            "seed-ci-test-users\.ts"
+          )
+
+          FAIL=0
+
+          echo "--- Positive-match assertions (bad workflow) ---"
+          for PATTERN in "${PATTERNS[@]}"; do
+            if grep -qE "$PATTERN" "$BAD"; then
+              echo "✅  '$PATTERN' detected in synthetic bad workflow (lint would catch it)"
+            else
+              echo "::error::Pattern '$PATTERN' was NOT found in the synthetic bad workflow."
+              echo "  The lint check would silently miss an inline step matching this pattern."
+              echo "  Verify the PATTERNS list in ci-db-setup-lint and the BAD heredoc in"
+              echo "  this self-test both contain the correct pattern."
+              FAIL=1
+            fi
+          done
+
+          echo ""
+          echo "--- False-positive guards (clean workflow) ---"
+          for PATTERN in "${PATTERNS[@]}"; do
+            if grep -qE "$PATTERN" "$CLEAN"; then
+              echo "::error::Pattern '$PATTERN' produced a false-positive in the clean synthetic workflow."
+              echo "  The regex may be too broad. Tighten the pattern in the ci-db-setup-lint job."
+              FAIL=1
+            else
+              echo "✅  '$PATTERN' correctly absent from clean synthetic workflow"
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::ci-db-setup-lint self-test failed. See annotations above."
+            exit 1
+          fi
+
+          echo ""
+          echo "Self-test passed: all ${#PATTERNS[@]} pattern(s) detected correctly ✅"
