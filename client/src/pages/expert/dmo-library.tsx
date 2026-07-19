@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -25,9 +24,6 @@ import {
   MapPin,
   ExternalLink,
   Sparkles,
-  CheckCircle2,
-  XCircle,
-  ShieldCheck,
   ArrowRight,
   PlusCircle,
   Check,
@@ -59,48 +55,25 @@ interface LibraryResponse {
   items: DmoItem[];
 }
 
-const STATUS_TABS = [
-  { key: "pending_expert_review", label: "Pending review" },
-  { key: "published", label: "Published" },
-  { key: "rejected", label: "Rejected" },
-];
-
 // Traveloure launches Kyoto-first (§12): the DMO library is scoped to Kyoto.
 const MARKET_CITY = "Kyoto";
 
-function statusBadge(status: string) {
-  switch (status) {
-    case "published":
-      return <Badge className="bg-emerald-600 hover:bg-emerald-600">Published</Badge>;
-    case "rejected":
-      return <Badge variant="destructive">Rejected</Badge>;
-    case "quarantined":
-      return <Badge variant="destructive">Quarantined</Badge>;
-    default:
-      return <Badge variant="secondary">Pending review</Badge>;
-  }
-}
-
 export default function DmoLibrary() {
   const { toast } = useToast();
-  const [status, setStatus] = useState("pending_expert_review");
   const [active, setActive] = useState<DmoItem | null>(null);
 
   // Enrichment form state (dialog-local).
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState("");
-  const [rejectReason, setRejectReason] = useState("");
-  // True once the expert has submitted an enrichment for the open item — the
-  // server gates publishing on a submitted edit existing, so we mirror that here.
   const [enrichmentSubmitted, setEnrichmentSubmitted] = useState(false);
 
   const { data, isLoading } = useQuery<LibraryResponse>({
-    queryKey: ["/api/expert-workspace/library", MARKET_CITY, status],
+    queryKey: ["/api/expert-workspace/library", MARKET_CITY],
     queryFn: async () => {
       const res = await apiRequest(
         "GET",
-        `/api/expert-workspace/library?city=${encodeURIComponent(MARKET_CITY)}&status=${status}&limit=100`,
+        `/api/expert-workspace/library?city=${encodeURIComponent(MARKET_CITY)}&limit=100`,
       );
       return res.json();
     },
@@ -111,16 +84,11 @@ export default function DmoLibrary() {
     setEditName(item.name ?? "");
     setEditDescription(item.description ?? "");
     setEditTags((item.tags ?? []).join(", "));
-    setRejectReason("");
     setEnrichmentSubmitted(false);
   }
 
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/expert-workspace/library"] });
-  };
-
-  // Save enrichment as a draft edit, then submit it (the server requires a
-  // *submitted* edit before the content can be published to Discover).
+  // Save enrichment as a draft edit, then submit it — refines the raw content (name,
+  // description, tags) before it's built into a Ready Made Trip or a client itinerary.
   const submitEnrichment = useMutation({
     mutationFn: async (item: DmoItem) => {
       const tags = editTags
@@ -138,14 +106,15 @@ export default function DmoLibrary() {
     },
     onSuccess: () => {
       setEnrichmentSubmitted(true);
-      toast({ title: "Enrichment submitted", description: "You can now publish this to Discover." });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert-workspace/library"] });
+      toast({ title: "Saved", description: "Your refinements were saved to this content." });
     },
     onError: (err: any) => {
-      toast({ title: "Could not submit enrichment", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Could not save", description: String(err?.message ?? err), variant: "destructive" });
     },
   });
 
-  // ── DMO → itinerary bridge: select published places → build a Ready Made Trip draft ──
+  // ── DMO → itinerary bridge: select places → build a Ready Made Trip draft ──
   const [, navigate] = useLocation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const toggleSelected = (id: string) =>
@@ -164,46 +133,14 @@ export default function DmoLibrary() {
     },
     onSuccess: (data: any) => {
       toast({
-        title: "Draft itinerary created",
-        description: `${data.places} places across ${data.days} day(s). Price it and submit for review to publish.`,
+        title: "Draft trip created",
+        description: `${data.places} places across ${data.days} day(s). Price it and submit for review to sell it.`,
       });
       setSelected(new Set());
       navigate("/expert/templates");
     },
     onError: (err: Error) => {
-      toast({ title: "Couldn't build itinerary", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const publish = useMutation({
-    mutationFn: async (item: DmoItem) => {
-      const res = await apiRequest("POST", `/api/expert-workspace/content/${item.id}/publish`);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Published to Discover", description: "Travelers can now see this content." });
-      setActive(null);
-      refresh();
-    },
-    onError: (err: any) => {
-      toast({ title: "Could not publish", description: String(err?.message ?? err), variant: "destructive" });
-    },
-  });
-
-  const reject = useMutation({
-    mutationFn: async (item: DmoItem) => {
-      const res = await apiRequest("POST", `/api/expert-workspace/content/${item.id}/reject`, {
-        reason: rejectReason,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Rejected", description: "This content will not be published." });
-      setActive(null);
-      refresh();
-    },
-    onError: (err: any) => {
-      toast({ title: "Could not reject", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Couldn't build trip", description: err.message, variant: "destructive" });
     },
   });
 
@@ -219,135 +156,112 @@ export default function DmoLibrary() {
               Kyoto content library
             </h2>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              Raw destination content sourced from DMOs and heritage registers. Nothing here is visible to
-              travelers until you review, enrich, and publish it — you are the gate to the Discover page.
+              Your research library — destination content sourced from DMOs and heritage registers. Use it
+              to build sellable <span className="font-medium">Ready Made Trips</span> and to enrich the
+              itineraries you plan for clients. This content is a source for your work; it is never shown to
+              travelers on its own.
             </p>
           </div>
         </div>
 
-        <Tabs value={status} onValueChange={setStatus}>
-          <TabsList>
-            {STATUS_TABS.map((t) => (
-              <TabsTrigger key={t.key} value={t.key} data-testid={`tab-dmo-${t.key}`}>
-                {t.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        {/* Build bar — select places, turn them into a Ready Made Trip draft. */}
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm">
+              <RouteIcon className="w-4 h-4 text-primary" />
+              <span>
+                Select places to build a sellable <span className="font-medium">Ready Made Trip</span>.
+                {selected.size > 0 ? ` ${selected.size} selected.` : ""}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              disabled={selected.size === 0 || buildItinerary.isPending}
+              onClick={() => buildItinerary.mutate()}
+              data-testid="button-build-itinerary"
+            >
+              {buildItinerary.isPending ? "Building…" : `Build Ready Made Trip${selected.size ? ` (${selected.size})` : ""}`}
+            </Button>
+          </div>
+        )}
 
-          {STATUS_TABS.map((t) => (
-            <TabsContent key={t.key} value={t.key} className="mt-6">
-              {t.key === "published" && items.length > 0 && (
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <RouteIcon className="w-4 h-4 text-primary" />
-                    <span>
-                      Select published places to build a sellable <span className="font-medium">Ready Made Trip</span>.
-                      {selected.size > 0 ? ` ${selected.size} selected.` : ""}
-                    </span>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-40 rounded-lg" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-muted py-16 text-center">
+            <Library className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+            <h3 className="font-semibold mb-1">No content in your library yet</h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              Approved DMO/heritage content for Kyoto will appear here as it is ingested — ready for you to
+              refine and build into trips.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map((item) => (
+              <Card
+                key={item.id}
+                className={`hover-elevate ${selected.has(item.id) ? "ring-2 ring-primary" : ""}`}
+                data-testid={`dmo-card-${item.id}`}
+              >
+                <CardContent className="p-4 flex flex-col h-full">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h3 className="font-semibold leading-tight">{item.name}</h3>
+                    {item.contentType && (
+                      <Badge variant="secondary" className="capitalize shrink-0">
+                        {item.contentType}
+                      </Badge>
+                    )}
                   </div>
                   <Button
                     size="sm"
-                    disabled={selected.size === 0 || buildItinerary.isPending}
-                    onClick={() => buildItinerary.mutate()}
-                    data-testid="button-build-itinerary"
+                    variant={selected.has(item.id) ? "default" : "outline"}
+                    className="mb-2 w-full"
+                    onClick={() => toggleSelected(item.id)}
+                    data-testid={`button-select-${item.id}`}
                   >
-                    {buildItinerary.isPending ? "Building…" : `Build Ready Made Trip${selected.size ? ` (${selected.size})` : ""}`}
+                    {selected.has(item.id) ? (
+                      <><Check className="w-4 h-4 mr-2" />Added to trip</>
+                    ) : (
+                      <><PlusCircle className="w-4 h-4 mr-2" />Add to trip</>
+                    )}
                   </Button>
-                </div>
-              )}
-              {isLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-40 rounded-lg" />
-                  ))}
-                </div>
-              ) : items.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-muted py-16 text-center">
-                  <Library className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
-                  <h3 className="font-semibold mb-1">
-                    {t.key === "pending_expert_review"
-                      ? "No content awaiting review"
-                      : t.key === "published"
-                        ? "Nothing published yet"
-                        : "Nothing rejected"}
-                  </h3>
-                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {t.key === "pending_expert_review"
-                      ? "New DMO/heritage content will appear here for review as it is ingested."
-                      : t.key === "published"
-                        ? "Content you publish from the review queue will show up here."
-                        : "Content you reject will be listed here."}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {items.map((item) => (
-                    <Card
-                      key={item.id}
-                      className={`hover-elevate ${t.key === "published" && selected.has(item.id) ? "ring-2 ring-primary" : ""}`}
-                      data-testid={`dmo-card-${item.id}`}
-                    >
-                      <CardContent className="p-4 flex flex-col h-full">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <h3 className="font-semibold leading-tight">{item.name}</h3>
-                          {statusBadge(item.status)}
-                        </div>
-                        {t.key === "published" && (
-                          <Button
-                            size="sm"
-                            variant={selected.has(item.id) ? "default" : "outline"}
-                            className="mb-2 w-full"
-                            onClick={() => toggleSelected(item.id)}
-                            data-testid={`button-select-${item.id}`}
-                          >
-                            {selected.has(item.id) ? (
-                              <><Check className="w-4 h-4 mr-2" />Added to itinerary</>
-                            ) : (
-                              <><PlusCircle className="w-4 h-4 mr-2" />Add to itinerary</>
-                            )}
-                          </Button>
-                        )}
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
-                          <MapPin className="w-3 h-3" />
-                          {item.neighborhood ? `${item.neighborhood}, ` : ""}
-                          {item.city}
-                        </div>
-                        {item.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-3 mb-3 flex-1">
-                            {item.description}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {(item.tags ?? []).slice(0, 3).map((tag) => (
-                            <Badge key={tag} variant="outline" className="text-xs capitalize">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant={item.status === "pending_expert_review" ? "default" : "outline"}
-                          className="w-full mt-auto"
-                          onClick={() => openItem(item)}
-                          data-testid={`button-review-${item.id}`}
-                        >
-                          {item.status === "pending_expert_review" ? (
-                            <>
-                              Review &amp; enrich
-                              <ArrowRight className="w-4 h-4 ml-2" />
-                            </>
-                          ) : (
-                            "View"
-                          )}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-          ))}
-        </Tabs>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+                    <MapPin className="w-3 h-3" />
+                    {item.neighborhood ? `${item.neighborhood}, ` : ""}
+                    {item.city}
+                  </div>
+                  {item.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-3 mb-3 flex-1">
+                      {item.description}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {(item.tags ?? []).slice(0, 3).map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs capitalize">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full mt-auto"
+                    onClick={() => openItem(item)}
+                    data-testid={`button-review-${item.id}`}
+                  >
+                    Review &amp; refine
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       <Dialog open={!!active} onOpenChange={(open) => !open && setActive(null)}>
@@ -355,10 +269,7 @@ export default function DmoLibrary() {
           {active && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  {active.name}
-                  {statusBadge(active.status)}
-                </DialogTitle>
+                <DialogTitle>{active.name}</DialogTitle>
                 <DialogDescription className="flex items-center gap-2">
                   <MapPin className="w-3 h-3" />
                   {active.neighborhood ? `${active.neighborhood}, ` : ""}
@@ -378,92 +289,59 @@ export default function DmoLibrary() {
                   {active.sourcePageTitle || "View source"}
                 </a>
 
-                {active.status === "pending_expert_review" ? (
-                  <>
-                    <div className="rounded-md bg-muted/50 border border-muted p-3 text-xs text-muted-foreground flex gap-2">
-                      <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      Enrich the raw content below, then submit it for publishing. Nothing reaches travelers
-                      until you publish.
-                    </div>
+                <div className="rounded-md bg-muted/50 border border-muted p-3 text-xs text-muted-foreground flex gap-2">
+                  <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  Refine the raw content below so it's ready to build into a Ready Made Trip or a client
+                  itinerary.
+                </div>
 
-                    <div className="space-y-1">
-                      <Label htmlFor="edit-name">Name</Label>
-                      <Input
-                        id="edit-name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        data-testid="input-edit-name"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="edit-description">Description</Label>
-                      <Textarea
-                        id="edit-description"
-                        rows={5}
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.target.value)}
-                        data-testid="input-edit-description"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="edit-tags">Tags (comma-separated)</Label>
-                      <Input
-                        id="edit-tags"
-                        value={editTags}
-                        onChange={(e) => setEditTags(e.target.value)}
-                        data-testid="input-edit-tags"
-                      />
-                    </div>
-
-                    <Button
-                      variant="secondary"
-                      className="w-full"
-                      disabled={submitEnrichment.isPending || enrichmentSubmitted}
-                      onClick={() => submitEnrichment.mutate(active)}
-                      data-testid="button-submit-enrichment"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      {enrichmentSubmitted ? "Enrichment submitted" : "Submit enrichment"}
-                    </Button>
-
-                    <div className="space-y-1 pt-2">
-                      <Label htmlFor="reject-reason">Reject reason (optional, for rejecting)</Label>
-                      <Input
-                        id="reject-reason"
-                        value={rejectReason}
-                        onChange={(e) => setRejectReason(e.target.value)}
-                        placeholder="e.g. duplicate, low quality"
-                        data-testid="input-reject-reason"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">{active.description}</p>
-                )}
+                <div className="space-y-1">
+                  <Label htmlFor="edit-name">Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    data-testid="input-edit-name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-description">Description</Label>
+                  <Textarea
+                    id="edit-description"
+                    rows={5}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    data-testid="input-edit-description"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-tags">Tags (comma-separated)</Label>
+                  <Input
+                    id="edit-tags"
+                    value={editTags}
+                    onChange={(e) => setEditTags(e.target.value)}
+                    data-testid="input-edit-tags"
+                  />
+                </div>
               </div>
 
-              {active.status === "pending_expert_review" && (
-                <DialogFooter className="gap-2 sm:gap-2">
-                  <Button
-                    variant="outline"
-                    className="text-destructive"
-                    disabled={reject.isPending || !rejectReason.trim()}
-                    onClick={() => reject.mutate(active)}
-                    data-testid="button-reject"
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Reject
-                  </Button>
-                  <Button
-                    disabled={publish.isPending || !enrichmentSubmitted}
-                    onClick={() => publish.mutate(active)}
-                    data-testid="button-publish"
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Publish to Discover
-                  </Button>
-                </DialogFooter>
-              )}
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setActive(null)}
+                  data-testid="button-close-refine"
+                >
+                  Close
+                </Button>
+                <Button
+                  disabled={submitEnrichment.isPending || enrichmentSubmitted}
+                  onClick={() => submitEnrichment.mutate(active)}
+                  data-testid="button-submit-enrichment"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  {enrichmentSubmitted ? "Saved" : "Save refinements"}
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>
