@@ -60,7 +60,8 @@ import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
-import { ingestKyotoHeritage, isDmoIngestReady } from "../services/dmo-ingestion.service";
+import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
+import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { cityNeighborhoods, expertNeighborhoods } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
@@ -669,6 +670,64 @@ router.post("/api/admin/dmo/ingest-kyoto", isAuthenticated, async (req, res) => 
   } catch (err: any) {
     console.error("Kyoto DMO ingestion error:", err);
     res.status(500).json({ message: "DMO ingestion failed", error: err.message });
+  }
+});
+
+// ── Content-gap tracker (#2) ─────────────────────────────────────────────────
+// Tracks how much DMO content we hold per type vs. an editorial target, and drives the scraper's
+// priorities. Read-only list, an analyze action, and a gap-fill ingestion action (all admin-gated).
+
+// List the current Kyoto coverage picture (met + unmet) plus the open gap queue.
+router.get("/api/admin/dmo/gaps", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [analysis, openAlerts] = await Promise.all([
+      analyzeKyotoContentGaps(),
+      listOpenKyotoGaps(),
+    ]);
+    res.json({ ready: isDmoIngestReady(), analysis, openAlerts });
+  } catch (err: any) {
+    console.error("DMO gap list error:", err);
+    res.status(500).json({ message: "Failed to load content gaps", error: err.message });
+  }
+});
+
+// Recompute coverage and reconcile the gap alerts (idempotent).
+router.post("/api/admin/dmo/analyze-gaps", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const analysis = await analyzeKyotoContentGaps();
+    res.json({ message: "Content-gap analysis complete", analysis });
+  } catch (err: any) {
+    console.error("DMO gap analysis error:", err);
+    res.status(500).json({ message: "Content-gap analysis failed", error: err.message });
+  }
+});
+
+// Fill the thinnest categories from their gap alerts via Tavily discovery. New rows are born-hidden
+// (D1a); no Tavily key ⇒ zero writes (§13, ready:false).
+router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const maxGaps = Number(req.body?.maxGaps) || undefined;
+    const maxPerGap = Number(req.body?.maxPerGap) || undefined;
+    const stats = await ingestKyotoContentGaps({ maxGaps, maxPerGap });
+    if (!stats.ready) {
+      return res.status(200).json({ message: stats.reason || "Gap-fill ingestion not ready", stats });
+    }
+    res.json({ message: "Kyoto gap-fill ingestion complete", stats });
+  } catch (err: any) {
+    console.error("DMO gap-fill error:", err);
+    res.status(500).json({ message: "Gap-fill ingestion failed", error: err.message });
   }
 });
 

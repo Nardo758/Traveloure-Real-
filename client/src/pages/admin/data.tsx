@@ -126,6 +126,57 @@ export default function AdminData() {
     },
   });
 
+  // ── Content-gap tracker (#2) ──────────────────────────────────────────────
+  const { data: gapData } = useQuery<{
+    ready: boolean;
+    analysis: {
+      city: string;
+      openGaps: number;
+      rows: Array<{ contentType: string; label: string; existing: number; target: number; missing: number; severity: string }>;
+    };
+  }>({
+    queryKey: ["/api/admin/dmo/gaps"],
+  });
+
+  const analyzeGapsMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/dmo/analyze-gaps"),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dmo/gaps"] });
+      toast({ title: "Coverage recalculated", description: `${res?.analysis?.openGaps ?? 0} open content gap(s).` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Analysis failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const fillGapsMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/dmo/ingest-gaps"),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dmo/gaps"] });
+      const s = res?.stats;
+      if (s && s.ready === false) {
+        toast({ title: "Gap-fill skipped", description: s.reason || "Tavily not configured", variant: "destructive" });
+        return;
+      }
+      toast({
+        title: "Gap-fill complete",
+        description: s
+          ? `Created ${s.created}, duplicates ${s.duplicates}, failed ${s.failed} across ${s.gapsProcessed} gap(s). New content is hidden until an expert reviews it.`
+          : "Done",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Gap-fill failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const gapSeverityColor: Record<string, string> = {
+    critical: "bg-red-100 text-red-700 border-red-200",
+    high: "bg-orange-100 text-orange-700 border-orange-200",
+    medium: "bg-amber-100 text-amber-700 border-amber-200",
+    low: "bg-green-100 text-green-700 border-green-200",
+  };
+
   const getTimeSince = (dateStr: string | null) => {
     if (!dateStr) return "N/A";
     const date = new Date(dateStr);
@@ -234,6 +285,86 @@ export default function AdminData() {
             >
               {dmoIngestMutation.isPending ? "Running…" : "Run Kyoto ingestion"}
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-content-gaps">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="w-4 h-4 text-indigo-600" />
+              Kyoto content gaps
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Tracks how much DMO content we hold per type against an editorial target, so the scraper can
+              prioritize the thin categories. <span className="font-medium">Fill gaps</span> runs targeted
+              Tavily searches for the missing categories; new content lands{" "}
+              <span className="font-medium">hidden</span> in the Expert Workspace for review (D1a).
+            </p>
+
+            {gapData?.analysis?.rows?.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="table-content-gaps">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-2 pr-4 font-medium">Content type</th>
+                      <th className="py-2 pr-4 font-medium">Have</th>
+                      <th className="py-2 pr-4 font-medium">Target</th>
+                      <th className="py-2 pr-4 font-medium">Missing</th>
+                      <th className="py-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gapData.analysis.rows.map((r) => (
+                      <tr key={r.contentType} className="border-b last:border-0" data-testid={`gap-row-${r.contentType}`}>
+                        <td className="py-2 pr-4">{r.label}</td>
+                        <td className="py-2 pr-4 tabular-nums">{r.existing}</td>
+                        <td className="py-2 pr-4 tabular-nums text-gray-500">{r.target}</td>
+                        <td className="py-2 pr-4 tabular-nums">{r.missing > 0 ? r.missing : "—"}</td>
+                        <td className="py-2">
+                          {r.missing > 0 ? (
+                            <Badge variant="outline" className={gapSeverityColor[r.severity] || ""}>
+                              {r.severity}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
+                              met
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No coverage data yet — run an analysis to compute gaps.</p>
+            )}
+
+            {gapData && !gapData.ready && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                TAVILY_API_KEY not set — you can analyze coverage, but gap-fill scraping is disabled on this environment.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => analyzeGapsMutation.mutate()}
+                disabled={analyzeGapsMutation.isPending}
+                data-testid="button-analyze-gaps"
+              >
+                {analyzeGapsMutation.isPending ? "Analyzing…" : "Recalculate coverage"}
+              </Button>
+              <Button
+                onClick={() => fillGapsMutation.mutate()}
+                disabled={fillGapsMutation.isPending || (gapData ? !gapData.ready : false)}
+                data-testid="button-fill-gaps"
+              >
+                {fillGapsMutation.isPending ? "Filling…" : "Fill gaps (Tavily)"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
