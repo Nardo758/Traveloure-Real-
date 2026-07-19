@@ -205,6 +205,14 @@ jobs:
           pgrep -a node || true
           exit 1
 
+      - name: Assert spec file exists (auth-routes)
+        run: |
+          if [ ! -f "playwright/tests/auth-routes.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/auth-routes.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
       - name: Authenticated routes smoke (expert / provider / EA / admin)
         # Runs auth-routes.spec.ts with real session cookies for each platform role.
         # globalSetup (playwright/global-setup.ts) logs in via /api/auth/login using

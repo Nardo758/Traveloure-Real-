@@ -118,6 +118,14 @@ jobs:
           pgrep -a node || true
           exit 1
 
+      - name: Assert spec file exists (footer-links)
+        run: |
+          if [ ! -f "playwright/tests/footer-links.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/footer-links.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
       - name: Footer links smoke (all footerSectionsConfig hrefs)
         # Uses the default playwright.config.ts (testDir: ./playwright/tests).
         # No globalSetup / auth required — 404-checking works for all routes

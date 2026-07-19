@@ -160,6 +160,27 @@ jobs:
 
       - run: npm ci
 
+      - name: Assert spec files exist (navbar-links-smoke suites)
+        # Guard: if any spec file is renamed or deleted, Playwright silently
+        # reports "0 passed" and exits 0 — letting the gate go green with no
+        # tests actually run.  This step fails fast before any test invocation.
+        run: |
+          missing=0
+          for f in \
+            playwright/tests/crash-filter-unit.spec.ts \
+            playwright/tests/navbar-links.spec.ts \
+            playwright/tests/footer-links.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Spec file not found: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::One or more spec files are missing — rename or restore them before re-running this gate."
+            exit 1
+          fi
+          echo "All spec files present ✅"
+
       - name: Crash-filter unit tests (pure logic, no browser needed)
         # Verifies the console-error filter predicates in
         # playwright/utils/console-crash-filter.ts that the navbar-links smoke
@@ -274,6 +295,26 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      - name: Assert spec files exist (hardcoded-links-check suites)
+        # Guard: if any spec file is renamed or deleted, Playwright silently
+        # reports "0 passed" and exits 0 — letting the gate go green with no
+        # tests actually run.  This step fails fast before any test invocation.
+        run: |
+          missing=0
+          for f in \
+            playwright/tests/hardcoded-links.spec.ts \
+            playwright/tests/dynamic-links.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Spec file not found: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::One or more spec files are missing — rename or restore them before re-running this gate."
+            exit 1
+          fi
+          echo "All spec files present ✅"
 
       - name: Hardcoded-link cross-check (static href/to literals vs App.tsx routes)
         # Scans every .tsx / .ts file in client/src/ (except nav-config.ts, which

@@ -198,6 +198,14 @@ jobs:
           pgrep -a node || true
           exit 1
 
+      - name: Assert spec file exists (app-routes)
+        run: |
+          if [ ! -f "playwright/tests/app-routes.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/app-routes.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
       - name: App route coverage (all <Route path="..."> entries in App.tsx)
         # Extracts every path registered in client/src/App.tsx at test-collection
         # time — including routes that are NOT listed in nav-config.ts (detail
