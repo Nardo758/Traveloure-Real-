@@ -276,7 +276,22 @@ export default function ItineraryViewPage() {
     );
   }
 
-  if (!data) return null;
+  if (!data || !data.variant) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+          <h2 className="text-xl font-semibold mb-2" data-testid="heading-not-found">Link Not Found or Expired</h2>
+          <p className="text-muted-foreground mb-4">
+            This share link is invalid or has expired. Ask the owner to share a new link.
+          </p>
+          <Button variant="outline" onClick={() => window.location.href = "/"}>
+            Go to Homepage
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const isExpertView = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert;
   const isOwnerView = !!data.isOwner;
@@ -477,7 +492,7 @@ export default function ItineraryViewPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => navigate(`/expert-chat/${data.sharedBy!.userId}`)}
+                    onClick={() => navigate(`/chat`)}
                     className="gap-2 border-amber-300"
                     data-testid="button-open-expert-chat"
                   >

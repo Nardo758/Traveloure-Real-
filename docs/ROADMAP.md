@@ -59,11 +59,20 @@ or an expert engagement, never a dead end.
 - **AI expert matcher, reintroduced properly** — role-scoped, honest metrics (the
   #219 removal rationale), once the Kyoto expert pool justifies it.
 
-## Platform backlog (pre-existing, environment-gated)
+## Platform backlog
 
+**Still open — genuinely gated (need environment access or real data, not buildable now):**
 - DMO live scraping (D3): needs `FIRECRAWL_API_KEY`/`TAVILY_API_KEY`/`BRAVE_API_KEY`
   + proxy allowlist at deploy; scheduler wiring.
-- Re-point legacy `/api/bookings/refund` off `bookings` onto `service_bookings`.
 - Knowledge-Bar Phase 3: calibrate the scoring rubric on real Kyoto submissions.
-- Replace mock-data demo arrays (`chat.tsx`, `explore.tsx`, help-me-decide samples,
-  `provider/profile`) with real data (§13 "wire real data" lane).
+
+**✅ Closed (were already resolved; backlog entries were stale — verified Jul 18, 2026):**
+- ✅ Re-point legacy `/api/bookings/refund` onto `service_bookings` — done with the
+  escrow Phase 4 work (§14 A2): the endpoint (`server/routes/bookings.ts`) already
+  gates owner-or-admin, derives the amount from `service_bookings.total_amount`,
+  refunds via `stripePaymentService.refundServiceBooking`, and reverses the earnings
+  ledger + platform revenue.
+- ✅ Replace mock-data demo arrays — resolved by the Discover consolidation:
+  `explore.tsx` and the `help-me-decide` sample-package page were deleted (both routes
+  now redirect to `/discover`); `chat.tsx` was wired to real experts; `provider/profile`
+  carries no fabricated ratings. Zero `rating: 4.x` literals remain in the client.

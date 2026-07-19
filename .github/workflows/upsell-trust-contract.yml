@@ -14,6 +14,11 @@ name: Upsell Trust Contract
 # only because server/db.ts throws at module load if it is unset (the Pool
 # connects lazily and is never used here), so a dummy DSN suffices.
 
+# Status context (for branch-protection required checks):
+#   * relevance-dominance (pure unit) — safe to mark as a REQUIRED branch-protection check.
+#     Pure function, zero DB, zero browser. Zero flakiness risk. The dummy DATABASE_URL
+#     satisfies db.ts's load-time guard; no actual connection is made.
+
 on:
   push:
     branches: [main, develop]

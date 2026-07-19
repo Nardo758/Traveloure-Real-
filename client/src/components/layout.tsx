@@ -175,6 +175,11 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
     );
   }
 
+  // Narrow once into a local const so the nested .map() callbacks below keep the
+  // non-undefined narrowing (TS drops it for `item.sections` inside closures —
+  // the nav-config refactor made `sections` optional, which is what surfaced this).
+  const sections = item.sections;
+
   return (
     <div
       ref={wrapperRef}
@@ -202,36 +207,36 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             onMouseLeave={handleMouseLeave}
             className={cn(
               "absolute top-full mt-0 pt-1 bg-card border border-border rounded-lg shadow-xl z-50",
-              item.sections.length > 2
+              sections.length > 2
                 ? "w-[800px]"
                 : "left-0 w-72"
             )}
-            style={item.sections.length > 2 ? megaStyle : {}}
+            style={sections.length > 2 ? megaStyle : {}}
           >
             <div className={cn(
               "py-3",
-              item.sections.length > 2 ? "grid grid-cols-4 gap-1 px-2" : ""
+              sections.length > 2 ? "grid grid-cols-4 gap-1 px-2" : ""
             )}>
-              {item.sections.map((section, sIdx) => (
-                <div key={section.title} className={item.sections.length > 2 ? "px-2" : ""}>
-                  {sIdx > 0 && item.sections.length <= 2 && <div className="border-t border-border my-2" />}
+              {sections.map((section, sIdx) => (
+                <div key={section.title} className={sections.length > 2 ? "px-2" : ""}>
+                  {sIdx > 0 && sections.length <= 2 && <div className="border-t border-border my-2" />}
                   <div className={cn(
                     "text-xs font-semibold text-muted-foreground uppercase tracking-wide",
-                    item.sections.length > 2 ? "px-2 py-2 border-b border-border mb-1" : "px-4 py-2"
+                    sections.length > 2 ? "px-2 py-2 border-b border-border mb-1" : "px-4 py-2"
                   )}>
                     {section.title}
                   </div>
                   {section.items.map((child) => {
                     const sharedClass = cn(
                       "flex items-start gap-2 text-sm hover-elevate transition-colors group rounded-md w-full text-left",
-                      item.sections.length > 2 ? "px-2 py-2" : "px-4 py-2.5 gap-3"
+                      sections.length > 2 ? "px-2 py-2" : "px-4 py-2.5 gap-3"
                     );
                     const inner = (
                       <>
                         {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />}
                         <div className="min-w-0">
                           <div className="text-foreground font-medium truncate">{child.name}</div>
-                          {child.description && item.sections.length <= 2 && (
+                          {child.description && sections.length <= 2 && (
                             <div className="text-xs text-muted-foreground">{child.description}</div>
                           )}
                         </div>

@@ -1,0 +1,233 @@
+name: CI DB Setup Lint
+
+# Ensures all Playwright-based workflow jobs that need a database always
+# delegate to the composite action (.github/actions/ci-db-setup/) rather
+# than copying the migration/session-table steps inline.
+#
+# A future contributor who pastes the inline run: commands from the composite
+# action into a workflow file would bypass the single source of truth — any
+# subsequent change to the migration or session-table scripts would then
+# require updating every duplicated copy. This lint gate catches that drift
+# before it reaches production.
+#
+# Implementation: pure grep — no Node.js install, no DB, no browser.
+# Typically completes in under 10 seconds.
+#
+# *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+# Every `npx tsx <script>` line in action.yml must appear in BOTH:
+#   1. The check_path call list in the composite-action-script-paths job below.
+#   2. The PATTERNS list in the ci-db-setup-lint job below.
+# When you add a new script step to action.yml, add it here too.
+#
+# The three patterns this gate rejects correspond to the shell commands
+# encapsulated by the composite action:
+#   migrate-entry.ts         — run: npx tsx server/migrations/migrate-entry.ts
+#   create-sessions-table.ts — run: npx tsx scripts/create-sessions-table.ts
+#   seed-ci-test-users.ts    — run: npx tsx scripts/seed-ci-test-users.ts
+#
+# Discovery: every .github/workflows/*.yml file that declares a Postgres
+# service (matched by the presence of "image: postgres:") is automatically
+# included in this check. No manual list to maintain — adding a new Playwright
+# workflow with a Postgres service block will be caught automatically.
+#
+# Note: sessions-table-smoke.yml legitimately invokes create-sessions-table.ts
+# directly (it is the dedicated smoke test for that script); it is intentionally
+# excluded from this check via the EXCLUDE_FILES list below.
+#
+# Status context (for branch-protection required checks):
+#   * ci-db-setup-lint (no inline migration steps) — fast, pure-grep lint;
+#     safe to mark as a REQUIRED branch-protection check immediately.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref — this check is idempotent.
+concurrency:
+  group: ci-db-setup-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  composite-action-script-paths:
+    name: composite-action-script-paths (assert referenced scripts exist)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert composite action scripts exist at their expected paths
+        # The composite action at .github/actions/ci-db-setup/action.yml hardcodes
+        # script paths.  If any file is renamed or moved the composite action
+        # silently breaks and every Playwright CI gate fails with a cryptic
+        # "file not found" error.  This step surfaces the breakage immediately
+        # with a message that points directly at the composite action.
+        #
+        # *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+        # Add a check_path call below for every new `npx tsx <script>` line
+        # added to action.yml.  Remove entries when steps are deleted.
+        #
+        # Files checked:
+        #   server/migrations/migrate-entry.ts  — invoked by the "Apply database migrations" step
+        #   scripts/create-sessions-table.ts    — invoked by the "Create sessions table" step
+        #   scripts/seed-ci-test-users.ts       — invoked by the "Seed CI test users" step
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update the path in
+        #   .github/actions/ci-db-setup/action.yml to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_path() {
+            local FILE="$1"
+            local ACTION_STEP="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/actions/ci-db-setup/action.yml::Script not found at expected path: $FILE"
+              echo "  The composite action step \"$ACTION_STEP\" references this file."
+              echo "  Either restore $FILE to that path, or update the path in"
+              echo "  .github/actions/ci-db-setup/action.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  $FILE exists"
+            fi
+          }
+
+          # *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+          # Add/remove check_path calls to match every `npx tsx <script>` step in action.yml.
+          check_path "server/migrations/migrate-entry.ts"  "Apply database migrations"
+          check_path "scripts/create-sessions-table.ts"    "Create sessions table (connect-pg-simple workaround)"
+          check_path "scripts/seed-ci-test-users.ts"       "Seed CI test users"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more scripts referenced by .github/actions/ci-db-setup/action.yml are missing."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All composite action scripts are present at their expected paths ✅"
+
+  ci-db-setup-lint:
+    name: ci-db-setup-lint (no inline migration steps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject inline migration / session-table run steps in Playwright workflow files
+        # Auto-discovers every .github/workflows/*.yml file that declares a
+        # Postgres service (detected via "image: postgres:") and checks each one
+        # for bare run: commands that invoke migrate-entry.ts,
+        # create-sessions-table.ts, or seed-ci-test-users.ts directly.
+        # Any such pattern indicates the DB setup was copied inline rather than
+        # delegated to the composite action — defeating the single-source-of-truth
+        # goal and risking drift with future changes.
+        #
+        # Excluded files:
+        #   ci-db-setup-lint.yml      — this file itself (contains the patterns
+        #                               as literals in comments and the grep call)
+        #   sessions-table-smoke.yml  — legitimately invokes create-sessions-table.ts
+        #                               directly; it IS the dedicated smoke test
+        #                               for that script.
+        #
+        # Discovery: every *.yml file in .github/workflows/ is scanned EXCEPT:
+        #   - ci-db-setup-lint.yml  (this file; contains the pattern strings as literals)
+        #   - sessions-table-smoke.yml  (legitimate direct invocation — dedicated smoke test)
+        #
+        # No hardcoded file list to maintain: adding a new Playwright workflow
+        # automatically brings it under this lint gate without any manual update.
+        #
+        # Fix when this fails:
+        #   Remove the inline run: step(s) and replace with:
+        #     - name: Set up CI database (migrations + sessions table)
+        #       uses: ./.github/actions/ci-db-setup
+        #       with:
+        #         database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+        run: |
+          set -euo pipefail
+
+          # Files that are legitimately exempt from the inline-step check.
+          EXCLUDED=(
+            ".github/workflows/ci-db-setup-lint.yml"
+            ".github/workflows/sessions-table-smoke.yml"
+          )
+
+          # Auto-discover all workflow files that spin up a Postgres service.
+          # The presence of "image: postgres:" in a services block is the
+          # canonical indicator that the job needs a database — and therefore
+          # must delegate DB setup to the composite action rather than copying
+          # steps inline. New workflows with a Postgres service are caught
+          # automatically without updating any hardcoded list.
+          WORKFLOW_FILES=()
+          for f in .github/workflows/*.yml; do
+            skip=0
+            for excl in "${EXCLUDED[@]}"; do
+              if [ "$f" = "$excl" ]; then skip=1; break; fi
+            done
+            [ "$skip" -eq 1 ] && continue
+
+            if grep -qE "image: postgres:" "$f"; then
+              WORKFLOW_FILES+=("$f")
+            fi
+          done
+
+          if [ "${#WORKFLOW_FILES[@]}" -eq 0 ]; then
+            echo "::error::No workflow files with a Postgres service were found under .github/workflows/."
+            echo "  If all Postgres workflows were removed, update EXCLUDED or this check."
+            exit 1
+          fi
+
+          echo "Auto-discovered ${#WORKFLOW_FILES[@]} workflow file(s) with a Postgres service:"
+          for f in "${WORKFLOW_FILES[@]}"; do
+            echo "  $f"
+          done
+          echo ""
+
+          # These are the shell commands the composite action encapsulates.
+          # Their presence in any of the workflow files means the steps were
+          # copied inline instead of delegated to the action.
+          #
+          # *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+          # Add a pattern here for every new `npx tsx <script>` step added to
+          # action.yml.  Remove patterns when steps are deleted.
+          PATTERNS=(
+            "migrate-entry\.ts"
+            "create-sessions-table\.ts"
+            "seed-ci-test-users\.ts"
+          )
+
+          FAIL=0
+
+          for FILE in "${WORKFLOW_FILES[@]}"; do
+            for PATTERN in "${PATTERNS[@]}"; do
+              MATCHES=$(grep -nE "$PATTERN" "$FILE" 2>/dev/null || true)
+              if [ -n "$MATCHES" ]; then
+                echo "::error file=$FILE::Inline DB setup step detected (matched pattern: $PATTERN)"
+                echo "$MATCHES"
+                echo ""
+                echo "  Replace the inline step with the composite action:"
+                echo "    - name: Set up CI database (migrations + sessions table)"
+                echo "      uses: ./.github/actions/ci-db-setup"
+                echo "      with:"
+                echo "        database-url: postgresql://postgres:postgres@localhost:5432/traveloure"
+                echo "        # seed-ci-users: 'true'  # only if this job tests authenticated routes"
+                FAIL=1
+              fi
+            done
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more workflow files contain inline DB setup steps."
+            echo "See the error annotations above for the affected files and the fix."
+            exit 1
+          fi
+
+          echo "All ${#WORKFLOW_FILES[@]} workflow file(s) pass the inline DB setup check ✅"

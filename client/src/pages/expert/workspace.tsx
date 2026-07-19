@@ -643,9 +643,9 @@ export default function ExpertWorkspace() {
   const isLoading = tripsLoading || assignmentLoading;
 
   if (!tripId) return (
-    <div style={{ padding: 40, textAlign: "center" }}>
+    <main style={{ padding: 40, textAlign: "center" }}>
       <PenSquare style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
-      <div style={{ fontSize: 18, fontWeight: 600, color: G[900], marginBottom: 8 }}>No trip selected</div>
+      <h1 style={{ fontSize: 18, fontWeight: 600, color: G[900], margin: "0 0 8px" }}>No trip selected</h1>
       <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>Open a trip from your Assigned Trips list to start working in the workspace.</div>
       <button
         onClick={() => setLocation("/expert/assigned-trips")}
@@ -653,7 +653,7 @@ export default function ExpertWorkspace() {
       >
         Go to Assigned Trips
       </button>
-    </div>
+    </main>
   );
 
   if (isLoading) return (
@@ -665,12 +665,12 @@ export default function ExpertWorkspace() {
   );
 
   if (!trip && !tripsLoading) return (
-    <div style={{ padding: 40, textAlign: "center" }}>
+    <main style={{ padding: 40, textAlign: "center" }}>
       <Users style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
-      <div style={{ fontSize: 18, fontWeight: 600, color: G[900], marginBottom: 8 }}>Trip not found</div>
+      <h1 style={{ fontSize: 18, fontWeight: 600, color: G[900], margin: "0 0 8px" }}>Trip not found</h1>
       <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, or it no longer exists.</div>
       <button onClick={() => safeNavigate("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
-    </div>
+    </main>
   );
 
   const tripTitle = trip?.trip_title || trip?.destination || `Trip ${tripId}`;

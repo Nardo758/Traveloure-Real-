@@ -116,7 +116,7 @@ export function SignupPage() {
 
         <p className="text-xs text-gray-400 text-center mt-4">
           Already have an account?{" "}
-          <a href="/login" className="text-gray-700 underline">
+          <a href="/" className="text-gray-700 underline">
             Sign in
           </a>
         </p>

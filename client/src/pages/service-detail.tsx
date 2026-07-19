@@ -94,9 +94,22 @@ export default function ServiceDetailPage() {
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
 
-  const { data: service, isLoading: serviceLoading } = useQuery<Service>({
+  const { data: service, isLoading: serviceLoading, isError: serviceError } = useQuery<Service>({
     queryKey: ["/api/services", id],
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
+      try {
+        const res = await fetch(`/api/services/${id}`, { credentials: "include", signal: controller.signal });
+        if (res.status === 404) return null as unknown as Service;
+        if (!res.ok) throw new Error(`Failed to load service: ${res.status}`);
+        return res.json() as Promise<Service>;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
     enabled: !!id,
+    retry: false,
   });
 
   const { data: reviews, isLoading: reviewsLoading } = useQuery<Review[]>({
@@ -168,7 +181,7 @@ export default function ServiceDetailPage() {
     );
   }
 
-  if (!service) {
+  if (serviceError || !service) {
     return (
       <Layout>
         <div className="container py-8 max-w-4xl mx-auto text-center">

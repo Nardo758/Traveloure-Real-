@@ -11,7 +11,13 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './playwright/tests',
-  globalSetup: require.resolve('./playwright/global-setup'),
+  // Auth-state setup (logs in the seeded ci-* users) is only needed by the
+  // auth-dependent suites (app-routes, auth-routes), whose workflows seed those
+  // users and set PW_AUTH_SETUP=1. The non-auth suites (navbar/footer/hardcoded/
+  // selection/earn) leave it unset, so globalSetup stays disabled for them —
+  // otherwise it would throw in CI on the missing ci-* login. A plain string
+  // path (not require.resolve) keeps this config ESM-safe.
+  globalSetup: process.env.PW_AUTH_SETUP ? './playwright/global-setup' : undefined,
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

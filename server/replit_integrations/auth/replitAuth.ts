@@ -35,7 +35,16 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      // `secure` cookies are only sent back over HTTPS. Production runs behind
+      // TLS so this is correct there. But the auth-route smoke gate runs the
+      // production build over plain-http localhost (NODE_ENV=production), where
+      // a secure cookie is never replayed — the login "succeeds" but the session
+      // can't be reused, so authenticated checks fail. SESSION_COOKIE_INSECURE=1
+      // is a test-only opt-out for that case; it must never be set in production.
+      secure:
+        process.env.SESSION_COOKIE_INSECURE === '1'
+          ? false
+          : process.env.NODE_ENV === 'production',
       maxAge: sessionTtl,
     },
   });

@@ -1,0 +1,52 @@
+name: CI Database Setup
+description: >
+  Applies database migrations, creates the sessions table (connect-pg-simple
+  workaround), and optionally seeds CI test users. Centralises the three steps
+  that were copy-pasted across every Playwright workflow so a single edit here
+  propagates everywhere.
+
+inputs:
+  database-url:
+    description: PostgreSQL connection string (e.g. postgresql://postgres:postgres@localhost:5432/traveloure)
+    required: true
+  seed-ci-users:
+    description: >
+      Set to 'true' to seed ci-expert@traveloure.test, ci-provider@traveloure.test,
+      and ci-admin@traveloure.test via scripts/seed-ci-test-users.ts.
+      Only needed by workflows that test authenticated routes.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  # *** KEEP IN SYNC WITH .github/workflows/ci-db-setup-lint.yml ***
+  # Every `npx tsx <script>` step added here must also be reflected in:
+  #   1. The check_path call list in the composite-action-script-paths job.
+  #   2. The PATTERNS list in the ci-db-setup-lint job.
+  # Failure to do so means a renamed/missing script will go undetected in CI.
+  steps:
+    - name: Apply database migrations
+      run: npx tsx server/migrations/migrate-entry.ts
+      shell: bash
+      env:
+        DATABASE_URL: ${{ inputs.database-url }}
+
+    - name: Create sessions table (connect-pg-simple workaround)
+      # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
+      # incompatible with Postgres 12+. Pre-create the table here so that
+      # session persistence works without errors on startup.
+      run: npx tsx scripts/create-sessions-table.ts
+      shell: bash
+      env:
+        DATABASE_URL: ${{ inputs.database-url }}
+
+    - name: Seed CI test users
+      # Creates ci-expert@traveloure.test (travel_expert), ci-provider@traveloure.test
+      # (service_provider), and ci-admin@traveloure.test (admin) with hashed passwords
+      # so authenticated Playwright gates can log in via email/password auth.
+      # Idempotent — safe to re-run (ON CONFLICT DO UPDATE).
+      if: ${{ inputs.seed-ci-users == 'true' }}
+      run: npx tsx scripts/seed-ci-test-users.ts
+      shell: bash
+      env:
+        DATABASE_URL: ${{ inputs.database-url }}

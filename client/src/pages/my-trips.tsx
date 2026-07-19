@@ -184,7 +184,7 @@ export default function MyTrips() {
                   </Button>
                 </Link>
                 {!isCompleted && (
-                  <Link href={`/trip/${trip.id}/edit`} onClick={(e) => e.stopPropagation()}>
+                  <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-edit-${trip.id}`}>
                       Edit
                     </Button>
