@@ -1,0 +1,117 @@
+name: Sessions Table Smoke
+
+# Guards against scripts/create-sessions-table.ts being renamed, moved, or
+# broken. That script is called by the ci-db-setup composite action, which is
+# shared by every Playwright workflow — a silent failure there would break all
+# 7 CI gates with an opaque "file not found" or exit-1 error.
+#
+# This job catches the problem first, in under 2 minutes, with a clear failure
+# message pointing at the right file.
+#
+# Status context: sessions-table-smoke — safe to mark as a REQUIRED check.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/create-sessions-table.ts'
+      - '.github/actions/ci-db-setup/action.yml'
+      - '.github/workflows/sessions-table-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/create-sessions-table.ts'
+      - '.github/actions/ci-db-setup/action.yml'
+      - '.github/workflows/sessions-table-smoke.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: sessions-table-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sessions-table-smoke:
+    name: sessions-table-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run create-sessions-table.ts
+        run: npx tsx scripts/create-sessions-table.ts
+
+      - name: Assert sessions table exists
+        # Queries the Postgres information_schema to confirm that the sessions
+        # table was actually created by the script. Fails loudly here rather
+        # than letting every downstream Playwright workflow fail with a cryptic
+        # connect-pg-simple session error.
+        run: |
+          TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc \
+            "SELECT COUNT(*) FROM information_schema.tables \
+             WHERE table_schema = 'public' AND table_name = 'sessions';")
+          if [ "$TABLE_EXISTS" -ne 1 ]; then
+            echo "::error::sessions table was not created — create-sessions-table.ts may be broken or missing"
+            exit 1
+          fi
+          echo "✅ sessions table exists"
+
+      - name: Assert sessions_pkey primary key exists
+        run: |
+          PK_EXISTS=$(psql "$DATABASE_URL" -tAc \
+            "SELECT COUNT(*) FROM information_schema.table_constraints \
+             WHERE constraint_name = 'sessions_pkey' \
+               AND table_name = 'sessions' \
+               AND constraint_type = 'PRIMARY KEY';")
+          if [ "$PK_EXISTS" -ne 1 ]; then
+            echo "::error::sessions_pkey primary key is missing — sessions table schema may be incomplete"
+            exit 1
+          fi
+          echo "✅ sessions_pkey primary key exists"
+
+      - name: Assert IDX_sessions_expire index exists
+        run: |
+          IDX_EXISTS=$(psql "$DATABASE_URL" -tAc \
+            "SELECT COUNT(*) FROM pg_indexes \
+             WHERE tablename = 'sessions' \
+               AND indexname = 'IDX_sessions_expire';")
+          if [ "$IDX_EXISTS" -ne 1 ]; then
+            echo "::error::IDX_sessions_expire index is missing — session expiry cleanup will be slow"
+            exit 1
+          fi
+          echo "✅ IDX_sessions_expire index exists"
+
+      - name: Script is idempotent (safe to re-run)
+        # connect-pg-simple sometimes calls the script on an already-initialised
+        # DB. Verify the script doesn't crash on a second run (CREATE TABLE IF
+        # NOT EXISTS and ADD CONSTRAINT ... are both idempotent in the script).
+        run: npx tsx scripts/create-sessions-table.ts
