@@ -6374,7 +6374,10 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   expertModifiedData: jsonb("expert_modified_data").default({}), // Expert overrides
   
   // Visibility Flags (CRITICAL: Expert Workspace gate)
-  expertWorkspaceVisible: boolean("expert_workspace_visible").default(true).notNull(),
+  // Born FALSE — scraped/DMO content is admin-intake-gated: an admin must approve raw content into the
+  // expert library before an expert can see it (ratified "B"). Admin approve flips this true; existing
+  // pre-gate rows are grandfathered true (no backfill), the F2 pattern.
+  expertWorkspaceVisible: boolean("expert_workspace_visible").default(false).notNull(),
   discoverPageVisible: boolean("discover_page_visible").default(false).notNull(),
   publishedAt: timestamp("published_at"),
   publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),

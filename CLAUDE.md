@@ -369,8 +369,23 @@ This document captures architectural decisions to maintain consistency across co
       (b) build **Ready Made Trips** that publish to Discover via the §10 admin template-approval queue, or
       (c) create **social** content. The raw/curated scraped content is **never surfaced to travelers on its
       own** — it is always transformed into one of those three outputs first. Admin approval sits at
-      **intake** (admin pre-filters what raw scraped content enters the expert library — ratified "B"; the
-      admin intake queue is filed, not yet built), not at a per-item publish-to-Discover step.
+      **intake** (admin pre-filters what raw scraped content enters the expert library — ratified "B"),
+      not at a per-item publish-to-Discover step.
+    - **Admin intake gate — LANDED (Jul 19, 2026, migration 118).** Scraped/DMO content is now born
+      **hidden from experts** (`dmo_raw_content.expert_workspace_visible` default flipped `true → false` at
+      both the ORM `shared/schema.ts` and the DB column, migration 118 — default-only, **no backfill, no
+      CHECK**, no publish-time push trap). All three create sites set it FALSE explicitly (heritage seed,
+      Tavily gap-fill, DMOCrawler). An admin approves raw content **into** the library via a queue on
+      `/admin/data`: `GET /api/admin/dmo/intake` (lists hidden, non-rejected Kyoto content),
+      `POST …/intake/:id/approve` (atomic conditional flip → `expert_workspace_visible=true`; idempotent —
+      a second approve matches 0 rows → 409), `POST …/intake/:id/reject` (`status='rejected'`, stays hidden),
+      all `adminApiGuard`-gated. The expert DMO Library reads `expert_workspace_visible=true`, so approved
+      content appears and rejected/pending content never does. **Grandfather (F2 pattern):** existing
+      pre-gate rows keep their current visibility (the seed heritage rows stay expert-visible, out of the
+      queue). This is the **intake** gate; the §10 template-approval queue remains the separate gate on the
+      finished Ready Made Trip. Proven behaviorally: born-hidden, in-queue, approve→in-library/out-of-queue,
+      idempotent re-approve, reject→stays-out, grandfather. **Filed:** persist `reviewed_by`/`reviewed_at`
+      on intake decisions (columns exist); optional rejection-reason UI.
     - **D4 — REVERTED (Jul 19, 2026).** The earlier "traveler-facing Local guides on the Discover city page"
       surface (getPublishedGuidesForCity + `GET /api/discover/location/:city/guides` + the
       `LocalGuidesSection`) was built on the wrong assumption that scraped content publishes directly to
@@ -380,9 +395,10 @@ This document captures architectural decisions to maintain consistency across co
       buttons/tabs) is **also removed** — there is no direct DMO→Discover path. The DMO Library
       (`dmo-library.tsx`) is refocused as a research surface: browse Kyoto content → **Review & refine**
       (still writes `expert_dmo_edits`) → **Add to trip → Build Ready Made Trip** (the `/build-itinerary`
-      bridge, unchanged; the trip then rides the §10 admin approval to sell). **Filed follow-ups:** admin
-      intake-approval queue (ratified "B"); wire refinement (`expert_dmo_edits`) into the built trip's
-      content; "Add to client itinerary" + "Create social post" actions.
+      bridge, unchanged; the trip then rides the §10 admin approval to sell). The admin intake-approval
+      queue that gates raw content into this library is **built** (see "Admin intake gate" above). **Filed
+      follow-ups:** wire refinement (`expert_dmo_edits`) into the built trip's content; "Add to client
+      itinerary" + "Create social post" actions.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
