@@ -13,10 +13,17 @@ name: CI DB Setup Lint
 # Implementation: pure grep — no Node.js install, no DB, no browser.
 # Typically completes in under 10 seconds.
 #
-# The two patterns this gate rejects correspond to the two shell commands
+# *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+# Every `npx tsx <script>` line in action.yml must appear in BOTH:
+#   1. The check_path call list in the composite-action-script-paths job below.
+#   2. The PATTERNS list in the ci-db-setup-lint job below.
+# When you add a new script step to action.yml, add it here too.
+#
+# The three patterns this gate rejects correspond to the shell commands
 # encapsulated by the composite action:
 #   migrate-entry.ts         — run: npx tsx server/migrations/migrate-entry.ts
 #   create-sessions-table.ts — run: npx tsx scripts/create-sessions-table.ts
+#   seed-ci-test-users.ts    — run: npx tsx scripts/seed-ci-test-users.ts
 #
 # Note: sessions-table-smoke.yml legitimately invokes create-sessions-table.ts
 # directly (it is the dedicated smoke test for that script); it is intentionally
@@ -51,14 +58,19 @@ jobs:
 
       - name: Assert composite action scripts exist at their expected paths
         # The composite action at .github/actions/ci-db-setup/action.yml hardcodes
-        # two script paths.  If either file is renamed or moved the composite action
+        # script paths.  If any file is renamed or moved the composite action
         # silently breaks and every Playwright CI gate fails with a cryptic
         # "file not found" error.  This step surfaces the breakage immediately
         # with a message that points directly at the composite action.
         #
+        # *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+        # Add a check_path call below for every new `npx tsx <script>` line
+        # added to action.yml.  Remove entries when steps are deleted.
+        #
         # Files checked:
         #   server/migrations/migrate-entry.ts  — invoked by the "Apply database migrations" step
         #   scripts/create-sessions-table.ts    — invoked by the "Create sessions table" step
+        #   scripts/seed-ci-test-users.ts       — invoked by the "Seed CI test users" step
         #
         # Fix when this fails:
         #   Either restore the file to its expected path OR update the path in
@@ -82,8 +94,11 @@ jobs:
             fi
           }
 
+          # *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+          # Add/remove check_path calls to match every `npx tsx <script>` step in action.yml.
           check_path "server/migrations/migrate-entry.ts"  "Apply database migrations"
           check_path "scripts/create-sessions-table.ts"    "Create sessions table (connect-pg-simple workaround)"
+          check_path "scripts/seed-ci-test-users.ts"       "Seed CI test users"
 
           if [ "$FAIL" -eq 1 ]; then
             echo ""
@@ -126,12 +141,17 @@ jobs:
             ".github/workflows/footer-links-gate.yml"
           )
 
-          # These are the two shell commands the composite action encapsulates.
+          # These are the shell commands the composite action encapsulates.
           # Their presence in any of the workflow files means the steps were
           # copied inline instead of delegated to the action.
+          #
+          # *** KEEP IN SYNC WITH .github/actions/ci-db-setup/action.yml ***
+          # Add a pattern here for every new `npx tsx <script>` step added to
+          # action.yml.  Remove patterns when steps are deleted.
           PATTERNS=(
             "migrate-entry\.ts"
             "create-sessions-table\.ts"
+            "seed-ci-test-users\.ts"
           )
 
           FAIL=0
