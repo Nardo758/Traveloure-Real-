@@ -67,6 +67,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Assert script file exists (create-sessions-table)
+        # Guards against scripts/create-sessions-table.ts being renamed or deleted.
+        # This script is called by ci-db-setup (shared by every Playwright workflow)
+        # so a silent missing-file error here would break all downstream CI gates
+        # with an opaque exit-1.  This step surfaces the breakage immediately with
+        # a clear ::error:: annotation pointing at the right file.
+        #
+        # Fix when this fails:
+        #   Either restore scripts/create-sessions-table.ts to that path, OR update
+        #   the path in the "Run create-sessions-table.ts" step below AND in this
+        #   check to match the new location.
+        run: |
+          if [ ! -f "scripts/create-sessions-table.ts" ]; then
+            echo "::error file=.github/workflows/sessions-table-smoke.yml::Script not found at expected path: scripts/create-sessions-table.ts"
+            echo "  The step \"Run create-sessions-table.ts\" references this file."
+            echo "  Either restore scripts/create-sessions-table.ts to that path, or update the path in"
+            echo "  .github/workflows/sessions-table-smoke.yml to match the new location."
+            exit 1
+          fi
+          echo "✅  scripts/create-sessions-table.ts exists"
+
       - name: Run create-sessions-table.ts
         run: npx tsx scripts/create-sessions-table.ts
 
