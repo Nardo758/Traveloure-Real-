@@ -278,7 +278,7 @@ export default function ServicesProviderPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 max-w-2xl py-8">
+      <main className="container mx-auto px-4 max-w-2xl py-8">
         {offeringNameFromUrl && (
           <div
             className="mb-6 flex items-center gap-2 rounded-lg border border-[#2E8B8B]/30 bg-[#2E8B8B]/5 px-4 py-3 text-sm"
@@ -669,7 +669,7 @@ export default function ServicesProviderPage() {
             </Button>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
