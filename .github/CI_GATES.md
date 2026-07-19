@@ -33,6 +33,7 @@ Add all of them to branch protection now.
 | `verify-service-offering-types (HTTP count gate)` | `service-offering-types-gate.yml` | /earn catalog row-count floors (guards silent migration wipe-out) |
 | `earn-page-smoke (Playwright DOM gate)` | `service-offering-types-gate.yml` | /earn page renders at least one catalog card per role |
 | `relevance-dominance (pure unit)` | `upsell-trust-contract.yml` | Revenue-reordering bug in upsell engine; pure unit, zero flakiness |
+| `ci-db-setup-lint (no inline migration steps)` | `ci-db-setup-lint.yml` | Guards the composite action contract — detects inline `migrate-entry.ts` / `create-sessions-table.ts` run steps in any of the 6 Playwright workflow files |
 
 ### Tier 2 — RECOMMENDED (add once a green baseline exists)
 
