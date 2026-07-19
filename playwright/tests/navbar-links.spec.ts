@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { getAllHrefs } from '../../client/src/lib/nav-config';
+import { shouldCapture } from '../utils/console-crash-filter';
 
 /**
  * Navbar link smoke test — guards against broken or missing routes.
@@ -122,15 +123,7 @@ test.describe('Navbar link smoke — no broken routes', () => {
         if (msg.type() === 'error') {
           const text = msg.text();
 
-          // (a) Unhandled exception reached the browser surface.
-          const isUncaught = text.startsWith('Uncaught ');
-          // (b) React production crash code (e.g. "Minified React error #130").
-          const isMinifiedReactError = /Minified React error #\d+/.test(text);
-          // (c) React error boundary caught a component-tree throw.
-          const isReactBoundaryCatch =
-            text.includes('React') && text.includes('caught an error');
-
-          if (isUncaught || isMinifiedReactError || isReactBoundaryCatch) {
+          if (shouldCapture(text)) {
             uncaughtConsoleErrors.push(text);
           }
         }

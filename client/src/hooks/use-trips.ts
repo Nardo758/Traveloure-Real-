@@ -31,12 +31,19 @@ export function useTrip(id: string) {
       if (shareToken) {
         url += `?token=${encodeURIComponent(shareToken)}`;
       }
-      const res = await fetch(url, { credentials: "include" });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error("Failed to fetch trip");
-      return api.trips.get.responses[200].parse(await res.json());
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
+      try {
+        const res = await fetch(url, { credentials: "include", signal: controller.signal });
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error("Failed to fetch trip");
+        return api.trips.get.responses[200].parse(await res.json());
+      } finally {
+        clearTimeout(timer);
+      }
     },
     enabled: !!id,
+    retry: false,
   });
 }
 

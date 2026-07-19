@@ -15,6 +15,7 @@ import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
 import { useEffect, useRef, lazy, Suspense } from "react";
+import { PageErrorBoundary } from "@/components/page-error-boundary";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
@@ -278,7 +279,9 @@ function Router() {
         <Layout><ExpertsPage /></Layout>
       </Route>
       <Route path="/experts/:id">
-        <ExpertDetailPage />
+        <PageErrorBoundary fallbackHeading="Expert Not Found">
+          <ExpertDetailPage />
+        </PageErrorBoundary>
       </Route>
       {/* Marketplace Phase B2: public package detail + purchase (content-gated server-side) */}
       <Route path="/expert-templates/:id">
@@ -288,7 +291,9 @@ function Router() {
         <Layout><ExpertsPage /></Layout>
       </Route>
       <Route path="/local-experts/:id">
-        <ExpertDetailPage />
+        <PageErrorBoundary fallbackHeading="Expert Not Found">
+          <ExpertDetailPage />
+        </PageErrorBoundary>
       </Route>
       {/* /service-providers retired as a standalone surface — providers now live in the
           Discover "Services" tab (redesign decision, Jul 2026). Redirect preserves any
@@ -316,14 +321,18 @@ function Router() {
       </Route>
 
       <Route path="/services/:id">
-        <ServiceDetailPage />
+        <PageErrorBoundary fallbackHeading="Service Not Found">
+          <ServiceDetailPage />
+        </PageErrorBoundary>
       </Route>
       <Route path="/cart">
         <Layout><CartPage /></Layout>
       </Route>
 
       <Route path="/itinerary-view/:token">
-        <ItineraryViewPage />
+        <PageErrorBoundary fallbackHeading="Link Not Found or Expired">
+          <ItineraryViewPage />
+        </PageErrorBoundary>
       </Route>
       <Route path="/trips/shared/:token">
         <SharedTripPage />
@@ -332,7 +341,9 @@ function Router() {
         {() => <ProtectedRoute component={MyBookingsPage} />}
       </Route>
       <Route path="/contracts/:id">
-        {() => <ProtectedRoute component={ContractViewPage} />}
+        <PageErrorBoundary fallbackHeading="Contract Not Found">
+          <ProtectedRoute component={ContractViewPage} />
+        </PageErrorBoundary>
       </Route>
       <Route path="/global-calendar">
         <Layout><GlobalCalendarPage /></Layout>
@@ -440,7 +451,11 @@ function Router() {
 
       {/* Trip/Itinerary detail pages — must be BEFORE catch-all routes */}
       <Route path="/trip/:id">
-        {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}
+        {() => (
+          <PageErrorBoundary fallbackHeading="Trip Not Found">
+            <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>
+          </PageErrorBoundary>
+        )}
       </Route>
       <Route path="/itinerary/:id">
         {({ id }) => <Redirect to={`/trip/${id}?tab=itinerary`} />}

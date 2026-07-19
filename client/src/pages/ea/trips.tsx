@@ -317,8 +317,8 @@ export default function EATrips() {
                   </div>
                   <div className="flex items-center gap-2 text-[#7A7A72]">
                     <Calendar className="w-3.5 h-3.5" />
-                    {new Date(trip.startDate).toLocaleDateString()} –{" "}
-                    {new Date(trip.endDate).toLocaleDateString()}
+                    {trip.startDate ? new Date(trip.startDate).toLocaleDateString() : "—"} –{" "}
+                    {trip.endDate ? new Date(trip.endDate).toLocaleDateString() : "—"}
                   </div>
                   <div className="flex items-center gap-2 text-[#7A7A72]">
                     <UserCheck className="w-3.5 h-3.5" /> For {clientName(trip)}

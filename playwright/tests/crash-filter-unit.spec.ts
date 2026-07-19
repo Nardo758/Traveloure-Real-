@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+import {
+  isUncaught,
+  isMinifiedReactError,
+  isReactBoundaryCatch,
+  shouldCapture,
+} from '../utils/console-crash-filter';
 
 /**
  * Unit tests for the console-error filter predicates used in navbar-links.spec.ts.
@@ -12,28 +18,10 @@ import { test, expect } from '@playwright/test';
  *   2. A future refactor that accidentally narrows the filter (stops catching
  *      genuine React crashes) fails here before real regressions slip through.
  *
- * Keep this file in sync with the filter block in navbar-links.spec.ts
- * (search for "Why the filter below is intentionally narrow").
+ * The predicates are imported from playwright/utils/console-crash-filter.ts,
+ * which is also used by navbar-links.spec.ts — so this test always exercises
+ * exactly the same logic the smoke test runs.
  */
-
-// ── Replicate the exact predicates from navbar-links.spec.ts ──────────────────
-// If the filter logic in that file changes, update these to match.
-
-function isUncaught(text: string): boolean {
-  return text.startsWith('Uncaught ');
-}
-
-function isMinifiedReactError(text: string): boolean {
-  return /Minified React error #\d+/.test(text);
-}
-
-function isReactBoundaryCatch(text: string): boolean {
-  return text.includes('React') && text.includes('caught an error');
-}
-
-function shouldCapture(text: string): boolean {
-  return isUncaught(text) || isMinifiedReactError(text) || isReactBoundaryCatch(text);
-}
 
 // ── Positive cases — messages that represent real app crashes ─────────────────
 
