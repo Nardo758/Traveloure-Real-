@@ -11,7 +11,19 @@ async function main() {
       "sess" json NOT NULL,
       "expire" timestamp(6) NOT NULL
     );
-    ALTER TABLE "sessions" ADD CONSTRAINT "sessions_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'sessions_pkey' AND conrelid = 'sessions'::regclass
+      ) THEN
+        ALTER TABLE "sessions" ADD CONSTRAINT "sessions_pkey"
+          PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+      END IF;
+    END;
+    $$;
+
     CREATE INDEX IF NOT EXISTS "IDX_sessions_expire" ON "sessions" ("expire");
   `);
   console.log('Sessions table ready');
