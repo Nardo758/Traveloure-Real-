@@ -42,6 +42,58 @@ permissions:
   contents: read
 
 jobs:
+  composite-action-script-paths:
+    name: composite-action-script-paths (assert referenced scripts exist)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert composite action scripts exist at their expected paths
+        # The composite action at .github/actions/ci-db-setup/action.yml hardcodes
+        # two script paths.  If either file is renamed or moved the composite action
+        # silently breaks and every Playwright CI gate fails with a cryptic
+        # "file not found" error.  This step surfaces the breakage immediately
+        # with a message that points directly at the composite action.
+        #
+        # Files checked:
+        #   server/migrations/migrate-entry.ts  — invoked by the "Apply database migrations" step
+        #   scripts/create-sessions-table.ts    — invoked by the "Create sessions table" step
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update the path in
+        #   .github/actions/ci-db-setup/action.yml to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_path() {
+            local FILE="$1"
+            local ACTION_STEP="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/actions/ci-db-setup/action.yml::Script not found at expected path: $FILE"
+              echo "  The composite action step \"$ACTION_STEP\" references this file."
+              echo "  Either restore $FILE to that path, or update the path in"
+              echo "  .github/actions/ci-db-setup/action.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  $FILE exists"
+            fi
+          }
+
+          check_path "server/migrations/migrate-entry.ts"  "Apply database migrations"
+          check_path "scripts/create-sessions-table.ts"    "Create sessions table (connect-pg-simple workaround)"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more scripts referenced by .github/actions/ci-db-setup/action.yml are missing."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All composite action scripts are present at their expected paths ✅"
+
   ci-db-setup-lint:
     name: ci-db-setup-lint (no inline migration steps)
     runs-on: ubuntu-latest
