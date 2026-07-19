@@ -69,13 +69,16 @@ async function seedEaData(eaUserId: string): Promise<void> {
   // ── 1. EA client relationship ──────────────────────────────────────────────
   // Insert only if no record already exists for this EA user + email pair.
   const clientResult = await pool.query<{ id: string }>(
+    // $1/$2 are cast to varchar explicitly: a bare parameter reused in both the
+    // INSERT ... SELECT list and the WHERE NOT EXISTS subquery leaves Postgres
+    // unable to deduce a single type ("text versus character varying", 42P08).
     `INSERT INTO ea_client_relationships
        (id, ea_user_id, client_email, display_name, notes, preferred_currency)
      SELECT
-       gen_random_uuid(), $1, $2, $3, $4, 'USD'
+       gen_random_uuid(), $1::varchar, $2::varchar, $3, $4, 'USD'
      WHERE NOT EXISTS (
        SELECT 1 FROM ea_client_relationships
-       WHERE ea_user_id = $1 AND client_email = $2
+       WHERE ea_user_id = $1::varchar AND client_email = $2::varchar
      )
      RETURNING id`,
     [
@@ -104,14 +107,15 @@ async function seedEaData(eaUserId: string): Promise<void> {
 
   // ── 2. EA executive ────────────────────────────────────────────────────────
   const executiveResult = await pool.query<{ id: string }>(
+    // $1/$2 cast to varchar — see the ea_client_relationships note above (42P08).
     `INSERT INTO ea_executives
        (id, ea_user_id, name, title, email, status, preferences)
      SELECT
-       gen_random_uuid(), $1, $2, $3, $4, 'active',
+       gen_random_uuid(), $1::varchar, $2::varchar, $3, $4, 'active',
        '{"travelClass":"Business","hotelBrands":"Marriott","dietary":"None","seating":"Aisle"}'::jsonb
      WHERE NOT EXISTS (
        SELECT 1 FROM ea_executives
-       WHERE ea_user_id = $1 AND name = $2
+       WHERE ea_user_id = $1::varchar AND name = $2::varchar
      )
      RETURNING id`,
     [
@@ -143,15 +147,15 @@ async function seedEaData(eaUserId: string): Promise<void> {
         destination, title, start_date, end_date,
         status, number_of_travelers)
      SELECT
-       gen_random_uuid(), $1, $2,
+       gen_random_uuid(), $1::varchar, $2::varchar,
        'CI Test Destination', 'CI Managed Trip',
        CURRENT_DATE + INTERVAL '30 days',
        CURRENT_DATE + INTERVAL '37 days',
        'planning', 2
      WHERE NOT EXISTS (
        SELECT 1 FROM trips
-       WHERE managed_by_ea_id = $1
-         AND ea_client_relationship_id = $2
+       WHERE managed_by_ea_id = $1::varchar
+         AND ea_client_relationship_id = $2::varchar
      )
      RETURNING id`,
     [eaUserId, clientRelationshipId],
