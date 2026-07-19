@@ -1,0 +1,17 @@
+{
+  "_comment": "Machine-readable declaration of required branch-protection status checks for `main`. Applied automatically by enforce-branch-protection.yml on every push to main. To add a new required check: (1) add it to CI_GATES.md Tier 1 table, (2) add the exact status context string here, (3) add the required-check comment block to the workflow YAML.",
+  "branch": "main",
+  "required_status_checks": {
+    "strict": false,
+    "contexts": [
+      "build (vite + esbuild bundle)",
+      "money-endpoint-guard (CLAUDE.md §14)",
+      "navbar-links-smoke (Playwright DOM gate)",
+      "hardcoded-links-check (static analysis)",
+      "app-routes-smoke (Playwright DOM gate)",
+      "auth-routes-smoke (Playwright DOM gate)",
+      "verify-selection-controls (logic gate)",
+      "relevance-dominance (pure unit)"
+    ]
+  }
+}
