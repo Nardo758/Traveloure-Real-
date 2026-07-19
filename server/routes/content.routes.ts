@@ -78,6 +78,7 @@ import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
+import { getPublishedGuidesForCity } from "../services/dmo-discover.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
@@ -695,6 +696,23 @@ router.get("/api/city-neighborhoods", async (_req, res) => {
     } catch (err) {
       console.error("Error fetching city neighborhoods:", err);
       res.status(500).json({ message: "Failed to fetch neighborhoods" });
+    }
+  });
+
+  // === D4: expert-published DMO "Local guides" for a city (public read) ===
+  // Traveler-facing surface for PUBLISHED dmo_raw_content (status='published' +
+  // discover_page_visible=true), with the expert's curation merged on top. D1a: only
+  // published+visible rows surface — pending/born-hidden content never leaks here.
+  // Registered BEFORE /api/discover/location/:city so the literal /guides suffix wins
+  // (different segment count, but keep it explicit).
+  router.get("/api/discover/location/:city/guides", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const guides = await getPublishedGuidesForCity(city);
+      res.json({ city, count: guides.length, guides });
+    } catch (err: any) {
+      console.error("Local guides read error:", err);
+      res.status(500).json({ message: "Failed to load local guides", error: err.message });
     }
   });
 

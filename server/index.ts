@@ -27,6 +27,7 @@ import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
+import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
@@ -519,6 +520,9 @@ if (process.env.NODE_ENV === "production") {
 
     earningsReleaseScheduler.start();
     logger.info("Earnings release scheduler started");
+
+    // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
+    dmoIngestScheduler.start();
 
     runDailyAdminDigest();
     setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);

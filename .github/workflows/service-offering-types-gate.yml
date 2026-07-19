@@ -70,6 +70,46 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Assert referenced scripts exist at their expected paths
+        # Guards against scripts/verify-service-offering-types.ts being renamed
+        # or moved.  If the file no longer exists at this path the "Assert
+        # offering counts" step below would fail with a cryptic "file not found"
+        # error with no hint about where to update the reference.  This step
+        # surfaces the breakage immediately with a message pointing directly at
+        # this workflow file.
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update both the
+        #   npx tsx invocation below AND this check to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_path() {
+            local FILE="$1"
+            local WORKFLOW_STEP="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/workflows/service-offering-types-gate.yml::Script not found at expected path: $FILE"
+              echo "  The step \"$WORKFLOW_STEP\" references this file."
+              echo "  Either restore $FILE to that path, or update the path in"
+              echo "  .github/workflows/service-offering-types-gate.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  $FILE exists"
+            fi
+          }
+
+          check_path "scripts/verify-service-offering-types.ts" "Assert offering counts for all four /earn tracks"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more scripts referenced by this workflow are missing."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All referenced scripts are present at their expected paths ✅"
       - name: Set up CI database (migrations + sessions table)
         uses: ./.github/actions/ci-db-setup
         with:
@@ -195,6 +235,13 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a node || true
           exit 1
+      - name: Assert spec file exists (earn-smoke)
+        run: |
+          if [ ! -f "playwright/tests/earn-smoke.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/earn-smoke.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
       - name: /earn catalog DOM smoke tests (all four tracks)
         # Uses the default playwright.config.ts (testDir: ./playwright/tests).
         # No globalSetup / auth needed — /earn is a public page.

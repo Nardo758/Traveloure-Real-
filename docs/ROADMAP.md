@@ -62,9 +62,42 @@ or an expert engagement, never a dead end.
 ## Platform backlog
 
 **Still open — genuinely gated (need environment access or real data, not buildable now):**
-- DMO live scraping (D3): needs `FIRECRAWL_API_KEY`/`TAVILY_API_KEY`/`BRAVE_API_KEY`
-  + proxy allowlist at deploy; scheduler wiring.
 - Knowledge-Bar Phase 3: calibrate the scoring rubric on real Kyoto submissions.
+
+**✅ D3 — DMO live scraping (LANDED Jul 19, 2026, Tavily-only):** built the ingestion wiring as a
+  key-gated Tavily path (`dmo-ingestion.service.ts`) — Tavily does BOTH discover (`search`) and scrape
+  (`extract`), so it runs on a single `TAVILY_API_KEY`, no Firecrawl/Brave needed. Enriches the seeded
+  Kyoto stubs in place, born-hidden (D1a); no key ⇒ zero writes (§13). Triggers: admin button
+  (`POST /api/admin/dmo/ingest-kyoto`, on `admin/data`) + a scheduler off unless `DMO_INGEST_ENABLED=1`.
+  The live run happens at deploy (agent proxy blocks Tavily + source domains). Optional follow-up:
+  Brave/Firecrawl discovery to reach content beyond the seeded set.
+
+**✅ D4 — traveler-facing surface for published DMO content (LANDED Jul 19, 2026):** closed the
+  "backend without a surface" gap — an expert could scrape (D3) → enrich (D2) → publish, but published
+  `dmo_raw_content` (`status='published'`, `discover_page_visible=true`) had no traveler-facing reader,
+  so publish was a dead end. `dmo-discover.service.ts` (`getPublishedGuidesForCity`) reads only
+  published+visible rows (D1a read-gate — pending/born-hidden never leak) and **merges the latest
+  submitted/approved `expert_dmo_edits` overrides** onto each row (publish doesn't copy the curation onto
+  the base row, so a naive read would show raw machine text). Public `GET /api/discover/location/:city/guides`;
+  a "Local guides in {city}" section on the Discover city page (`discover-location.tsx`) renders the cards
+  (hidden until an expert publishes — no fabricated/empty state), each opening a dialog with the expert's
+  full curated description + attribution + source link. No migration. Verified behaviorally: pending row
+  hidden, published row appears with merged curation + expert name, case-insensitive city, empty-safe.
+
+**✅ Content-gap tracker + priority scraping (LANDED Jul 19, 2026):** the "track what content we have so we
+  can tell the scraper what to prioritize" system. `content-gap.service.ts` counts `dmo_raw_content` per
+  content type against a Kyoto editorial target profile (`KYOTO_CONTENT_PLAN` — attractions/venues/
+  restaurants/events/neighborhoods, experience-planning lens §12) and reconciles `content_gap_alerts`
+  idempotently (upsert unmet, auto-resolve met). `dmo-ingestion.service.ts` gains `ingestKyotoContentGaps`:
+  reads the open gaps highest-severity-first and runs targeted Tavily *searches* (discovery only — cheaper
+  than per-URL extract) to create NEW born-hidden stubs for the thin categories, deduped on
+  `(source_url, source_id)`, key-gated (§13, no key ⇒ zero writes). So the scraper fills what's missing
+  instead of re-scraping the 10 seeded sites; a second pass moves on to the next-thinnest categories
+  (priority-driven). Admin surface on `/admin/data`: a coverage table + "Recalculate coverage" and
+  "Fill gaps (Tavily)" (`GET /api/admin/dmo/gaps`, `POST /api/admin/dmo/analyze-gaps`,
+  `POST /api/admin/dmo/ingest-gaps`, all admin-gated). No migration — `content_gap_alerts` exists (117).
+  The Kyoto target numbers are editorial config, not fabricated content. Proven behaviorally: real counts,
+  idempotent analyze, §13 keyless no-op, D1a on created rows, dedup at the DB, priority shift across passes.
 
 **✅ Closed (were already resolved; backlog entries were stale — verified Jul 18, 2026):**
 - ✅ Re-point legacy `/api/bookings/refund` onto `service_bookings` — done with the

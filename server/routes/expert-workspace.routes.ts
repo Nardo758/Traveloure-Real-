@@ -11,7 +11,7 @@ import {
   contentGapAlerts,
   dmoScrapeJobs,
 } from "@shared/schema";
-import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not } from "drizzle-orm";
+import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
 import { createDMOCrawler } from "../content/scrapers/DMOCrawler";
 import {
@@ -237,6 +237,75 @@ router.post(
       .returning();
 
     res.status(201).json(collection);
+  }),
+);
+
+// ============================================================
+// DMO → ITINERARY BRIDGE — turn curated DMO content into a sellable Ready Made Trip draft
+// ============================================================
+//
+// The point of the DMO library is to let experts build unique, sellable itineraries from real
+// local content. This seeds a NEW expert_templates DRAFT from selected DMO rows: each place becomes
+// an activity, distributed across days. The expert then edits/prices it in the builder and submits
+// it — where it rides the EXISTING marketplace admin-approval queue (draft → submitted → approved)
+// before it can ever sell. So scraped content that becomes a product is admin-approved at the
+// product level; this endpoint never publishes or approves anything (§10 Gap 1/2): the draft is
+// born unpublished + unapproved, ownership is the session expert.
+router.post(
+  "/build-itinerary",
+  requireExpert,
+  asyncHandler(async (req: any, res: Response) => {
+    const expertId = req.user?.claims?.sub || req.user?.id;
+
+    const schema = z.object({
+      contentIds: z.array(z.string().min(1)).min(1).max(60),
+      title: z.string().min(1).max(255).optional(),
+    });
+    const { contentIds, title } = schema.parse(req.body);
+
+    // Load the selected DMO rows (any expert may build from the shared library).
+    const rows = await db
+      .select()
+      .from(dmoRawContent)
+      .where(inArray(dmoRawContent.id, contentIds));
+    if (rows.length === 0) {
+      throw new ValidationError("None of the selected content could be found.");
+    }
+
+    // Preserve the caller's selection order, then group ~3 places per day into itinerary activities.
+    const order = new Map(contentIds.map((id, i) => [id, i]));
+    const ordered = [...rows].sort((a, b) => (order.get(a.id)! - order.get(b.id)!));
+    const PER_DAY = 3;
+    const days: Array<{ day: number; title: string; activities: Array<{ title: string; description: string }> }> = [];
+    ordered.forEach((row, idx) => {
+      const dayIdx = Math.floor(idx / PER_DAY);
+      if (!days[dayIdx]) days[dayIdx] = { day: dayIdx + 1, title: `Day ${dayIdx + 1}`, activities: [] };
+      days[dayIdx].activities.push({
+        title: row.name,
+        description: row.shortDescription || row.description || "",
+      });
+    });
+
+    const city = ordered[0]?.city || "Kyoto";
+    const draft = await storage.createExpertTemplate({
+      expertId,
+      title: title || `${city} itinerary (draft)`,
+      description: `A ${days.length}-day ${city} itinerary curated from ${ordered.length} local places. Edit, price, and submit for review.`,
+      destination: city,
+      duration: days.length,
+      itineraryData: { days },
+      price: "0", // draft placeholder (price is NOT NULL) — the expert sets the real price in the builder before submitting
+      currency: "USD",
+      category: "cultural",
+      isPublished: false, // never born-published — publishing is admin-approval-gated (§10)
+    } as any);
+
+    res.status(201).json({
+      templateId: draft.id,
+      days: days.length,
+      places: ordered.length,
+      message: "Draft Ready Made Trip created. Edit and submit it for review to publish.",
+    });
   }),
 );
 
