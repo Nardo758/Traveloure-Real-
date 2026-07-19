@@ -34,6 +34,20 @@ name: CI DB Setup Lint
 # directly (it is the dedicated smoke test for that script); it is intentionally
 # excluded from this check via the EXCLUDE_FILES list below.
 #
+# TWO checks run in the ci-db-setup-lint job:
+#
+#   Check 1 — No inline migration steps:
+#     Any workflow file that has a Postgres service AND contains a bare run:
+#     referencing migrate-entry.ts / create-sessions-table.ts /
+#     seed-ci-test-users.ts fails. These patterns indicate DB setup was copied
+#     inline instead of delegated to the composite action.
+#
+#   Check 2 — Composite action must be referenced:
+#     Any workflow file that has a Postgres service AND does NOT reference
+#     uses: ./.github/actions/ci-db-setup fails. This catches new workflows
+#     that use postgres under a different step name — even when none of the
+#     known inline patterns appear.
+#
 # Status context (for branch-protection required checks):
 #   * ci-db-setup-lint (no inline migration steps) — fast, pure-grep lint;
 #     safe to mark as a REQUIRED branch-protection check immediately.
@@ -278,6 +292,97 @@ jobs:
           fi
 
           echo "All ${#WORKFLOW_FILES[@]} workflow file(s) pass the inline DB setup check ✅"
+
+      - name: Reject postgres-service workflows that do not reference the composite action
+        # Complements the inline-pattern check above: while that check catches
+        # known copy-pasted scripts, this check catches any workflow that uses a
+        # Postgres service container but has never wired up the composite action
+        # at all — even when none of the known inline patterns are present.
+        #
+        # A new workflow that starts postgres under a different step name (or via
+        # a wrapper script not in PATTERNS) would pass the inline check but fail
+        # here, ensuring the composite action is always the single entry point for
+        # CI database setup.
+        #
+        # Excluded files:
+        #   ci-db-setup-lint.yml      — this file itself
+        #   sessions-table-smoke.yml  — the dedicated smoke test for
+        #                               create-sessions-table.ts; it intentionally
+        #                               invokes that script directly rather than
+        #                               via the composite action.
+        #
+        # Fix when this fails:
+        #   Add the composite action step to the failing workflow file:
+        #     - name: Set up CI database (migrations + sessions table)
+        #       uses: ./.github/actions/ci-db-setup
+        #       with:
+        #         database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+        #         # seed-ci-users: 'true'  # only if this job tests authenticated routes
+        #   Or, if this workflow legitimately should NOT use the composite action,
+        #   add it to the EXCLUDED list in this step.
+        run: |
+          set -euo pipefail
+
+          # Files that are legitimately exempt from the composite-action reference check.
+          EXCLUDED=(
+            ".github/workflows/ci-db-setup-lint.yml"
+            ".github/workflows/sessions-table-smoke.yml"
+          )
+
+          # Auto-discover all workflow files that spin up a Postgres service.
+          WORKFLOW_FILES=()
+          for f in .github/workflows/*.yml; do
+            skip=0
+            for excl in "${EXCLUDED[@]}"; do
+              if [ "$f" = "$excl" ]; then skip=1; break; fi
+            done
+            [ "$skip" -eq 1 ] && continue
+
+            if grep -qE "image: postgres:" "$f"; then
+              WORKFLOW_FILES+=("$f")
+            fi
+          done
+
+          if [ "${#WORKFLOW_FILES[@]}" -eq 0 ]; then
+            echo "No workflow files with a Postgres service found outside exclusions — nothing to check."
+            exit 0
+          fi
+
+          echo "Checking ${#WORKFLOW_FILES[@]} workflow file(s) for composite action reference:"
+          for f in "${WORKFLOW_FILES[@]}"; do
+            echo "  $f"
+          done
+          echo ""
+
+          FAIL=0
+
+          for FILE in "${WORKFLOW_FILES[@]}"; do
+            if grep -qE "uses: \./.github/actions/ci-db-setup" "$FILE"; then
+              echo "✅  $FILE references the composite action"
+            else
+              echo "::error file=$FILE::This workflow starts a Postgres service but does not reference the composite action (.github/actions/ci-db-setup)."
+              echo "  All workflows that spin up a Postgres service must delegate DB setup to:"
+              echo "    - name: Set up CI database (migrations + sessions table)"
+              echo "      uses: ./.github/actions/ci-db-setup"
+              echo "      with:"
+              echo "        database-url: postgresql://postgres:postgres@localhost:5432/traveloure"
+              echo "        # seed-ci-users: 'true'  # only if this job tests authenticated routes"
+              echo "  If this workflow is a legitimate exception, add it to the EXCLUDED list in"
+              echo "  the 'Reject postgres-service workflows that do not reference the composite action'"
+              echo "  step of .github/workflows/ci-db-setup-lint.yml."
+              FAIL=1
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more workflow files use a Postgres service without referencing the composite action."
+            echo "See the error annotations above for the affected files and the fix."
+            exit 1
+          fi
+
+          echo ""
+          echo "All ${#WORKFLOW_FILES[@]} workflow file(s) correctly reference the composite action ✅"
 
   ci-db-setup-lint-self-test:
     name: ci-db-setup-lint-self-test (verify lint catches inline steps)
