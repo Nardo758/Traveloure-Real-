@@ -290,15 +290,18 @@ jobs:
 
       - name: Dynamic-link cross-check (template literal hrefs vs App.tsx routes)
         # Extends Suite 3 (hardcoded-links) to cover links built from template
-        # literals — href={`/path/${id}/suffix`} and to={`/path/${var}`}.
+        # literals.  Detected patterns:
+        #   href={`/path/${id}`}  to={`/path/${id}`}
+        #   navigate(`/path/${id}`)  setLocation(`/path/${id}`)
+        #   window.location.href = `/path/${id}`
         # For each template literal the scanner:
         #   1. Replaces every ${...} expression with the placeholder "X"
         #   2. Strips query string and hash
         #   3. Skips paths that still contain "${" (nested template literals —
         #      unresolvable at static-analysis time; not false-failed)
         #   4. Checks the resulting path against <Route path="..."> in App.tsx
-        # Catches: a Route deleted while a component still links via a template
-        # literal — invisible to the static-string scanner in Suite 3.
+        # Catches: a Route deleted while a component still navigates via a
+        # template literal — invisible to the static-string scanner in Suite 3.
         # No browser, no server, no database — pure static source-file analysis.
         run: npx playwright test dynamic-links
         env:
