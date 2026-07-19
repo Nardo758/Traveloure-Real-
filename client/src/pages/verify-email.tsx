@@ -45,7 +45,7 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+    <main className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md">
         {state === "verifying" && (
           <>
@@ -115,6 +115,6 @@ export default function VerifyEmailPage() {
           </>
         )}
       </Card>
-    </div>
+    </main>
   );
 }
