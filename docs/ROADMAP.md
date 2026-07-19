@@ -72,6 +72,18 @@ or an expert engagement, never a dead end.
   The live run happens at deploy (agent proxy blocks Tavily + source domains). Optional follow-up:
   Brave/Firecrawl discovery to reach content beyond the seeded set.
 
+**✅ D4 — traveler-facing surface for published DMO content (LANDED Jul 19, 2026):** closed the
+  "backend without a surface" gap — an expert could scrape (D3) → enrich (D2) → publish, but published
+  `dmo_raw_content` (`status='published'`, `discover_page_visible=true`) had no traveler-facing reader,
+  so publish was a dead end. `dmo-discover.service.ts` (`getPublishedGuidesForCity`) reads only
+  published+visible rows (D1a read-gate — pending/born-hidden never leak) and **merges the latest
+  submitted/approved `expert_dmo_edits` overrides** onto each row (publish doesn't copy the curation onto
+  the base row, so a naive read would show raw machine text). Public `GET /api/discover/location/:city/guides`;
+  a "Local guides in {city}" section on the Discover city page (`discover-location.tsx`) renders the cards
+  (hidden until an expert publishes — no fabricated/empty state), each opening a dialog with the expert's
+  full curated description + attribution + source link. No migration. Verified behaviorally: pending row
+  hidden, published row appears with merged curation + expert name, case-insensitive city, empty-safe.
+
 **✅ Content-gap tracker + priority scraping (LANDED Jul 19, 2026):** the "track what content we have so we
   can tell the scraper what to prioritize" system. `content-gap.service.ts` counts `dmo_raw_content` per
   content type against a Kyoto editorial target profile (`KYOTO_CONTENT_PLAN` — attractions/venues/

@@ -363,6 +363,20 @@ This document captures architectural decisions to maintain consistency across co
       (`GET /api/admin/dmo/gaps`, `POST /api/admin/dmo/analyze-gaps`, `POST /api/admin/dmo/ingest-gaps`,
       admin-gated). **No migration** — `content_gap_alerts` exists (117). Kyoto target numbers are
       editorial config, not fabricated content (§13). Live gap-fill runs at deploy (proxy blocks Tavily).
+    - **D4 — traveler-facing surface for published DMO content — LANDED (Jul 19, 2026).** Closed the
+      "backend without a surface" gap: publish (`status='published'` + `discover_page_visible=true`) had
+      no traveler reader, so scrape→enrich→publish dead-ended. `dmo-discover.service.ts`
+      (`getPublishedGuidesForCity`) reads **only** published+visible rows (the D1a read-gate — the
+      provider_services/expert-templates pattern applied to the DMO visibility flags) and **merges the
+      latest submitted/approved `expert_dmo_edits` overrides** onto each row (publish flips
+      status/visibility but does NOT copy the curation onto the base row, so a naive read would serve raw
+      machine text — the merge serves the expert's `editedName`/`editedDescription`/`editedImages`/
+      `editedTags`, base row as fallback). Public `GET /api/discover/location/:city/guides` (registered
+      before `/:city` — different segment count, no shadow). Client: a "Local guides in {city}" section on
+      the Discover city page (`discover-location.tsx`, `LocalGuidesSection`) — cards hidden until an expert
+      publishes (no fabricated/empty state, §13), each opening a dialog with the full curated description +
+      expert attribution + source link. **No migration.** Proven behaviorally: pending hidden, published
+      appears with merged curation + expert name, case-insensitive city, empty-safe.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
