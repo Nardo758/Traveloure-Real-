@@ -22,6 +22,46 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Assert referenced scripts exist at their expected paths
+        # Guards against scripts/verify-neighborhoods.ts being renamed or moved.
+        # If the file no longer exists at this path, the "Phase 8.3 pure-logic
+        # gate" step below would fail with a cryptic "file not found" error that
+        # gives no hint about where to update the path reference.  This step
+        # surfaces the breakage immediately with a message that points directly
+        # at this workflow file.
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update the path in
+        #   the step below AND in this check to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_path() {
+            local FILE="$1"
+            local WORKFLOW_STEP="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/workflows/neighborhoods-gate.yml::Script not found at expected path: $FILE"
+              echo "  The step \"$WORKFLOW_STEP\" references this file."
+              echo "  Either restore $FILE to that path, or update the path in"
+              echo "  .github/workflows/neighborhoods-gate.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  $FILE exists"
+            fi
+          }
+
+          check_path "scripts/verify-neighborhoods.ts" "Phase 8.3 pure-logic gate (16 checks)"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more scripts referenced by this workflow are missing."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All referenced scripts are present at their expected paths ✅"
       - name: Phase 8.3 pure-logic gate (16 checks)
         run: npx tsx scripts/verify-neighborhoods.ts
 
