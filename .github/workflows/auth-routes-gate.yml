@@ -119,6 +119,12 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           PORT: 5000
+          # The session cookie is `secure` under NODE_ENV=production, but this
+          # gate drives the server over plain-http localhost, where a secure
+          # cookie is never replayed (globalSetup logs in, but the stored session
+          # can't be reused → authenticated=false). Opt out of secure cookies for
+          # this test-only server. NEVER set this in production.
+          SESSION_COOKIE_INSECURE: '1'
           PGUSER: postgres
           PGPASSWORD: postgres
           PGHOST: localhost

@@ -104,6 +104,9 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           PORT: 5000
+          # Test-only: allow the plain-http localhost session cookie to be set
+          # so globalSetup's ci-* logins yield reusable sessions. NEVER in prod.
+          SESSION_COOKIE_INSECURE: '1'
           PGUSER: postgres
           PGPASSWORD: postgres
           PGHOST: localhost
