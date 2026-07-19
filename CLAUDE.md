@@ -409,9 +409,13 @@ This document captures architectural decisions to maintain consistency across co
       (`dmo-library.tsx`) is refocused as a research surface: browse Kyoto content → **Review & refine**
       (still writes `expert_dmo_edits`) → **Add to trip → Build Ready Made Trip** (the `/build-itinerary`
       bridge, unchanged; the trip then rides the §10 admin approval to sell). The admin intake-approval
-      queue that gates raw content into this library is **built** (see "Admin intake gate" above). **Filed
-      follow-ups:** wire refinement (`expert_dmo_edits`) into the built trip's content; "Add to client
-      itinerary" + "Create social post" actions.
+      queue that gates raw content into this library is **built** (see "Admin intake gate" above). The
+      **"Add to client itinerary"** action is **built** — the expert trip workspace (`workspace.tsx`) has an
+      "Add from DMO Library" picker (`components/expert/dmo-picker-modal.tsx`) that drops an admin-approved
+      DMO place onto the current trip's itinerary via the live `POST /api/trips/:tripId/itinerary-items`
+      (no new server surface). The no-trip workspace is also now a **launchpad** (Assigned Trips / Ready Made
+      Trips / DMO Library / Content Studio) instead of a dead-end. **Filed follow-ups:** wire refinement
+      (`expert_dmo_edits`) into the built trip's content; "Create social post" action.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
