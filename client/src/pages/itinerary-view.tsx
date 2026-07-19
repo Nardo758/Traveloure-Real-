@@ -492,7 +492,7 @@ export default function ItineraryViewPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => navigate(`/expert-chat/${data.sharedBy!.userId}`)}
+                    onClick={() => navigate(`/chat`)}
                     className="gap-2 border-amber-300"
                     data-testid="button-open-expert-chat"
                   >

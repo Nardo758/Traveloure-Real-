@@ -422,7 +422,7 @@ export default function CartPage() {
         description: "View and arrange them in your trip itinerary.",
       });
       setShowPlanningDialog(false);
-      setLocation(`/trips/${data.tripId}`);
+      setLocation(`/trip/${data.tripId}`);
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to add items to trip" });

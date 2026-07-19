@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// This spec runs under Playwright's ESM loader, where `__dirname` is NOT defined
+// (it only exists in CommonJS). Derive it from import.meta.url — otherwise the
+// source-file collection below throws "ReferenceError: __dirname is not defined
+// in ES module scope" at collection time and the whole suite errors out.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Dynamic-link cross-check — Suite 5
@@ -10,8 +17,12 @@ import * as path from 'path';
  * `href="/some-page"`.  A route deletion can still leave dynamic links
  * pointing at nothing without any gate catching it.
  *
- * Pattern detected: href={`/static/${dynamic}/suffix`}
- *                   to={`/static/${dynamic}`}
+ * Patterns detected:
+ *   href={`/static/${dynamic}/suffix`}
+ *   to={`/static/${dynamic}`}
+ *   navigate(`/static/${dynamic}`)
+ *   setLocation(`/static/${dynamic}`)
+ *   window.location.href = `/static/${dynamic}`
  *
  * Algorithm per template literal:
  *   1. Capture the full template literal body up to the first closing backtick
@@ -55,6 +66,11 @@ const SKIP_PATHS = new Set<string>([
   '/sitemap.xml',
   '/robots.txt',
   '/favicon.ico',
+  // navigate(`/${role}/services`) in ServiceForm.tsx where role is 'expert' or
+  // 'provider' at runtime.  Both /expert/services and /provider/services have
+  // matching <Route> entries; the scanner cannot resolve a dynamic leading
+  // segment, so /X/services is a false positive here.
+  '/X/services',
 ]);
 
 // ── Source file collection ────────────────────────────────────────────────────
@@ -75,14 +91,22 @@ function collectTsxFiles(dir: string, result: string[] = []): string[] {
   return result;
 }
 
-// ── Regex to capture template-literal href/to attributes ──────────────────────
-// Matches:  href={`/…`}   to={`/…`}
-// Group 1 captures the template body.  [^`]* stops at the first backtick — this
-// is intentional: for nested template literals (e.g. `${x ? `…` : ""}`), the
-// body is truncated at the inner backtick.  The subsequent "skip if '${' remains"
-// guard handles those truncated cases without producing false failures.
+// ── Regex to capture template-literal navigation paths ────────────────────────
+// Matches any of the five programmatic-navigation patterns:
+//   1. href={`/…`}                  — JSX attribute (group 1)
+//   2. to={`/…`}                    — wouter <Link to> attribute (group 1)
+//   3. navigate(`/…`)               — wouter useLocation navigate() call (group 2)
+//   4. setLocation(`/…`)            — wouter useLocation setLocation() call (group 2)
+//   5. window.location.href = `/…`  — imperative redirect (group 3)
+//
+// [^`]* stops at the first backtick — intentional: for nested template literals
+// (e.g. `${x ? `…` : ""}`), the body is truncated at the inner backtick.  The
+// "skip if '${' remains" guard handles truncated cases without false failures.
 // Does NOT match static string literals  href="/…"  (Suite 4 handles those).
-const TEMPLATE_HREF_RE = /(?:href|to)=\{`(\/[^`]*)`\}/g;
+//
+// To extract the path body: use m[1] ?? m[2] ?? m[3] (exactly one will be set).
+const TEMPLATE_HREF_RE =
+  /(?:href|to)=\{`(\/[^`]*)`\}|(?:navigate|setLocation)\(`(\/[^`]*)`\)|window\.location\.href\s*=\s*`(\/[^`]*)`/g;
 
 // ── Replace ${…} with a single safe segment placeholder ───────────────────────
 // "X" contains no "/" so it is treated as one path segment and matches any
@@ -134,7 +158,9 @@ function extractDynamicPaths(files: string[]): Map<string, string[]> {
     TEMPLATE_HREF_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = TEMPLATE_HREF_RE.exec(source)) !== null) {
-      const raw = m[1];
+      // m[1] = href/to JSX attribute, m[2] = navigate/setLocation call,
+      // m[3] = window.location.href assignment.  Exactly one group is set.
+      const raw = m[1] ?? m[2] ?? m[3];
 
       // Only process paths that contain at least one ${…} expression.
       // Paths without expressions are static strings — Suite 4 handles those.
