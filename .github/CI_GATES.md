@@ -32,6 +32,7 @@ Add all of them to branch protection now.
 | `verify-selection-controls (logic gate)` | `selection-controls-gate.yml` | Narrowing + parity logic for selection controls (32/32 assertions) |
 | `verify-service-offering-types (HTTP count gate)` | `service-offering-types-gate.yml` | /earn catalog row-count floors (guards silent migration wipe-out) |
 | `earn-page-smoke (Playwright DOM gate)` | `service-offering-types-gate.yml` | /earn page renders at least one catalog card per role |
+| `relevance-dominance (pure unit)` | `upsell-trust-contract.yml` | Revenue-reordering bug in upsell engine; pure unit, zero flakiness |
 
 ### Tier 2 — RECOMMENDED (add once a green baseline exists)
 
@@ -40,7 +41,6 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 
 | Status context string | Workflow file | What it catches |
 |---|---|---|
-| `relevance-dominance (pure unit)` | `upsell-trust-contract.yml` | Revenue-reordering bug in upsell engine; pure unit, zero flakiness |
 | `verify-neighborhoods (logic gate, no DB)` | `neighborhoods-gate.yml` | Phase 8.3 neighborhood logic (16 assertions, pure script) |
 | `e2e-selection-controls (DOM gate)` | `selection-controls-gate.yml` | Full DOM render/narrow/parity/tab-isolation for selection controls |
 | `lockfile-purity (no replit.local)` | `selection-controls-gate.yml` **or** `neighborhoods-gate.yml` | package-lock.json must not contain Replit firewall URLs |

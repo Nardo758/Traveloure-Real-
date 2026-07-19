@@ -1,0 +1,96 @@
+name: Enforce Branch Protection
+
+# Reads .github/branch-protection.json and applies the required status checks
+# to the main branch via the GitHub REST API. This makes the Tier 1 gate list
+# in CI_GATES.md machine-enforced rather than documentation-only.
+#
+# Trigger: every push to main that touches CI_GATES.md or this file itself,
+# plus manual dispatch so an admin can re-apply after any manual UI change.
+#
+# Permissions: administration: write is required to update branch protection.
+# GitHub Actions grants this automatically when the workflow runs in a repo
+# where "Allow GitHub Actions to create and approve pull requests" and
+# "Read and write permissions" are enabled under Settings → Actions →
+# General → Workflow permissions.
+#
+# If GITHUB_TOKEN is insufficient (e.g., organisation SSO or finer-grained
+# controls), create a repo-scoped PAT with `administration` scope, store it
+# as the secret BRANCH_PROTECTION_PAT, and replace
+#   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# with
+#   GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT }}
+#
+# Status context (for branch-protection required checks):
+#   This workflow APPLIES required checks; it does not itself need to be
+#   a required check. Do not add it to the Tier 1 table in CI_GATES.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/branch-protection.json'
+      - '.github/CI_GATES.md'
+      - '.github/workflows/enforce-branch-protection.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  administration: write
+
+jobs:
+  enforce-branch-protection:
+    name: enforce-required-status-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply required status checks from branch-protection.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          BRANCH=$(jq -r '.branch' .github/branch-protection.json)
+          STRICT=$(jq -r '.required_status_checks.strict' .github/branch-protection.json)
+          # Build a JSON array of the required context strings
+          CONTEXTS=$(jq '.required_status_checks.contexts' .github/branch-protection.json)
+
+          echo "Applying required status checks to branch: $BRANCH"
+          echo "Contexts: $CONTEXTS"
+
+          # PATCH only the required_status_checks sub-resource so we do not
+          # overwrite other protection settings (review requirements, etc.).
+          gh api \
+            --method PATCH \
+            "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
+            --field "strict=$STRICT" \
+            --raw-field "contexts=$(echo "$CONTEXTS" | jq -c .)"
+
+          echo "✓ Branch protection updated successfully."
+
+      - name: Verify applied contexts match declaration
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          BRANCH=$(jq -r '.branch' .github/branch-protection.json)
+          DECLARED=$(jq -r '.required_status_checks.contexts[]' .github/branch-protection.json | sort)
+
+          LIVE=$(gh api \
+            "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
+            --jq '.contexts[]' | sort)
+
+          MISSING=$(comm -23 <(echo "$DECLARED") <(echo "$LIVE"))
+
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: The following declared contexts were not applied:"
+            echo "$MISSING"
+            exit 1
+          fi
+
+          echo "✓ All declared required status checks are active on $BRANCH:"
+          echo "$LIVE"
