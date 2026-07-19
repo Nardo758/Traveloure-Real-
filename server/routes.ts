@@ -1585,6 +1585,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       const input = insertProviderServiceSchema.parse(bodyWithoutNeighborhoods);
 
+      // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
+      // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
+      // listings (only enforced on this publish write).
+      if (input.status === "active" && ["in_person", "hybrid"].includes((input as any).deliveryMethod)
+          && !((input as any).meetingPoint ?? "").toString().trim()) {
+        return res.status(400).json({
+          message: "In-person services need a meeting point before publishing. Save as draft to finish later.",
+          code: "MEETING_POINT_REQUIRED",
+        });
+      }
+
       // Verification publish-gate: block status:"active" on gated categories
       if (input.status === "active") {
         const categoryId = (input as any).categoryId as string | undefined;
@@ -1672,6 +1683,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Extract neighborhoods before schema parse (not a DB column)
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       const input = insertProviderServiceSchema.partial().parse(bodyWithoutNeighborhoods);
+
+      // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
+      if (input.status === "active") {
+        const effMethod = (input as any).deliveryMethod ?? ownedService.deliveryMethod;
+        const effMeeting = ((input as any).meetingPoint ?? ownedService.meetingPoint ?? "").toString().trim();
+        if (["in_person", "hybrid"].includes(effMethod) && !effMeeting) {
+          return res.status(400).json({
+            message: "In-person services need a meeting point before publishing. Save as draft to finish later.",
+            code: "MEETING_POINT_REQUIRED",
+          });
+        }
+      }
 
       // Verification publish-gate: block activating on gated categories
       if (input.status === "active") {
