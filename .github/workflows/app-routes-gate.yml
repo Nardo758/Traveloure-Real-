@@ -6,20 +6,26 @@ name: App Route Coverage Gate
 #
 #   setup (build + browser cache warm-up):
 #
-#     Installs deps, populates the Playwright browser cache, and builds the
-#     production bundle. Both outputs are saved via actions/cache so
-#     app-routes-smoke can restore them without repeating the work. On a cache
-#     hit (same lock-file and source hash) this job completes in under 60 s.
+#     Runs immediately on push/PR. Installs deps, populates the Playwright
+#     browser cache, and builds the production bundle. Both outputs are saved
+#     via actions/cache so app-routes-smoke can restore them without repeating
+#     the work. On a cache hit (same lock-file and source hash) this job
+#     completes in under 60 seconds.
 #
 #   app-routes-smoke (Playwright DOM gate):
 #
-#     Visits every <Route path="..."> registered in client/src/App.tsx,
-#     including routes that are NOT listed in nav-config.ts (detail pages,
-#     onboarding flows, public share pages, role dashboards, etc.).
+#     Depends on `setup` so both the browser binaries and the production bundle
+#     are guaranteed to be in the cache before this job starts. The job restores
+#     them, skips the expensive install/build, seeds CI test users, starts the
+#     server, and runs app-routes.spec.ts.
 #
-#     Dynamic segments (:id, :token, :slug, …) are substituted with canonical
-#     placeholder values; duplicate resolved URLs are deduplicated.
-#     Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
+# Visits every <Route path="..."> registered in client/src/App.tsx,
+# including routes that are NOT listed in nav-config.ts (detail pages,
+# onboarding flows, public share pages, role dashboards, etc.).
+#
+# Dynamic segments (:id, :token, :slug, …) are substituted with canonical
+# placeholder values; duplicate resolved URLs are deduplicated.
+# Auth-gated routes that redirect to "/" rather than 404ing pass all checks.
 #
 # Status context (for branch-protection required checks):
 #   * app-routes-smoke — safe to mark as a REQUIRED branch-protection check,
@@ -45,8 +51,10 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # setup: pre-warm Playwright browser cache + production build cache.
   #
-  # app-routes-smoke depends on this job and restores both caches, so it
-  # never has to re-install browsers or re-build the bundle — even on retries.
+  # No PostgreSQL service needed — this job only builds the bundle and
+  # installs browser binaries. app-routes-smoke depends on this job and
+  # restores both caches, so it never has to re-install browsers or re-build
+  # the bundle — even on retries.
   # ─────────────────────────────────────────────────────────────────────────
   setup:
     name: setup (build + browser cache warm-up)
@@ -94,7 +102,8 @@ jobs:
   #
   # Depends on `setup` so both the browser binaries and the production bundle
   # are guaranteed to be in the cache before this job starts. The job restores
-  # them, skips the expensive install/build, and goes straight to running tests.
+  # them, skips the expensive install/build, and goes straight to seeding CI
+  # users and running the app-route coverage checks.
   # ─────────────────────────────────────────────────────────────────────────
   app-routes-smoke:
     name: app-routes-smoke (Playwright DOM gate)
