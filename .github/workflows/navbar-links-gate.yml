@@ -4,6 +4,14 @@ name: Route Coverage Gate
 #
 # Jobs in this workflow:
 #
+#   setup (build + browser cache warm-up):
+#
+#     Runs in parallel with hardcoded-links-check. Installs deps, populates
+#     the Playwright browser cache, and builds the production bundle. Both
+#     outputs are saved via actions/cache so navbar-links-smoke can restore
+#     them without repeating the work.  On a cache hit (same lock-file and
+#     source hash) this job completes in under 60 seconds.
+#
 #   navbar-links-smoke (Playwright DOM gate) — suites 0–2:
 #
 #     0. crash-filter-unit — pure unit tests for the console-error filter
@@ -58,9 +66,65 @@ permissions:
   pull-requests: write
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # setup: pre-warm Playwright browser cache + production build cache.
+  #
+  # Runs in parallel with hardcoded-links-check (which needs neither).
+  # navbar-links-smoke depends on this job and restores both caches, so it
+  # never has to re-install browsers or re-build the bundle — even on retries.
+  # ─────────────────────────────────────────────────────────────────────────
+  setup:
+    name: setup (build + browser cache warm-up)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium + system deps)
+        # Full --with-deps install only on a cache miss; subsequent runs
+        # (including navbar-links-smoke) restore the browser binaries from
+        # cache and only need install-deps (which is fast, ~10 s).
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Cache production build output
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
+      - name: Build production bundle
+        # Skipped on a cache hit — dist/ is fully restored from the cache
+        # entry saved by a previous run with the same source hash.
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # navbar-links-smoke: Playwright DOM gate (suites 0–2).
+  #
+  # Depends on `setup` so both the browser binaries and the production bundle
+  # are guaranteed to be in the cache before this job starts. The job restores
+  # them, skips the expensive install/build, and goes straight to running tests.
+  # ─────────────────────────────────────────────────────────────────────────
   navbar-links-smoke:
     name: navbar-links-smoke (Playwright DOM gate)
     runs-on: ubuntu-latest
+    needs: [setup]
     # 40, not 20: the three suites run serially and app-routes now visits ~176
     # routes (~10 min). At 20 the job was cancelled mid-app-routes. Kept at 1
     # worker (playwright.config CI default) for determinism — bump this before
@@ -99,39 +163,32 @@ jobs:
         env:
           CI: 'true'
 
-      - name: Cache Playwright browsers
+      - name: Restore Playwright browser cache
+        # The setup job already populated this cache entry; this step should
+        # always be a hit, making browser availability near-instant.
         uses: actions/cache@v4
-        id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Install Playwright (chromium)
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright system deps (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      - name: Install Playwright system deps
+        # Browser binaries come from the restored cache; only the OS-level
+        # system dependencies (shared libs, fonts, etc.) need to be installed.
+        # This is always fast (~10 s) compared to the full --with-deps install.
         run: npx playwright install-deps chromium
+
+      - name: Restore production build cache
+        # The setup job built and cached dist/; this restores it so no
+        # re-compilation is needed even on job retries.
+        uses: actions/cache@v4
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
 
       - name: Apply database migrations
         run: npx tsx server/migrations/migrate-entry.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-
-      - name: Cache production build output
-        uses: actions/cache@v4
-        id: build-cache
-        with:
-          path: dist/
-          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
-
-      - name: Build production bundle
-        # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
-        # Startup seeding still runs (gated on ENVIRONMENT !== "PROD", not
-        # NODE_ENV), so /api/ready flips true as expected.
-        if: steps.build-cache.outputs.cache-hit != 'true'
-        run: npm run build
 
       - name: Start production server
         run: node dist/index.cjs &
@@ -192,6 +249,11 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # hardcoded-links-check: static analysis (suite 3).
+  #
+  # Runs in parallel with setup — it needs no browser, no server, no DB.
+  # ─────────────────────────────────────────────────────────────────────────
   hardcoded-links-check:
     name: hardcoded-links-check (static analysis)
     runs-on: ubuntu-latest
