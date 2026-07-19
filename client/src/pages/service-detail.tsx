@@ -64,9 +64,14 @@ interface Service {
   status: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
+  meetingPoint: string | null;
+  pickupAddress: string | null;
   whatIncluded: string[];
   requirements: string[];
 }
+
+// In-person delivery methods that have a physical meeting point.
+const IN_PERSON_METHODS = new Set(["in_person", "hybrid"]);
 
 interface Review {
   id: string;
@@ -285,7 +290,25 @@ export default function ServiceDetailPage() {
 
                 {service.deliveryMethod && (
                   <div className="flex items-center gap-2 mt-2 text-sm">
-                    <Badge variant="outline">{service.deliveryMethod}</Badge>
+                    <Badge variant="outline">{service.deliveryMethod.replace(/_/g, " ")}</Badge>
+                  </div>
+                )}
+
+                {/* Where you'll meet — in-person / hybrid services only */}
+                {IN_PERSON_METHODS.has(service.deliveryMethod) && (service.meetingPoint || service.pickupAddress) && (
+                  <div className="mt-4 rounded-lg border bg-muted/40 p-3" data-testid="section-meeting-point">
+                    <div className="flex items-center gap-2 text-sm font-medium mb-1">
+                      <MapPin className="w-4 h-4 text-primary" />
+                      Where you'll meet
+                    </div>
+                    {service.meetingPoint && (
+                      <p className="text-sm text-muted-foreground" data-testid="text-meeting-point">{service.meetingPoint}</p>
+                    )}
+                    {service.pickupAddress && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        <span className="font-medium text-foreground">Pickup:</span> {service.pickupAddress}
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>

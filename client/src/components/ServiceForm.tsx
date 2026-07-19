@@ -513,6 +513,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const createMutation = useMutation({
     mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
+      // In-person / hybrid services must tell the traveler WHERE to meet before they go live.
+      // Enforced at submit/publish only — a draft is allowed to be incomplete. Existing listings
+      // are grandfathered until their next submit/publish (the has_insurance/F2 precedent).
+      const isInPerson = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+      if (submitAction !== "draft" && isInPerson && !formData.meetingPoint.trim()) {
+        throw new Error("Add a meeting point — in-person services must show travelers where to meet. Save as draft to finish later.");
+      }
+
       // Compute price scalar and priceBasedOn from the selected pricing model
       let priceScalar = String(formData.basePrice);
       let pricingTiersPayload: PricingTier[] = [];
