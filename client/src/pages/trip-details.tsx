@@ -136,7 +136,7 @@ export default function TripDetails() {
   const initialTab = searchParams.get("tab") || "itinerary";
   const deepSection = searchParams.get("section");
   const justOptimized = searchParams.get("optimized") === "1";
-  const { data: trip, isLoading } = useTrip(id || "");
+  const { data: trip, isLoading, isError: tripError } = useTrip(id || "");
   const optimizeTrip = useOptimizeTrip();
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
@@ -359,7 +359,7 @@ export default function TripDetails() {
     );
   }
 
-  if (!trip) {
+  if (tripError || !trip) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <h2 className="text-2xl font-bold mb-4">Trip not found</h2>

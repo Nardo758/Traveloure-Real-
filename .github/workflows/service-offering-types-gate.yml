@@ -139,8 +139,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Apply database migrations
         run: npx tsx server/migrations/migrate-entry.ts
         env:
@@ -149,6 +159,13 @@ jobs:
         run: npx tsx scripts/create-sessions-table.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Cache production build output
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
       - name: Build production bundle
         # The smoke gate serves a PRODUCTION build (serveStatic, no Vite):
         # under NODE_ENV=development the Vite dev middleware's HMR WebSocket
@@ -157,6 +174,7 @@ jobs:
         # exist, so the whole error class disappears. Startup seeding still
         # runs: it is gated on ENVIRONMENT !== "PROD", not NODE_ENV
         # (server/index.ts), so /api/ready flips true exactly as before.
+        if: steps.build-cache.outputs.cache-hit != 'true'
         run: npm run build
       - name: Start production server
         run: node dist/index.cjs &

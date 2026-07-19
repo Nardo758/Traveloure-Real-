@@ -111,10 +111,10 @@ export default function EATravel() {
                       )}
                     </div>
                     <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
-                      <MapPin className="w-4 h-4" /> {trip.destination}
+                      <MapPin className="w-4 h-4" /> {trip.destination ?? "—"}
                     </p>
                     <p className="text-sm text-gray-500 flex items-center gap-2">
-                      <Calendar className="w-4 h-4" /> {trip.startDate} {trip.endDate ? `→ ${trip.endDate}` : ""}
+                      <Calendar className="w-4 h-4" /> {trip.startDate ?? "—"}{trip.endDate ? ` → ${trip.endDate}` : ""}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -197,8 +197,8 @@ export default function EATravel() {
                   data-testid={`upcoming-travel-${idx}`}
                 >
                   <div>
-                    <p className="font-medium text-gray-900">{travel.executiveName}</p>
-                    <p className="text-sm text-gray-500">{travel.destination} {travel.startDate ? `• ${travel.startDate}` : ""}</p>
+                    <p className="font-medium text-gray-900">{travel.executiveName ?? "—"}</p>
+                    <p className="text-sm text-gray-500">{travel.destination ?? "—"}{travel.startDate ? ` • ${travel.startDate}` : ""}</p>
                   </div>
                   <Badge variant={travel.status === "confirmed" ? "default" : "outline"}>
                     {travel.status}
