@@ -654,7 +654,7 @@ function AIOptimizationTab({
                 </p>
               </div>
               <Link
-                href={`/concierge?tier=ai&eventType=${encodeURIComponent(experienceType.name)}&intent=${encodeURIComponent(`Optimize my ${experienceType.name.toLowerCase()} in ${destination}`)}`}
+                href={`/concierge?tier=ai&eventType=${encodeURIComponent(experienceType.name)}&intent=${encodeURIComponent('Optimize my ' + experienceType.name.toLowerCase() + ' in ' + destination)}`}
               >
                 <Button size="sm" className="w-full sm:w-auto" data-testid="button-concierge-upgrade-from-preview">
                   <Sparkles className="w-4 h-4 mr-2" />

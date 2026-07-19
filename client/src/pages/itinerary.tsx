@@ -630,7 +630,7 @@ export default function ItineraryPage() {
                     </p>
                     <div className="flex flex-wrap gap-2 mt-3">
                       <Link
-                        href={`/experts?role=local_expert${itinerary?.destination ? `&destination=${encodeURIComponent(itinerary.destination)}` : ""}`}
+                        href={`/experts?role=local_expert${itinerary?.destination ? '&destination=' + encodeURIComponent(itinerary.destination) : ''}`}
                       >
                         <Button
                           size="sm"
@@ -780,7 +780,7 @@ export default function ItineraryPage() {
                   <p className="text-xs text-blue-600 dark:text-blue-400">
                     Check if you need a visa for {country || "your destination"} and apply through iVisa.
                   </p>
-                  <Link href={`/visa-help${country ? `?destination=${encodeURIComponent(country)}` : ""}`}>
+                  <Link href={`/visa-help?destination=${country ? encodeURIComponent(country) : ''}`}>
                     <Button
                       size="sm"
                       variant="outline"
@@ -807,7 +807,7 @@ export default function ItineraryPage() {
               </div>
               <div className="space-y-1.5">
                 <Link
-                  href={`/experts?role=local_expert${itinerary?.destination ? `&destination=${encodeURIComponent(itinerary.destination)}` : ""}`}
+                  href={`/experts?role=local_expert${itinerary?.destination ? '&destination=' + encodeURIComponent(itinerary.destination) : ''}`}
                 >
                   <Button
                     size="sm"
