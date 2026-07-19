@@ -2037,7 +2037,7 @@ export default function CartPage() {
                           experts page consumes ?destination= (filters + search);
                           tripId rides along for the future full plan-handoff rail
                           (filed follow-up: expert sees the cart snapshot). */}
-                      <Link href={`/experts?role=travel_expert${tripDestination ? `&destination=${encodeURIComponent(tripDestination)}` : ""}${resolvedTrip?.id ? `&tripId=${resolvedTrip.id}` : ""}`}>
+                      <Link href={`/experts?role=travel_expert${tripDestination ? '&destination=' + encodeURIComponent(tripDestination) : ''}${resolvedTrip?.id ? '&tripId=' + resolvedTrip.id : ''}`}>
                         <Button variant="outline" size="sm" className="w-full border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" data-testid="button-find-trip-planner">
                           Find a Trip Planner <ArrowLeft className="w-3.5 h-3.5 ml-1.5 rotate-180" />
                         </Button>
