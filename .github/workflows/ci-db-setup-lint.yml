@@ -278,3 +278,121 @@ jobs:
           fi
 
           echo "All ${#WORKFLOW_FILES[@]} workflow file(s) pass the inline DB setup check ✅"
+
+  ci-db-setup-lint-self-test:
+    name: ci-db-setup-lint-self-test (verify lint catches inline steps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Self-test — lint patterns must flag a synthetic bad workflow
+        # Creates two temporary workflow files (one "bad", one "clean") outside
+        # .github/workflows/ so the real lint job never sees them, then asserts:
+        #   1. Every PATTERN in PATTERNS matches the bad file   → no silent miss
+        #   2. No  PATTERN in PATTERNS matches the clean file   → no false-positive
+        #
+        # Why this job exists
+        # -------------------
+        # The ci-db-setup-lint job uses a PATTERNS array to detect inline DB
+        # setup steps in workflow files.  If a pattern is accidentally removed,
+        # misspelled, or the regex is broken, the lint silently stops catching
+        # violations — new workflow files with inline steps sail through
+        # undetected.  This self-test closes that gap: it fails immediately
+        # whenever the detection logic itself is broken, before any bad file
+        # can reach main.
+        #
+        # *** KEEP IN SYNC WITH the PATTERNS list in the ci-db-setup-lint job ***
+        # When you add or remove a pattern there, add/remove the corresponding
+        # inline step in the BAD_WORKFLOW heredoc below so this test stays valid.
+        run: |
+          set -euo pipefail
+
+          # -----------------------------------------------------------------
+          # 1. Synthetic "bad" workflow — contains every inline step the lint
+          #    must reject.  Written to /tmp so the real lint job glob never
+          #    picks it up from .github/workflows/.
+          # -----------------------------------------------------------------
+          BAD=$(mktemp /tmp/bad-workflow-XXXXXX.yml)
+          trap 'rm -f "$BAD"' EXIT
+
+          cat > "$BAD" <<'YAML'
+          name: Bad Synthetic Workflow (ci-db-setup-lint self-test)
+          on: [push]
+          jobs:
+            bad-job:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Inline migration step
+                  run: npx tsx server/migrations/migrate-entry.ts
+                - name: Inline sessions-table step
+                  run: npx tsx scripts/create-sessions-table.ts
+                - name: Inline seed step
+                  run: npx tsx scripts/seed-ci-test-users.ts
+          YAML
+
+          # -----------------------------------------------------------------
+          # 2. Synthetic "clean" workflow — uses the composite action correctly;
+          #    no pattern should match here (false-positive guard).
+          # -----------------------------------------------------------------
+          CLEAN=$(mktemp /tmp/clean-workflow-XXXXXX.yml)
+          trap 'rm -f "$CLEAN"' EXIT
+
+          cat > "$CLEAN" <<'YAML'
+          name: Clean Synthetic Workflow (ci-db-setup-lint self-test)
+          on: [push]
+          jobs:
+            clean-job:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Set up CI database
+                  uses: ./.github/actions/ci-db-setup
+                  with:
+                    database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          YAML
+
+          # -----------------------------------------------------------------
+          # *** KEEP IN SYNC WITH the PATTERNS list in the ci-db-setup-lint job ***
+          # Add a pattern here for every new `npx tsx <script>` step added to
+          # .github/actions/ci-db-setup/action.yml.  Remove patterns when steps
+          # are deleted.  The BAD heredoc above must also contain a matching line.
+          # -----------------------------------------------------------------
+          PATTERNS=(
+            "migrate-entry\.ts"
+            "create-sessions-table\.ts"
+            "seed-ci-test-users\.ts"
+          )
+
+          FAIL=0
+
+          echo "--- Positive-match assertions (bad workflow) ---"
+          for PATTERN in "${PATTERNS[@]}"; do
+            if grep -qE "$PATTERN" "$BAD"; then
+              echo "✅  '$PATTERN' detected in synthetic bad workflow (lint would catch it)"
+            else
+              echo "::error::Pattern '$PATTERN' was NOT found in the synthetic bad workflow."
+              echo "  The lint check would silently miss an inline step matching this pattern."
+              echo "  Verify the PATTERNS list in ci-db-setup-lint and the BAD heredoc in"
+              echo "  this self-test both contain the correct pattern."
+              FAIL=1
+            fi
+          done
+
+          echo ""
+          echo "--- False-positive guards (clean workflow) ---"
+          for PATTERN in "${PATTERNS[@]}"; do
+            if grep -qE "$PATTERN" "$CLEAN"; then
+              echo "::error::Pattern '$PATTERN' produced a false-positive in the clean synthetic workflow."
+              echo "  The regex may be too broad. Tighten the pattern in the ci-db-setup-lint job."
+              FAIL=1
+            else
+              echo "✅  '$PATTERN' correctly absent from clean synthetic workflow"
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::ci-db-setup-lint self-test failed. See annotations above."
+            exit 1
+          fi
+
+          echo ""
+          echo "Self-test passed: all ${#PATTERNS[@]} pattern(s) detected correctly ✅"
