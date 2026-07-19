@@ -11,6 +11,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './playwright/tests',
+  /* Fail loudly when zero tests match the requested suite/filter.
+   * Without this, a renamed spec file causes Playwright to report
+   * "0 passed" and exit 0 — silently green-lighting a broken gate. */
+  passWithNoTests: false,
   // Auth-state setup (logs in the seeded ci-* users) is only needed by the
   // auth-dependent suites (app-routes, auth-routes), whose workflows seed those
   // users and set PW_AUTH_SETUP=1. The non-auth suites (navbar/footer/hardcoded/
