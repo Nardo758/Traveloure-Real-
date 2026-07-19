@@ -99,6 +99,33 @@ export default function AdminData() {
     }
   });
 
+  // ── DMO ingestion (D3, Kyoto-first, Tavily-only) ──────────────────────────
+  const { data: dmoStatus } = useQuery<{ ready: boolean; reason?: string }>({
+    queryKey: ["/api/admin/dmo/ingest-kyoto/status"],
+  });
+
+  const dmoIngestMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/admin/dmo/ingest-kyoto");
+    },
+    onSuccess: (res: any) => {
+      const s = res?.stats;
+      if (s && s.ready === false) {
+        toast({ title: "DMO ingestion skipped", description: s.reason || "Tavily not configured", variant: "destructive" });
+        return;
+      }
+      toast({
+        title: "Kyoto DMO ingestion complete",
+        description: s
+          ? `Enriched ${s.enriched}, skipped ${s.skipped}, failed ${s.failed} of ${s.total}. New content is hidden until an expert reviews it.`
+          : "Done",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "DMO ingestion failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const getTimeSince = (dateStr: string | null) => {
     if (!dateStr) return "N/A";
     const date = new Date(dateStr);
@@ -182,8 +209,36 @@ export default function AdminData() {
           </Card>
         </div>
 
+        <Card data-testid="card-dmo-ingest">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Database className="w-4 h-4 text-teal-600" />
+              Kyoto DMO ingestion
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Enriches the seeded Kyoto heritage sites with real content via Tavily (search + extract).
+              New content lands <span className="font-medium">hidden</span> in the Expert Workspace DMO
+              Library for review — it never reaches travelers until an expert publishes it.
+            </p>
+            {dmoStatus && !dmoStatus.ready && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                {dmoStatus.reason || "TAVILY_API_KEY not set — ingestion is disabled on this environment."}
+              </p>
+            )}
+            <Button
+              onClick={() => dmoIngestMutation.mutate()}
+              disabled={dmoIngestMutation.isPending || (dmoStatus ? !dmoStatus.ready : false)}
+              data-testid="button-dmo-ingest-kyoto"
+            >
+              {dmoIngestMutation.isPending ? "Running…" : "Run Kyoto ingestion"}
+            </Button>
+          </CardContent>
+        </Card>
+
         <div className="flex flex-wrap gap-3 items-center">
-          <Button 
+          <Button
             onClick={() => refreshAllMutation.mutate()}
             disabled={refreshAllMutation.isPending}
             data-testid="button-refresh-all"
