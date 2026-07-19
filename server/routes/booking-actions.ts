@@ -12,6 +12,7 @@ import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
+import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   completeExpertRequest,
   getExpertRequestsByUser,
@@ -796,6 +797,394 @@ router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) 
   } catch (error: any) {
     console.error('Get traveler profile error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// Expert Workspace endpoints — ported VERBATIM from the imported-but-UNMOUNTED
+// trips.routes.ts + experts.routes.ts (§9 shadow-route class). These power the
+// expert trip workspace (workspace.tsx); the dark copies never served traffic
+// (Vite catch-all → 200-HTML), so notes/commission/status-advance silently
+// failed. Mounted here (app.use("/api", …)) so the paths lose their "/api" prefix.
+// The dark copies are deleted in the same change so no stale twin remains.
+// ============================================================================
+
+// POST /api/expert/assignments/:assignmentId/accept — expert accepts a PENDING advisory
+// assignment (pending → accepted), so a newly-assigned trip has a path into the workspace.
+// Owner-gated; the pending→accepted flip is atomic (§15) so a double-click accepts once.
+router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { assignmentId } = req.params;
+    const assignment = await storage.getExpertAssignment(assignmentId);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+    if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
+    const updated = await storage.acceptTripAssignment(assignmentId, userId);
+    if (!updated) return res.status(409).json({ message: "Assignment is not pending (already accepted or rejected)" });
+    res.json(updated);
+  } catch (err) {
+    console.error("[Expert] accept assignment error:", err);
+    res.status(500).json({ message: "Failed to accept assignment" });
+  }
+});
+
+// PATCH /api/expert/assignments/:assignmentId/workspace-status — transition-validated
+// state machine (draft → in_review → delivered), assigned-expert-only.
+router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { assignmentId } = req.params;
+    const { workspaceStatus } = req.body;
+    const validTransitions: Record<string, string[]> = {
+      draft: ["in_review"],
+      in_review: ["delivered"],
+      delivered: [],
+    };
+    if (!workspaceStatus || !(workspaceStatus in validTransitions)) {
+      return res.status(400).json({ message: "Invalid workspaceStatus. Must be: draft, in_review, or delivered" });
+    }
+    const assignment = await storage.getExpertAssignment(assignmentId);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+    if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
+    const current = assignment.workspaceStatus ?? "draft";
+    if (!validTransitions[current]?.includes(workspaceStatus)) {
+      return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
+    }
+    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
+    res.json(updated);
+  } catch (err) {
+    console.error("[Expert] workspace-status error:", err);
+    res.status(500).json({ message: "Failed to update workspace status" });
+  }
+});
+
+// GET /api/trips/:tripId/my-assignment — expert's assignment record (id + workspaceStatus).
+router.get("/trips/:tripId/my-assignment", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { tripId } = req.params;
+    const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+    if (!assignment) return res.status(404).json({ message: "Not assigned to this trip" });
+    res.json(assignment);
+  } catch (err) {
+    console.error("[Expert] getMyAssignment error:", err);
+    res.status(500).json({ message: "Failed to get assignment" });
+  }
+});
+
+// GET /api/trips/:tripId/expert-notes — readable by trip owner OR assigned expert.
+router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { tripId } = req.params;
+    const owned = await verifyTripOwnership(tripId, userId);
+    if (!owned) {
+      const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+      if (!assignment) return res.status(403).json({ message: "Not authorized to view notes for this trip" });
+    }
+    const expertNotes = await storage.getTripExpertNotes(tripId);
+    res.json({ expertNotes });
+  } catch (err) {
+    console.error("[Expert] getExpertNotes error:", err);
+    res.status(500).json({ message: "Failed to get expert notes" });
+  }
+});
+
+// PATCH /api/trips/:tripId/expert-notes — auto-save (assigned expert only).
+router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { tripId } = req.params;
+    const { expertNotes } = req.body;
+    if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
+    const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+    if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+    await storage.updateTrip(tripId, { expertNotes });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[Expert] saveExpertNotes error:", err);
+    res.status(500).json({ message: "Failed to save expert notes" });
+  }
+});
+
+// GET /api/trips/:tripId/commission — server-derived expert revenue-share breakdown
+// (read-only; amount from the catalog/records, acting user from session — §14-clean).
+router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const { tripId } = req.params;
+    const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+    if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+
+    const allItems = await storage.getItineraryItems(tripId);
+    const CONFIRMED_STATUSES = ["planned", "confirmed", "in_progress", "booked"];
+    const items = allItems.filter((item: any) =>
+      CONFIRMED_STATUSES.includes(item.status) &&
+      item.bookingStatus !== "cancelled"
+    );
+
+    // Expert-favorable split policy: EXPERT_SHARE_RATE (75%) floor. Do NOT lower
+    // without a product decision — it inverts the split in experts' disfavor.
+    const safeParseRate = (value: any, fallback: number): number => {
+      const n = parseFloat(value);
+      return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+    };
+    const expertServices = await storage.getProviderServicesByStatus(userId, "active");
+    const expertRate = expertServices.length > 0
+      ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, EXPERT_SHARE_RATE), 0) / expertServices.length
+      : EXPERT_SHARE_RATE;
+
+    let totalGross = 0;
+    let expertShare = 0;
+    const itemBreakdown: Array<{ id: string; title: string; dayNumber: number; cost: number; revenueShareRate: number; expertEarning: number; platformFee: number }> = [];
+
+    for (const item of items) {
+      const cost = parseFloat(item.estimatedCost ?? "0");
+      const rate = expertRate;
+      const earning = cost * rate;
+      const fee = cost - earning;
+      totalGross += cost;
+      expertShare += earning;
+      itemBreakdown.push({
+        id: item.id,
+        title: item.title,
+        dayNumber: item.dayNumber,
+        cost,
+        revenueShareRate: parseFloat(rate.toFixed(4)),
+        expertEarning: earning,
+        platformFee: fee,
+      });
+    }
+
+    const platformFee = totalGross - expertShare;
+
+    res.json({
+      tripId,
+      expertId: userId,
+      totalGross: totalGross.toFixed(2),
+      expertShare: expertShare.toFixed(2),
+      platformFee: platformFee.toFixed(2),
+      revenueShareRate: parseFloat(expertRate.toFixed(4)),
+      itemCount: items.length,
+      itemBreakdown: itemBreakdown.map(b => ({
+        ...b,
+        cost: b.cost.toFixed(2),
+        expertEarning: b.expertEarning.toFixed(2),
+        platformFee: b.platformFee.toFixed(2),
+      })),
+    });
+  } catch (err) {
+    console.error("[Commission] GET error:", err);
+    res.status(500).json({ message: "Failed to calculate commission" });
+  }
+});
+
+// GET /api/trips/:tripId/workspace-constraints — anchors/boundaries/energy + conflict detection.
+router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const { tripId } = req.params;
+    const owned = await verifyTripOwnership(tripId, userId);
+    if (!owned) {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      if (user.role === "admin") {
+        // admins pass through
+      } else {
+        const assigned = await storage.isExpertAssignedToTrip(tripId, userId);
+        if (!assigned) return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const trip = await storage.getTrip(tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+    const [anchors, boundaries, energyRecords, items] = await Promise.all([
+      storage.getTemporalAnchors(tripId),
+      storage.getDayBoundaries(tripId),
+      storage.getEnergyTracking(tripId),
+      storage.getItineraryItems(tripId),
+    ]);
+
+    const { detectAnchorImpacts } = await import('../services/logistics-presets.service');
+    const anchorConflicts: Array<{
+      anchorId: string;
+      anchorType: string;
+      description: string;
+      impacts: Array<{ type: string; message: string; severity: 'warning' | 'critical' }>;
+    }> = [];
+    for (const anchor of anchors) {
+      const impacts = await detectAnchorImpacts(tripId, anchor.id);
+      if (impacts.length > 0) {
+        anchorConflicts.push({
+          anchorId: anchor.id,
+          anchorType: anchor.anchorType,
+          description: anchor.description || anchor.anchorType,
+          impacts,
+        });
+      }
+    }
+
+    const itemsByDay = new Map<number, typeof items>();
+    for (const item of items) {
+      if (!itemsByDay.has(item.dayNumber)) itemsByDay.set(item.dayNumber, []);
+      itemsByDay.get(item.dayNumber)!.push(item);
+    }
+
+    const boundaryViolations: Array<{ dayNumber: number; violation: string; severity: 'warning' | 'critical' }> = [];
+
+    for (const boundary of boundaries) {
+      const dayItems = itemsByDay.get(boundary.dayNumber) || [];
+
+      if (boundary.latestActivityEnd && dayItems.length > 0) {
+        for (const item of dayItems) {
+          const itemTime = item.endTime || item.startTime;
+          if (itemTime && itemTime > boundary.latestActivityEnd) {
+            boundaryViolations.push({
+              dayNumber: boundary.dayNumber,
+              violation: `Item "${item.title}" ends at ${itemTime}, past the Day ${boundary.dayNumber} limit of ${boundary.latestActivityEnd}`,
+              severity: 'warning',
+            });
+          }
+        }
+      }
+
+      if (boundary.mustReturnToHotel && dayItems.length > 0) {
+        const hasHotel = dayItems.some(i => {
+          const t = (i.itemType || '').toLowerCase();
+          return t === 'hotel' || t === 'accommodation' || t === 'lodging';
+        });
+        if (!hasHotel) {
+          boundaryViolations.push({
+            dayNumber: boundary.dayNumber,
+            violation: `Day ${boundary.dayNumber} requires return to hotel but no accommodation item is scheduled`,
+            severity: 'warning',
+          });
+        }
+      }
+    }
+
+    let optimizerScores: Record<string, number> | null = null;
+    const latestComparison = await storage.getLatestComparisonByTripId(tripId);
+    if (latestComparison) {
+      const latestVariant = await storage.getLatestVariantByComparisonId(latestComparison.id);
+      if (latestVariant) {
+        const scoreMetrics = await storage.getVariantMetricsByKeys(latestVariant.id, ['balance_score', 'wellness_score', 'pace_score', 'diversity_score']);
+        if (scoreMetrics.length > 0) {
+          optimizerScores = {};
+          for (const m of scoreMetrics) {
+            optimizerScores[m.metricKey] = parseFloat(m.value as string);
+          }
+        }
+      }
+    }
+
+    res.json({
+      anchors,
+      dayBoundaries: boundaries,
+      energyTracking: energyRecords,
+      anchorConflicts,
+      boundaryViolations,
+      optimizerScores,
+      tripExperienceType: trip.experienceType || null,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to fetch workspace constraints", error: error.message });
+  }
+});
+
+// POST /api/trips/:tripId/calculate-energy — per-day energy depletion; owner/admin/expert.
+router.post("/trips/:tripId/calculate-energy", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ message: "Not authenticated" });
+    const trip = await storage.getTrip(req.params.tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      return res.status(403).json({ message: "Not authorized to access this trip" });
+    }
+
+    const items = await storage.getItineraryItems(req.params.tripId);
+
+    const dayMap = new Map<number, typeof items>();
+    for (const item of items) {
+      const day = item.dayNumber;
+      if (!dayMap.has(day)) dayMap.set(day, []);
+      dayMap.get(day)!.push(item);
+    }
+
+    const energyByDay: Array<{ dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; breakdown: Array<{ itemId: string; title: string; energyCost: number }> }> = [];
+
+    for (const [dayNumber, dayItems] of Array.from(dayMap)) {
+      let depletion = 0;
+      const breakdown: Array<{ itemId: string; title: string; energyCost: number }> = [];
+
+      for (const item of dayItems) {
+        const cost = item.energyCost || 20;
+        depletion += cost;
+        breakdown.push({ itemId: item.id, title: item.title, energyCost: cost });
+      }
+
+      const startingEnergy = 100;
+      const endingEnergy = Math.max(0, startingEnergy - depletion);
+
+      energyByDay.push({ dayNumber, startingEnergy, activityDepletion: depletion, endingEnergy, breakdown });
+
+      await storage.saveEnergyTracking({
+        tripId: req.params.tripId,
+        dayNumber,
+        startingEnergy,
+        activityDepletion: depletion,
+        endingEnergy,
+        recoveryNeeded: endingEnergy < 20,
+        recoveryReason: endingEnergy < 20 ? `Energy critically low (${endingEnergy}%) - consider lighter activities` : null,
+        energyBreakdown: breakdown,
+      });
+    }
+
+    res.json({
+      tripId: req.params.tripId,
+      totalDays: energyByDay.length,
+      energyByDay,
+      warnings: energyByDay.filter(d => d.endingEnergy < 30).map(d => `Day ${d.dayNumber}: energy drops to ${d.endingEnergy}%`),
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to calculate energy", error: error.message });
+  }
+});
+
+// POST /api/trips/:tripId/generate-presets — logistics presets from a template; owner/admin/expert.
+router.post("/trips/:tripId/generate-presets", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ message: "Not authenticated" });
+    const trip = await storage.getTrip(req.params.tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      return res.status(403).json({ message: "Not authorized to access this trip" });
+    }
+
+    const { templateSlug, eventDate, userExperienceId } = req.body;
+    if (!templateSlug || !eventDate) {
+      return res.status(400).json({ message: "templateSlug and eventDate are required" });
+    }
+
+    const { generatePresetsForTrip } = await import('../services/logistics-presets.service');
+    const result = await generatePresetsForTrip(
+      req.params.tripId,
+      templateSlug,
+      eventDate,
+      userExperienceId
+    );
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to generate presets", error: error.message });
   }
 });
 
