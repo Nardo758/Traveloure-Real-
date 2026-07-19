@@ -137,6 +137,13 @@ jobs:
         #                               directly; it IS the dedicated smoke test
         #                               for that script.
         #
+        # Discovery: every *.yml file in .github/workflows/ is scanned EXCEPT:
+        #   - ci-db-setup-lint.yml  (this file; contains the pattern strings as literals)
+        #   - sessions-table-smoke.yml  (legitimate direct invocation — dedicated smoke test)
+        #
+        # No hardcoded file list to maintain: adding a new Playwright workflow
+        # automatically brings it under this lint gate without any manual update.
+        #
         # Fix when this fails:
         #   Remove the inline run: step(s) and replace with:
         #     - name: Set up CI database (migrations + sessions table)
@@ -223,4 +230,4 @@ jobs:
             exit 1
           fi
 
-          echo "All ${#WORKFLOW_FILES[@]} workflow file(s) delegate DB setup to the composite action ✅"
+          echo "All ${#WORKFLOW_FILES[@]} workflow file(s) pass the inline DB setup check ✅"
