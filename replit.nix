@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.alsa-lib
     pkgs.mesa
     pkgs.xorg.libxcb
     pkgs.xorg.libXrandr
