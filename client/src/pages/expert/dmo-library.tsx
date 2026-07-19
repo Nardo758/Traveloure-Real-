@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +29,9 @@ import {
   XCircle,
   ShieldCheck,
   ArrowRight,
+  PlusCircle,
+  Check,
+  Route as RouteIcon,
 } from "lucide-react";
 
 interface DmoItem {
@@ -141,6 +145,36 @@ export default function DmoLibrary() {
     },
   });
 
+  // ── DMO → itinerary bridge: select published places → build a Ready Made Trip draft ──
+  const [, navigate] = useLocation();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const buildItinerary = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/expert-workspace/build-itinerary", {
+        contentIds: Array.from(selected),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Draft itinerary created",
+        description: `${data.places} places across ${data.days} day(s). Price it and submit for review to publish.`,
+      });
+      setSelected(new Set());
+      navigate("/expert/templates");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't build itinerary", description: err.message, variant: "destructive" });
+    },
+  });
+
   const publish = useMutation({
     mutationFn: async (item: DmoItem) => {
       const res = await apiRequest("POST", `/api/expert-workspace/content/${item.id}/publish`);
@@ -202,6 +236,25 @@ export default function DmoLibrary() {
 
           {STATUS_TABS.map((t) => (
             <TabsContent key={t.key} value={t.key} className="mt-6">
+              {t.key === "published" && items.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <RouteIcon className="w-4 h-4 text-primary" />
+                    <span>
+                      Select published places to build a sellable <span className="font-medium">Ready Made Trip</span>.
+                      {selected.size > 0 ? ` ${selected.size} selected.` : ""}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={selected.size === 0 || buildItinerary.isPending}
+                    onClick={() => buildItinerary.mutate()}
+                    data-testid="button-build-itinerary"
+                  >
+                    {buildItinerary.isPending ? "Building…" : `Build Ready Made Trip${selected.size ? ` (${selected.size})` : ""}`}
+                  </Button>
+                </div>
+              )}
               {isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {[1, 2, 3].map((i) => (
@@ -229,12 +282,31 @@ export default function DmoLibrary() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {items.map((item) => (
-                    <Card key={item.id} className="hover-elevate" data-testid={`dmo-card-${item.id}`}>
+                    <Card
+                      key={item.id}
+                      className={`hover-elevate ${t.key === "published" && selected.has(item.id) ? "ring-2 ring-primary" : ""}`}
+                      data-testid={`dmo-card-${item.id}`}
+                    >
                       <CardContent className="p-4 flex flex-col h-full">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h3 className="font-semibold leading-tight">{item.name}</h3>
                           {statusBadge(item.status)}
                         </div>
+                        {t.key === "published" && (
+                          <Button
+                            size="sm"
+                            variant={selected.has(item.id) ? "default" : "outline"}
+                            className="mb-2 w-full"
+                            onClick={() => toggleSelected(item.id)}
+                            data-testid={`button-select-${item.id}`}
+                          >
+                            {selected.has(item.id) ? (
+                              <><Check className="w-4 h-4 mr-2" />Added to itinerary</>
+                            ) : (
+                              <><PlusCircle className="w-4 h-4 mr-2" />Add to itinerary</>
+                            )}
+                          </Button>
+                        )}
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
                           <MapPin className="w-3 h-3" />
                           {item.neighborhood ? `${item.neighborhood}, ` : ""}
