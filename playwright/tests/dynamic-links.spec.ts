@@ -22,7 +22,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  *   to={`/static/${dynamic}`}
  *   navigate(`/static/${dynamic}`)
  *   setLocation(`/static/${dynamic}`)
+ *   history.push(`/static/${dynamic}`)
  *   window.location.href = `/static/${dynamic}`
+ *   window.location.assign(`/static/${dynamic}`)
  *
  * Algorithm per template literal:
  *   1. Capture the full template literal body up to the first closing backtick
@@ -92,12 +94,14 @@ function collectTsxFiles(dir: string, result: string[] = []): string[] {
 }
 
 // ── Regex to capture template-literal navigation paths ────────────────────────
-// Matches any of the five programmatic-navigation patterns:
-//   1. href={`/…`}                  — JSX attribute (group 1)
-//   2. to={`/…`}                    — wouter <Link to> attribute (group 1)
-//   3. navigate(`/…`)               — wouter useLocation navigate() call (group 2)
-//   4. setLocation(`/…`)            — wouter useLocation setLocation() call (group 2)
-//   5. window.location.href = `/…`  — imperative redirect (group 3)
+// Matches any of the seven programmatic-navigation patterns:
+//   1. href={`/…`}                    — JSX attribute (group 1)
+//   2. to={`/…`}                      — wouter <Link to> attribute (group 1)
+//   3. navigate(`/…`)                 — wouter useLocation navigate() call (group 2)
+//   4. setLocation(`/…`)              — wouter useLocation setLocation() call (group 2)
+//   5. history.push(`/…`)             — legacy history.push call (group 2)
+//   6. window.location.href = `/…`    — imperative redirect assignment (group 3)
+//   7. window.location.assign(`/…`)   — imperative redirect via assign() (group 3)
 //
 // [^`]* stops at the first backtick — intentional: for nested template literals
 // (e.g. `${x ? `…` : ""}`), the body is truncated at the inner backtick.  The
@@ -106,7 +110,7 @@ function collectTsxFiles(dir: string, result: string[] = []): string[] {
 //
 // To extract the path body: use m[1] ?? m[2] ?? m[3] (exactly one will be set).
 const TEMPLATE_HREF_RE =
-  /(?:href|to)=\{`(\/[^`]*)`\}|(?:navigate|setLocation)\(`(\/[^`]*)`\)|window\.location\.href\s*=\s*`(\/[^`]*)`/g;
+  /(?:href|to)=\{`(\/[^`]*)`\}|(?:navigate|setLocation|history\.push)\(`(\/[^`]*)`\)|window\.location\.(?:href\s*=\s*|assign\()`(\/[^`]*)`/g;
 
 // ── Replace ${…} with a single safe segment placeholder ───────────────────────
 // "X" contains no "/" so it is treated as one path segment and matches any
@@ -158,8 +162,9 @@ function extractDynamicPaths(files: string[]): Map<string, string[]> {
     TEMPLATE_HREF_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = TEMPLATE_HREF_RE.exec(source)) !== null) {
-      // m[1] = href/to JSX attribute, m[2] = navigate/setLocation call,
-      // m[3] = window.location.href assignment.  Exactly one group is set.
+      // m[1] = href/to JSX attribute, m[2] = navigate/setLocation/history.push call,
+      // m[3] = window.location.href assignment or window.location.assign() call.
+      // Exactly one group is set.
       const raw = m[1] ?? m[2] ?? m[3];
 
       // Only process paths that contain at least one ${…} expression.
