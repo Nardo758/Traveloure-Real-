@@ -117,11 +117,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Reject inline migration / session-table run steps in Playwright workflow files
-        # Scans the 6 Playwright-based CI workflow files for bare run: commands
-        # that invoke migrate-entry.ts or create-sessions-table.ts directly.
-        # Either pattern indicates the DB setup was copied inline rather than
-        # delegated to the composite action — which defeats the single-source-of-truth
-        # goal and risks the files drifting out of sync with future changes.
+        # Scans ALL workflow files in .github/workflows/ (except known exclusions)
+        # for bare run: commands that invoke migrate-entry.ts or
+        # create-sessions-table.ts directly.  Using a glob instead of a hardcoded
+        # list means this check automatically covers new workflow files and is
+        # never silently broken by a rename or deletion.
+        #
+        # Excluded files:
+        #   ci-db-setup-lint.yml      — this file itself (contains the patterns
+        #                               as literals in the grep PATTERNS array)
+        #   sessions-table-smoke.yml  — legitimately invokes create-sessions-table.ts
+        #                               directly; it IS the dedicated smoke test
+        #                               for that script.
         #
         # Fix when this fails:
         #   Remove the inline run: step(s) and replace with:
@@ -132,14 +139,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          WORKFLOW_FILES=(
-            ".github/workflows/navbar-links-gate.yml"
-            ".github/workflows/app-routes-gate.yml"
-            ".github/workflows/auth-routes-gate.yml"
-            ".github/workflows/selection-controls-gate.yml"
-            ".github/workflows/service-offering-types-gate.yml"
-            ".github/workflows/footer-links-gate.yml"
+          # Files that are legitimately exempt from the inline-step check.
+          EXCLUDED=(
+            ".github/workflows/ci-db-setup-lint.yml"
+            ".github/workflows/sessions-table-smoke.yml"
           )
+
+          # Build the candidate list dynamically from the glob so this check
+          # never goes stale when workflow files are added, renamed, or removed.
+          WORKFLOW_FILES=()
+          for f in .github/workflows/*.yml; do
+            skip=0
+            for excl in "${EXCLUDED[@]}"; do
+              if [ "$f" = "$excl" ]; then skip=1; break; fi
+            done
+            [ "$skip" -eq 0 ] && WORKFLOW_FILES+=("$f")
+          done
+
+          if [ "${#WORKFLOW_FILES[@]}" -eq 0 ]; then
+            echo "::error::No workflow files found in .github/workflows/ after exclusions."
+            echo "  This is unexpected — check the glob pattern and exclusion list."
+            exit 1
+          fi
+
+          echo "Scanning ${#WORKFLOW_FILES[@]} workflow file(s) for inline DB setup steps..."
 
           # These are the shell commands the composite action encapsulates.
           # Their presence in any of the workflow files means the steps were
@@ -157,14 +180,6 @@ jobs:
           FAIL=0
 
           for FILE in "${WORKFLOW_FILES[@]}"; do
-            if [ ! -f "$FILE" ]; then
-              echo "::error::Expected workflow file not found: $FILE"
-              echo "  If this file was renamed or removed, update the WORKFLOW_FILES list"
-              echo "  in .github/workflows/ci-db-setup-lint.yml to match."
-              FAIL=1
-              continue
-            fi
-
             for PATTERN in "${PATTERNS[@]}"; do
               MATCHES=$(grep -nE "$PATTERN" "$FILE" 2>/dev/null || true)
               if [ -n "$MATCHES" ]; then
@@ -184,9 +199,9 @@ jobs:
 
           if [ "$FAIL" -eq 1 ]; then
             echo ""
-            echo "::error::One or more Playwright workflow files contain inline DB setup steps."
+            echo "::error::One or more workflow files contain inline DB setup steps."
             echo "See the error annotations above for the affected files and the fix."
             exit 1
           fi
 
-          echo "All 6 Playwright workflow files delegate DB setup to the composite action ✅"
+          echo "All ${#WORKFLOW_FILES[@]} workflow file(s) delegate DB setup to the composite action ✅"
