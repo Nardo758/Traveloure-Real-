@@ -29,6 +29,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 interface AssignedTrip {
   trip_id: string;
+  assignment_id: string;
   trip_title: string;
   destination: string;
   start_date: string;
@@ -106,6 +107,20 @@ export default function ExpertAssignedTrips() {
     },
     onError: (err: any) => {
       toast({ title: "Could not submit suggestion", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      const res = await apiRequest("POST", `/api/expert/assignments/${assignmentId}/accept`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/assigned-trips"] });
+      toast({ title: "Trip accepted", description: "You can now open it in the workspace." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not accept trip", description: err.message, variant: "destructive" });
     },
   });
 
@@ -203,6 +218,18 @@ export default function ExpertAssignedTrips() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {trip.status === "pending" && (
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => acceptMutation.mutate(trip.assignment_id)}
+                          disabled={acceptMutation.isPending}
+                          data-testid={`button-accept-${trip.trip_id}`}
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Accept
+                        </Button>
+                      )}
                       {trip.status === "accepted" && (
                         <Button
                           size="sm"

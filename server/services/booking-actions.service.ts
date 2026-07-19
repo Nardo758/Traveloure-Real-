@@ -460,7 +460,7 @@ export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
     SELECT
       t.id as trip_id, t.title as trip_title, t.destination,
       t.start_date, t.end_date,
-      tea.status, tea.assigned_at,
+      tea.id as assignment_id, tea.status, tea.assigned_at,
       u.id as traveler_user_id,
       u.first_name as traveler_first_name,
       u.last_name as traveler_last_name,

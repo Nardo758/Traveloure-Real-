@@ -124,6 +124,19 @@ This document captures architectural decisions to maintain consistency across co
      calls them** — the provider earnings page derives its numbers from the **live** `GET /api/provider/bookings`. Mounting
      them would be a **backend without a surface** (the inverse of the settings bug). Left dark; **filed:** activate this
      family only alongside a real consumer that needs the server-side earnings aggregate.
+   - **Expert workspace endpoints — REPAIRED (Jul 19, 2026).** `trips.routes.ts` is a **third** imported-but-unmounted
+     router (alongside `experts.routes.ts`/`cross-sell.routes.ts`); the expert trip workspace (`workspace.tsx`) called 8
+     handlers that lived only there / in the dark `experts.routes.ts`, so notes, commission, my-assignment,
+     workspace-constraints, calculate-energy, generate-presets, and the `draft→in_review→delivered` status advance all
+     silently hit the Vite catch-all (200-HTML) — the deliver workflow was dead even for an accepted trip. All 8 were
+     **ported verbatim into the mounted `booking-actions.ts`** (`app.use("/api", …)`, which already serves the
+     workspace's live `assigned-trips`/`traveler-profile`) and **deleted from the dark files** (no stale twin — the §9
+     shadow-route rule). Also added the missing **trip-accept** action (`POST /api/expert/assignments/:id/accept`,
+     owner-gated, atomic pending→accepted — §15) + an Accept button on `assigned-trips.tsx`, so a *pending* assignment
+     now has a path into the workspace (the first half of the `pending→accepted` then `draft→…→delivered` lifecycle,
+     which had no UI/endpoint). `trips.routes.ts`/`experts.routes.ts` stay unmounted with their *other* dark handlers;
+     **filed:** a CI guard that fails when a `server/routes/*.ts` router is imported but never `app.use`d (the durable
+     fix for this recurring class).
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),

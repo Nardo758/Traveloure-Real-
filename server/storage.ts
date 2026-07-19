@@ -4563,6 +4563,20 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Atomically accept a pending advisory assignment (owner + pending guard in one UPDATE — §15).
+  // Returns undefined if the row isn't the expert's or isn't pending → caller 409s, no double-accept.
+  async acceptTripAssignment(assignmentId: string, expertId: string): Promise<any> {
+    const [updated] = await db.update(tripExpertAdvisors)
+      .set({ status: "accepted" })
+      .where(and(
+        eq(tripExpertAdvisors.id, assignmentId),
+        eq(tripExpertAdvisors.localExpertId, expertId),
+        eq(tripExpertAdvisors.status, "pending"),
+      ))
+      .returning();
+    return updated;
+  }
+
   // ─── Content Placement Rules ─────────────────────────────────────────────
 
   async getContentPlacementRules(filters?: {
