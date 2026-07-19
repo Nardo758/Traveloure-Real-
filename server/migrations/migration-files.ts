@@ -399,4 +399,9 @@ export const MIGRATION_FILES = [
   // expert review — the D1a lesson). Ingestion is Kyoto-scoped per §12; the table set is
   // market-agnostic scaffolding.
   "117_add_dmo_content_layer.sql",
+  // Migration 118 — DMO admin-intake gate ("B"). Aligns the dmo_raw_content
+  // expert_workspace_visible DB DEFAULT with the ORM (now false): scraped content is born hidden
+  // from experts until an admin approves it into the library. Default-only change, no backfill
+  // (existing rows grandfathered — the F2 pattern), no CHECK (no publish-time push trap).
+  "118_dmo_admin_intake_gate.sql",
 ] as const;

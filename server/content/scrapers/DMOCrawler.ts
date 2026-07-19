@@ -505,7 +505,8 @@ export class DMOCrawler {
       license: "unknown",
       confidenceScore: String(confidence),
       dataQualityFlags: [],
-      expertWorkspaceVisible: true,
+      // Born-hidden — an admin must approve this raw content into the expert library (intake gate, "B").
+      expertWorkspaceVisible: false,
       discoverPageVisible: false,
       expertReviewedAt: null,
       expertReviewedBy: null,
