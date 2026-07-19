@@ -62,9 +62,15 @@ or an expert engagement, never a dead end.
 ## Platform backlog
 
 **Still open — genuinely gated (need environment access or real data, not buildable now):**
-- DMO live scraping (D3): needs `FIRECRAWL_API_KEY`/`TAVILY_API_KEY`/`BRAVE_API_KEY`
-  + proxy allowlist at deploy; scheduler wiring.
 - Knowledge-Bar Phase 3: calibrate the scoring rubric on real Kyoto submissions.
+
+**✅ D3 — DMO live scraping (LANDED Jul 19, 2026, Tavily-only):** built the ingestion wiring as a
+  key-gated Tavily path (`dmo-ingestion.service.ts`) — Tavily does BOTH discover (`search`) and scrape
+  (`extract`), so it runs on a single `TAVILY_API_KEY`, no Firecrawl/Brave needed. Enriches the seeded
+  Kyoto stubs in place, born-hidden (D1a); no key ⇒ zero writes (§13). Triggers: admin button
+  (`POST /api/admin/dmo/ingest-kyoto`, on `admin/data`) + a scheduler off unless `DMO_INGEST_ENABLED=1`.
+  The live run happens at deploy (agent proxy blocks Tavily + source domains). Optional follow-up:
+  Brave/Firecrawl discovery to reach content beyond the seeded set.
 
 **✅ Closed (were already resolved; backlog entries were stale — verified Jul 18, 2026):**
 - ✅ Re-point legacy `/api/bookings/refund` onto `service_bookings` — done with the
