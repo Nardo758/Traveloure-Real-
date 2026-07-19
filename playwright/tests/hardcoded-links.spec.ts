@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// This spec runs under Playwright's ESM loader, where `__dirname` is NOT defined
+// (it only exists in CommonJS). Derive it from import.meta.url — otherwise the
+// source-file collection below throws "ReferenceError: __dirname is not defined
+// in ES module scope" at collection time and the whole suite errors out.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Hardcoded-link cross-check — guards against in-component links that still
