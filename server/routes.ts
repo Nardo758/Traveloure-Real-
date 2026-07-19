@@ -566,6 +566,11 @@ export async function registerRoutes(
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
 
+  // Saved items / dashboard Wishlist — GET/POST/DELETE /api/saved-items (session-scoped, owner-gated).
+  // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;
+  // mounting restores it (caught by the unmounted-router guard). Routes carry full /api paths.
+  app.use(savedItemsRoutes);
+
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {

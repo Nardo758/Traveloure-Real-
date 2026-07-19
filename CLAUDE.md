@@ -134,9 +134,18 @@ This document captures architectural decisions to maintain consistency across co
      shadow-route rule). Also added the missing **trip-accept** action (`POST /api/expert/assignments/:id/accept`,
      owner-gated, atomic pending→accepted — §15) + an Accept button on `assigned-trips.tsx`, so a *pending* assignment
      now has a path into the workspace (the first half of the `pending→accepted` then `draft→…→delivered` lifecycle,
-     which had no UI/endpoint). `trips.routes.ts`/`experts.routes.ts` stay unmounted with their *other* dark handlers;
-     **filed:** a CI guard that fails when a `server/routes/*.ts` router is imported but never `app.use`d (the durable
-     fix for this recurring class).
+     which had no UI/endpoint). `trips.routes.ts`/`experts.routes.ts` stay unmounted with their *other* dark handlers.
+   - **Unmounted-router guard — LANDED (Jul 19, 2026), the durable fix for this recurring class.**
+     `scripts/check-unmounted-routers.cjs` (CI job `unmounted-router-guard` in `build.yml`, mirroring the
+     money-endpoint guard) fails when a `server/routes/*.ts` module is default-imported into `routes.ts` but
+     never `app.use`d — i.e. dead (200-HTML). Comment-stripped scan so a commented-out mount doesn't count.
+     Known-intentionally-dark routers (`expertsRoutes`, `crossSellRoutes`, `tripsRoutes`) are an explicit
+     `ALLOWED_UNMOUNTED` allow-list, each with a reason; a new offender fails until mounted (or added to the
+     list with a reason). **First catch (a real bug):** `savedItemsRoutes` was imported-but-unmounted while
+     the dashboard **Wishlist** (`WishlistSection.tsx`) actively GET/POST/DELETEs `/api/saved-items` — so the
+     Wishlist silently hit the catch-all and never loaded. Now **mounted** (`app.use(savedItemsRoutes)`);
+     handlers are session-scoped + owner-gated, no shadow. Proven: guard passes on main, fails on a
+     removed-or-commented mount.
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
