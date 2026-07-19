@@ -88,27 +88,15 @@ jobs:
       - name: Install Playwright system deps (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      - name: Apply database migrations
-        # 000_baseline_schema.sql runs first and creates every Drizzle-managed
-        # table with IF NOT EXISTS / idempotent FK guards. Subsequent migrations
-        # (001–088) add FKs/columns/seeds — all DDL is IF NOT EXISTS or ADD
-        # COLUMN IF NOT EXISTS (no-ops on an existing schema); all DML uses ON
-        # CONFLICT DO NOTHING. No drizzle-kit push required.
-        run: npx tsx server/migrations/migrate-entry.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Verify migration ledger is idempotent (#28)
         # Runs the migration runner twice against the fresh CI Postgres: run 1
         # applies + records every file in schema_migrations; run 2 must apply
         # nothing. Fails the gate if the ledger isn't idempotent or doesn't record.
         run: npx tsx scripts/verify-migration-ledger.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-      - name: Create sessions table (connect-pg-simple #200 workaround)
-        # connect-pg-simple 10.0.0 table.sql has WITH (OIDS=FALSE) which is
-        # incompatible with Postgres 12+ (OIDS removed). createTableIfMissing
-        # fails silently in CI, causing login 500. Pre-create the table here.
-        run: npx tsx scripts/create-sessions-table.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Start dev server (PR artifact — localhost only)
@@ -220,20 +208,10 @@ jobs:
       - name: Install Playwright system deps (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      - name: Apply database migrations
-        # drizzle-kit push --force requires an interactive TTY which CI doesn't
-        # have (throws "Interactive prompts require a TTY terminal"). Use
-        # migrate-entry.ts instead — applies all SQL migrations, no TTY needed.
-        run: npx tsx server/migrations/migrate-entry.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-      - name: Create sessions table (connect-pg-simple #200 workaround)
-        # connect-pg-simple 10.0.0 table.sql has WITH (OIDS=FALSE) which is
-        # incompatible with Postgres 12+ (OIDS removed). createTableIfMissing
-        # fails silently in CI, causing login 500. Pre-create the table here.
-        run: npx tsx scripts/create-sessions-table.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Start dev server (PR artifact — localhost only)
         run: npx tsx server/index.ts &
         env:

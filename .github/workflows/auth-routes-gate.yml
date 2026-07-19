@@ -77,26 +77,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Apply database migrations
-        run: npx tsx server/migrations/migrate-entry.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-
-      - name: Create sessions table (connect-pg-simple workaround)
-        # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
-        # incompatible with Postgres 12+. Pre-create the table here.
-        run: npx tsx scripts/create-sessions-table.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-
-      - name: Seed CI test users
-        # Creates ci-expert@traveloure.test (travel_expert), ci-provider@traveloure.test
-        # (service_provider), and ci-admin@traveloure.test (admin) with hashed passwords
-        # so the authenticated Playwright gate can log in via email/password auth.
-        # Idempotent — safe to re-run (ON CONFLICT DO UPDATE).
-        run: npx tsx scripts/seed-ci-test-users.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Set up CI database (migrations, sessions table, test users)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
 
       - name: Build production bundle
         # Serve a PRODUCTION build so Vite HMR WebSocket noise is absent.
