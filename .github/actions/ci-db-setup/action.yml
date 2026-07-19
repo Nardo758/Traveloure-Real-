@@ -19,6 +19,11 @@ inputs:
 
 runs:
   using: composite
+  # *** KEEP IN SYNC WITH .github/workflows/ci-db-setup-lint.yml ***
+  # Every `npx tsx <script>` step added here must also be reflected in:
+  #   1. The check_path call list in the composite-action-script-paths job.
+  #   2. The PATTERNS list in the ci-db-setup-lint job.
+  # Failure to do so means a renamed/missing script will go undetected in CI.
   steps:
     - name: Apply database migrations
       run: npx tsx server/migrations/migrate-entry.ts
