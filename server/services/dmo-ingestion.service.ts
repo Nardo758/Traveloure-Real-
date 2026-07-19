@@ -22,6 +22,12 @@ import { tavily, type TavilyClient } from "tavily";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { dmoRawContent } from "@shared/schema";
+import {
+  analyzeKyotoContentGaps,
+  listOpenKyotoGaps,
+  getContentTypePlan,
+  GAP_CITY,
+} from "./content-gap.service";
 
 export interface KyotoIngestStats {
   ready: boolean;
@@ -163,6 +169,166 @@ export async function ingestKyotoHeritage(
 
   console.log(
     `[dmo-ingest] Kyoto pass complete — enriched ${base.enriched}, failed ${base.failed}, skipped ${base.skipped} of ${base.total}`,
+  );
+  return base;
+}
+
+// ── Priority (gap-driven) ingestion (#2) ─────────────────────────────────────
+// Instead of re-scraping the 10 seeded heritage sites, this reads the open content-gap alerts
+// (which categories are thin — venues, restaurants, events…) and runs Tavily searches to fill them
+// with NEW born-hidden stubs. So the scraper's priorities are driven by what we're actually missing.
+
+export interface GapFillStats {
+  ready: boolean;
+  reason?: string;
+  gapsProcessed: number;
+  created: number;
+  duplicates: number;
+  failed: number;
+  ranAt: Date;
+  perGap: Array<{ contentType: string; created: number; duplicates: number; failed: number }>;
+  error?: string;
+}
+
+export interface GapFillOptions {
+  /** Max gap categories to fill in one pass (Tavily-spend guard). Default 3, highest-severity first. */
+  maxGaps?: number;
+  /** Max new stubs to create per gap category in one pass. Default 6. */
+  maxPerGap?: number;
+}
+
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || null;
+
+/**
+ * Fill the thinnest Kyoto content categories from their gap alerts, using Tavily search for discovery.
+ * Each search result becomes a THIN born-hidden `dmo_raw_content` stub (D1a: pending_expert_review +
+ * discover_page_visible=false) that an expert enriches later — matching the seed philosophy. Dedups on
+ * (source_url, source_id) so re-runs and overlapping queries don't create duplicates. §13: no Tavily key
+ * ⇒ zero writes, ready:false. Re-analyzes gaps at the end so the queue reflects the new coverage.
+ */
+export async function ingestKyotoContentGaps(
+  opts: GapFillOptions = {},
+  clientOverride?: TavilyClient,
+): Promise<GapFillStats> {
+  const ranAt = new Date();
+  const base: GapFillStats = {
+    ready: true,
+    gapsProcessed: 0,
+    created: 0,
+    duplicates: 0,
+    failed: 0,
+    ranAt,
+    perGap: [],
+  };
+
+  if (!isDmoIngestReady()) {
+    return {
+      ...base,
+      ready: false,
+      reason: "TAVILY_API_KEY not set — skipping gap-fill ingestion (no content written).",
+    };
+  }
+
+  const maxGaps = Math.max(1, Math.min(opts.maxGaps ?? 3, 5));
+  const maxPerGap = Math.max(1, Math.min(opts.maxPerGap ?? 6, 15));
+
+  // Refresh coverage → open gaps first, so we fill the current picture (highest severity first).
+  try {
+    await analyzeKyotoContentGaps();
+  } catch (err: any) {
+    return { ...base, error: err?.message || String(err) };
+  }
+  const gaps = (await listOpenKyotoGaps()).slice(0, maxGaps);
+  const client = clientOverride ?? getClient();
+
+  for (const gap of gaps) {
+    const plan = getContentTypePlan(gap.contentType);
+    if (!plan) continue; // no discovery recipe for this type — leave it for manual sourcing
+    const perGap = { contentType: gap.contentType, created: 0, duplicates: 0, failed: 0 };
+    base.gapsProcessed++;
+
+    for (const query of plan.discoveryQueries) {
+      if (perGap.created + perGap.duplicates >= maxPerGap) break;
+      try {
+        const search = await client.search(query, {
+          maxResults: Math.min(maxPerGap, 8),
+          searchDepth: "basic",
+          includeAnswer: false,
+        });
+        const results = search.results ?? [];
+        for (const r of results) {
+          if (perGap.created + perGap.duplicates >= maxPerGap) break;
+          const url = r?.url;
+          const title = r?.title?.trim();
+          if (!url || !title) continue;
+          try {
+            const snippet = (r.content ?? "").trim().slice(0, MAX_DESCRIPTION_CHARS);
+            const inserted = await db
+              .insert(dmoRawContent)
+              .values({
+                sourceId: plan.sourceId,
+                contentType: plan.contentType,
+                status: "pending_expert_review",
+                name: title.slice(0, 255),
+                slug: slugify(title),
+                description: snippet || null,
+                shortDescription: snippet ? snippet.slice(0, 280) : null,
+                country: "Japan",
+                city: GAP_CITY,
+                rawData: {
+                  discoveredVia: "tavily:gap",
+                  gapContentType: plan.contentType,
+                  query,
+                  score: r.score ?? null,
+                },
+                tags: ["tavily-discovered", plan.contentType],
+                sourceUrl: url,
+                sourcePageTitle: title.slice(0, 255),
+                scrapedBy: "tavily:gap",
+                scrapedAt: new Date(),
+                confidenceScore: "0.40", // machine-discovered, unverified — expert curates before publish
+                // Born-hidden — D1a. Never reaches travelers without expert review.
+                expertWorkspaceVisible: true,
+                discoverPageVisible: false,
+              })
+              .onConflictDoNothing({
+                target: [dmoRawContent.sourceUrl, dmoRawContent.sourceId],
+              })
+              .returning({ id: dmoRawContent.id });
+            if (inserted.length > 0) {
+              perGap.created++;
+              base.created++;
+            } else {
+              perGap.duplicates++;
+              base.duplicates++;
+            }
+          } catch (rowErr: any) {
+            console.warn(`[dmo-gap] row insert failed (${plan.contentType}):`, rowErr?.message || rowErr);
+            perGap.failed++;
+            base.failed++;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[dmo-gap] Tavily search failed for "${query}":`, err?.message || err);
+        perGap.failed++;
+        base.failed++;
+      }
+      await sleep(PER_SITE_DELAY_MS);
+    }
+
+    base.perGap.push(perGap);
+  }
+
+  // Reconcile the gap queue against the new coverage.
+  try {
+    await analyzeKyotoContentGaps();
+  } catch {
+    /* best-effort — the fill already happened */
+  }
+
+  console.log(
+    `[dmo-gap] Kyoto gap-fill complete — created ${base.created}, duplicates ${base.duplicates}, failed ${base.failed} across ${base.gapsProcessed} gaps`,
   );
   return base;
 }

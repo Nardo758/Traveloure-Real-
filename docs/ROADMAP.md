@@ -72,6 +72,21 @@ or an expert engagement, never a dead end.
   The live run happens at deploy (agent proxy blocks Tavily + source domains). Optional follow-up:
   Brave/Firecrawl discovery to reach content beyond the seeded set.
 
+**✅ Content-gap tracker + priority scraping (LANDED Jul 19, 2026):** the "track what content we have so we
+  can tell the scraper what to prioritize" system. `content-gap.service.ts` counts `dmo_raw_content` per
+  content type against a Kyoto editorial target profile (`KYOTO_CONTENT_PLAN` — attractions/venues/
+  restaurants/events/neighborhoods, experience-planning lens §12) and reconciles `content_gap_alerts`
+  idempotently (upsert unmet, auto-resolve met). `dmo-ingestion.service.ts` gains `ingestKyotoContentGaps`:
+  reads the open gaps highest-severity-first and runs targeted Tavily *searches* (discovery only — cheaper
+  than per-URL extract) to create NEW born-hidden stubs for the thin categories, deduped on
+  `(source_url, source_id)`, key-gated (§13, no key ⇒ zero writes). So the scraper fills what's missing
+  instead of re-scraping the 10 seeded sites; a second pass moves on to the next-thinnest categories
+  (priority-driven). Admin surface on `/admin/data`: a coverage table + "Recalculate coverage" and
+  "Fill gaps (Tavily)" (`GET /api/admin/dmo/gaps`, `POST /api/admin/dmo/analyze-gaps`,
+  `POST /api/admin/dmo/ingest-gaps`, all admin-gated). No migration — `content_gap_alerts` exists (117).
+  The Kyoto target numbers are editorial config, not fabricated content. Proven behaviorally: real counts,
+  idempotent analyze, §13 keyless no-op, D1a on created rows, dedup at the DB, priority shift across passes.
+
 **✅ Closed (were already resolved; backlog entries were stale — verified Jul 18, 2026):**
 - ✅ Re-point legacy `/api/bookings/refund` onto `service_bookings` — done with the
   escrow Phase 4 work (§14 A2): the endpoint (`server/routes/bookings.ts`) already

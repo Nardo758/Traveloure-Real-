@@ -346,6 +346,23 @@ This document captures architectural decisions to maintain consistency across co
       403s Tavily + source domains). **Still filed:** Brave/Firecrawl discovery for content *beyond* the seeded
       set (optional — add keys to enable auto-discovery); Smartvel/ATDW per-API clients; other-market ingestion
       (paused per §12). Migration 117 has **no CHECK constraints** → no publish-time push trap.
+    - **Content-gap tracker + priority scraping — LANDED (Jul 19, 2026).** The "track what content we have
+      so we can tell the scraper what to prioritize" system. `content-gap.service.ts` counts
+      `dmo_raw_content` per content type against a Kyoto editorial target (`KYOTO_CONTENT_PLAN` —
+      attractions/venues/restaurants/events/neighborhoods, experience-planning lens) and reconciles
+      `content_gap_alerts` idempotently (upsert unmet, auto-resolve met — the queue self-clears). The plan
+      is the SINGLE source of truth shared with ingestion: each entry carries the target count, the
+      `dmo_sources.id` discovered rows attach to, and the Tavily discovery queries. `ingestKyotoContentGaps`
+      (in `dmo-ingestion.service.ts`) reads the open gaps highest-severity-first and runs targeted Tavily
+      **searches** (discovery only, cheaper than per-URL extract) to create NEW **born-hidden** stubs
+      (D1a: `pending_expert_review` + `discover_page_visible=false`, `scraped_by='tavily:gap'`,
+      `confidence 0.40`) for the thin categories — deduped on `(source_url, source_id)`, key-gated (§13,
+      no key ⇒ zero writes), spend-capped (default ≤3 gaps × ≤6 stubs/pass). A second pass fills the
+      next-thinnest categories (priority-driven), so we stop re-scraping the 10 seeded heritage sites.
+      Admin surface on `/admin/data`: coverage table + Recalculate/Fill buttons
+      (`GET /api/admin/dmo/gaps`, `POST /api/admin/dmo/analyze-gaps`, `POST /api/admin/dmo/ingest-gaps`,
+      admin-gated). **No migration** — `content_gap_alerts` exists (117). Kyoto target numbers are
+      editorial config, not fabricated content (§13). Live gap-fill runs at deploy (proxy blocks Tavily).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
