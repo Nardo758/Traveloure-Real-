@@ -199,6 +199,13 @@ jobs:
         env:
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Assert spec file exists (selection-controls)
+        run: |
+          if [ ! -f "playwright/tests/selection-controls.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/selection-controls.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
       - name: Selection-controls DOM test
         run: npx playwright test selection-controls --project=chromium
         env:
@@ -290,6 +297,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           E2E_TEST_PASSWORD: TestPass123!
+      - name: Assert spec file exists (journey-2)
+        run: |
+          if [ ! -f "e2e/specs/journey-2.spec.ts" ]; then
+            echo "::error::Spec file not found: e2e/specs/journey-2.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
       - name: Journey-2 E2E test (Stage 3 exit gate)
         # Uses playwright.local.config.ts: testDir=./e2e/specs + globalSetup
         # that accepts http://localhost (NODE_ENV=development skips the Secure

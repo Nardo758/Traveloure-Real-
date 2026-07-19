@@ -62,6 +62,14 @@ jobs:
 
       - run: npm ci
 
+      - name: Assert spec file exists (cart-checkout-redirect)
+        run: |
+          if [ ! -f "playwright/tests/cart-checkout-redirect.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/cart-checkout-redirect.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
       - name: Cart redirect static analysis (suites A–C)
         # Scans cart.tsx, EnhancedPlanningModal.tsx, and App.tsx to verify:
         #   A. cart.tsx uses /trip/${…} not /trips/${…}

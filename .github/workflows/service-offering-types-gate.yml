@@ -235,6 +235,13 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a node || true
           exit 1
+      - name: Assert spec file exists (earn-smoke)
+        run: |
+          if [ ! -f "playwright/tests/earn-smoke.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/earn-smoke.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
       - name: /earn catalog DOM smoke tests (all four tracks)
         # Uses the default playwright.config.ts (testDir: ./playwright/tests).
         # No globalSetup / auth needed — /earn is a public page.
