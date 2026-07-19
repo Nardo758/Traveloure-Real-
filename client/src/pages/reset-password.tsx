@@ -26,7 +26,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+      <main className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -43,13 +43,13 @@ export default function ResetPasswordPage() {
             </Link>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+      <main className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -66,13 +66,13 @@ export default function ResetPasswordPage() {
             </Link>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 
   if (invalidToken) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+      <main className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -89,7 +89,7 @@ export default function ResetPasswordPage() {
             </Link>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 

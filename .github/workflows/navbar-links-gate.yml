@@ -45,7 +45,11 @@ jobs:
   navbar-links-smoke:
     name: navbar-links-smoke (Playwright DOM gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 40, not 20: the three suites run serially and app-routes now visits ~176
+    # routes (~10 min). At 20 the job was cancelled mid-app-routes. Kept at 1
+    # worker (playwright.config CI default) for determinism — bump this before
+    # parallelizing.
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:15
