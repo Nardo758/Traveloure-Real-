@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus,
   Edit,
+  Copy,
   Trash2,
   DollarSign,
   Clock,
@@ -155,6 +156,20 @@ export default function ProviderServices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/provider/services/${id}/duplicate`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      toast({ title: "Service duplicated", description: "The copy is a draft awaiting review — edit and submit it." });
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", description: error.message });
@@ -396,6 +411,15 @@ export default function ProviderServices() {
                           <Edit className="w-4 h-4 mr-1" /> Edit
                         </Button>
                       </Link>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => duplicateMutation.mutate(service.id)}
+                        disabled={duplicateMutation.isPending}
+                        data-testid={`button-duplicate-${service.id}`}
+                      >
+                        <Copy className="w-4 h-4 mr-1" /> Duplicate
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
