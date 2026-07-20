@@ -9,6 +9,7 @@
  * before the swap path fires.
  */
 
+import { AdminLayout } from "@/components/admin-layout";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -374,6 +375,7 @@ export default function NeighborhoodsAdminPage() {
   if (isLoading) return <div className="p-6 text-sm text-gray-500">Loading neighborhoods…</div>;
 
   return (
+    <AdminLayout title="Neighborhoods">
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="heading-neighborhoods">
@@ -449,5 +451,6 @@ export default function NeighborhoodsAdminPage() {
         />
       )}
     </div>
+    </AdminLayout>
   );
 }
