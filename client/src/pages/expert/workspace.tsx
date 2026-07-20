@@ -7,6 +7,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DmoPickerModal } from "@/components/expert/dmo-picker-modal";
+import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
   Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2, PenSquare,
@@ -16,7 +18,7 @@ import {
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Activity, Battery, Shield, BatteryLow,
-  ShoppingBag,
+  ShoppingBag, Store,
 } from "lucide-react";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -318,6 +320,8 @@ export default function ExpertWorkspace() {
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [addingItemDay, setAddingItemDay] = useState<number | null>(null);
+  const [dmoPickerDay, setDmoPickerDay] = useState<number | null>(null);
+  const [servicePickerDay, setServicePickerDay] = useState<number | null>(null);
 
   // Browse / map search state
   const [browseQuery, setBrowseQuery] = useState("");
@@ -642,19 +646,47 @@ export default function ExpertWorkspace() {
 
   const isLoading = tripsLoading || assignmentLoading;
 
-  if (!tripId) return (
-    <main style={{ padding: 40, textAlign: "center" }}>
-      <PenSquare style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
-      <h1 style={{ fontSize: 18, fontWeight: 600, color: G[900], margin: "0 0 8px" }}>No trip selected</h1>
-      <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>Open a trip from your Assigned Trips list to start working in the workspace.</div>
-      <button
-        onClick={() => setLocation("/expert/assigned-trips")}
-        style={{ background: "#E85D55", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
-      >
-        Go to Assigned Trips
-      </button>
-    </main>
-  );
+  // No trip open → a real launchpad (not a dead-end): open a client trip to plan, or start creating.
+  if (!tripId) {
+    const homeCards: Array<{ title: string; desc: string; href: string; icon: any; primary?: boolean }> = [
+      { title: "Assigned Trips", desc: "Open a client trip to build its itinerary", href: "/expert/assigned-trips", icon: MapPin, primary: true },
+      { title: "Ready Made Trips", desc: "Build sellable itineraries travelers can buy", href: "/expert/templates", icon: FileText },
+      { title: "DMO Library", desc: "Research Kyoto content to build from", href: "/expert/dmo-library", icon: Search },
+      { title: "Content Studio", desc: "Create promo & social content", href: "/expert/content-studio", icon: Sparkles },
+    ];
+    return (
+      <main style={{ padding: "40px 24px", maxWidth: 760, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <PenSquare style={{ width: 24, height: 24, color: P }} />
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: G[900], margin: 0 }}>Expert workspace</h1>
+        </div>
+        <div style={{ fontSize: 14, color: G[500], marginBottom: 24 }}>
+          Open an assigned client trip to build its itinerary — or jump straight into creating.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
+          {homeCards.map((c) => (
+            <button
+              key={c.href}
+              onClick={() => setLocation(c.href)}
+              data-testid={`workspace-home-${c.title.toLowerCase().replace(/\s+/g, "-")}`}
+              style={{
+                textAlign: "left", cursor: "pointer", padding: 18, borderRadius: 14,
+                border: `1px solid ${c.primary ? P : G[200]}`,
+                background: c.primary ? `${P}0A` : "white",
+                display: "flex", flexDirection: "column", gap: 8,
+              }}
+            >
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${P}14`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <c.icon style={{ width: 18, height: 18, color: P }} />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>{c.title}</span>
+              <span style={{ fontSize: 12.5, color: G[500], lineHeight: 1.45 }}>{c.desc}</span>
+            </button>
+          ))}
+        </div>
+      </main>
+    );
+  }
 
   if (isLoading) return (
     <div style={{ padding: 40, display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, margin: "0 auto" }}>
@@ -684,6 +716,12 @@ export default function ExpertWorkspace() {
       )}
       {addingItemDay !== null && tripId && (
         <AddItemModal dayNumber={addingItemDay} tripId={tripId} onClose={() => setAddingItemDay(null)} onItemAdded={triggerEnergyRecalc} />
+      )}
+      {dmoPickerDay !== null && tripId && (
+        <DmoPickerModal tripId={tripId} dayNumber={dmoPickerDay} onClose={() => setDmoPickerDay(null)} onAdded={triggerEnergyRecalc} />
+      )}
+      {servicePickerDay !== null && tripId && (
+        <ServicePickerModal tripId={tripId} dayNumber={servicePickerDay} destination={trip?.destination || ""} onClose={() => setServicePickerDay(null)} onAdded={triggerEnergyRecalc} />
       )}
 
       {/* ── Header ── */}
@@ -959,8 +997,22 @@ export default function ExpertWorkspace() {
               </div>
             ) : (
               <>
-                {/* Add item button */}
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                {/* Add item buttons */}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
+                  <button
+                    onClick={() => setDmoPickerDay(1)}
+                    data-testid="button-add-from-dmo"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "white", color: G[700], border: `1px solid ${G[200]}`, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    <Search style={{ width: 12, height: 12 }} /> Add from DMO Library
+                  </button>
+                  <button
+                    onClick={() => setServicePickerDay(1)}
+                    data-testid="button-add-service"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "white", color: G[700], border: `1px solid ${G[200]}`, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    <Store style={{ width: 12, height: 12 }} /> Add Service
+                  </button>
                   <button
                     onClick={() => setAddingItemDay(1)}
                     data-testid="button-add-item-expert"
