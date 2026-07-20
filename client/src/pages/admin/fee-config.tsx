@@ -1,3 +1,4 @@
+import { AdminLayout } from "@/components/admin-layout";
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -476,6 +477,7 @@ export default function AdminFeeConfigPage() {
   const eventOverrides = displayOptFees.filter(f => f.event_type !== null);
 
   return (
+    <AdminLayout title="Fee Config">
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Phase 8.1 update: the live editor is now at /admin/fee-bands. This page
           still exists for transitional reasons (and the booking_fee_configs table
@@ -645,5 +647,6 @@ export default function AdminFeeConfigPage() {
         )}
       </div>
     </div>
+    </AdminLayout>
   );
 }
