@@ -14,6 +14,7 @@
  * - default_commission_band_key must reference an active fee_bands row.
  */
 
+import { AdminLayout } from "@/components/admin-layout";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -256,6 +257,7 @@ export default function FeeBandsAdminPage() {
   const flatBands = (bands ?? []).filter((b) => b.rate_type === "flat");
 
   return (
+    <AdminLayout title="Fee Bands">
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="heading-fee-bands">
@@ -312,5 +314,6 @@ export default function FeeBandsAdminPage() {
         </CardContent>
       </Card>
     </div>
+    </AdminLayout>
   );
 }
