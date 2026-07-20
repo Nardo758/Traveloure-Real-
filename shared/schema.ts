@@ -563,6 +563,10 @@ export const providerServices = pgTable("provider_services", {
   pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
   pickupAddress: text("pickup_address"), // Starting pickup location
   serviceRadius: integer("service_radius"), // km radius provider covers
+  // Does the provider transport the traveler during/from the meeting point?
+  // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
+  // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
+  transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
   
@@ -3069,6 +3073,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   
   // Booking info
   vendorContractId: varchar("vendor_contract_id").references(() => vendorContracts.id, { onDelete: "set null" }),
+  // Link to a bookable platform service (provider_services) when an expert drops one onto the
+  // itinerary from the Workstation service catalog. Nullable — free-text/place items have none.
+  // ON DELETE SET NULL so removing the underlying service doesn't cascade-delete the plan item.
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
   confirmationNumber: varchar("confirmation_number", { length: 255 }),
@@ -3705,6 +3713,16 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   source: varchar("source", { length: 30 }).default("manual"),
   externalCampaignId: varchar("external_campaign_id", { length: 100 }),
   lastSyncedAt: timestamp("last_synced_at"),
+  // Partner-level admin approval (D1a): affiliate content is admin-gated ONCE at the partner level —
+  // every product inherits its partner's approval. Born 'submitted' (never self-approved); an admin
+  // approves/rejects via /api/admin/affiliate/partners/:id/approve|reject. Public reads gate on
+  // 'approved' (migration 121); admin reads are ungated. Existing active partners grandfathered
+  // 'approved' (no outage). draft/submitted/approved/rejected — DB CHECK in migration 121.
+  approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -6374,7 +6392,10 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   expertModifiedData: jsonb("expert_modified_data").default({}), // Expert overrides
   
   // Visibility Flags (CRITICAL: Expert Workspace gate)
-  expertWorkspaceVisible: boolean("expert_workspace_visible").default(true).notNull(),
+  // Born FALSE — scraped/DMO content is admin-intake-gated: an admin must approve raw content into the
+  // expert library before an expert can see it (ratified "B"). Admin approve flips this true; existing
+  // pre-gate rows are grandfathered true (no backfill), the F2 pattern.
+  expertWorkspaceVisible: boolean("expert_workspace_visible").default(false).notNull(),
   discoverPageVisible: boolean("discover_page_visible").default(false).notNull(),
   publishedAt: timestamp("published_at"),
   publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),

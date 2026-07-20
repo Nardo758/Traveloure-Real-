@@ -72,17 +72,14 @@ or an expert engagement, never a dead end.
   The live run happens at deploy (agent proxy blocks Tavily + source domains). Optional follow-up:
   Brave/Firecrawl discovery to reach content beyond the seeded set.
 
-**✅ D4 — traveler-facing surface for published DMO content (LANDED Jul 19, 2026):** closed the
-  "backend without a surface" gap — an expert could scrape (D3) → enrich (D2) → publish, but published
-  `dmo_raw_content` (`status='published'`, `discover_page_visible=true`) had no traveler-facing reader,
-  so publish was a dead end. `dmo-discover.service.ts` (`getPublishedGuidesForCity`) reads only
-  published+visible rows (D1a read-gate — pending/born-hidden never leak) and **merges the latest
-  submitted/approved `expert_dmo_edits` overrides** onto each row (publish doesn't copy the curation onto
-  the base row, so a naive read would show raw machine text). Public `GET /api/discover/location/:city/guides`;
-  a "Local guides in {city}" section on the Discover city page (`discover-location.tsx`) renders the cards
-  (hidden until an expert publishes — no fabricated/empty state), each opening a dialog with the expert's
-  full curated description + attribution + source link. No migration. Verified behaviorally: pending row
-  hidden, published row appears with merged curation + expert name, case-insensitive city, empty-safe.
+**↩️ D4 — REVERTED (Jul 19, 2026): DMO content is the expert's research library, not a traveler surface.**
+  The decision-maker clarified that scraped DMO content is *ingredients* an expert uses to build Ready Made
+  Trips (→ §10 admin approval → Discover), enhance client itineraries, or make social content — it is never
+  pushed to travelers on its own. So the "Local guides on the Discover city page" surface (the reader
+  service, the `GET /api/discover/location/:city/guides` route, the `LocalGuidesSection`) and the expert
+  **"Publish to Discover" / reject** workflow that fed it were **removed**. The DMO Library is refocused on
+  research → **Build Ready Made Trip** (the existing `/build-itinerary` bridge). Admin approval moves to
+  **intake** (pre-filter what enters the library — filed). See CLAUDE.md §12 (DMO content model corrected).
 
 **✅ Content-gap tracker + priority scraping (LANDED Jul 19, 2026):** the "track what content we have so we
   can tell the scraper what to prioritize" system. `content-gap.service.ts` counts `dmo_raw_content` per

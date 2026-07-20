@@ -288,8 +288,8 @@ export async function ingestKyotoContentGaps(
                 scrapedBy: "tavily:gap",
                 scrapedAt: new Date(),
                 confidenceScore: "0.40", // machine-discovered, unverified — expert curates before publish
-                // Born-hidden — D1a. Never reaches travelers without expert review.
-                expertWorkspaceVisible: true,
+                // Born-hidden — an admin must approve this raw content into the expert library (intake gate, "B").
+                expertWorkspaceVisible: false,
                 discoverPageVisible: false,
               })
               .onConflictDoNothing({

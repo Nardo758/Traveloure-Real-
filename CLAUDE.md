@@ -124,6 +124,28 @@ This document captures architectural decisions to maintain consistency across co
      calls them** — the provider earnings page derives its numbers from the **live** `GET /api/provider/bookings`. Mounting
      them would be a **backend without a surface** (the inverse of the settings bug). Left dark; **filed:** activate this
      family only alongside a real consumer that needs the server-side earnings aggregate.
+   - **Expert workspace endpoints — REPAIRED (Jul 19, 2026).** `trips.routes.ts` is a **third** imported-but-unmounted
+     router (alongside `experts.routes.ts`/`cross-sell.routes.ts`); the expert trip workspace (`workspace.tsx`) called 8
+     handlers that lived only there / in the dark `experts.routes.ts`, so notes, commission, my-assignment,
+     workspace-constraints, calculate-energy, generate-presets, and the `draft→in_review→delivered` status advance all
+     silently hit the Vite catch-all (200-HTML) — the deliver workflow was dead even for an accepted trip. All 8 were
+     **ported verbatim into the mounted `booking-actions.ts`** (`app.use("/api", …)`, which already serves the
+     workspace's live `assigned-trips`/`traveler-profile`) and **deleted from the dark files** (no stale twin — the §9
+     shadow-route rule). Also added the missing **trip-accept** action (`POST /api/expert/assignments/:id/accept`,
+     owner-gated, atomic pending→accepted — §15) + an Accept button on `assigned-trips.tsx`, so a *pending* assignment
+     now has a path into the workspace (the first half of the `pending→accepted` then `draft→…→delivered` lifecycle,
+     which had no UI/endpoint). `trips.routes.ts`/`experts.routes.ts` stay unmounted with their *other* dark handlers.
+   - **Unmounted-router guard — LANDED (Jul 19, 2026), the durable fix for this recurring class.**
+     `scripts/check-unmounted-routers.cjs` (CI job `unmounted-router-guard` in `build.yml`, mirroring the
+     money-endpoint guard) fails when a `server/routes/*.ts` module is default-imported into `routes.ts` but
+     never `app.use`d — i.e. dead (200-HTML). Comment-stripped scan so a commented-out mount doesn't count.
+     Known-intentionally-dark routers (`expertsRoutes`, `crossSellRoutes`, `tripsRoutes`) are an explicit
+     `ALLOWED_UNMOUNTED` allow-list, each with a reason; a new offender fails until mounted (or added to the
+     list with a reason). **First catch (a real bug):** `savedItemsRoutes` was imported-but-unmounted while
+     the dashboard **Wishlist** (`WishlistSection.tsx`) actively GET/POST/DELETEs `/api/saved-items` — so the
+     Wishlist silently hit the catch-all and never loaded. Now **mounted** (`app.use(savedItemsRoutes)`);
+     handlers are session-scoped + owner-gated, no shadow. Proven: guard passes on main, fails on a
+     removed-or-commented mount.
 10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
@@ -363,20 +385,46 @@ This document captures architectural decisions to maintain consistency across co
       (`GET /api/admin/dmo/gaps`, `POST /api/admin/dmo/analyze-gaps`, `POST /api/admin/dmo/ingest-gaps`,
       admin-gated). **No migration** — `content_gap_alerts` exists (117). Kyoto target numbers are
       editorial config, not fabricated content (§13). Live gap-fill runs at deploy (proxy blocks Tavily).
-    - **D4 — traveler-facing surface for published DMO content — LANDED (Jul 19, 2026).** Closed the
-      "backend without a surface" gap: publish (`status='published'` + `discover_page_visible=true`) had
-      no traveler reader, so scrape→enrich→publish dead-ended. `dmo-discover.service.ts`
-      (`getPublishedGuidesForCity`) reads **only** published+visible rows (the D1a read-gate — the
-      provider_services/expert-templates pattern applied to the DMO visibility flags) and **merges the
-      latest submitted/approved `expert_dmo_edits` overrides** onto each row (publish flips
-      status/visibility but does NOT copy the curation onto the base row, so a naive read would serve raw
-      machine text — the merge serves the expert's `editedName`/`editedDescription`/`editedImages`/
-      `editedTags`, base row as fallback). Public `GET /api/discover/location/:city/guides` (registered
-      before `/:city` — different segment count, no shadow). Client: a "Local guides in {city}" section on
-      the Discover city page (`discover-location.tsx`, `LocalGuidesSection`) — cards hidden until an expert
-      publishes (no fabricated/empty state, §13), each opening a dialog with the full curated description +
-      expert attribution + source link. **No migration.** Proven behaviorally: pending hidden, published
-      appears with merged curation + expert name, case-insensitive city, empty-safe.
+    - **DMO content model — CORRECTED & RATIFIED (Jul 19, 2026): scraped content is the expert's raw
+      research library, NOT a traveler surface.** The decision-maker clarified the intent: DMO content is
+      *ingredients* an expert uses to (a) build/enhance **client itineraries** (private, in the workspace),
+      (b) build **Ready Made Trips** that publish to Discover via the §10 admin template-approval queue, or
+      (c) create **social** content. The raw/curated scraped content is **never surfaced to travelers on its
+      own** — it is always transformed into one of those three outputs first. Admin approval sits at
+      **intake** (admin pre-filters what raw scraped content enters the expert library — ratified "B"),
+      not at a per-item publish-to-Discover step.
+    - **Admin intake gate — LANDED (Jul 19, 2026, migration 118).** Scraped/DMO content is now born
+      **hidden from experts** (`dmo_raw_content.expert_workspace_visible` default flipped `true → false` at
+      both the ORM `shared/schema.ts` and the DB column, migration 118 — default-only, **no backfill, no
+      CHECK**, no publish-time push trap). All three create sites set it FALSE explicitly (heritage seed,
+      Tavily gap-fill, DMOCrawler). An admin approves raw content **into** the library via a queue on
+      `/admin/data`: `GET /api/admin/dmo/intake` (lists hidden, non-rejected Kyoto content),
+      `POST …/intake/:id/approve` (atomic conditional flip → `expert_workspace_visible=true`; idempotent —
+      a second approve matches 0 rows → 409), `POST …/intake/:id/reject` (`status='rejected'`, stays hidden),
+      all `adminApiGuard`-gated. The expert DMO Library reads `expert_workspace_visible=true`, so approved
+      content appears and rejected/pending content never does. **Grandfather (F2 pattern):** existing
+      pre-gate rows keep their current visibility (the seed heritage rows stay expert-visible, out of the
+      queue). This is the **intake** gate; the §10 template-approval queue remains the separate gate on the
+      finished Ready Made Trip. Proven behaviorally: born-hidden, in-queue, approve→in-library/out-of-queue,
+      idempotent re-approve, reject→stays-out, grandfather. **Filed:** persist `reviewed_by`/`reviewed_at`
+      on intake decisions (columns exist); optional rejection-reason UI.
+    - **D4 — REVERTED (Jul 19, 2026).** The earlier "traveler-facing Local guides on the Discover city page"
+      surface (getPublishedGuidesForCity + `GET /api/discover/location/:city/guides` + the
+      `LocalGuidesSection`) was built on the wrong assumption that scraped content publishes directly to
+      travelers. Per the corrected model above it was **removed**: the reader service, the public route, and
+      the Discover section are deleted. The **expert "Publish to Discover" / reject workflow** that fed it
+      (the D2 `POST /api/expert-workspace/content/:id/publish|reject` endpoints + the DMO Library publish
+      buttons/tabs) is **also removed** — there is no direct DMO→Discover path. The DMO Library
+      (`dmo-library.tsx`) is refocused as a research surface: browse Kyoto content → **Review & refine**
+      (still writes `expert_dmo_edits`) → **Add to trip → Build Ready Made Trip** (the `/build-itinerary`
+      bridge, unchanged; the trip then rides the §10 admin approval to sell). The admin intake-approval
+      queue that gates raw content into this library is **built** (see "Admin intake gate" above). The
+      **"Add to client itinerary"** action is **built** — the expert trip workspace (`workspace.tsx`) has an
+      "Add from DMO Library" picker (`components/expert/dmo-picker-modal.tsx`) that drops an admin-approved
+      DMO place onto the current trip's itinerary via the live `POST /api/trips/:tripId/itinerary-items`
+      (no new server surface). The no-trip workspace is also now a **launchpad** (Assigned Trips / Ready Made
+      Trips / DMO Library / Content Studio) instead of a dead-end. **Filed follow-ups:** wire refinement
+      (`expert_dmo_edits`) into the built trip's content; "Create social post" action.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

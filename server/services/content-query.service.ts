@@ -14,7 +14,7 @@ import {
   aiInteractions, serviceReviews, reviewModerationLogs,
   localExpertForms, destinationIntelligence, aiGeneratedItineraries,
   itineraryComparisons, providerServices, destinationEvents,
-  affiliateProducts, contentRegistry, affiliateClicks,
+  affiliateProducts, affiliatePartners, contentRegistry, affiliateClicks,
   trips, serviceBookings, expertMatchScores,
   experienceTypes,
 } from "@shared/schema";
@@ -413,6 +413,8 @@ export async function getAffiliateProductsByLocation(params: {
 }): Promise<any[]> {
   const base = and(
     eq(affiliateProducts.isActive, true),
+    // Phase 4 partner-level read-gate: only surface products whose partner is admin-approved.
+    sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
     or(
       ilike(affiliateProducts.city, `%${params.city}%`),
       ilike(affiliateProducts.country, `%${params.country}%`),
