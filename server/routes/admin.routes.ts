@@ -52,6 +52,7 @@ import {
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
+import { affiliateScraperService } from "../services/affiliate-scraper.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
@@ -5802,6 +5803,35 @@ router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res)
   } catch (error: any) {
     console.error("Error unsuspending user:", error);
     res.status(500).json({ message: "Failed to reinstate account", error: error.message });
+  }
+});
+
+// ─── Phase 4: affiliate partner approval (partner-level admin gate, D1a) ──────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Approval is set ONLY here — a partner
+// can never self-approve via the client-facing create/update paths. Approving a partner
+// clears its whole product catalog to the public read-gate; rejecting keeps it hidden.
+
+router.post("/api/admin/affiliate/partners/:id/approve", isAuthenticated, async (req: any, res) => {
+  try {
+    const reviewerId = req.user?.claims?.sub ?? req.user?.id;
+    const partner = await affiliateScraperService.setPartnerApproval(req.params.id, "approved", reviewerId);
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+    res.json({ partner, message: "Partner approved" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to approve partner", error: error.message });
+  }
+});
+
+router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (req: any, res) => {
+  try {
+    const reviewerId = req.user?.claims?.sub ?? req.user?.id;
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (!reason) return res.status(400).json({ message: "A rejection reason is required." });
+    const partner = await affiliateScraperService.setPartnerApproval(req.params.id, "rejected", reviewerId, reason);
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+    res.json({ partner, message: "Partner rejected" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to reject partner", error: error.message });
   }
 });
 

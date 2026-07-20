@@ -197,6 +197,29 @@ export default function AdminAffiliatePartners() {
     },
   });
 
+  // Phase 4: partner-level approval — approve/reject the whole partner (its products inherit).
+  const approveMutation = useMutation({
+    mutationFn: async (partnerId: string) =>
+      apiRequest("POST", `/api/admin/affiliate/partners/${partnerId}/approve`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
+      toast({ title: "Partner approved", description: "Its products are now visible to travelers." });
+    },
+    onError: (error: any) => toast({ title: "Approve failed", description: error.message, variant: "destructive" }),
+  });
+  const rejectMutation = useMutation({
+    mutationFn: async (partnerId: string) => {
+      const reason = window.prompt("Reason for rejecting this partner?");
+      if (!reason || !reason.trim()) throw new Error("A rejection reason is required.");
+      return apiRequest("POST", `/api/admin/affiliate/partners/${partnerId}/reject`, { reason: reason.trim() });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
+      toast({ title: "Partner rejected", description: "Its products stay hidden from travelers." });
+    },
+    onError: (error: any) => toast({ title: "Reject failed", description: error.message, variant: "destructive" }),
+  });
+
   const partners = partnersData?.partners || [];
   const categories = categoriesData?.categories || [];
 
@@ -383,17 +406,27 @@ export default function AdminAffiliatePartners() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {partner.isActive ? (
-                              <Badge variant="default" className="bg-green-600" data-testid={`badge-status-${partner.id}`}>
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Active
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" data-testid={`badge-status-${partner.id}`}>
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                                Inactive
-                              </Badge>
-                            )}
+                            <div className="flex flex-col gap-1 items-start">
+                              {partner.isActive ? (
+                                <Badge variant="default" className="bg-green-600" data-testid={`badge-status-${partner.id}`}>
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Active
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" data-testid={`badge-status-${partner.id}`}>
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Inactive
+                                </Badge>
+                              )}
+                              {/* Phase 4: partner-level approval — controls public visibility of ALL its products */}
+                              {partner.approvalStatus === "approved" ? (
+                                <Badge variant="outline" className="border-green-500 text-green-700 dark:text-green-300" data-testid={`badge-approval-${partner.id}`}>Approved</Badge>
+                              ) : partner.approvalStatus === "rejected" ? (
+                                <Badge variant="outline" className="border-red-500 text-red-700 dark:text-red-300" data-testid={`badge-approval-${partner.id}`} title={partner.rejectionReason || undefined}>Rejected</Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-300" data-testid={`badge-approval-${partner.id}`}>Pending review</Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             {partner.lastScrapedAt ? (
@@ -424,6 +457,32 @@ export default function AdminAffiliatePartners() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
+                              {partner.approvalStatus !== "approved" && (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="bg-green-600 hover:bg-green-700 h-8"
+                                  onClick={() => approveMutation.mutate(partner.id)}
+                                  disabled={approveMutation.isPending}
+                                  title="Approve partner"
+                                  data-testid={`button-approve-${partner.id}`}
+                                >
+                                  Approve
+                                </Button>
+                              )}
+                              {partner.approvalStatus !== "rejected" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-destructive"
+                                  onClick={() => rejectMutation.mutate(partner.id)}
+                                  disabled={rejectMutation.isPending}
+                                  title="Reject partner"
+                                  data-testid={`button-reject-${partner.id}`}
+                                >
+                                  Reject
+                                </Button>
+                              )}
                               <Button
                                 size="icon"
                                 variant="ghost"
