@@ -66,6 +66,7 @@ interface Service {
   deliveryTimeframe: string;
   meetingPoint: string | null;
   pickupAddress: string | null;
+  transportProvided: string | null;
   whatIncluded: string[];
   requirements: string[];
 }
@@ -295,7 +296,9 @@ export default function ServiceDetailPage() {
                 )}
 
                 {/* Where you'll meet — in-person / hybrid services only */}
-                {IN_PERSON_METHODS.has(service.deliveryMethod) && (service.meetingPoint || service.pickupAddress) && (
+                {IN_PERSON_METHODS.has(service.deliveryMethod) &&
+                  (service.meetingPoint || service.pickupAddress ||
+                    service.transportProvided === "yes" || service.transportProvided === "no") && (
                   <div className="mt-4 rounded-lg border bg-muted/40 p-3" data-testid="section-meeting-point">
                     <div className="flex items-center gap-2 text-sm font-medium mb-1">
                       <MapPin className="w-4 h-4 text-primary" />
@@ -307,6 +310,14 @@ export default function ServiceDetailPage() {
                     {service.pickupAddress && (
                       <p className="text-sm text-muted-foreground mt-1">
                         <span className="font-medium text-foreground">Pickup:</span> {service.pickupAddress}
+                      </p>
+                    )}
+                    {(service.transportProvided === "yes" || service.transportProvided === "no") && (
+                      <p className="text-sm text-muted-foreground mt-1" data-testid="text-transport-provided">
+                        <span className="font-medium text-foreground">Transport:</span>{" "}
+                        {service.transportProvided === "yes"
+                          ? "Provided by the host during the service"
+                          : "Not provided — please arrange your own transport"}
                       </p>
                     )}
                   </div>

@@ -404,4 +404,10 @@ export const MIGRATION_FILES = [
   // from experts until an admin approves it into the library. Default-only change, no backfill
   // (existing rows grandfathered — the F2 pattern), no CHECK (no publish-time push trap).
   "118_dmo_admin_intake_gate.sql",
+  // Migration 119 — provider-hub Phase 2: transport_provided disclosure on provider_services
+  // (yes/no/not_applicable). When a traveler meets the provider at the meeting point, the provider
+  // declares whether transport is provided; surfaced on service-detail. New column with a DEFAULT so
+  // existing rows are born 'not_applicable' (no CHECK violation); the CHECK lives only in the
+  // migration, not schema.ts (no publish-time push trap — migration-109 pattern). Guarded/idempotent.
+  "119_provider_services_transport_provided.sql",
 ] as const;
