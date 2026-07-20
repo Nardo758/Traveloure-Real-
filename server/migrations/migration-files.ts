@@ -415,4 +415,10 @@ export const MIGRATION_FILES = [
   // service from the Workstation catalog onto the trip and keep it traceable/bookable. Additive
   // nullable column, no default/backfill/CHECK → no publish-time push trap. Guarded/idempotent.
   "120_itinerary_items_provider_service_link.sql",
+  // Migration 121 — provider-hub Phase 4: partner-level admin approval on affiliate_partners
+  // (draft/submitted/approved/rejected + review fields). Affiliate content is admin-gated ONCE per
+  // partner; products inherit. Born 'submitted'; existing ACTIVE partners grandfathered 'approved'
+  // (F2 pattern, no outage). Public reads gate on 'approved', admin reads ungated. CHECK lives only
+  // in the migration and every existing row is set valid here → no publish-time push trap. Guarded.
+  "121_affiliate_partner_approval.sql",
 ] as const;
