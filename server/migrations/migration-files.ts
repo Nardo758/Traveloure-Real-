@@ -410,4 +410,9 @@ export const MIGRATION_FILES = [
   // existing rows are born 'not_applicable' (no CHECK violation); the CHECK lives only in the
   // migration, not schema.ts (no publish-time push trap — migration-109 pattern). Guarded/idempotent.
   "119_provider_services_transport_provided.sql",
+  // Migration 120 — provider-hub Phase 3: link itinerary_items to a bookable platform service via a
+  // nullable provider_service_id FK (ON DELETE SET NULL). Lets an expert drop an approved platform
+  // service from the Workstation catalog onto the trip and keep it traceable/bookable. Additive
+  // nullable column, no default/backfill/CHECK → no publish-time push trap. Guarded/idempotent.
+  "120_itinerary_items_provider_service_link.sql",
 ] as const;
