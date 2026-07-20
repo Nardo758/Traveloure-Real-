@@ -3073,6 +3073,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   
   // Booking info
   vendorContractId: varchar("vendor_contract_id").references(() => vendorContracts.id, { onDelete: "set null" }),
+  // Link to a bookable platform service (provider_services) when an expert drops one onto the
+  // itinerary from the Workstation service catalog. Nullable — free-text/place items have none.
+  // ON DELETE SET NULL so removing the underlying service doesn't cascade-delete the plan item.
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
   confirmationNumber: varchar("confirmation_number", { length: 255 }),
