@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -233,6 +234,7 @@ export default function ContentTracking() {
   return (
     <AdminLayout title="Content Tracking">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Registry", href: "/admin/content-tracking" }, { label: "Placement Map", href: "/admin/content-mapping" }]} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {statsData.map((stat) => (
             <Card key={stat.label} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
