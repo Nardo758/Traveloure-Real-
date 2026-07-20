@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -131,8 +132,9 @@ export default function AdminExpertTemplates() {
   };
 
   return (
-    <AdminLayout title="Expert Templates">
+    <AdminLayout title="Ready Made Trips">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Catalog", href: "/admin/expert-templates" }, { label: "Approvals", href: "/admin/template-approvals" }]} />
         <div>
           <h1 className="text-2xl font-bold text-gray-900" data-testid="text-expert-templates-title">
             Expert Service Templates

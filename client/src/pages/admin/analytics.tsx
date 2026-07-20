@@ -1,4 +1,6 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { FunnelChart } from "@/components/admin/FunnelChart";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +50,10 @@ export default function AdminAnalytics() {
   return (
     <AdminLayout title="Analytics">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Overview", href: "/admin/analytics" }, { label: "Tourism", href: "/admin/tourism-analytics" }]} />
+        {/* Conversion funnel drop-off (relocated from Dashboard) */}
+        <FunnelChart />
+
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {metrics.map((metric) => (

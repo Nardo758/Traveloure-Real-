@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +52,8 @@ export default function TemplateApprovals() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 p-6">
+        <AdminTabNav tabs={[{ label: "Catalog", href: "/admin/expert-templates" }, { label: "Approvals", href: "/admin/template-approvals" }]} />
         <div>
           <h1 className="text-2xl font-semibold">Template Approvals</h1>
           <p className="text-sm text-muted-foreground">
