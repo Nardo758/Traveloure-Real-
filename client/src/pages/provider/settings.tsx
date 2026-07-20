@@ -47,6 +47,24 @@ function VerificationPayoutsSection() {
   const { data: stripeStatus, isLoading: stripeLoading } = useQuery<any>({
     queryKey: ["/api/stripe/connect/status"],
   });
+  const { data: bgVerification, isLoading: bgLoading } = useQuery<{ providerVerificationStatus: string; backgroundCheckConfirmed: boolean }>({
+    queryKey: ["/api/provider/verification-status"],
+  });
+
+  const requestReviewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/provider/request-verification-review");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/verification-status"] });
+      toast({
+        title: data?.alreadyRequested ? "Review already requested" : "Review requested",
+        description: "Our team will review your account for background/insurance-gated categories. You'll be notified when it's complete.",
+      });
+    },
+    onError: () => toast({ title: "Couldn't submit request", description: "Please try again later.", variant: "destructive" }),
+  });
 
   const identityMutation = useMutation({
     mutationFn: async () => {
@@ -178,6 +196,55 @@ function VerificationPayoutsSection() {
           )}
         </CardContent>
       </Card>
+
+      {/* Background / Category Verification (platform gate) */}
+      {(() => {
+        const bgStatus = bgVerification?.providerVerificationStatus ?? "pending";
+        const bgBadge =
+          bgStatus === "verified"
+            ? <Badge className="bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Verified</Badge>
+            : bgStatus === "requested"
+            ? <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Under Review</Badge>
+            : <Badge variant="secondary">Not requested</Badge>;
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-emerald-600" />
+                  Background Verification
+                </div>
+                {bgLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : bgBadge}
+              </CardTitle>
+              <CardDescription>Some service categories (background-check or higher-insurance) can't be published until our team reviews your account. Request a review to unlock them.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {bgStatus === "verified" ? (
+                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-green-800">Account verified</p>
+                    <p className="text-sm text-green-600">You can publish listings in background/insurance-gated categories.</p>
+                  </div>
+                </div>
+              ) : bgStatus === "requested" ? (
+                <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                  <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <p className="text-sm text-amber-700">Your review request is in the queue — our team typically reviews within 3-5 business days.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-console-dark">This is separate from identity verification. Request it once you plan to offer a gated category.</p>
+                  <Button onClick={() => requestReviewMutation.mutate()} disabled={requestReviewMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-request-verification-review">
+                    {requestReviewMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+                    Request Review
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Stripe Connect */}
       <Card>
