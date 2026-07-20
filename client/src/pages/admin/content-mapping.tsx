@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -200,6 +201,7 @@ export default function ContentMappingPage() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <AdminTabNav tabs={[{ label: "Registry", href: "/admin/content-tracking" }, { label: "Placement Map", href: "/admin/content-mapping" }]} />
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Content Surface Map</h1>
