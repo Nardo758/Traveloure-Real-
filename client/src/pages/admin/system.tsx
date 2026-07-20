@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { SlowQueryWidget } from "@/components/admin/SlowQueryWidget";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,9 @@ export default function AdminSystem() {
   return (
     <AdminLayout title="System Settings">
       <div className="p-6 space-y-6">
+        {/* Slow query monitor (relocated from Dashboard) */}
+        <SlowQueryWidget />
+
         {/* System Status */}
         <Card>
           <CardHeader>
