@@ -563,6 +563,10 @@ export const providerServices = pgTable("provider_services", {
   pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
   pickupAddress: text("pickup_address"), // Starting pickup location
   serviceRadius: integer("service_radius"), // km radius provider covers
+  // Does the provider transport the traveler during/from the meeting point?
+  // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
+  // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
+  transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
   
