@@ -21,9 +21,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { LocalExpertForm, ServiceProviderForm } from "@shared/schema";
-import { FunnelChart } from "@/components/admin/FunnelChart";
-import { SlowQueryWidget } from "@/components/admin/SlowQueryWidget";
-import { NotificationsPanel } from "@/components/admin/NotificationsPanel";
 
 interface AdminStats {
   totalUsers: number;
@@ -150,14 +147,7 @@ export default function AdminDashboard() {
           <DigestTriggerButton />
         </div>
 
-        {/* Funnel drop-off visualizer */}
-        <FunnelChart />
-
-        {/* Slow query monitor */}
-        <SlowQueryWidget />
-
-        {/* Lead alert notifications */}
-        <NotificationsPanel />
+        {/* Funnel drop-off → Analytics; Slow query → System; Lead alerts → Notifications page. */}
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
