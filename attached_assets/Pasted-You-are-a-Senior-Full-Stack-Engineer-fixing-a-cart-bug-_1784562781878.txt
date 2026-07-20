@@ -1,0 +1,64 @@
+You are a Senior Full-Stack Engineer fixing a cart bug on Traveloure.
+
+BACKGROUND:
+An audit found that add-to-cart buttons use inconsistent 
+data-testid naming across components:
+
+CONSISTENT (correct pattern):
+- service-browser.tsx      → button-add-to-cart-${service.id}
+- discover.tsx              → button-add-to-cart-${service.id}
+- venue-card.tsx            → button-add-to-cart-${venue.id}
+- service-detail.tsx        → button-add-to-cart
+
+INCONSISTENT (broken pattern — missing "-to-"):
+- marketplace-card.tsx      → button-add-cart-${item.id}
+- trip-details.tsx          → button-add-cart-${service.id}
+
+STEP 1 — Investigate before fixing:
+Before renaming anything, compare the actual add-to-cart 
+click handler logic in marketplace-card.tsx and trip-details.tsx 
+against the working versions in service-browser.tsx and venue-card.tsx.
+
+Check specifically:
+A) Do they call the same mutation/API endpoint?
+B) Do they update cart state (query cache / context / store) 
+   the same way?
+C) Do they show the same optimistic UI / loading / success state?
+D) Do they handle errors the same way (toast, silent fail, etc.)?
+
+Report: is this ONLY a naming drift, or did the underlying 
+cart logic also diverge between these components?
+
+STEP 2 — Fix the testid naming:
+In marketplace-card.tsx and trip-details.tsx, rename:
+button-add-cart-${item.id}     →  button-add-to-cart-${item.id}
+button-add-cart-${service.id}  →  button-add-to-cart-${service.id}
+
+Make sure this matches the pattern used everywhere else 
+so that the selector [data-testid^="button-add-to-cart-"] 
+catches all add-to-cart buttons app-wide.
+
+STEP 3 — Fix any logic divergence found in Step 1:
+If the cart logic itself differs (not just the id), align 
+marketplace-card.tsx and trip-details.tsx to use the same 
+mutation, cache update, and error handling as the working 
+components. Do not just patch the id and leave broken logic underneath.
+
+STEP 4 — Verify:
+1. Search the full codebase for any remaining button-add-cart- 
+   (without "-to-") to confirm none were missed:
+   grep -r "button-add-cart-" ./client --include="*.tsx"
+2. Add an item to cart from marketplace-card.tsx — confirm it 
+   appears correctly in the cart.
+3. Add an item to cart from trip-details.tsx — confirm it 
+   appears correctly in the cart.
+4. Run the existing cart Playwright spec 
+   (cart-checkout-redirect / Suite 6) and confirm it still passes.
+
+REPORT FORMAT:
+- Was this naming-only or logic-divergent? (Step 1 findings)
+- Files changed
+- Grep confirmation (0 matches for old pattern)
+- Manual test result: marketplace-card add-to-cart → PASS/FAIL
+- Manual test result: trip-details add-to-cart → PASS/FAIL
+- Playwright suite result: PASS/FAIL

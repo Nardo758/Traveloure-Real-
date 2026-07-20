@@ -146,7 +146,7 @@ export function MarketplaceCard({
               disabled={isAdded}
               variant={isAdded ? "default" : "outline"}
               className="w-full"
-              data-testid={`button-add-cart-${item.id}`}
+              data-testid={`button-add-to-cart-${item.id}`}
             >
               {isAdded ? (
                 <>
