@@ -128,7 +128,10 @@ jobs:
   # them, skips the expensive install/build, and goes straight to running tests.
   # ─────────────────────────────────────────────────────────────────────────
   navbar-links-smoke:
-    name: navbar-links-smoke (Playwright DOM gate)
+    # NOTE: this check name must EXACTLY equal the branch-protection required-status
+    # context "navbar-links-smoke" — a descriptive suffix here orphans the required
+    # context and leaves it stuck "Expected — Waiting for status to be reported".
+    name: navbar-links-smoke
     runs-on: ubuntu-latest
     needs: [setup]
     # 40, not 20: the three suites run serially and app-routes now visits ~176
@@ -261,7 +264,9 @@ jobs:
   # Runs in parallel with setup — it needs no browser, no server, no DB.
   # ─────────────────────────────────────────────────────────────────────────
   hardcoded-links-check:
-    name: hardcoded-links-check (static analysis)
+    # Must EXACTLY equal the branch-protection required context "hardcoded-links-check"
+    # (see the navbar-links-smoke note above) — no descriptive suffix.
+    name: hardcoded-links-check
     runs-on: ubuntu-latest
     # No PostgreSQL service — pure file-system analysis, no DB or server needed.
     timeout-minutes: 5
