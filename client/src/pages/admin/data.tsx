@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -235,6 +236,18 @@ export default function AdminData() {
   return (
     <AdminLayout title="Data by Location">
       <div className="p-6 space-y-6">
+        {/* One-off backfill/ops tools (relocated here from the top-level sidebar) */}
+        <Card data-testid="card-backfill-tools">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Backfill &amp; data tools</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Link href="/admin/neighborhood-backfill"><Button variant="outline" size="sm" data-testid="link-neighborhood-backfill">Neighborhood backfill</Button></Link>
+            <Link href="/admin/gem-photo-backfill"><Button variant="outline" size="sm" data-testid="link-gem-photo-backfill">Gem photos backfill</Button></Link>
+            <Link href="/admin/neighborhoods"><Button variant="outline" size="sm" data-testid="link-neighborhood-spine">Neighborhood spine</Button></Link>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card data-testid="card-total-data">
             <CardContent className="p-4">

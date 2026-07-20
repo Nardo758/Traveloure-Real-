@@ -51,8 +51,8 @@ const menuGroups = [
     label: "Overview",
     items: [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+      // Analytics + Tourism are now tabs on the Analytics page.
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-      { title: "Tourism", href: "/admin/tourism-analytics", icon: MapPin },
       { title: "Search", href: "/admin/search", icon: Search },
     ],
   },
@@ -71,11 +71,11 @@ const menuGroups = [
       { title: "Services", href: "/admin/services", icon: Package },
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
       { title: "Offering Types", href: "/admin/offering-types", icon: Layers },
-      { title: "Expert Templates", href: "/admin/expert-templates", icon: LayoutTemplate },
-      { title: "Template Approvals", href: "/admin/template-approvals", icon: ShieldCheck },
+      // Ready Made Trips: catalog + approvals are tabs on this page.
+      { title: "Ready Made Trips", href: "/admin/expert-templates", icon: LayoutTemplate },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
+      // Content: registry + placement map are tabs on this page.
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
-      { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
@@ -86,7 +86,8 @@ const menuGroups = [
     items: [
       { title: "Revenue", href: "/admin/revenue", icon: DollarSign },
       { title: "Payouts", href: "/admin/payouts", icon: Banknote },
-      { title: "Fee Config", href: "/admin/fee-config", icon: Percent },
+      // Fees points at the LIVE fee-bands editor; Category Fees is a tab there.
+      { title: "Fees", href: "/admin/fee-bands", icon: Percent },
       { title: "Event Packages", href: "/admin/event-packages", icon: Crown },
     ],
   },
@@ -96,9 +97,8 @@ const menuGroups = [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
       { title: "Reconciliation", href: "/admin/reconciliation", icon: ShieldAlert },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
-      { title: "Neighborhoods", href: "/admin/neighborhood-backfill", icon: MapPin },
-      { title: "Gem Photos", href: "/admin/gem-photo-backfill", icon: ImageIcon },
       { title: "QA Checklist", href: "/admin/qa-checklist", icon: ClipboardList },
+      // Data hub links the one-off backfill tools (neighborhoods, gem photos).
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
