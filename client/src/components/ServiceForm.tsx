@@ -99,6 +99,7 @@ interface ServiceFormData {
   pickupAvailable: boolean;
   pickupAddress: string;
   serviceRadius: number;
+  transportProvided: "yes" | "no" | "not_applicable";
   // Booking terms
   cancellationPolicy: string;
   leadTime: string;
@@ -156,6 +157,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     pickupAvailable: false,
     pickupAddress: "",
     serviceRadius: 0,
+    transportProvided: "not_applicable",
     cancellationPolicy: "",
     leadTime: "",
     serviceImage: "",
@@ -233,6 +235,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
     serviceRadius: Number(s.serviceRadius || 0),
+    transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
     cancellationPolicy: s.cancellationPolicy || "",
     leadTime: s.leadTime || "",
     serviceImage: s.serviceImage || "",
@@ -560,6 +563,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
         serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
+        // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
+        transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         cancellationPolicy: formData.cancellationPolicy || null,
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
@@ -1298,6 +1303,30 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 rows={2}
                 className="mt-2"
               />
+            </div>
+
+            {/* Transport disclosure — travelers need to know if they must arrange their own transport */}
+            <div>
+              <Label htmlFor="transportProvided" className="flex items-center gap-2">
+                <Truck className="w-4 h-4" />
+                Do you provide transport during this service?
+              </Label>
+              <p className="text-xs text-muted-foreground mt-1 mb-2">
+                Once you meet the traveler, will you transport them (e.g. car, van)? This is shown to travelers so they can plan.
+              </p>
+              <Select
+                value={formData.transportProvided}
+                onValueChange={(v: "yes" | "no" | "not_applicable") => set("transportProvided", v)}
+              >
+                <SelectTrigger id="transportProvided" data-testid="select-transport-provided">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">Yes — I provide transport</SelectItem>
+                  <SelectItem value="no">No — traveler arranges their own</SelectItem>
+                  <SelectItem value="not_applicable">Not applicable</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Neighborhoods multi-select */}
