@@ -3713,6 +3713,16 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   source: varchar("source", { length: 30 }).default("manual"),
   externalCampaignId: varchar("external_campaign_id", { length: 100 }),
   lastSyncedAt: timestamp("last_synced_at"),
+  // Partner-level admin approval (D1a): affiliate content is admin-gated ONCE at the partner level —
+  // every product inherits its partner's approval. Born 'submitted' (never self-approved); an admin
+  // approves/rejects via /api/admin/affiliate/partners/:id/approve|reject. Public reads gate on
+  // 'approved' (migration 121); admin reads are ungated. Existing active partners grandfathered
+  // 'approved' (no outage). draft/submitted/approved/rejected — DB CHECK in migration 121.
+  approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

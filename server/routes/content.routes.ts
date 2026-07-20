@@ -6806,6 +6806,22 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
   
   const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
 
+  // Phase 4 affiliate read-gate helper: is the (optionally-authenticated) requester an admin?
+  // Non-blocking — public affiliate reads pass approvedOnly = !isAdmin so admins see the full
+  // catalog (incl. submitted/rejected partners) on the same endpoints the admin console uses,
+  // while travellers/experts see only approved-partner content.
+  const isRequestAdmin = async (req: any): Promise<boolean> => {
+    try {
+      if (!req.isAuthenticated?.() && !req.user) return false;
+      const uid = req.user?.claims?.sub ?? req.user?.id;
+      if (!uid) return false;
+      const user = await storage.getUser(uid);
+      return user?.role === "admin";
+    } catch {
+      return false;
+    }
+  };
+
   // Get partner categories
 
 router.get("/api/affiliate/categories", async (_req, res) => {
@@ -6851,9 +6867,11 @@ router.post("/api/affiliate/partners", isAuthenticated, async (req, res) => {
 router.get("/api/affiliate/partners", async (req, res) => {
     try {
       const { category, isActive, limit, offset } = req.query;
+      const approvedOnly = !(await isRequestAdmin(req)); // public sees approved partners only
       const result = await affiliateScraperService.getPartners({
         category: category as string,
         isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
+        approvedOnly,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
@@ -6867,7 +6885,8 @@ router.get("/api/affiliate/partners", async (req, res) => {
 
 router.get("/api/affiliate/partners/:id", async (req, res) => {
     try {
-      const partner = await affiliateScraperService.getPartnerById(req.params.id);
+      const approvedOnly = !(await isRequestAdmin(req));
+      const partner = await affiliateScraperService.getPartnerById(req.params.id, { approvedOnly });
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
       }
@@ -6881,7 +6900,10 @@ router.get("/api/affiliate/partners/:id", async (req, res) => {
 
 router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
     try {
-      const partner = await affiliateScraperService.updatePartner(req.params.id, req.body);
+      // Phase 4: approval is set ONLY via the admin approve/reject endpoints — strip any
+      // approval fields a client tries to mass-assign through this general update path (D1a).
+      const { approvalStatus, reviewedAt, reviewedBy, rejectionReason, submittedAt, ...safeBody } = req.body ?? {};
+      const partner = await affiliateScraperService.updatePartner(req.params.id, safeBody);
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
       }
@@ -6937,6 +6959,7 @@ router.get("/api/affiliate/partners/:id/jobs", isAuthenticated, async (req, res)
 router.get("/api/affiliate/products", async (req, res) => {
     try {
       const { partnerId, category, city, country, search, minPrice, maxPrice, minRating, limit, offset } = req.query;
+      const approvedOnly = !(await isRequestAdmin(req)); // public sees approved-partner products only
       const result = await affiliateScraperService.getProducts({
         partnerId: partnerId as string,
         category: category as string,
@@ -6946,6 +6969,7 @@ router.get("/api/affiliate/products", async (req, res) => {
         minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
         minRating: minRating ? parseFloat(minRating as string) : undefined,
+        approvedOnly,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
@@ -6959,7 +6983,8 @@ router.get("/api/affiliate/products", async (req, res) => {
 
 router.get("/api/affiliate/products/:id", async (req, res) => {
     try {
-      const product = await affiliateScraperService.getProductById(req.params.id);
+      const approvedOnly = !(await isRequestAdmin(req));
+      const product = await affiliateScraperService.getProductById(req.params.id, { approvedOnly });
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
@@ -7419,6 +7444,7 @@ router.get("/api/affiliate/products/by-location", async (req, res) => {
         city: city as string,
         country: country as string,
         category: category as string,
+        approvedOnly: !(await isRequestAdmin(req)), // traveler-facing location feed → approved partners only
         limit: limit ? parseInt(limit as string) : 10,
       });
 
