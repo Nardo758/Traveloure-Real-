@@ -3385,8 +3385,23 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  // Platform-wide affiliate revenue (the PLATFORM's cut, not any one expert's). Affiliate commission
+  // is earned on external partner networks so it never flows through platform_revenue / Stripe — this
+  // sums affiliate_earnings.platform_share across ALL rows so the admin revenue dashboard can show
+  // affiliate alongside booking/template/optimization revenue. Read-only aggregate; by status.
+  async getPlatformAffiliateRevenueSummary(): Promise<{ total: number; pending: number; confirmed: number; paid: number }> {
+    const rows = await db.select().from(affiliateEarnings);
+    const sum = (list: typeof rows) => list.reduce((s, e) => s + parseFloat(e.platformShare || "0"), 0);
+    return {
+      total: sum(rows),
+      pending: sum(rows.filter((e) => e.status === "pending")),
+      confirmed: sum(rows.filter((e) => e.status === "confirmed")),
+      paid: sum(rows.filter((e) => e.status === "paid")),
+    };
+  }
+
   // === Provider Earnings & Payouts ===
-  
+
   async getProviderEarnings(providerId: string): Promise<ProviderEarning[]> {
     return await db.select().from(providerEarnings).where(eq(providerEarnings.providerId, providerId)).orderBy(desc(providerEarnings.createdAt));
   }
@@ -4559,6 +4574,20 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(tripExpertAdvisors)
       .set({ workspaceStatus })
       .where(eq(tripExpertAdvisors.id, assignmentId))
+      .returning();
+    return updated;
+  }
+
+  // Atomically accept a pending advisory assignment (owner + pending guard in one UPDATE — §15).
+  // Returns undefined if the row isn't the expert's or isn't pending → caller 409s, no double-accept.
+  async acceptTripAssignment(assignmentId: string, expertId: string): Promise<any> {
+    const [updated] = await db.update(tripExpertAdvisors)
+      .set({ status: "accepted" })
+      .where(and(
+        eq(tripExpertAdvisors.id, assignmentId),
+        eq(tripExpertAdvisors.localExpertId, expertId),
+        eq(tripExpertAdvisors.status, "pending"),
+      ))
       .returning();
     return updated;
   }

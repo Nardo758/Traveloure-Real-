@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -177,6 +178,43 @@ export default function AdminData() {
     low: "bg-green-100 text-green-700 border-green-200",
   };
 
+  // ── DMO intake approval queue ("B") ───────────────────────────────────────
+  interface IntakeItem {
+    id: string;
+    name: string;
+    city: string;
+    neighborhood?: string | null;
+    contentType: string;
+    description?: string | null;
+    sourceUrl: string;
+    sourcePageTitle?: string | null;
+  }
+  const { data: intakeData } = useQuery<{ city: string; count: number; items: IntakeItem[] }>({
+    queryKey: ["/api/admin/dmo/intake"],
+  });
+
+  const approveIntakeMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("POST", `/api/admin/dmo/intake/${id}/approve`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dmo/intake"] });
+      toast({ title: "Approved", description: "Now available to experts in the DMO Library." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Approve failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const rejectIntakeMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("POST", `/api/admin/dmo/intake/${id}/reject`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dmo/intake"] });
+      toast({ title: "Rejected", description: "This content will not enter the expert library." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Reject failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const getTimeSince = (dateStr: string | null) => {
     if (!dateStr) return "N/A";
     const date = new Date(dateStr);
@@ -198,6 +236,18 @@ export default function AdminData() {
   return (
     <AdminLayout title="Data by Location">
       <div className="p-6 space-y-6">
+        {/* One-off backfill/ops tools (relocated here from the top-level sidebar) */}
+        <Card data-testid="card-backfill-tools">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Backfill &amp; data tools</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Link href="/admin/neighborhood-backfill"><Button variant="outline" size="sm" data-testid="link-neighborhood-backfill">Neighborhood backfill</Button></Link>
+            <Link href="/admin/gem-photo-backfill"><Button variant="outline" size="sm" data-testid="link-gem-photo-backfill">Gem photos backfill</Button></Link>
+            <Link href="/admin/neighborhoods"><Button variant="outline" size="sm" data-testid="link-neighborhood-spine">Neighborhood spine</Button></Link>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card data-testid="card-total-data">
             <CardContent className="p-4">
@@ -365,6 +415,74 @@ export default function AdminData() {
                 {fillGapsMutation.isPending ? "Filling…" : "Fill gaps (Tavily)"}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-dmo-intake">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CheckCircle className="w-4 h-4 text-teal-600" />
+              DMO intake review
+              {intakeData && intakeData.count > 0 && (
+                <Badge variant="secondary">{intakeData.count} pending</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Scraped content is hidden from experts until you approve it into the library. Approve legitimate
+              content so experts can build trips from it; reject junk or off-brand content.
+            </p>
+            {!intakeData || intakeData.count === 0 ? (
+              <p className="text-sm text-gray-500">Nothing awaiting intake review.</p>
+            ) : (
+              <div className="divide-y rounded-lg border">
+                {intakeData.items.map((it) => (
+                  <div key={it.id} className="flex items-start justify-between gap-3 p-3" data-testid={`intake-row-${it.id}`}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm truncate">{it.name}</span>
+                        <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {it.neighborhood ? `${it.neighborhood}, ` : ""}{it.city}
+                      </p>
+                      {it.description && (
+                        <p className="text-xs text-gray-600 line-clamp-2 mt-1">{it.description}</p>
+                      )}
+                      <a
+                        href={it.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-teal-700 underline underline-offset-2 mt-1 inline-block"
+                      >
+                        {it.sourcePageTitle || "View source"}
+                      </a>
+                    </div>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        onClick={() => approveIntakeMutation.mutate(it.id)}
+                        disabled={approveIntakeMutation.isPending || rejectIntakeMutation.isPending}
+                        data-testid={`button-intake-approve-${it.id}`}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive"
+                        onClick={() => rejectIntakeMutation.mutate(it.id)}
+                        disabled={approveIntakeMutation.isPending || rejectIntakeMutation.isPending}
+                        data-testid={`button-intake-reject-${it.id}`}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

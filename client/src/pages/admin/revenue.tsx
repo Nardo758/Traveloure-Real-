@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   DollarSign,
+  Link2,
   TrendingUp,
   TrendingDown,
   ArrowUpRight,
@@ -142,6 +143,12 @@ interface RevenueDashboard {
   };
   experts: ExpertStats;
   providers: ProviderStats;
+  affiliate?: {
+    total: number;
+    pending: number;
+    confirmed: number;
+    paid: number;
+  };
   recentTransactions: Array<{
     id: string;
     date: string;
@@ -740,6 +747,40 @@ export default function AdminRevenue() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Affiliate revenue (platform share) — tracked separately from platform_revenue because
+            affiliate commission is earned on external partner networks. Shown here so admins get an
+            all-sources view; grand total = platform revenue + affiliate platform-share. */}
+        {dashboard?.affiliate && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card data-testid="card-stat-affiliate-revenue">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Affiliate Revenue (platform share, all-time)</p>
+                    <p className="text-2xl font-bold">{formatCurrency(dashboard.affiliate.total)}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatCurrency(dashboard.affiliate.confirmed)} confirmed · {formatCurrency(dashboard.affiliate.pending)} pending
+                    </p>
+                  </div>
+                  <Link2 className="w-8 h-8 text-indigo-600" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card data-testid="card-stat-grand-total-revenue" className="sm:col-span-2 lg:col-span-1">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">All-sources total (all-time)</p>
+                    <p className="text-2xl font-bold">{formatCurrency((dashboard.platform.totalRevenue ?? 0) + dashboard.affiliate.total)}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Platform + affiliate platform-share</p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-emerald-600" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Secondary stat cards — Expert & Provider totals (all-time) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

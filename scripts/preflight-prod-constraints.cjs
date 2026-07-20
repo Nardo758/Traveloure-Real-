@@ -83,6 +83,13 @@ const CONSTRAINT_MANIFEST = [
     fallback: null,
     note: "migration 110 purchase state machine",
   },
+  {
+    table: "provider_services", column: "transport_provided", nullable: true,
+    allowed: ["yes", "no", "not_applicable"],
+    remap: { true: "yes", false: "no" },
+    fallback: "not_applicable", // new column born 'not_applicable' — no legacy rows can violate
+    note: "migration 119 transport-provided disclosure",
+  },
 ];
 
 const url = process.argv[2] || process.env.PREFLIGHT_DATABASE_URL || process.env.DATABASE_URL;

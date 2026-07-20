@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +106,15 @@ const statusColors: Record<string, string> = {
   deleted: "bg-gray-300 text-gray-600 dark:bg-gray-500 dark:text-gray-300",
 };
 
+import { contentOriginFor, CONTENT_ORIGIN_LABEL, type ContentOrigin } from "@shared/content-origin";
+
+// Origin badge styling — platform (neutral), affiliate (indigo, "paid partner"), sourced (amber).
+const originBadgeClass: Record<ContentOrigin, string> = {
+  platform: "text-slate-700 border-slate-300 dark:text-slate-300",
+  affiliate: "text-indigo-700 border-indigo-300 dark:text-indigo-300",
+  sourced: "text-amber-700 border-amber-300 dark:text-amber-300",
+};
+
 const contentTypeLabels: Record<string, string> = {
   trip: "Trip",
   itinerary: "Itinerary",
@@ -131,6 +141,7 @@ export default function ContentTracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [originFilter, setOriginFilter] = useState<string>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [selectedContent, setSelectedContent] = useState<ContentRegistry | null>(null);
   const [moderationDialogOpen, setModerationDialogOpen] = useState(false);
@@ -194,10 +205,11 @@ export default function ContentTracking() {
   };
 
   const filteredContent = content?.filter((c) =>
-    searchQuery === "" ||
-    c.trackingNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.metadata?.provider as string | undefined)?.toLowerCase().includes(searchQuery.toLowerCase())
+    (originFilter === "all" || contentOriginFor(c.contentType) === originFilter) &&
+    (searchQuery === "" ||
+      c.trackingNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.metadata?.provider as string | undefined)?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   if (summaryLoading) {
@@ -222,6 +234,7 @@ export default function ContentTracking() {
   return (
     <AdminLayout title="Content Tracking">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Registry", href: "/admin/content-tracking" }, { label: "Placement Map", href: "/admin/content-mapping" }]} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {statsData.map((stat) => (
             <Card key={stat.label} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
@@ -294,6 +307,17 @@ export default function ContentTracking() {
                       <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={originFilter} onValueChange={setOriginFilter}>
+                    <SelectTrigger className="w-[170px]" data-testid="select-origin-filter">
+                      <SelectValue placeholder="Origin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Origins</SelectItem>
+                      <SelectItem value="platform">{CONTENT_ORIGIN_LABEL.platform}</SelectItem>
+                      <SelectItem value="affiliate">{CONTENT_ORIGIN_LABEL.affiliate}</SelectItem>
+                      <SelectItem value="sourced">{CONTENT_ORIGIN_LABEL.sourced}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); if (v !== "affiliate_product") setProviderFilter("all"); }}>
                     <SelectTrigger className="w-[180px]" data-testid="select-type-filter">
                       <SelectValue placeholder="Content Type" />
@@ -336,6 +360,7 @@ export default function ContentTracking() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tracking #</TableHead>
+                        <TableHead>Origin</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Title</TableHead>
                         <TableHead>Provider</TableHead>
@@ -349,6 +374,16 @@ export default function ContentTracking() {
                       {filteredContent?.map((item) => (
                         <TableRow key={item.id} data-testid={`row-content-${item.trackingNumber}`}>
                           <TableCell className="font-mono text-sm">{item.trackingNumber}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const origin = contentOriginFor(item.contentType);
+                              return (
+                                <Badge variant="outline" className={`text-xs ${originBadgeClass[origin]}`} data-testid={`badge-origin-${item.trackingNumber}`}>
+                                  {CONTENT_ORIGIN_LABEL[origin]}
+                                </Badge>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               {item.contentType === "affiliate_product" && (
@@ -393,7 +428,7 @@ export default function ContentTracking() {
                       ))}
                       {(!filteredContent || filteredContent.length === 0) && (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                          <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                             No content found
                           </TableCell>
                         </TableRow>

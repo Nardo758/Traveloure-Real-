@@ -627,33 +627,6 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
   }
 
 
-router.patch("/api/expert/assignments/:assignmentId/workspace-status", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { assignmentId } = req.params;
-      const { workspaceStatus } = req.body;
-      const validTransitions: Record<string, string[]> = {
-        draft: ["in_review"],
-        in_review: ["delivered"],
-        delivered: [],
-      };
-      if (!workspaceStatus || !(workspaceStatus in validTransitions)) {
-        return res.status(400).json({ message: "Invalid workspaceStatus. Must be: draft, in_review, or delivered" });
-      }
-      const assignment = await storage.getExpertAssignment(assignmentId);
-      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
-      if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
-      const current = assignment.workspaceStatus ?? "draft";
-      if (!validTransitions[current]?.includes(workspaceStatus)) {
-        return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
-      }
-      const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
-      res.json(updated);
-    } catch (err) {
-      console.error("[Expert] workspace-status error:", err);
-      res.status(500).json({ message: "Failed to update workspace status" });
-    }
-  });
 
   // === Expert Assigned Trips list (powers Dashboard + Assigned Trips page) ===
 

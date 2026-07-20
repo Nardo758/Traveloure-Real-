@@ -11,6 +11,7 @@
  * (key, category/tier, market/delivery scoping) are set at create.
  */
 
+import { AdminLayout } from "@/components/admin-layout";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -298,6 +299,7 @@ export default function OfferingTypesAdminPage() {
   const { data: experts, isLoading: eLoading } = useQuery<ExpertOfferingType[]>({ queryKey: EXPERT_KEY });
 
   return (
+    <AdminLayout title="Offering Types">
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="heading-offering-types">
@@ -371,5 +373,6 @@ export default function OfferingTypesAdminPage() {
         </CardContent>
       </Card>
     </div>
+    </AdminLayout>
   );
 }

@@ -112,30 +112,50 @@ class AffiliateScraperService {
       .set(updateData)
       .where(eq(affiliatePartners.id, id))
       .returning();
-    
+
+    return updated || null;
+  }
+
+  // Phase 4: admin approve/reject of an affiliate partner (partner-level gate). Approval is set ONLY
+  // here (never via the client-facing updatePartner), so a partner cannot self-approve.
+  async setPartnerApproval(
+    id: string,
+    status: "approved" | "rejected",
+    reviewerId: string,
+    rejectionReason?: string,
+  ): Promise<AffiliatePartner | null> {
+    const [updated] = await db.update(affiliatePartners)
+      .set({
+        approvalStatus: status,
+        reviewedAt: new Date(),
+        reviewedBy: reviewerId,
+        rejectionReason: status === "rejected" ? (rejectionReason ?? null) : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(affiliatePartners.id, id))
+      .returning();
     return updated || null;
   }
 
   async getPartners(options?: {
     category?: string;
     isActive?: boolean;
+    approvedOnly?: boolean; // Phase 4: public reads gate on approval_status='approved'; admin reads pass false.
     limit?: number;
     offset?: number;
   }): Promise<{ partners: AffiliatePartner[]; total: number }> {
     let query = db.select().from(affiliatePartners).$dynamic();
     let countQuery = db.select({ count: sql<number>`count(*)` }).from(affiliatePartners).$dynamic();
 
-    if (options?.category) {
-      query = query.where(eq(affiliatePartners.category, options.category));
-      countQuery = countQuery.where(eq(affiliatePartners.category, options.category));
-    }
+    const conditions: any[] = [];
+    if (options?.category) conditions.push(eq(affiliatePartners.category, options.category));
+    if (options?.isActive !== undefined) conditions.push(eq(affiliatePartners.isActive, options.isActive));
+    if (options?.approvedOnly) conditions.push(eq(affiliatePartners.approvalStatus, "approved"));
 
-    if (options?.isActive !== undefined) {
-      const condition = eq(affiliatePartners.isActive, options.isActive);
-      query = query.where(options?.category 
-        ? and(eq(affiliatePartners.category, options.category), condition)
-        : condition
-      );
+    if (conditions.length > 0) {
+      const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+      query = query.where(whereClause);
+      countQuery = countQuery.where(whereClause);
     }
 
     const partners = await query
@@ -148,12 +168,14 @@ class AffiliateScraperService {
     return { partners, total: Number(count) };
   }
 
-  async getPartnerById(id: string): Promise<AffiliatePartner | null> {
+  async getPartnerById(id: string, options?: { approvedOnly?: boolean }): Promise<AffiliatePartner | null> {
     const [partner] = await db.select()
       .from(affiliatePartners)
       .where(eq(affiliatePartners.id, id))
       .limit(1);
-    
+
+    // Public read-gate: a non-approved partner is invisible to public callers (admin passes approvedOnly:false).
+    if (partner && options?.approvedOnly && partner.approvalStatus !== "approved") return null;
     return partner || null;
   }
 
@@ -442,6 +464,7 @@ ${truncatedHtml}`;
     minPrice?: number;
     maxPrice?: number;
     minRating?: number;
+    approvedOnly?: boolean; // Phase 4: public reads only surface products whose partner is approved.
     limit?: number;
     offset?: number;
   }): Promise<{ products: AffiliateProduct[]; total: number }> {
@@ -449,6 +472,11 @@ ${truncatedHtml}`;
     let countQuery = db.select({ count: sql<number>`count(*)` }).from(affiliateProducts).$dynamic();
 
     const conditions: any[] = [];
+
+    // Partner-level approval read-gate: a product is public only if its partner is approved.
+    if (options?.approvedOnly) {
+      conditions.push(sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`);
+    }
 
     if (options?.partnerId) {
       conditions.push(eq(affiliateProducts.partnerId, options.partnerId));
@@ -482,13 +510,19 @@ ${truncatedHtml}`;
     return { products, total: Number(count) };
   }
 
-  async getProductById(id: string): Promise<AffiliateProduct | null> {
+  async getProductById(id: string, options?: { approvedOnly?: boolean }): Promise<AffiliateProduct | null> {
     const [product] = await db.select()
       .from(affiliateProducts)
       .where(eq(affiliateProducts.id, id))
       .limit(1);
-    
-    return product || null;
+
+    if (!product) return null;
+    // Public read-gate: only surface the product if its partner is approved (admin passes approvedOnly:false).
+    if (options?.approvedOnly) {
+      const partner = await this.getPartnerById(product.partnerId);
+      if (!partner || partner.approvalStatus !== "approved") return null;
+    }
+    return product;
   }
 
   async trackClick(data: {

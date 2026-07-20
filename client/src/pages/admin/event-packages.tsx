@@ -5,6 +5,7 @@
  * catalog via /api/concierge/event-packages and the router service. Phase A is
  * catalog-only; the transactional quote flow ships in Phase C / C1.
  */
+import { AdminLayout } from "@/components/admin-layout";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -109,6 +110,7 @@ export default function AdminEventPackagesPage() {
   }
 
   return (
+    <AdminLayout title="Event Packages">
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="heading-event-packages">
@@ -273,5 +275,6 @@ export default function AdminEventPackagesPage() {
         </CardContent>
       </Card>
     </div>
+    </AdminLayout>
   );
 }

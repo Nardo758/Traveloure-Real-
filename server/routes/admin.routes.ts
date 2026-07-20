@@ -52,6 +52,7 @@ import {
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
+import { affiliateScraperService } from "../services/affiliate-scraper.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
@@ -62,7 +63,7 @@ import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
-import { cityNeighborhoods, expertNeighborhoods } from "@shared/schema";
+import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -728,6 +729,93 @@ router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("DMO gap-fill error:", err);
     res.status(500).json({ message: "Gap-fill ingestion failed", error: err.message });
+  }
+});
+
+// ── DMO intake approval queue ("B") ──────────────────────────────────────────
+// Scraped/DMO content is born hidden from experts (expert_workspace_visible=false). An admin must
+// approve raw content INTO the expert library before an expert can curate it or build trips from it.
+// This is the intake gate: admin pre-filters what enters the library, distinct from the §10 template
+// approval that gates the finished product. Kyoto-scoped (§12).
+
+// List content awaiting admin intake — not yet expert-visible, not rejected/quarantined.
+router.get("/api/admin/dmo/intake", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const city = typeof req.query.city === "string" && req.query.city ? req.query.city : "Kyoto";
+    const items = await db
+      .select()
+      .from(dmoRawContent)
+      .where(
+        and(
+          ilike(dmoRawContent.city, city),
+          eq(dmoRawContent.expertWorkspaceVisible, false),
+          sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+        ),
+      )
+      .orderBy(dmoRawContent.contentType, dmoRawContent.name)
+      .limit(200);
+    res.json({ city, count: items.length, items });
+  } catch (err: any) {
+    console.error("DMO intake list error:", err);
+    res.status(500).json({ message: "Failed to load DMO intake queue", error: err.message });
+  }
+});
+
+// Approve raw content INTO the expert library (flip expert_workspace_visible true). Idempotent:
+// only transitions rows that are still hidden and not rejected.
+router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [updated] = await db
+      .update(dmoRawContent)
+      .set({ expertWorkspaceVisible: true, updatedAt: new Date() })
+      .where(
+        and(
+          eq(dmoRawContent.id, req.params.id),
+          eq(dmoRawContent.expertWorkspaceVisible, false),
+          sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+        ),
+      )
+      .returning();
+    if (!updated) return res.status(409).json({ message: "Not pending intake (already approved or rejected)" });
+    res.json({ message: "Approved into the expert library", item: updated });
+  } catch (err: any) {
+    console.error("DMO intake approve error:", err);
+    res.status(500).json({ message: "Approve failed", error: err.message });
+  }
+});
+
+// Reject raw content at intake — it never enters the expert library. Stays hidden.
+router.post("/api/admin/dmo/intake/:id/reject", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    const [updated] = await db
+      .update(dmoRawContent)
+      .set({
+        status: "rejected",
+        expertWorkspaceVisible: false,
+        discoverPageVisible: false,
+        expertNotes: reason || null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(dmoRawContent.id, req.params.id), eq(dmoRawContent.expertWorkspaceVisible, false)))
+      .returning();
+    if (!updated) return res.status(409).json({ message: "Not pending intake (already approved or rejected)" });
+    res.json({ message: "Rejected at intake", item: updated });
+  } catch (err: any) {
+    console.error("DMO intake reject error:", err);
+    res.status(500).json({ message: "Reject failed", error: err.message });
   }
 });
 
@@ -5715,6 +5803,35 @@ router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res)
   } catch (error: any) {
     console.error("Error unsuspending user:", error);
     res.status(500).json({ message: "Failed to reinstate account", error: error.message });
+  }
+});
+
+// ─── Phase 4: affiliate partner approval (partner-level admin gate, D1a) ──────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Approval is set ONLY here — a partner
+// can never self-approve via the client-facing create/update paths. Approving a partner
+// clears its whole product catalog to the public read-gate; rejecting keeps it hidden.
+
+router.post("/api/admin/affiliate/partners/:id/approve", isAuthenticated, async (req: any, res) => {
+  try {
+    const reviewerId = req.user?.claims?.sub ?? req.user?.id;
+    const partner = await affiliateScraperService.setPartnerApproval(req.params.id, "approved", reviewerId);
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+    res.json({ partner, message: "Partner approved" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to approve partner", error: error.message });
+  }
+});
+
+router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (req: any, res) => {
+  try {
+    const reviewerId = req.user?.claims?.sub ?? req.user?.id;
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (!reason) return res.status(400).json({ message: "A rejection reason is required." });
+    const partner = await affiliateScraperService.setPartnerApproval(req.params.id, "rejected", reviewerId, reason);
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+    res.json({ partner, message: "Partner rejected" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to reject partner", error: error.message });
   }
 });
 
