@@ -1048,7 +1048,7 @@ export default function TripDetails() {
                                     size="sm"
                                     onClick={() => handleAddToCart(service.id)}
                                     disabled={addToCartMutation.isPending}
-                                    data-testid={`button-add-cart-${service.id}`}
+                                    data-testid={`button-add-to-cart-${service.id}`}
                                   >
                                     {addToCartMutation.isPending ? (
                                       <Loader2 className="w-4 h-4 animate-spin" />
