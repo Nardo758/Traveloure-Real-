@@ -41,6 +41,14 @@ export interface UnifiedRevenueDashboard {
     totalPending: number;
     activeProviders: number;
   };
+  // Platform-wide affiliate revenue (the platform's cut). Tracked in affiliate_earnings, not
+  // platform_revenue (external partner networks), so folded in here for the "all fees" view.
+  affiliate: {
+    total: number;
+    pending: number;
+    confirmed: number;
+    paid: number;
+  };
   recentTransactions: Array<{
     id: string;
     date: Date;
@@ -133,14 +141,18 @@ class RevenueTrackingService {
       ? ((thisMonthRevenue.totalPlatformFee - lastMonthRevenue.totalPlatformFee) / lastMonthRevenue.totalPlatformFee) * 100
       : 0;
 
-    const [expertStats, providerStats, recentTxns, dailyTrend] = await Promise.all([
+    const [expertStats, providerStats, recentTxns, dailyTrend, affiliate] = await Promise.all([
       this.getExpertEarningsStats(),
       this.getProviderEarningsStats(),
       this.getRecentTransactions(10),
       this.getDailyTrend(30),
+      storage.getPlatformAffiliateRevenueSummary(),
     ]);
 
     return {
+      // platform.* keeps its existing meaning (platform_revenue only) so existing consumers and the
+      // by-source chart are unchanged; affiliate is surfaced as its own additive field (below), and
+      // the client shows a grand total = platform.totalRevenue + affiliate.total.
       platform: {
         totalRevenue: platformSummary.totalPlatformFee,
         thisMonth: thisMonthRevenue.totalPlatformFee,
@@ -150,6 +162,7 @@ class RevenueTrackingService {
       },
       experts: expertStats,
       providers: providerStats,
+      affiliate,
       recentTransactions: recentTxns,
       dailyTrend,
     };
