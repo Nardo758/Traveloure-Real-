@@ -8,6 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DmoPickerModal } from "@/components/expert/dmo-picker-modal";
+import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
   Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2, PenSquare,
@@ -17,7 +18,7 @@ import {
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Activity, Battery, Shield, BatteryLow,
-  ShoppingBag,
+  ShoppingBag, Store,
 } from "lucide-react";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -320,6 +321,7 @@ export default function ExpertWorkspace() {
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [addingItemDay, setAddingItemDay] = useState<number | null>(null);
   const [dmoPickerDay, setDmoPickerDay] = useState<number | null>(null);
+  const [servicePickerDay, setServicePickerDay] = useState<number | null>(null);
 
   // Browse / map search state
   const [browseQuery, setBrowseQuery] = useState("");
@@ -718,6 +720,9 @@ export default function ExpertWorkspace() {
       {dmoPickerDay !== null && tripId && (
         <DmoPickerModal tripId={tripId} dayNumber={dmoPickerDay} onClose={() => setDmoPickerDay(null)} onAdded={triggerEnergyRecalc} />
       )}
+      {servicePickerDay !== null && tripId && (
+        <ServicePickerModal tripId={tripId} dayNumber={servicePickerDay} destination={trip?.destination || ""} onClose={() => setServicePickerDay(null)} onAdded={triggerEnergyRecalc} />
+      )}
 
       {/* ── Header ── */}
       <header style={{ height: 56, background: "white", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", flexShrink: 0 }}>
@@ -1000,6 +1005,13 @@ export default function ExpertWorkspace() {
                     style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "white", color: G[700], border: `1px solid ${G[200]}`, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
                   >
                     <Search style={{ width: 12, height: 12 }} /> Add from DMO Library
+                  </button>
+                  <button
+                    onClick={() => setServicePickerDay(1)}
+                    data-testid="button-add-service"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "white", color: G[700], border: `1px solid ${G[200]}`, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    <Store style={{ width: 12, height: 12 }} /> Add Service
                   </button>
                   <button
                     onClick={() => setAddingItemDay(1)}
