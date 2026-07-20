@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -149,6 +150,7 @@ export default function TourismAnalytics() {
   return (
     <AdminLayout title="Tourism Analytics">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Overview", href: "/admin/analytics" }, { label: "Tourism", href: "/admin/tourism-analytics" }]} />
         {/* Header with Actions */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
