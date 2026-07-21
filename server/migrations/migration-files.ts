@@ -421,4 +421,9 @@ export const MIGRATION_FILES = [
   // (F2 pattern, no outage). Public reads gate on 'approved', admin reads ungated. CHECK lives only
   // in the migration and every existing row is set valid here → no publish-time push trap. Guarded.
   "121_affiliate_partner_approval.sql",
+  // Phase 4.1 (§7/§8): seed coordination_floor ($499 flat) + coordination_percent (0.08)
+  // fee_bands so the event-coordination fee constants become admin-editable. Idempotent
+  // ON CONFLICT DO NOTHING; resolveCoordinationFee reads these with a code-constant fallback,
+  // so behavior-neutral on apply. No schema/CHECK change → no publish-time push trap.
+  "122_coordination_fee_bands.sql",
 ] as const;
