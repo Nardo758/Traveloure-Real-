@@ -808,6 +808,20 @@ Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a�
 `provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
 both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
 
+**Migration 123 (Jul 21, 2026; registered in `migration-files.ts`) — Traveler service-requests capture:**
+new table `service_requests` (the "request a service that doesn't exist yet" surface). **Distinct from a
+*service* table** (FAQ prohibition is on new `provider_services`-like tables) — this is a demand-capture
+queue: a traveler describes what they want in a city, it lands in the admin triage queue. Columns: `traveler_id`
+(FK → `users`, `ON DELETE SET NULL`, **set server-side from the session, §14 — never from body**), `city`,
+`country`, `service_type` (free-text hint), `description`, `budget`, `status` (`open|fulfilled|closed`, DB CHECK),
+`admin_notes`. **New table → the status CHECK is created with the table (no legacy rows to violate) → no
+publish-time drizzle-push remap trap.** Endpoints in a **mounted** router (`server/routes/service-requests.routes.ts`,
+`app.use` in `routes.ts` — unmounted-router guard §9): `POST /api/service-requests` + `GET …/mine` (session-scoped),
+`GET/PATCH /api/admin/service-requests` (inherit the blanket `adminApiGuard` §2). Client: a "Request a service"
+dialog on the discover-location empty/footer state + an admin triage page (`/admin/service-requests`, sidebar
+"Service Requests"). No money path. **Filed:** notify-the-traveler when their request is marked fulfilled (ties to
+the email cluster); feed accepted requests into the supply-gap recommender.
+
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by
 migration 082 but **never had a writer** — the client feed's impression tracker

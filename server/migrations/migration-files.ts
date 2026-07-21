@@ -426,4 +426,7 @@ export const MIGRATION_FILES = [
   // ON CONFLICT DO NOTHING; resolveCoordinationFee reads these with a code-constant fallback,
   // so behavior-neutral on apply. No schema/CHECK change → no publish-time push trap.
   "122_coordination_fee_bands.sql",
+  // Traveler-submitted service requests ("request a service that doesn't exist yet").
+  // New table + status CHECK created together (no legacy rows) → no publish-time push trap.
+  "123_service_requests.sql",
 ] as const;

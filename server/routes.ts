@@ -104,6 +104,7 @@ import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
 import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSourceRegistry";
 import savedItemsRoutes from "./routes/saved-items.routes";
+import serviceRequestsRoutes from "./routes/service-requests.routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
@@ -571,6 +572,11 @@ export async function registerRoutes(
   // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;
   // mounting restores it (caught by the unmounted-router guard). Routes carry full /api paths.
   app.use(savedItemsRoutes);
+
+  // Traveler service requests ("request a service that doesn't exist yet"):
+  // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests
+  // (inherits the blanket adminApiGuard registered above). New table, migration 123.
+  app.use(serviceRequestsRoutes);
 
   // Trips Routes
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
