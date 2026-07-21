@@ -73,8 +73,13 @@ This document captures architectural decisions to maintain consistency across co
    validated `budget` field (D-BUDGET(b)); the paid-signal ledger. Full contract in the "Recorded change — Coordination-fee"
    note below.
 8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
-   touched code is a defect (see §13). The `499`/`8%` coordination constants are a pre-existing exception pending
-   migration to config (Phase 4.1 TODO in the service).
+   touched code is a defect (see §13). **Phase 4.1 LANDED (migration 122):** the `499`/`8%` coordination constants —
+   formerly the pre-existing §8 exception — are now admin-editable `fee_bands` rows (`coordination_floor` flat-dollars
+   `499.00`; `coordination_percent` fraction `0.08`). `resolveCoordinationFee` reads them via the two bands and **falls
+   back to the same code constants when a row is absent/non-positive** (a fee floor's safe failure mode), so the seed is
+   behavior-neutral on apply and the constants survive only as the documented fallback default (`fee-literal-ok`,
+   matching the `getFee` DEFAULT_FEE_CENTS fallback posture). Idempotent `ON CONFLICT DO NOTHING`; no schema/CHECK change
+   → no publish-time push trap.
 9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
    endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
