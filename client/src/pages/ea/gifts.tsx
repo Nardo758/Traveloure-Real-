@@ -204,9 +204,9 @@ export default function EAGifts() {
                   <div className="flex items-center justify-between mt-2 text-sm text-gray-500">
                     <span>{gift.amount}</span>
                     <div className="flex items-center gap-1">
-                      {[...Array(gift.rating)].map((_, i) => (
+                      {gift.rating ? [...Array(gift.rating)].map((_, i) => (
                         <Star key={i} className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                      ))}
+                      )) : null}
                     </div>
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{gift.occasionDate ?? gift.createdAt}</p>

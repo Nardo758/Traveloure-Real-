@@ -201,7 +201,7 @@ export default function EAProfile() {
                       <p className="text-sm text-[#7A7A72]">Add extra security to your account</p>
                     </div>
                   </div>
-                  <Badge className="bg-green-100 text-green-700">Enabled</Badge>
+                  <Badge className="bg-gray-100 text-gray-600">Not set up</Badge>
                 </div>
               </CardContent>
             </Card>
