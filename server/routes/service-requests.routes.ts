@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { serviceRequests, adminNotifications, insertServiceRequestSchema } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { createRateLimiter } from "../infrastructure/rate-limiter";
 
 /**
  * Traveler-submitted service requests — the "request a service that doesn't exist
@@ -22,8 +23,17 @@ function sessionUserId(req: any): string | undefined {
   return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 }
 
+// Per-user throttle: each POST also inserts an admin_notifications row, so cap how
+// fast an authenticated user can enqueue requests (prevents flooding the admin queue).
+// Keyed by the session user (set by isAuthenticated, which runs first), IP as fallback.
+const serviceRequestLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyGenerator: (req) => `service-request:${sessionUserId(req) ?? req.ip ?? "unknown"}`,
+});
+
 // POST /api/service-requests — traveler submits a request.
-router.post("/api/service-requests", isAuthenticated, async (req, res) => {
+router.post("/api/service-requests", isAuthenticated, serviceRequestLimiter, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Authentication required" });
