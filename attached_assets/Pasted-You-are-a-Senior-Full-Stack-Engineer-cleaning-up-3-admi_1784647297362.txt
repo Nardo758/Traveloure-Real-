@@ -1,0 +1,64 @@
+You are a Senior Full-Stack Engineer cleaning up 3 admin 
+route issues found in an audit.
+
+═══════════════════════════════════════
+FIX 1 — Add missing sidebar entries (System group)
+═══════════════════════════════════════
+
+Neighborhood Backfill (/admin/neighborhood-backfill) and 
+Gem Photo Backfill (/admin/gem-photo-backfill) are real, 
+working admin tools but have NO sidebar entry — they're 
+currently only reachable via buttons on /admin/data, or by 
+typing the exact URL directly.
+
+Add both as sidebar links under the System group (alongside 
+AI Costs / Reconciliation / Platform APIs). You can either:
+- List them as two separate items, OR
+- Group them under a single "Data Tools" parent if the 
+  sidebar supports nested items
+
+Also confirm: is /admin/data itself reachable from the 
+sidebar? If not, either add it too, or make sure these two 
+tools don't depend on it as their only entry point.
+
+═══════════════════════════════════════
+FIX 2 — Remove the dead Fee Config page
+═══════════════════════════════════════
+
+/admin/fee-config is deprecated. It renders a working-looking 
+form with save buttons, but saves write to booking_fee_configs, 
+which the fee resolver no longer reads. This means any admin 
+who edits and saves on this page believes they changed a fee, 
+but nothing actually happens — a silent no-op that could mislead 
+someone into thinking pricing is configured when it isn't.
+
+Steps:
+1. Remove the /admin/fee-config route and its page file 
+   from App.tsx (or wherever routes are defined)
+2. Set up a redirect: any request to /admin/fee-config should 
+   forward to /admin/fee-bands (the real, live fee editor, 
+   already in the sidebar under Money → Fees)
+3. Confirm no other page/component links to /admin/fee-config 
+   anywhere in the codebase (grep for it) — update any 
+   references to point to /admin/fee-bands instead
+
+═══════════════════════════════════════
+VERIFY
+═══════════════════════════════════════
+
+1. Restart/reload the app
+2. Confirm sidebar now shows Neighborhood Backfill and Gem 
+   Photo Backfill under System
+3. Click into both — confirm they still render and function 
+   correctly
+4. Visit /admin/fee-config directly — confirm it redirects 
+   to /admin/fee-bands instead of showing the old form
+5. Grep the codebase for "fee-config" and confirm no dangling 
+   references remain
+
+REPORT FORMAT:
+- Sidebar: 2 new items added, confirm labels + routes
+- Fee Config: route deleted, redirect confirmed working
+- Grep result: any remaining "fee-config" references (should be 0, 
+  except the redirect itself)
+- Any other links/references I should be aware of
