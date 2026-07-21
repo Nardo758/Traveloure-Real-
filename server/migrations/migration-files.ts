@@ -429,11 +429,5 @@ export const MIGRATION_FILES = [
   // Traveler-submitted service requests ("request a service that doesn't exist yet").
   // New table + status CHECK created together (no legacy rows) → no publish-time push trap.
   "123_service_requests.sql",
-  // Migration 124 — Phase 2 insurance migration: move insurance configuration from
-  // booking_fee_configs to platform_settings. Seeds three keys with the same defaults
-  // that booking_fee_configs used (disabled, 0 %, applies-to all) using ON CONFLICT DO NOTHING
-  // so any admin-set values are preserved. commission.ts:resolveInsuranceFromCategory now
-  // reads these keys instead of booking_fee_configs, completing the Phase 2 migration and
-  // removing the last booking_fee_configs reader from the commission resolver.
-  "124_insurance_platform_settings.sql",
+
 ] as const;

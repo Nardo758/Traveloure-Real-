@@ -19,7 +19,7 @@
  *     'beta_flat' → fee_bands.beta_flat (current FEE-2 behavior; 0.10 default)
  *     'tiered'    → service_categories.commission_band_key → fee_bands.<band>
  *                   (seeded dormant; flipping the setting activates them)
- * - Insurance fields now load from platform_settings (Phase 2 complete; see migration 124).
+ * - Insurance fields still load from booking_fee_configs (Phase 2 concern; out of 1.3 scope).
  * - per-service revenueShareRate on providerServices is applied AFTER this resolver
  *   returns (in payments.routes.ts), so it still wins as the final override.
  *
@@ -326,38 +326,31 @@ async function isEarlyAdopterProvider(providerId: string): Promise<boolean> {
   }
 }
 
-/**
- * Phase 2: insurance config migrated from booking_fee_configs to platform_settings.
- * Reads three keys: insurance_enabled, insurance_rate_percent, insurance_applies_to.
- * Falls back to noInsurance (disabled) if the keys are absent or unreadable.
- * Category parameter retained for API compatibility; global settings apply to all categories.
- */
-async function resolveInsuranceFromCategory(_category?: string | null) {
+/** Insurance still loads from booking_fee_configs (Phase 2 concern). */
+async function resolveInsuranceFromCategory(category?: string | null) {
   try {
+    const cat = category || "default";
     const result = await db.execute(sql`
-      SELECT setting_key, setting_value
-      FROM platform_settings
-      WHERE setting_key IN ('insurance_enabled', 'insurance_rate_percent', 'insurance_applies_to')
+      SELECT
+        insurance_enabled,
+        CAST(insurance_rate_percent AS FLOAT) AS insurance_rate_percent,
+        insurance_applies_to
+      FROM booking_fee_configs
+      WHERE category = ${cat} AND is_active = true
+      LIMIT 1
     `);
-    if (!result.rows || result.rows.length === 0) return noInsurance;
-    const map: Record<string, string> = {};
-    for (const row of result.rows as any[]) {
-      map[row.setting_key] = row.setting_value;
+    if (result.rows && result.rows.length > 0) {
+      const row = result.rows[0] as any;
+      return {
+        insuranceEnabled: Boolean(row.insurance_enabled),
+        insuranceRatePercent: Number(row.insurance_rate_percent ?? 0),
+        insuranceAppliesTo: Array.isArray(row.insurance_applies_to) ? row.insurance_applies_to : [] as string[],
+      };
     }
-    const enabled = map["insurance_enabled"] === "true";
-    if (!enabled) return noInsurance;
-    const rate = parseFloat(map["insurance_rate_percent"] ?? "0");
-    let appliesTo: string[] = [];
-    try { appliesTo = JSON.parse(map["insurance_applies_to"] ?? "[]"); } catch { /* keep [] */ }
-    if (!Array.isArray(appliesTo)) appliesTo = [];
-    return {
-      insuranceEnabled: true,
-      insuranceRatePercent: isFinite(rate) ? rate : 0,
-      insuranceAppliesTo: appliesTo,
-    };
   } catch {
-    return noInsurance;
+    // ignore
   }
+  return noInsurance;
 }
 
 /**
