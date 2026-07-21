@@ -380,7 +380,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
               if (!r.traveler_id) continue;
               try {
                 const detail = await db.execute(sql`
-                  SELECT u.email, u.first_name, u.last_name, ps.title
+                  SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
                   FROM users u
                   LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
                   WHERE u.id = ${r.traveler_id}
