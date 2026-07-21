@@ -994,13 +994,43 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
   const schema = z.object({
     providerVerificationStatus: z.enum(["pending", "verified", "rejected"]).optional(),
     backgroundCheckConfirmed: z.boolean().optional(),
+    reason: z.string().max(1000).optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
 
-  await storage.updateProviderVerification(req.params.id, parsed.data);
+  const { reason, ...verificationUpdate } = parsed.data;
+
+  // Capture the prior status + recipient BEFORE the update so we only email on an
+  // ACTUAL decision change (re-saving an already-verified provider must not re-send).
+  const [target] = await db
+    .select({ email: users.email, firstName: users.firstName, priorStatus: users.providerVerificationStatus })
+    .from(users)
+    .where(eq(users.id, req.params.id));
+  if (!target) return res.status(404).json({ message: "User not found" });
+
+  await storage.updateProviderVerification(req.params.id, verificationUpdate);
   const updated = await getUserVerificationStatus(req.params.id);
   if (!updated) return res.status(404).json({ message: "User not found" });
+
+  // Fire-and-forget email to the provider when a decision CHANGES to verified/rejected.
+  const decision = verificationUpdate.providerVerificationStatus;
+  if ((decision === "verified" || decision === "rejected") && decision !== target.priorStatus) {
+    if (target.email) {
+      try {
+        const { sendVerificationDecisionEmail } = await import("../services/email.service");
+        sendVerificationDecisionEmail({
+          toEmail: target.email,
+          firstName: target.firstName ?? null,
+          decision,
+          reason: reason ?? null,
+        }).catch((e: any) => console.error("[email] verification-decision send error:", e?.message));
+      } catch (mailErr: any) {
+        console.error("[admin verification] email send error (non-fatal):", mailErr.message);
+      }
+    }
+  }
+
   res.json(updated);
 });
 

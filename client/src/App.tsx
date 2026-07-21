@@ -93,6 +93,7 @@ const AdminNeighborhoodBackfill = lazy(() => import("@/pages/admin/neighborhood-
 const AdminGemPhotoBackfill = lazy(() => import("@/pages/admin/gem-photo-backfill"));
 const AdminReviewModeration = lazy(() => import("@/pages/admin/review-moderation"));
 const AdminDestinationEvents = lazy(() => import("@/pages/admin/destination-events"));
+const AdminServiceRequests = lazy(() => import("@/pages/admin/service-requests"));
 const AdminReconciliation = lazy(() => import("@/pages/admin/reconciliation"));
 const ConciergePage = lazy(() => import("@/pages/concierge"));
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
@@ -695,6 +696,9 @@ function Router() {
       </Route>
       <Route path="/admin/providers">
         {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/service-requests">
+        {() => <ProtectedRoute component={AdminServiceRequests} requiredRole="admin" />}
       </Route>
       <Route path="/admin/plans">
         {() => <ProtectedRoute component={AdminPlans} requiredRole="admin" />}

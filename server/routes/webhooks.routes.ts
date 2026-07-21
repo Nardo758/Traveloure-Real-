@@ -368,11 +368,37 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
                 updated_at = NOW()
             WHERE stripe_payment_intent_id = ${paymentIntent.id}
               AND status = 'payment_pending'
-            RETURNING id
+            RETURNING id, traveler_id, service_id
           `);
           if (failed.rows.length > 0) {
             const ids = (failed.rows as any[]).map((r: any) => r.id).join(', ');
             console.info(`[payment_intent.payment_failed] Marked ${failed.rows.length} service_booking(s) as failed [${ids}] for PI ${paymentIntent.id}`);
+
+            // Fire-and-forget payment-failed email to each affected traveler so
+            // they know the booking wasn't confirmed and can retry. Non-blocking.
+            for (const r of failed.rows as any[]) {
+              if (!r.traveler_id) continue;
+              try {
+                const detail = await db.execute(sql`
+                  SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
+                  FROM users u
+                  LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+                  WHERE u.id = ${r.traveler_id}
+                  LIMIT 1
+                `);
+                const row = detail.rows?.[0] as any;
+                if (row?.email) {
+                  const { sendPaymentFailedEmail } = await import("../services/email.service");
+                  sendPaymentFailedEmail({
+                    toEmail: row.email,
+                    userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
+                    bookingTitle: row.title ?? null,
+                  }).catch((e: any) => console.error(`[email] payment-failed send error for booking ${r.id}:`, e?.message));
+                }
+              } catch (mailErr: any) {
+                console.error(`[payment_intent.payment_failed] email resolve error for booking ${r.id}:`, mailErr.message);
+              }
+            }
           }
         } catch (failErr: any) {
           console.error("payment_intent.payment_failed: service_booking update error:", failErr.message);

@@ -761,3 +761,160 @@ export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void
     console.error("[email] Welcome email failed (non-fatal):", err);
   }
 }
+
+// ─── Payment-failed email ─────────────────────────────────────────────────────
+
+interface PaymentFailedParams {
+  toEmail: string;
+  userName?: string | null;
+  bookingTitle?: string | null;
+}
+
+/**
+ * Fire-and-forget email to a traveler whose booking payment failed. The booking
+ * is left in "failed" state (the webhook already flipped it) so the traveler can
+ * safely retry from My Bookings without hitting the idempotency guard.
+ * Never throws — all errors caught internally.
+ */
+export async function sendPaymentFailedEmail(params: PaymentFailedParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping payment-failed email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.userName ? `Hi ${escHtml(params.userName)},` : "Hi,";
+  const bookingsUrl = `${getAppBaseUrl()}/my-bookings`;
+  const titleLine = params.bookingTitle
+    ? `<p style="color:#374151;">Your payment for <strong>${escHtml(params.bookingTitle)}</strong> didn't go through, so the booking wasn't confirmed.</p>`
+    : `<p style="color:#374151;">Your recent payment didn't go through, so the booking wasn't confirmed.</p>`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Payment didn't go through</h2>
+      <p style="color: #374151;">${greeting}</p>
+      ${titleLine}
+      <p style="color: #374151;">
+        No charge was made. This usually happens when a card is declined or expires — you can
+        retry with the same or a different card from your bookings.
+      </p>
+      <a href="${bookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Retry from My Bookings
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because a booking payment on Traveloure was not completed.<br>
+        Manage your bookings at <a href="${bookingsUrl}" style="color: #FF385C;">${bookingsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Payment didn't go through`,
+    ``,
+    greeting,
+    ``,
+    params.bookingTitle
+      ? `Your payment for "${params.bookingTitle}" didn't go through, so the booking wasn't confirmed.`
+      : `Your recent payment didn't go through, so the booking wasn't confirmed.`,
+    ``,
+    `No charge was made. You can retry from your bookings:`,
+    bookingsUrl,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: params.bookingTitle
+        ? `Payment failed — ${stripCrLf(params.bookingTitle)}`
+        : `Your Traveloure payment didn't go through`,
+      html,
+      text,
+    });
+    console.log(`[email] Payment-failed email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Payment-failed email failed (non-fatal):", err);
+  }
+}
+
+// ─── Provider verification decision email ─────────────────────────────────────
+
+interface VerificationDecisionParams {
+  toEmail: string;
+  firstName?: string | null;
+  decision: "verified" | "rejected";
+  /** Optional admin note shown to the provider on a rejection. */
+  reason?: string | null;
+}
+
+/**
+ * Fire-and-forget email to a provider when an admin decides their
+ * background/category verification review (verified or rejected). Never throws.
+ */
+export async function sendVerificationDecisionEmail(params: VerificationDecisionParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping verification-decision email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const settingsUrl = `${getAppBaseUrl()}/provider/settings`;
+  const approved = params.decision === "verified";
+  const reasonBlock =
+    !approved && params.reason
+      ? `<p style="color:#374151;"><strong>Reviewer note:</strong> ${escHtml(params.reason)}</p>`
+      : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: ${approved ? "#059669" : "#DC2626"}; margin-bottom: 8px;">
+        ${approved ? "You're verified" : "Verification not approved"}
+      </h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        ${approved
+          ? "Your account has been verified. You can now publish listings in background-check and higher-insurance categories."
+          : "We reviewed your account and couldn't approve verification at this time. You can update your details and request another review."}
+      </p>
+      ${reasonBlock}
+      <a href="${settingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open Provider Settings
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're a provider on Traveloure.<br>
+        Manage verification at <a href="${settingsUrl}" style="color: #FF385C;">${settingsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    approved ? "You're verified" : "Verification not approved",
+    ``,
+    greeting,
+    ``,
+    approved
+      ? "Your account has been verified. You can now publish listings in background-check and higher-insurance categories."
+      : "We reviewed your account and couldn't approve verification at this time. You can update your details and request another review.",
+    !approved && params.reason ? `\nReviewer note: ${params.reason}` : "",
+    ``,
+    `Open provider settings: ${settingsUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: approved ? "You're verified on Traveloure" : "Your Traveloure verification review",
+      html,
+      text,
+    });
+    console.log(`[email] Verification-decision (${params.decision}) email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Verification-decision email failed (non-fatal):", err);
+  }
+}

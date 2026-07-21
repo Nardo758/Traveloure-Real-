@@ -14,7 +14,7 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
-import { optimizationFees } from "@shared/schema";
+import { optimizationFees, feeBands } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
 
 // 3.0.1b: Fail-loud resolver. If the DB is missing both the event-type row AND
@@ -111,13 +111,18 @@ export async function getFee(
 
 /**
  * Phase 4: Coordination fee resolver for Events.
- * Reads from the same optimization_fees table OR a dedicated coordination fee config.
- * For now: uses the greater-of rule: max(floor, percent_of_budget).
+ * Uses the greater-of rule: max(floor, percent_of_budget).
  * Ratified defaults: $499 floor, 8% of budget.
- * All values are admin-configurable via DB rows.
+ *
+ * Phase 4.1 (§7/§8): the floor and percent are now admin-editable fee_bands rows
+ * (`coordination_floor` flat-dollars, `coordination_percent` fraction; migration 122).
+ * `resolveCoordinationFee` reads them via getFeeBandByKey and FALLS BACK to these
+ * constants when a row is absent — so a fresh/unseeded DB behaves identically and
+ * the fee floor can never break on a missing row (a fee-floor's safe failure mode).
+ * The constants below are the documented fallback default (fee-literal-ok: comment).
  */
-const DEFAULT_COORDINATION_FLOOR_CENTS = 499_00; // $499
-const DEFAULT_COORDINATION_PERCENT = 0.08; // 8%
+const DEFAULT_COORDINATION_FLOOR_CENTS = 499_00; // $499  fee-literal-ok: comment (fallback default)
+const DEFAULT_COORDINATION_PERCENT = 0.08; // 8%           fee-literal-ok: comment (fallback default)
 
 export interface ResolvedCoordinationFee {
   feeCents: number;
@@ -132,14 +137,48 @@ export interface ResolvedCoordinationFee {
   };
 }
 
+/**
+ * Read the coordination floor (dollars → cents) and percent (fraction) from the
+ * admin-editable fee_bands rows seeded by migration 122, falling back to the
+ * ratified code constants when a row is absent or non-positive. Never throws — a
+ * bad/missing config row degrades to the safe default rather than breaking the fee.
+ */
+async function resolveCoordinationParams(): Promise<{ floorCents: number; percent: number }> {
+  let floorCents = DEFAULT_COORDINATION_FLOOR_CENTS;
+  let percent = DEFAULT_COORDINATION_PERCENT;
+  try {
+    const [floorRow] = await db
+      .select({ defaultRate: feeBands.defaultRate })
+      .from(feeBands)
+      .where(and(eq(feeBands.bandKey, "coordination_floor"), eq(feeBands.isActive, true)))
+      .limit(1);
+    const [percentRow] = await db
+      .select({ defaultRate: feeBands.defaultRate })
+      .from(feeBands)
+      .where(and(eq(feeBands.bandKey, "coordination_percent"), eq(feeBands.isActive, true)))
+      .limit(1);
+    // Honor a present, valid, NON-NEGATIVE row — including an explicit 0 (an admin
+    // may genuinely want a $0 floor or 0% percent). Only fall back to the code
+    // constant when the row is absent, non-numeric, or negative (an invalid config,
+    // never a real intent). This is the "admin can express zero" fix.
+    const floorDollars = floorRow ? Number(floorRow.defaultRate) : NaN;
+    const pct = percentRow ? Number(percentRow.defaultRate) : NaN;
+    if (Number.isFinite(floorDollars) && floorDollars >= 0) floorCents = Math.round(floorDollars * 100);
+    if (Number.isFinite(pct) && pct >= 0) percent = pct;
+  } catch (err: any) {
+    console.warn("[coordination-fee] fee_bands read failed — using fallback constants:", err?.message);
+  }
+  return { floorCents, percent };
+}
+
 export async function resolveCoordinationFee(
   eventType: string,
   budgetCents: number,
 ): Promise<ResolvedCoordinationFee> {
-  // TODO: Phase 4.1 — read coordination fee config from DB rows when available.
-  // For now, use the ratified defaults as the fallback.
-  const floorCents = DEFAULT_COORDINATION_FLOOR_CENTS;
-  const percent = DEFAULT_COORDINATION_PERCENT;
+  // Phase 4.1: read the floor + percent from admin-editable fee_bands (migration 122),
+  // falling back to the ratified constants when a row is missing/invalid so a fee floor
+  // can never break on config absence.
+  const { floorCents, percent } = await resolveCoordinationParams();
 
   const percentFee = Math.round(budgetCents * percent);
   const rawFeeCents = Math.max(floorCents, percentFee);

@@ -73,8 +73,13 @@ This document captures architectural decisions to maintain consistency across co
    validated `budget` field (D-BUDGET(b)); the paid-signal ledger. Full contract in the "Recorded change — Coordination-fee"
    note below.
 8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
-   touched code is a defect (see §13). The `499`/`8%` coordination constants are a pre-existing exception pending
-   migration to config (Phase 4.1 TODO in the service).
+   touched code is a defect (see §13). **Phase 4.1 LANDED (migration 122):** the `499`/`8%` coordination constants —
+   formerly the pre-existing §8 exception — are now admin-editable `fee_bands` rows (`coordination_floor` flat-dollars
+   `499.00`; `coordination_percent` fraction `0.08`). `resolveCoordinationFee` reads them via the two bands and **falls
+   back to the same code constants when a row is absent/non-positive** (a fee floor's safe failure mode), so the seed is
+   behavior-neutral on apply and the constants survive only as the documented fallback default (`fee-literal-ok`,
+   matching the `getFee` DEFAULT_FEE_CENTS fallback posture). Idempotent `ON CONFLICT DO NOTHING`; no schema/CHECK change
+   → no publish-time push trap.
 9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
    endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
@@ -802,6 +807,20 @@ Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a�
 **[SUPERSEDED by migration 109 (above):** the DB CHECK and the row remap are now applied on **both**
 `provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
 both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
+
+**Migration 123 (Jul 21, 2026; registered in `migration-files.ts`) — Traveler service-requests capture:**
+new table `service_requests` (the "request a service that doesn't exist yet" surface). **Distinct from a
+*service* table** (FAQ prohibition is on new `provider_services`-like tables) — this is a demand-capture
+queue: a traveler describes what they want in a city, it lands in the admin triage queue. Columns: `traveler_id`
+(FK → `users`, `ON DELETE SET NULL`, **set server-side from the session, §14 — never from body**), `city`,
+`country`, `service_type` (free-text hint), `description`, `budget`, `status` (`open|fulfilled|closed`, DB CHECK),
+`admin_notes`. **New table → the status CHECK is created with the table (no legacy rows to violate) → no
+publish-time drizzle-push remap trap.** Endpoints in a **mounted** router (`server/routes/service-requests.routes.ts`,
+`app.use` in `routes.ts` — unmounted-router guard §9): `POST /api/service-requests` + `GET …/mine` (session-scoped),
+`GET/PATCH /api/admin/service-requests` (inherit the blanket `adminApiGuard` §2). Client: a "Request a service"
+dialog on the discover-location empty/footer state + an admin triage page (`/admin/service-requests`, sidebar
+"Service Requests"). No money path. **Filed:** notify-the-traveler when their request is marked fulfilled (ties to
+the email cluster); feed accepted requests into the supply-gap recommender.
 
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by

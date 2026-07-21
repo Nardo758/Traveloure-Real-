@@ -130,20 +130,22 @@ export default function AdminProviders() {
   });
 
   const verificationMutation = useMutation({
-    mutationFn: async ({ userId, verified }: { userId: string; verified: boolean }) => {
+    mutationFn: async ({ userId, status, reason }: { userId: string; status: "verified" | "pending" | "rejected"; reason?: string }) => {
       return apiRequest("PATCH", `/api/admin/users/${userId}/verification`, {
-        providerVerificationStatus: verified ? "verified" : "pending",
-        backgroundCheckConfirmed: verified,
+        providerVerificationStatus: status,
+        backgroundCheckConfirmed: status === "verified",
+        ...(reason ? { reason } : {}),
       });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-service-providers"] });
-      toast({
-        title: variables.verified ? "Provider verified" : "Verification cleared",
-        description: variables.verified
-          ? "Provider can now publish gated service categories."
-          : "Provider's verification has been reset to pending.",
-      });
+      const titles: Record<string, { title: string; description: string }> = {
+        verified: { title: "Provider verified", description: "Provider can now publish gated service categories." },
+        pending: { title: "Verification cleared", description: "Provider's verification has been reset to pending." },
+        rejected: { title: "Verification rejected", description: "The provider has been notified with your reason." },
+      };
+      const t = titles[variables.status] ?? titles.pending;
+      toast(t);
     },
     onError: (error: any) => {
       toast({ variant: "destructive", title: "Failed to update verification", description: error?.message ?? "Try again." });
@@ -359,21 +361,42 @@ export default function AdminProviders() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* Verification toggle */}
+                          {/* Verification toggle + reject */}
                           {(() => {
-                            const isVerified = (provider as any).providerVerificationStatus === "verified";
+                            const vStatus = (provider as any).providerVerificationStatus;
+                            const isVerified = vStatus === "verified";
+                            const isRejected = vStatus === "rejected";
                             return (
-                              <Button
-                                variant={isVerified ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => verificationMutation.mutate({ userId: provider.userId, verified: !isVerified })}
-                                disabled={verificationMutation.isPending}
-                                data-testid={`button-verify-${provider.id}`}
-                                title={isVerified ? "Click to clear verification" : "Mark provider as background-check verified"}
-                                className={isVerified ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}
-                              >
-                                {isVerified ? "✓ Verified" : "Mark Verified"}
-                              </Button>
+                              <>
+                                <Button
+                                  variant={isVerified ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => verificationMutation.mutate({ userId: provider.userId, status: isVerified ? "pending" : "verified" })}
+                                  disabled={verificationMutation.isPending}
+                                  data-testid={`button-verify-${provider.id}`}
+                                  title={isVerified ? "Click to clear verification" : "Mark provider as background-check verified"}
+                                  className={isVerified ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}
+                                >
+                                  {isVerified ? "✓ Verified" : "Mark Verified"}
+                                </Button>
+                                {!isVerified && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const reason = window.prompt("Reason for rejecting this provider's verification (shown to the provider):")?.trim();
+                                      if (reason === undefined || reason === null) return; // cancelled
+                                      verificationMutation.mutate({ userId: provider.userId, status: "rejected", reason: reason || undefined });
+                                    }}
+                                    disabled={verificationMutation.isPending}
+                                    data-testid={`button-reject-verification-${provider.id}`}
+                                    title="Reject verification and notify the provider"
+                                    className={isRejected ? "border-red-300 text-red-700" : "text-red-600 hover:bg-red-50"}
+                                  >
+                                    {isRejected ? "✕ Rejected" : "Reject"}
+                                  </Button>
+                                )}
+                              </>
                             );
                           })()}
                           <Button
