@@ -83,7 +83,7 @@ const faqs = [
   },
   {
     question: "What is the platform fee?",
-    answer: "We charge a 10% service fee on completed bookings. This covers payment processing, platform maintenance, and customer support.",
+    answer: "We charge a service fee on completed bookings, which covers payment processing, platform maintenance, and customer support. Your exact rate and net payout are always shown on each booking and on your Earnings page.",
   },
   {
     question: "How do I handle cancellations?",

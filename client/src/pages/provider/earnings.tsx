@@ -288,14 +288,14 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
               </div>
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
-                <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)</p>
+                <p className="text-sm text-red-600 mb-1">Platform Fee{revenueBreakdown.gross > 0 ? ` (${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-red-700">
                   -${revenueBreakdown.platformFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
               </div>
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">Your Share ({Math.round(revenueBreakdown.effectiveRate * 100)}%)</p>
+                <p className="text-sm text-green-600 mb-1">Your Share{revenueBreakdown.gross > 0 ? ` (${Math.round(revenueBreakdown.effectiveRate * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-green-700">
                   ${revenueBreakdown.providerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>

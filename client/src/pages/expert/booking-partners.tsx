@@ -318,7 +318,7 @@ export default function ExpertBookingPartnersPage() {
           <div className="flex-1">
             <p className="font-semibold text-amber-800 dark:text-amber-200 text-sm">You earn when clients book through your affiliate links</p>
             <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-              When you book through these partners, your commission is tracked automatically through Travelpayouts (marker: {TP_MARKER}). Revenue splits: <strong>Platform 30%</strong> · <strong>You 70%</strong> of the booking fee.
+              When you book through these partners, your commission is tracked automatically through Travelpayouts (marker: {TP_MARKER}). Your share of each booking fee is applied at the platform's current rate and shown on your Earnings page.
             </p>
           </div>
           <Badge className="bg-amber-500 text-white text-xs whitespace-nowrap" data-testid="badge-tp-marker">

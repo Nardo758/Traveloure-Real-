@@ -253,7 +253,7 @@ export default function ContractViewPage() {
               <>
                 <Separator />
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Platform Fee (20%)</span>
+                  <span className="text-muted-foreground">Platform Fee</span>
                   <span>${parseFloat(contract.platformFee).toFixed(2)}</span>
                 </div>
               </>
