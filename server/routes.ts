@@ -3672,7 +3672,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Create service from template
+  // Provider-namespaced duplicate (same logic + ownership gate as the expert path). Both roles'
+  // services live in provider_services; duplicateService resets the copy to approval 'submitted'
+  // and status 'draft' (F2 — a copy of an approved listing is never born-approved).
+  app.post("/api/provider/services/:id/duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      const duplicated = await storage.duplicateService(req.params.id, userId);
+      res.status(201).json(duplicated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to duplicate service" });
+    }
+  });
+
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
