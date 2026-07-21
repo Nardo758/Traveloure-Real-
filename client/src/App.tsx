@@ -125,6 +125,7 @@ const AdminNeighborhoods = lazy(() => import("@/pages/admin/neighborhoods"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
 const AdminPlatformProviders = lazy(() => import("@/pages/admin/platform-providers"));
 const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
+const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-requests"));
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
@@ -780,6 +781,9 @@ function Router() {
       </Route>
       <Route path="/admin/routing-queue">
         {() => <ProtectedRoute component={AdminRoutingQueue} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/concierge-requests">
+        {() => <ProtectedRoute component={AdminConciergeRequests} requiredRole="admin" />}
       </Route>
       <Route path="/admin/neighborhood-backfill">
         {() => <ProtectedRoute component={AdminNeighborhoodBackfill} requiredRole="admin" />}

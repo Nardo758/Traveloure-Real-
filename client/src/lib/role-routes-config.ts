@@ -104,6 +104,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/event-packages',      description: 'Event package management' },
   { href: '/admin/platform-providers',  description: 'Platform provider registry' },
   { href: '/admin/routing-queue',       description: 'Lead routing queue' },
+  { href: '/admin/concierge-requests',  description: 'Concierge request queue' },
   { href: '/admin/content-tracking',    description: 'Content tracking & moderation' },
   { href: '/admin/content-mapping',     description: 'Content mapping' },
   { href: '/admin/services',            description: 'Service management' },

@@ -490,6 +490,43 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   }
 });
 
+// Concierge request queue — the follow-up surface for the concierge Full/Expert tiers.
+// The concierge entry (client/src/pages/concierge) captures a durable concierge_requests
+// row when a traveler picks a tier; the Full ("done-for-you") tier tells the traveler
+// "we'll follow up with a personalized quote". This read-only queue is what makes that
+// promise real — an admin can see incoming human-fulfillment requests (chosen_tier in
+// expert/full) and act on them. Read-only over the existing table; no schema change.
+// (Full white-glove fulfillment/messaging is filed as a separate build.)
+router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        cr.id,
+        cr.intent,
+        cr.event_type,
+        cr.chosen_tier,
+        cr.status,
+        cr.created_at,
+        u.email       AS user_email,
+        u.first_name  AS user_first_name,
+        u.last_name   AS user_last_name
+      FROM concierge_requests cr
+      LEFT JOIN users u ON u.id = cr.user_id
+      WHERE cr.chosen_tier IN ('expert', 'full')
+      ORDER BY cr.created_at DESC NULLS LAST
+      LIMIT 200
+    `);
+    res.json({ requests: result.rows, count: result.rows.length });
+  } catch (err: any) {
+    console.error("Admin concierge-requests error:", err);
+    res.status(500).json({ message: "Failed to fetch concierge requests" });
+  }
+});
+
 // Escrow Phase 3 (docs/design/escrow-spine.md): admin REJECTS a service-booking dispute (the
 // traveler's claim is not upheld) — clear the dispute flag so the earnings resume normal release,
 // and restore the booking to completed. Upholding a dispute (reversing the earning + refunding the
