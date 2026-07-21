@@ -206,6 +206,7 @@ function VisaStatusDialog({
 }
 
 export default function ProviderBookings() {
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
@@ -213,6 +214,27 @@ export default function ProviderBookings() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/provider/bookings"],
+  });
+
+  // Accept (confirmed) / decline (cancelled) a pending booking. The server only
+  // permits these two transitions here — completion stays traveler/escrow-driven,
+  // so the provider cannot self-credit earnings by marking a booking completed.
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "confirmed" | "cancelled" }) =>
+      apiRequest("PATCH", `/api/provider/bookings/${id}/status`, { status }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/bookings"] });
+      toast({
+        title: variables.status === "confirmed" ? "Booking accepted" : "Booking declined",
+        description:
+          variables.status === "confirmed"
+            ? "The traveler has been notified you accepted."
+            : "The traveler has been notified you declined.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Update failed", description: "Could not update the booking. Please try again.", variant: "destructive" });
+    },
   });
 
   const filteredBookings = (bookings || []).filter((booking) => {
@@ -381,6 +403,29 @@ export default function ProviderBookings() {
                       )}
                     </div>
                     <div className="flex gap-2">
+                      {booking.status === "pending" && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => statusMutation.mutate({ id: booking.id, status: "confirmed" })}
+                            disabled={statusMutation.isPending}
+                            data-testid={`button-accept-${booking.id}`}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Accept
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => statusMutation.mutate({ id: booking.id, status: "cancelled" })}
+                            disabled={statusMutation.isPending}
+                            data-testid={`button-decline-${booking.id}`}
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Decline
+                          </Button>
+                        </>
+                      )}
                       {isVisaBooking(booking) && (
                         <Button
                           variant="outline"
