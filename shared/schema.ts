@@ -5187,6 +5187,10 @@ export const serviceRequests = pgTable("service_requests", {
 
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
   id: true, travelerId: true, status: true, adminNotes: true, createdAt: true, updatedAt: true,
+}).extend({
+  // `description` is a TEXT column, so drizzle-zod imposes no length cap by default —
+  // bound it so an authenticated user can't POST a multi-MB body into the admin queue.
+  description: z.string().min(5).max(5000),
 });
 export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;
