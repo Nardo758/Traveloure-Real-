@@ -4066,7 +4066,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Update booking status (provider actions)
-  app.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res) => {
+  // Booking-owner status control. The owner (provider/expert who owns the
+  // service, gated by booking.providerId) may only ACCEPT (confirmed) or DECLINE
+  // (cancelled) a booking. "completed" is deliberately NOT allowed here: marking a
+  // booking completed fires the escrow earnings side-effect (createProviderEarning),
+  // so allowing the owner to set it would let them self-credit. Completion stays
+  // traveler/escrow-driven (POST /api/bookings/:id/confirm-completion + the release
+  // job). Applied to BOTH the expert and provider status endpoints.
+  const OWNER_SETTABLE_BOOKING_STATUSES = ["confirmed", "cancelled"];
+  const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
@@ -4074,12 +4082,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
       const { status, reason } = req.body;
+      if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
+        return res.status(400).json({
+          message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
+        });
+      }
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
-  });
+  };
+  app.patch("/api/expert/bookings/:id/status", isAuthenticated, handleOwnerBookingStatus);
+  // Provider-named alias — the provider bookings page had NO accept/fulfill surface
+  // (only experts had one), so provider bookings dead-ended at "pending". Same
+  // ownership gate + transition allow-list.
+  app.patch("/api/provider/bookings/:id/status", isAuthenticated, handleOwnerBookingStatus);
 
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
