@@ -18,529 +18,463 @@ function readApp(): string {
  * Deprecated / Renamed Route Redirects — Suite 7
  *
  * Regression guard for every <Redirect> declared in App.tsx that preserves a
- * deprecated or renamed route.  If a future refactor removes a redirect *without*
- * wiring a proper Route for the old path, old bookmarks/links silently 404.
+ * deprecated or renamed route. Covers two failure modes:
+ *
+ *   (a) The redirect is removed but the old path has no Route → silent 404.
+ *   (b) The redirect is replaced by a real page → old path "comes back to life".
  *
  * Strategy:
- *   - Static checks (no browser needed): confirm each redirect still appears in
- *     App.tsx with the correct destination.
- *   - Browser smoke tests: visit a representative set of non-auth-required
- *     deprecated routes and confirm the browser lands on the redirect target,
- *     not the 404 "Lost at Sea" page.
+ *   - Static checks: scan the <Route path="…"> block in App.tsx and confirm the
+ *     correct <Redirect to="…"> is bound to the deprecated path.
+ *   - Browser smoke: visit public deprecated routes and assert the final URL
+ *     pathname (and query where relevant) matches the expected redirect target.
+ *     Auth-gated routes (expert/provider/admin) redirect to login rather than
+ *     the destination, so for those we only assert "not 404".
  *
- * Excluded from this spec:
- *   - Dev-only redirects guarded by `process.env.NODE_ENV === "development"`
- *     (/landing-mockups, /architecture, /booking-demo, /layout-mock) — they are
- *     intentionally not live in production builds.
- *   - /admin/fee-config → /admin/fee-bands is covered by a dedicated existing spec.
+ * Excluded intentionally:
+ *   - Dev-only redirects guarded by NODE_ENV=development (/landing-mockups,
+ *     /architecture, /booking-demo, /layout-mock) — not live in production builds.
  */
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Static-check helpers
 // ---------------------------------------------------------------------------
 
-function assertRedirectPresent(
+/**
+ * Locate the <Route path="fromPath"> block in App.tsx (bounded by the next
+ * closing tag pattern) and assert the expected Redirect target appears inside
+ * it.  This tightly binds fromPath → toTarget rather than just searching the
+ * entire file for any matching Redirect.
+ */
+function assertRouteRedirect(
   src: string,
   fromPath: string,
   toTarget: string,
-  description: string
+  note = ""
 ) {
-  // Escape special regex characters in the toTarget string for matching
-  const escapedTarget = toTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`Redirect\\s+to="${escapedTarget}"`);
+  // Find the opening of the Route for this exact path
+  const escapedFrom = fromPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const routePattern = new RegExp(`path="${escapedFrom}"[\\s\\S]{0,600}?</Route>`, "m");
+
+  const match = src.match(routePattern);
   expect(
-    pattern.test(src),
-    `[MISSING REDIRECT] ${description}: expected App.tsx to contain ` +
-      `<Redirect to="${toTarget}"> for the deprecated path "${fromPath}". ` +
-      "If the route was intentionally removed, add a proper <Route> for the " +
-      "old path or update this test."
+    match !== null,
+    `[STATIC] App.tsx has no <Route path="${fromPath}">. ` +
+      "The deprecated route guard has been removed entirely." +
+      (note ? ` (${note})` : "")
+  ).toBe(true);
+
+  if (!match) return; // narrowing only — expect above already fails the test
+
+  const block = match[0];
+  const escapedTo = toTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const redirectPattern = new RegExp(`Redirect\\s+to="${escapedTo}"`);
+
+  expect(
+    redirectPattern.test(block),
+    `[STATIC] The <Route path="${fromPath}"> block does not contain ` +
+      `<Redirect to="${toTarget}">. ` +
+      "Either the redirect destination changed or the route no longer redirects." +
+      (note ? ` (${note})` : "")
   ).toBe(true);
 }
 
-function assertRoutePresent(src: string, routePath: string) {
-  const escapedPath = routePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`path="${escapedPath}"`);
+/**
+ * Variant for parameterised redirects where the destination is a template
+ * literal (e.g. `/discover/location/${params.slug}`).  Checks that:
+ *   1. A Route for fromPath exists.
+ *   2. The Route block contains a Redirect whose `to` contains the expected
+ *      static prefix (e.g. "/discover/location/").
+ */
+function assertParamRouteRedirect(
+  src: string,
+  fromPath: string,
+  toStaticPrefix: string,
+  note = ""
+) {
+  const escapedFrom = fromPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const routePattern = new RegExp(`path="${escapedFrom}"[\\s\\S]{0,600}?</Route>`, "m");
+
+  const match = src.match(routePattern);
   expect(
-    pattern.test(src),
-    `App.tsx is missing <Route path="${routePath}"> — the deprecated route ` +
-      "guard has been lost."
+    match !== null,
+    `[STATIC] App.tsx has no <Route path="${fromPath}">. ` +
+      "The deprecated route guard has been removed entirely." +
+      (note ? ` (${note})` : "")
+  ).toBe(true);
+
+  if (!match) return;
+
+  const block = match[0];
+  const escapedPrefix = toStaticPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  expect(
+    block.includes(toStaticPrefix) || new RegExp(escapedPrefix).test(block),
+    `[STATIC] The <Route path="${fromPath}"> block does not contain a Redirect ` +
+      `with destination prefix "${toStaticPrefix}". ` +
+      "The parameterised redirect may have been removed or redirected elsewhere." +
+      (note ? ` (${note})` : "")
   ).toBe(true);
 }
 
 // ---------------------------------------------------------------------------
-// Static analysis: every deprecated redirect must still be in App.tsx
+// Static analysis: each deprecated redirect must be bound to its route block
 // ---------------------------------------------------------------------------
 
 test.describe("Deprecated route redirects — static analysis (Suite 7)", () => {
   // ── Public / general redirects ──────────────────────────────────────────
 
   test("/optimize → /concierge?tier=ai", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/optimize");
-    assertRedirectPresent(
-      src,
-      "/optimize",
-      "/concierge?tier=ai",
-      "/optimize (old AI itinerary entry) must redirect to /concierge?tier=ai"
-    );
+    assertRouteRedirect(readApp(), "/optimize", "/concierge?tier=ai");
     console.log("[deprecated-route-redirects] PASS /optimize → /concierge?tier=ai");
   });
 
   test("/service-providers → /discover?tab=services", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/service-providers");
-    assertRedirectPresent(
-      src,
-      "/service-providers",
-      "/discover?tab=services",
-      "/service-providers must redirect to /discover?tab=services"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /service-providers → /discover?tab=services"
-    );
+    assertRouteRedirect(readApp(), "/service-providers", "/discover?tab=services");
+    console.log("[deprecated-route-redirects] PASS /service-providers → /discover?tab=services");
   });
 
-  test("/city/:slug → /discover/location/:slug (parameterised redirect)", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/city/:slug");
-    // The redirect uses a render-prop: `<Redirect to={\`/discover/location/${params.slug}\`} />`
-    expect(
-      /path="\/city\/:slug"/.test(src) &&
-        /discover\/location\/\$\{/.test(src),
-      'App.tsx must contain path="/city/:slug" with a parameterised Redirect to /discover/location/:slug'
-    ).toBe(true);
-    console.log(
-      "[deprecated-route-redirects] PASS /city/:slug → /discover/location/:slug"
+  test("/city/:slug → /discover/location/:slug (parameterised)", () => {
+    assertParamRouteRedirect(
+      readApp(),
+      "/city/:slug",
+      "/discover/location/",
+      "legacy city deep-link"
     );
+    console.log("[deprecated-route-redirects] PASS /city/:slug → /discover/location/:slug");
   });
 
   test("/partner-with-us → /earn", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/partner-with-us");
-    assertRedirectPresent(
-      src,
-      "/partner-with-us",
-      "/earn",
-      "/partner-with-us must redirect to /earn"
-    );
+    assertRouteRedirect(readApp(), "/partner-with-us", "/earn");
     console.log("[deprecated-route-redirects] PASS /partner-with-us → /earn");
   });
 
   test("/discover-experiences → /discover", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/discover-experiences");
-    assertRedirectPresent(
-      src,
-      "/discover-experiences",
-      "/discover",
-      "/discover-experiences must redirect to /discover"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /discover-experiences → /discover"
-    );
+    assertRouteRedirect(readApp(), "/discover-experiences", "/discover");
+    console.log("[deprecated-route-redirects] PASS /discover-experiences → /discover");
   });
 
   test("/spontaneous → /discover", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/spontaneous");
-    assertRedirectPresent(
-      src,
-      "/spontaneous",
-      "/discover",
-      "/spontaneous must redirect to /discover"
-    );
+    assertRouteRedirect(readApp(), "/spontaneous", "/discover");
     console.log("[deprecated-route-redirects] PASS /spontaneous → /discover");
   });
 
-  test("/itinerary/:id → /trip/:id?tab=itinerary (parameterised redirect)", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/itinerary/:id");
-    expect(
-      /path="\/itinerary\/:id"/.test(src) &&
-        /\/trip\/\$\{.*\}\?tab=itinerary/.test(src),
-      'App.tsx must contain path="/itinerary/:id" with a parameterised Redirect to /trip/:id?tab=itinerary'
-    ).toBe(true);
-    console.log(
-      "[deprecated-route-redirects] PASS /itinerary/:id → /trip/:id?tab=itinerary"
+  test("/itinerary/:id → /trip/:id?tab=itinerary (parameterised)", () => {
+    assertParamRouteRedirect(
+      readApp(),
+      "/itinerary/:id",
+      "/trip/",
+      "legacy itinerary deep-link"
     );
+    // Also verify the query string fragment is present anywhere in the file for
+    // this particular redirect (the block regex captures the render-prop correctly)
+    expect(
+      /tab=itinerary/.test(readApp()),
+      "App.tsx must contain tab=itinerary — /itinerary/:id must redirect to /trip/:id?tab=itinerary"
+    ).toBe(true);
+    console.log("[deprecated-route-redirects] PASS /itinerary/:id → /trip/:id?tab=itinerary");
   });
 
-  test("/my-itinerary/:id → /trip/:id?tab=itinerary (parameterised redirect)", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/my-itinerary/:id");
-    expect(
-      /path="\/my-itinerary\/:id"/.test(src),
-      'App.tsx must contain path="/my-itinerary/:id" — the legacy deep-link redirect has been removed.'
-    ).toBe(true);
-    console.log(
-      "[deprecated-route-redirects] PASS /my-itinerary/:id retained in App.tsx"
+  test("/my-itinerary/:id → /trip/:id?tab=itinerary (parameterised)", () => {
+    assertParamRouteRedirect(
+      readApp(),
+      "/my-itinerary/:id",
+      "/trip/",
+      "legacy my-itinerary deep-link"
     );
+    console.log("[deprecated-route-redirects] PASS /my-itinerary/:id → /trip/:id?tab=itinerary");
   });
 
   // ── Expert redirects ─────────────────────────────────────────────────────
 
   test("/expert/messages → /chat", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/messages");
-    assertRedirectPresent(
-      src,
-      "/expert/messages",
-      "/chat",
-      "/expert/messages must redirect to /chat"
-    );
+    assertRouteRedirect(readApp(), "/expert/messages", "/chat");
     console.log("[deprecated-route-redirects] PASS /expert/messages → /chat");
   });
 
-  test("/expert/messages/:clientId → /chat (parameterised)", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/messages/:clientId");
-    expect(
-      /path="\/expert\/messages\/:clientId"/.test(src) &&
-        /chat\?clientId=\$\{/.test(src),
-      'App.tsx must contain path="/expert/messages/:clientId" with parameterised Redirect to /chat?clientId='
-    ).toBe(true);
-    console.log(
-      "[deprecated-route-redirects] PASS /expert/messages/:clientId → /chat?clientId="
+  test("/expert/messages/:clientId → /chat?clientId= (parameterised)", () => {
+    assertParamRouteRedirect(
+      readApp(),
+      "/expert/messages/:clientId",
+      "/chat?clientId=",
+      "expert messages deep-link"
     );
+    console.log("[deprecated-route-redirects] PASS /expert/messages/:clientId → /chat?clientId=");
   });
 
   test("/expert/services/templates → /expert/services/new", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/services/templates");
-    assertRedirectPresent(
-      src,
-      "/expert/services/templates",
-      "/expert/services/new",
-      "/expert/services/templates must redirect to /expert/services/new"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /expert/services/templates → /expert/services/new"
-    );
+    assertRouteRedirect(readApp(), "/expert/services/templates", "/expert/services/new");
+    console.log("[deprecated-route-redirects] PASS /expert/services/templates → /expert/services/new");
   });
 
   test("/expert/service-listings → /expert/services/new", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/service-listings");
-    assertRedirectPresent(
-      src,
-      "/expert/service-listings",
-      "/expert/services/new",
-      "/expert/service-listings must redirect to /expert/services/new"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /expert/service-listings → /expert/services/new"
-    );
+    assertRouteRedirect(readApp(), "/expert/service-listings", "/expert/services/new");
+    console.log("[deprecated-route-redirects] PASS /expert/service-listings → /expert/services/new");
   });
 
   test("/expert/service-wizard → /expert/services/new", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/service-wizard");
-    assertRedirectPresent(
-      src,
-      "/expert/service-wizard",
-      "/expert/services/new",
-      "/expert/service-wizard must redirect to /expert/services/new"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /expert/service-wizard → /expert/services/new"
-    );
+    assertRouteRedirect(readApp(), "/expert/service-wizard", "/expert/services/new");
+    console.log("[deprecated-route-redirects] PASS /expert/service-wizard → /expert/services/new");
   });
 
   test("/expert/performance → /expert/analytics?tab=performance", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/performance");
-    assertRedirectPresent(
-      src,
-      "/expert/performance",
-      "/expert/analytics?tab=performance",
-      "/expert/performance must redirect to /expert/analytics?tab=performance"
+    assertRouteRedirect(readApp(), "/expert/performance", "/expert/analytics?tab=performance");
+    console.log("[deprecated-route-redirects] PASS /expert/performance → /expert/analytics?tab=performance");
+  });
+
+  test("/expert/revenue-optimization → /expert/analytics?tab=revenue-optimization", () => {
+    assertRouteRedirect(
+      readApp(),
+      "/expert/revenue-optimization",
+      "/expert/analytics?tab=revenue-optimization"
     );
     console.log(
-      "[deprecated-route-redirects] PASS /expert/performance → /expert/analytics?tab=performance"
+      "[deprecated-route-redirects] PASS /expert/revenue-optimization → /expert/analytics?tab=revenue-optimization"
     );
   });
 
-  test(
-    "/expert/revenue-optimization → /expert/analytics?tab=revenue-optimization",
-    () => {
-      const src = readApp();
-      assertRoutePresent(src, "/expert/revenue-optimization");
-      assertRedirectPresent(
-        src,
-        "/expert/revenue-optimization",
-        "/expert/analytics?tab=revenue-optimization",
-        "/expert/revenue-optimization must redirect to /expert/analytics?tab=revenue-optimization"
-      );
-      console.log(
-        "[deprecated-route-redirects] PASS /expert/revenue-optimization → /expert/analytics?tab=revenue-optimization"
-      );
-    }
-  );
-
   test("/expert/leaderboard → /expert/analytics?tab=leaderboard", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/expert/leaderboard");
-    assertRedirectPresent(
-      src,
-      "/expert/leaderboard",
-      "/expert/analytics?tab=leaderboard",
-      "/expert/leaderboard must redirect to /expert/analytics?tab=leaderboard"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /expert/leaderboard → /expert/analytics?tab=leaderboard"
-    );
+    assertRouteRedirect(readApp(), "/expert/leaderboard", "/expert/analytics?tab=leaderboard");
+    console.log("[deprecated-route-redirects] PASS /expert/leaderboard → /expert/analytics?tab=leaderboard");
   });
 
   // ── Provider redirects ───────────────────────────────────────────────────
 
   test("/provider/messages → /chat", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/provider/messages");
-    assertRedirectPresent(
-      src,
-      "/provider/messages",
-      "/chat",
-      "/provider/messages must redirect to /chat"
-    );
+    assertRouteRedirect(readApp(), "/provider/messages", "/chat");
     console.log("[deprecated-route-redirects] PASS /provider/messages → /chat");
   });
 
-  test("/provider/messages/:clientId → /chat (parameterised)", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/provider/messages/:clientId");
-    expect(
-      /path="\/provider\/messages\/:clientId"/.test(src) &&
-        /chat\?clientId=\$\{/.test(src),
-      'App.tsx must contain path="/provider/messages/:clientId" with parameterised Redirect to /chat?clientId='
-    ).toBe(true);
-    console.log(
-      "[deprecated-route-redirects] PASS /provider/messages/:clientId → /chat?clientId="
+  test("/provider/messages/:clientId → /chat?clientId= (parameterised)", () => {
+    assertParamRouteRedirect(
+      readApp(),
+      "/provider/messages/:clientId",
+      "/chat?clientId=",
+      "provider messages deep-link"
     );
+    console.log("[deprecated-route-redirects] PASS /provider/messages/:clientId → /chat?clientId=");
   });
 
-  // ── Admin redirect ───────────────────────────────────────────────────────
+  // ── Admin redirects ───────────────────────────────────────────────────────
 
-  test('/admin → /admin/dashboard (bare /admin must not 404)', () => {
-    const src = readApp();
-    // Use a narrow pattern: standalone path="/admin" (not /admin/something)
-    expect(
-      /path="\/admin"/.test(src),
-      'App.tsx must contain path="/admin" with a Redirect to /admin/dashboard'
-    ).toBe(true);
-    assertRedirectPresent(
-      src,
-      "/admin",
-      "/admin/dashboard",
-      "/admin must redirect to /admin/dashboard"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /admin → /admin/dashboard"
-    );
+  test("/admin/fee-config → /admin/fee-bands", () => {
+    assertRouteRedirect(readApp(), "/admin/fee-config", "/admin/fee-bands");
+    console.log("[deprecated-route-redirects] PASS /admin/fee-config → /admin/fee-bands");
+  });
+
+  test("/admin → /admin/dashboard (bare /admin must not 404)", () => {
+    assertRouteRedirect(readApp(), "/admin", "/admin/dashboard");
+    console.log("[deprecated-route-redirects] PASS /admin → /admin/dashboard");
   });
 
   // ── Consolidated/renamed page redirects ──────────────────────────────────
 
   test("/create-trip → /experiences", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/create-trip");
-    assertRedirectPresent(
-      src,
-      "/create-trip",
-      "/experiences",
-      "/create-trip must redirect to /experiences"
-    );
+    assertRouteRedirect(readApp(), "/create-trip", "/experiences");
     console.log("[deprecated-route-redirects] PASS /create-trip → /experiences");
   });
 
   test("/help-me-decide → /discover", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/help-me-decide");
-    assertRedirectPresent(
-      src,
-      "/help-me-decide",
-      "/discover",
-      "/help-me-decide must redirect to /discover"
-    );
+    assertRouteRedirect(readApp(), "/help-me-decide", "/discover");
     console.log("[deprecated-route-redirects] PASS /help-me-decide → /discover");
   });
 
   test("/explore → /discover", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/explore");
-    assertRedirectPresent(src, "/explore", "/discover", "/explore must redirect to /discover");
+    assertRouteRedirect(readApp(), "/explore", "/discover");
     console.log("[deprecated-route-redirects] PASS /explore → /discover");
   });
 
   test("/browse → /discover", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/browse");
-    assertRedirectPresent(src, "/browse", "/discover", "/browse must redirect to /discover");
+    assertRouteRedirect(readApp(), "/browse", "/discover");
     console.log("[deprecated-route-redirects] PASS /browse → /discover");
   });
 
   test("/travel-experts → /become-expert", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/travel-experts");
-    assertRedirectPresent(
-      src,
-      "/travel-experts",
-      "/become-expert",
-      "/travel-experts must redirect to /become-expert"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /travel-experts → /become-expert"
-    );
+    assertRouteRedirect(readApp(), "/travel-experts", "/become-expert");
+    console.log("[deprecated-route-redirects] PASS /travel-experts → /become-expert");
   });
 
   test("/services-provider → /become-provider", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/services-provider");
-    assertRedirectPresent(
-      src,
-      "/services-provider",
-      "/become-provider",
-      "/services-provider must redirect to /become-provider"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /services-provider → /become-provider"
-    );
+    assertRouteRedirect(readApp(), "/services-provider", "/become-provider");
+    console.log("[deprecated-route-redirects] PASS /services-provider → /become-provider");
   });
 
   test("/credits-billing → /credits", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/credits-billing");
-    assertRedirectPresent(
-      src,
-      "/credits-billing",
-      "/credits",
-      "/credits-billing must redirect to /credits"
-    );
-    console.log(
-      "[deprecated-route-redirects] PASS /credits-billing → /credits"
-    );
+    assertRouteRedirect(readApp(), "/credits-billing", "/credits");
+    console.log("[deprecated-route-redirects] PASS /credits-billing → /credits");
   });
 
   test("/checkout → /cart", () => {
-    const src = readApp();
-    assertRoutePresent(src, "/checkout");
-    assertRedirectPresent(src, "/checkout", "/cart", "/checkout must redirect to /cart");
+    assertRouteRedirect(readApp(), "/checkout", "/cart");
     console.log("[deprecated-route-redirects] PASS /checkout → /cart");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Browser smoke tests — a representative sample of public deprecated routes
-// (Auth-required routes redirect to / or /login rather than 404, which is
-//  acceptable; we only need to confirm they don't land on the 404 page.)
+// Browser smoke tests
+//
+// Public (no-auth) routes: assert final URL pathname (and search) matches the
+// expected redirect destination.  This guards against the route "coming back
+// to life" as a real page — a live page would still pass a non-404 check but
+// would fail the URL assertion.
+//
+// Auth-gated routes (expert/provider/admin): the SPA redirects unauthenticated
+// users to / or a login modal rather than the destination route.  For these we
+// assert only "not 404" — the static check above already guards the destination.
 // ---------------------------------------------------------------------------
 
 test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
-  async function visitAndCheckNot404(
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /**
+   * Navigate to fromPath, wait for the SPA redirect to settle, then assert the
+   * final URL's pathname starts with expectedPathname (and optionally that the
+   * search contains expectedSearch).
+   */
+  async function assertRedirectsTo(
     page: import("@playwright/test").Page,
     fromPath: string,
-    label: string
+    expectedPathname: string,
+    expectedSearch?: string
   ) {
     await page.goto(`${BASE_URL}${fromPath}`);
     await page.waitForLoadState("networkidle");
 
-    // The 404 page has an h1 starting with "404" or visible "Lost at Sea" text
+    const finalUrl = new URL(page.url());
+
+    expect(
+      finalUrl.pathname,
+      `Visiting ${fromPath}: expected final pathname to start with "${expectedPathname}", ` +
+        `but got "${finalUrl.pathname}". The deprecated route may have come back as a live page ` +
+        "or the redirect target changed."
+    ).toMatch(new RegExp(`^${expectedPathname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+
+    if (expectedSearch) {
+      expect(
+        finalUrl.search,
+        `Visiting ${fromPath}: expected final URL to contain "${expectedSearch}" in the query ` +
+          `string, but got "${finalUrl.search}".`
+      ).toContain(expectedSearch);
+    }
+
+    // Sanity: must never be the 404 page
     await expect(
       page.locator("h1").filter({ hasText: /^404/ }),
-      `${label}: browser must NOT land on a 404 page when visiting ${fromPath}`
+      `${fromPath} must not land on a 404 page`
     ).not.toBeVisible();
 
-    await expect(
-      page.locator('text="Lost at Sea"'),
-      `${label}: browser must NOT show the "Lost at Sea" 404 message`
-    ).not.toBeVisible();
-
-    const finalUrl = new URL(page.url());
     console.log(
       `[deprecated-route-redirects] PASS ${fromPath} → ${finalUrl.pathname}${finalUrl.search}`
     );
   }
 
-  test("/optimize redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/optimize", "/optimize");
+  /**
+   * Navigate to an auth-gated deprecated path.  Unauthenticated users get
+   * redirected to / or a sign-in modal — not the final destination.  Assert
+   * only that we are NOT on the 404 page (the static check guards the target).
+   */
+  async function assertAuthGatedNotFound(
+    page: import("@playwright/test").Page,
+    fromPath: string
+  ) {
+    await page.goto(`${BASE_URL}${fromPath}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.locator("h1").filter({ hasText: /^404/ }),
+      `${fromPath} must not render a 404 page for unauthenticated users`
+    ).not.toBeVisible();
+
+    await expect(
+      page.locator('text="Lost at Sea"'),
+      `${fromPath} must not show the "Lost at Sea" 404 message`
+    ).not.toBeVisible();
+
+    console.log(`[deprecated-route-redirects] PASS (auth-gated, not-404) ${fromPath}`);
+  }
+
+  // ── Public deprecated routes — assert final URL destination ──────────────
+
+  test("/optimize → /concierge (with ?tier=ai)", async ({ page }) => {
+    await assertRedirectsTo(page, "/optimize", "/concierge", "tier=ai");
   });
 
-  test("/service-providers redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/service-providers", "/service-providers");
+  test("/service-providers → /discover (with ?tab=services)", async ({ page }) => {
+    await assertRedirectsTo(page, "/service-providers", "/discover", "tab=services");
   });
 
-  test("/partner-with-us redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/partner-with-us", "/partner-with-us");
+  test("/partner-with-us → /earn", async ({ page }) => {
+    await assertRedirectsTo(page, "/partner-with-us", "/earn");
   });
 
-  test("/discover-experiences redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(
-      page,
-      "/discover-experiences",
-      "/discover-experiences"
-    );
+  test("/discover-experiences → /discover", async ({ page }) => {
+    await assertRedirectsTo(page, "/discover-experiences", "/discover");
   });
 
-  test("/spontaneous redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/spontaneous", "/spontaneous");
+  test("/spontaneous → /discover", async ({ page }) => {
+    await assertRedirectsTo(page, "/spontaneous", "/discover");
   });
 
-  test("/create-trip redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/create-trip", "/create-trip");
+  test("/create-trip → /experiences", async ({ page }) => {
+    await assertRedirectsTo(page, "/create-trip", "/experiences");
   });
 
-  test("/help-me-decide redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/help-me-decide", "/help-me-decide");
+  test("/help-me-decide → /discover", async ({ page }) => {
+    await assertRedirectsTo(page, "/help-me-decide", "/discover");
   });
 
-  test("/explore redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/explore", "/explore");
+  test("/explore → /discover", async ({ page }) => {
+    await assertRedirectsTo(page, "/explore", "/discover");
   });
 
-  test("/browse redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/browse", "/browse");
+  test("/browse → /discover", async ({ page }) => {
+    await assertRedirectsTo(page, "/browse", "/discover");
   });
 
-  test("/travel-experts redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/travel-experts", "/travel-experts");
+  test("/travel-experts → /become-expert", async ({ page }) => {
+    await assertRedirectsTo(page, "/travel-experts", "/become-expert");
   });
 
-  test("/services-provider redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/services-provider", "/services-provider");
+  test("/services-provider → /become-provider", async ({ page }) => {
+    await assertRedirectsTo(page, "/services-provider", "/become-provider");
   });
 
-  test("/checkout redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/checkout", "/checkout");
+  test("/checkout → /cart", async ({ page }) => {
+    await assertRedirectsTo(page, "/checkout", "/cart");
   });
 
-  test("/admin redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/admin", "/admin");
+  test("/city/tokyo → /discover/location/tokyo (parameterised)", async ({ page }) => {
+    await assertRedirectsTo(page, "/city/tokyo", "/discover/location/tokyo");
   });
 
-  test("/expert/messages redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/expert/messages", "/expert/messages");
+  // ── Auth-gated deprecated routes — assert not 404 ────────────────────────
+  // (Unauthenticated requests land on / or login modal — not the destination.)
+
+  test("/expert/messages (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/expert/messages");
   });
 
-  test("/expert/service-wizard redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(
-      page,
-      "/expert/service-wizard",
-      "/expert/service-wizard"
-    );
+  test("/expert/service-wizard (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/expert/service-wizard");
   });
 
-  test("/expert/performance redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/expert/performance", "/expert/performance");
+  test("/expert/performance (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/expert/performance");
   });
 
-  test("/expert/leaderboard redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/expert/leaderboard", "/expert/leaderboard");
+  test("/expert/leaderboard (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/expert/leaderboard");
   });
 
-  test("/provider/messages redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/provider/messages", "/provider/messages");
+  test("/provider/messages (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/provider/messages");
   });
 
-  test("/city/tokyo redirects away without 404", async ({ page }) => {
-    await visitAndCheckNot404(page, "/city/tokyo", "/city/:slug");
+  test("/admin/fee-config (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/admin/fee-config");
+  });
+
+  test("/admin (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/admin");
   });
 });
