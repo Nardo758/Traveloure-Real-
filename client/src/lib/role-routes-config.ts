@@ -97,7 +97,6 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/ai-costs',            description: 'AI cost tracking' },
   { href: '/admin/payouts',             description: 'Payout management' },
   { href: '/admin/reconciliation',      description: 'Revenue reconciliation' },
-  { href: '/admin/fee-config',          description: 'Fee configuration' },
   { href: '/admin/fee-bands',           description: 'Concierge fee bands' },
   { href: '/admin/offering-types',      description: 'Offering type seed' },
   { href: '/admin/category-fees',       description: 'Category fee percentages' },

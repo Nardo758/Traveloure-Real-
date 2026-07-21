@@ -117,7 +117,6 @@ const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));
 const ExpertContractCategories = lazy(() => import("@/pages/expert/contract-categories"));
 const ExpertBookingPartners = lazy(() => import("@/pages/expert/booking-partners"));
-const AdminFeeConfig = lazy(() => import("@/pages/admin/fee-config"));
 const AdminFeeBands = lazy(() => import("@/pages/admin/fee-bands"));
 const AdminOfferingTypes = lazy(() => import("@/pages/admin/offering-types"));
 const AdminCategoryFees = lazy(() => import("@/pages/admin/category-fees"));
@@ -752,7 +751,7 @@ function Router() {
         {() => <ProtectedRoute component={AdminReconciliation} requiredRole="admin" />}
       </Route>
       <Route path="/admin/fee-config">
-        {() => <ProtectedRoute component={AdminFeeConfig} requiredRole="admin" />}
+        {() => <Redirect to="/admin/fee-bands" />}
       </Route>
       <Route path="/admin/fee-bands">
         {() => <ProtectedRoute component={AdminFeeBands} requiredRole="admin" />}
