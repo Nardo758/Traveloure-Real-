@@ -300,6 +300,7 @@ export async function registerRoutes(
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/services",
     "/api/provider/verification-status",
+    "/api/provider/request-verification-review",
     "/api/provider/dashboard",
   ];
   app.use((req: any, res: any, next: any) => {
@@ -1668,6 +1669,50 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch verification status" });
+    }
+  });
+
+  // Provider self-service: request a background/category verification review.
+  // Sets providerVerificationStatus → "requested" (a non-verified state, so the
+  // publish gate still blocks) and drops a row into the existing admin_notifications
+  // queue so admins see it where they already look. Idempotent: an already-"requested"
+  // (or "verified") provider does not re-notify. Admin flips to "verified" in
+  // admin/providers.tsx after manual review.
+  app.post("/api/provider/request-verification-review", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [userRow] = await db.select({
+        providerVerificationStatus: users.providerVerificationStatus,
+        email: users.email,
+      }).from(users).where(eq(users.id, userId));
+
+      const current = userRow?.providerVerificationStatus ?? "pending";
+      if (current === "verified") {
+        return res.json({ providerVerificationStatus: "verified", alreadyRequested: false });
+      }
+      if (current === "requested") {
+        // Already in the queue — no duplicate notification.
+        return res.json({ providerVerificationStatus: "requested", alreadyRequested: true });
+      }
+
+      await storage.updateProviderVerification(userId, { providerVerificationStatus: "requested" });
+
+      // Non-fatal: the state change is the important part; the notification is a surfacing aid.
+      try {
+        await db.insert(adminNotifications).values({
+          type: "provider_verification_request",
+          message: `Provider ${userRow?.email ?? userId} requested a background/category verification review.`,
+          isRead: false,
+          metadata: { userId, kind: "provider_verification_request" },
+        });
+      } catch (notifErr: any) {
+        console.warn("[Verification] admin_notifications insert failed (non-fatal):", notifErr?.message);
+      }
+
+      res.json({ providerVerificationStatus: "requested", alreadyRequested: false });
+    } catch (err) {
+      console.error("Error requesting verification review:", err);
+      res.status(500).json({ message: "Failed to request verification review" });
     }
   });
 
