@@ -102,6 +102,8 @@ const menuGroups = [
       { title: "QA Checklist", href: "/admin/qa-checklist", icon: ClipboardList },
       // Data hub links the one-off backfill tools (neighborhoods, gem photos).
       { title: "Data", href: "/admin/data", icon: Database },
+      { title: "Neighborhood Backfill", href: "/admin/neighborhood-backfill", icon: MapPin },
+      { title: "Gem Photo Backfill", href: "/admin/gem-photo-backfill", icon: ImageIcon },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
     ],
