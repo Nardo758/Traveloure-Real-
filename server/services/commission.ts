@@ -326,31 +326,9 @@ async function isEarlyAdopterProvider(providerId: string): Promise<boolean> {
   }
 }
 
-/** Insurance still loads from booking_fee_configs (Phase 2 concern). */
-async function resolveInsuranceFromCategory(category?: string | null) {
-  try {
-    const cat = category || "default";
-    const result = await db.execute(sql`
-      SELECT
-        insurance_enabled,
-        CAST(insurance_rate_percent AS FLOAT) AS insurance_rate_percent,
-        insurance_applies_to
-      FROM booking_fee_configs
-      WHERE category = ${cat} AND is_active = true
-      LIMIT 1
-    `);
-    if (result.rows && result.rows.length > 0) {
-      const row = result.rows[0] as any;
-      return {
-        insuranceEnabled: Boolean(row.insurance_enabled),
-        insuranceRatePercent: Number(row.insurance_rate_percent ?? 0),
-        insuranceAppliesTo: Array.isArray(row.insurance_applies_to) ? row.insurance_applies_to : [] as string[],
-      };
-    }
-  } catch {
-    // ignore
-  }
-  return noInsurance;
+/** Phase 2: insurance no longer reads from booking_fee_configs. Returns disabled state. */
+function resolveInsuranceFromCategory(_category?: string | null) {
+  return Promise.resolve(noInsurance);
 }
 
 /**
