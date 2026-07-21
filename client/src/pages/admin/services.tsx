@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -236,6 +237,7 @@ export default function AdminServices() {
   return (
     <AdminLayout title="Services Registry">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Registry", href: "/admin/services" }, { label: "Approvals", href: "/admin/service-approvals" }]} />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
