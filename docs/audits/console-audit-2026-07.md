@@ -104,3 +104,32 @@ Cart→checkout, my-bookings (escrow confirm/dispute + visa timeline), ai-assist
 4. **E (shell wrappers)** — small mechanical (3 admin loading branches + traveler shell decision).
 5. **D (brand-red + tokens)** — one big systematic aesthetic pass, best done last so it sweeps final markup.
 6. **B-remove** — delete decorative dead buttons.
+
+---
+
+## FUNCTIONAL / platform-intent audit (journey completeness — added after the code/aesthetic pass)
+
+The code/aesthetic pass checked "does the code work"; this pass checked "does each console deliver the end-to-end workflow the platform needs". It surfaced **structural gaps invisible to code review** (missing surfaces, not broken code). These **outrank** the cosmetic batches.
+
+### 🔴 TIER 0 — the marketplace is functionally closed (supply can't reach customers)
+- **`provider_services` approval queue was HEADLESS** — confirmed independently by the admin, provider, AND expert journey audits. Endpoints (`GET /api/admin/provider-services/pending` + approve/reject) existed and were correct at the storage layer (`getProviderServiceListingsByStatus` reads `approval_status`; `approveProviderServiceListing` flips `approval_status→approved` + `status→active`), but **no admin page called them**. Every provider/expert service listing born since migration 111 was stuck `submitted` → hidden by the read-gate → could never go live. **FIXED (this change): new `admin/service-approvals.tsx` + route + tab nav on the Services Registry.** Behaviorally proven: 12 real listings were stuck in the queue; approve flips to `approved`/`active`.
+- **Ready-Made-Trip approval queue is unlinked** — `template-approvals.tsx` works but isn't in the sidebar (the "Ready Made Trips" link goes to a roles editor). Approval only via a typed URL. *(Filed — next.)*
+
+### 🔴 TIER 1 — core loops dead-end
+- **Provider has no accept/fulfill/complete surface** — `/provider/bookings` can't action a pending booking (only experts have a status endpoint `/api/expert/bookings/:id/status`). With Instant Booking off, bookings arrive `pending` with no provider action.
+- **Trip-details "Generate/Regenerate Itinerary" is broken** — wired to a nonexistent `POST /api/trips/:id/optimize`; only the secondary "Plan with Preferences" modal (→ live `/api/ai/generate-itinerary`) works. The live `/api/trips/:id/generate-itinerary` hook is bound to no button.
+
+### 🟠 TIER 2 — headline monetization / whole console missing
+- **No traveler-facing event-coordination checkout** — the coordination-fee engine + `coordination_states` (the platform's $5K–50K event-planning monetization, §7) has NO completing traveler path; the concierge "Full" tier just says "we'll follow up" (creates no coordination state, shows no fee, takes no payment). Biggest *intent* gap. Reads/`/fee` are consumed only in the expert workspace.
+- **EA console is a shell** — only the Clients domain + client-push work end-to-end. Executives (no create UI), events/travel/venues/gifts/communications (read-only over idle CRUD backends), `trips` (create UI POSTs to a **nonexistent** `/api/ea/trips` → fake-success toast), AI-delegation loop (no create, no AI worker, no push linkage), reports (100% mock). Gate-or-build decision.
+
+### What IS complete end-to-end (functional)
+Traveler browse→buy (all 3 supply types)→post-booking (escrow confirm/dispute/review)→get-expert-help, and the AI-optimize paid path. Expert onboard→approved, serve assigned trips (accept→workspace→deliver), earn→payout, DMO→trip. Provider onboard→verified, settings, payout-request rail. Admin: every OTHER required gate (Ready-Made-Trip/DMO-intake/destination-events/reviews/affiliate approval, disputes, payouts, fee config, routing).
+
+### Revised execution order (functional-critical first)
+1. **Admin provider-services approval UI** — ✅ DONE (this change). Unblocks the marketplace.
+2. Link the Ready-Made-Trip approval queue in the sidebar (trivial).
+3. Trip-details Generate/Regenerate → point at the live endpoint (small).
+4. Provider booking accept/fulfill surface (medium — mirror the expert status pattern).
+5. **Gate** the incomplete flows (event-coordination "Full" tier, EA shell, provider calendar facade) honestly; file the real builds separately.
+6. Then the 6 data/cosmetic batches A–F above.

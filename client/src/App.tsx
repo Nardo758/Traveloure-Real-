@@ -86,6 +86,7 @@ const AdminAffiliatePartners = lazy(() => import("@/pages/admin/affiliate-partne
 const AdminContentTracking = lazy(() => import("@/pages/admin/content-tracking"));
 const AdminContentMapping = lazy(() => import("@/pages/admin/content-mapping"));
 const AdminServices = lazy(() => import("@/pages/admin/services"));
+const AdminServiceApprovals = lazy(() => import("@/pages/admin/service-approvals"));
 const AdminAICosts = lazy(() => import("@/pages/admin/ai-costs"));
 const AdminTourismAnalytics = lazy(() => import("@/pages/admin/tourism-analytics"));
 const AdminPayouts = lazy(() => import("@/pages/admin/payouts"));
@@ -734,6 +735,9 @@ function Router() {
       </Route>
       <Route path="/admin/content-tracking">
         {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/service-approvals">
+        {() => <ProtectedRoute component={AdminServiceApprovals} requiredRole="admin" />}
       </Route>
       <Route path="/admin/services">
         {() => <ProtectedRoute component={AdminServices} requiredRole="admin" />}
