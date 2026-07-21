@@ -157,10 +157,14 @@ async function resolveCoordinationParams(): Promise<{ floorCents: number; percen
       .from(feeBands)
       .where(and(eq(feeBands.bandKey, "coordination_percent"), eq(feeBands.isActive, true)))
       .limit(1);
+    // Honor a present, valid, NON-NEGATIVE row — including an explicit 0 (an admin
+    // may genuinely want a $0 floor or 0% percent). Only fall back to the code
+    // constant when the row is absent, non-numeric, or negative (an invalid config,
+    // never a real intent). This is the "admin can express zero" fix.
     const floorDollars = floorRow ? Number(floorRow.defaultRate) : NaN;
     const pct = percentRow ? Number(percentRow.defaultRate) : NaN;
-    if (Number.isFinite(floorDollars) && floorDollars > 0) floorCents = Math.round(floorDollars * 100);
-    if (Number.isFinite(pct) && pct > 0) percent = pct;
+    if (Number.isFinite(floorDollars) && floorDollars >= 0) floorCents = Math.round(floorDollars * 100);
+    if (Number.isFinite(pct) && pct >= 0) percent = pct;
   } catch (err: any) {
     console.warn("[coordination-fee] fee_bands read failed — using fallback constants:", err?.message);
   }
