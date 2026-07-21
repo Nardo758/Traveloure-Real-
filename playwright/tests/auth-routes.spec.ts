@@ -366,5 +366,32 @@ test.describe('Auth smoke — admin routes (admin role)', () => {
       await smokeRoute(page, href);
     });
   }
+
+  // ── Regression guard: deprecated /admin/fee-config must redirect ──────────
+  // The old fee-config page was removed and replaced with a <Redirect> in
+  // App.tsx. This assertion ensures a future route refactor or accidental
+  // re-import cannot silently restore the broken form.
+  test('/admin/fee-config redirects to /admin/fee-bands', async ({ page }) => {
+    test.skip(
+      !adminSessionOk,
+      'Admin session not authenticated — skipped in local dev (throws in CI)',
+    );
+
+    await page.goto(`${BASE_URL}/admin/fee-config`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30_000,
+    });
+
+    await expect(page, 'Expected /admin/fee-config to redirect to /admin/fee-bands').toHaveURL(
+      /\/admin\/fee-bands$/,
+      { timeout: 10_000 },
+    );
+
+    // Also confirm the fee-bands page surface actually loaded — not just a URL match.
+    await expect(
+      page.locator('[data-testid="heading-fee-bands"]'),
+      'Expected the fee-bands heading to be visible after redirect',
+    ).toBeVisible({ timeout: 10_000 });
+  });
 });
 
