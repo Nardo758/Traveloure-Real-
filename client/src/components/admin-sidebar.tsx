@@ -45,6 +45,7 @@ import {
   ShieldAlert,
   CalendarDays,
   Inbox,
+  Sparkles,
 } from "lucide-react";
 
 const menuGroups = [
@@ -64,6 +65,7 @@ const menuGroups = [
       { title: "Experts", href: "/admin/experts", icon: UserCheck },
       { title: "Providers", href: "/admin/providers", icon: Building2 },
       { title: "Routing Queue", href: "/admin/routing-queue", icon: GitBranch },
+      { title: "Concierge", href: "/admin/concierge-requests", icon: Sparkles },
     ],
   },
   {
