@@ -4,6 +4,7 @@ import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
+import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -2101,6 +2102,21 @@ export default function DiscoverLocationPage() {
                 activeFilter={activeFilter}
               />
             )}
+
+            {/* Request-a-service footer — a "nothing here matches" moment gets a
+                forward action instead of a dead end (POST /api/service-requests). */}
+            <div
+              className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-center"
+              data-testid="section-service-request"
+            >
+              <p className="text-sm font-semibold text-gray-800 mb-1">
+                Can't find what you're looking for in {toTitleCase(city)}?
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Tell us the experience you want and we'll try to source it for you.
+              </p>
+              <ServiceRequestDialog city={toTitleCase(city)} />
+            </div>
           </div>
         )}
 
