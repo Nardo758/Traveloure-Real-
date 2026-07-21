@@ -64,9 +64,6 @@ export default function EAAIAssistant() {
             </h1>
             <p className="text-gray-600">Delegate tasks and review AI work</p>
           </div>
-          <Badge className="bg-green-100 text-green-700 border-green-200" data-testid="badge-ai-status">
-            <Bot className="w-4 h-4 mr-1" /> GPT-4 Active
-          </Badge>
         </div>
 
         {/* Quick Delegate */}

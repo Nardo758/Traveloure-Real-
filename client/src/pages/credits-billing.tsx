@@ -220,7 +220,7 @@ export default function CreditsBillingPage() {
                     <p className="text-2xl font-bold text-[#111827] dark:text-white">${pkg.price}</p>
                     {pkg.savings && (
                       <Badge variant="secondary" className="mt-2">
-                        Save {pkg.savings}
+                        {pkg.savings}
                       </Badge>
                     )}
                     <Button
