@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 interface ServiceTemplatesResponse {
   requiresApplication: boolean;
   applicationRejected: boolean;
+  pendingApproval: boolean;
   templates: unknown[];
 }
 
@@ -19,6 +20,7 @@ export function useApplicationGuard() {
 
   const requiresApplication = data?.requiresApplication ?? false;
   const applicationRejected = data?.applicationRejected ?? false;
+  const pendingApproval = data?.pendingApproval ?? false;
 
   useEffect(() => {
     if (!isLoading && requiresApplication) {
@@ -42,5 +44,16 @@ export function useApplicationGuard() {
     }
   }, [isLoading, applicationRejected, toast, navigate]);
 
-  return { isLoading, requiresApplication, applicationRejected, templates: data?.templates ?? [] };
+  useEffect(() => {
+    if (!isLoading && pendingApproval) {
+      toast({
+        title: "Application under review",
+        description: "Your application is under review. You can create services once it has been approved.",
+        variant: "default",
+      });
+      navigate("/expert/apply");
+    }
+  }, [isLoading, pendingApproval, toast, navigate]);
+
+  return { isLoading, requiresApplication, applicationRejected, pendingApproval, templates: data?.templates ?? [] };
 }
