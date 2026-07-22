@@ -174,51 +174,12 @@ type ContentItem = {
   updatedAt: string;
 };
 
-const mockContent: ContentItem[] = [
-  {
-    id: 1,
-    title: "Hidden Gems of Kyoto: A Local's Guide",
-    contentType: "travel-guide",
-    description: "Discover the secret spots in Kyoto that most tourists miss. From hidden temples to authentic local eateries.",
-    destination: "Kyoto, Japan",
-    coverImageUrl: "https://picsum.photos/seed/studio-tokyo/800/500",
-    tags: ["japan", "kyoto", "hidden-gems", "local-guide"],
-    status: "published",
-    views: 2340,
-    likes: 189,
-    createdAt: "2026-01-15T10:00:00Z",
-    updatedAt: "2026-01-20T14:30:00Z",
-  },
-  {
-    id: 2,
-    title: "Top 10 Beach Resorts in Bali",
-    contentType: "top-list",
-    description: "The ultimate ranking of Bali's best beach resorts for every budget.",
-    destination: "Bali, Indonesia",
-    coverImageUrl: "https://picsum.photos/seed/studio-bali/800/500",
-    tags: ["bali", "resorts", "beach", "luxury"],
-    status: "published",
-    instagramPostId: "123456789",
-    views: 5620,
-    likes: 432,
-    createdAt: "2026-01-10T08:00:00Z",
-    updatedAt: "2026-01-18T09:15:00Z",
-  },
-  {
-    id: 3,
-    title: "Street Food Tour: Bangkok Edition",
-    contentType: "food-guide",
-    description: "A comprehensive guide to the best street food in Bangkok's vibrant markets.",
-    destination: "Bangkok, Thailand",
-    coverImageUrl: "https://picsum.photos/seed/studio-culinary/800/500",
-    tags: ["bangkok", "street-food", "thailand", "foodie"],
-    status: "draft",
-    views: 0,
-    likes: 0,
-    createdAt: "2026-01-25T16:00:00Z",
-    updatedAt: "2026-01-25T16:00:00Z",
-  },
-];
+// §13: the social "Content" library has no backend yet (no content-store endpoint),
+// so this is empty rather than seeded with fabricated posts + invented view/like
+// counts. The stat cards and grid below now honestly read 0 / show the empty state.
+// The real half of this page — Knowledge Nuggets (/api/expert/knowledge-nuggets) —
+// is untouched. Filed: a real content-library backend to populate this.
+const mockContent: ContentItem[] = [];
 
 function generateHashtags(destination: string, contentType: string): string {
   const baseHashtags = ["#travel", "#wanderlust", "#travelgram", "#instatravel", "#traveloure"];
