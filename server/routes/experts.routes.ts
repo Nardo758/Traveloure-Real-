@@ -219,6 +219,11 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
 
       const expertRole = formRow?.expertType ?? null; // null = no form submitted yet
 
+      // No application submitted — tell the client so it can prompt the user.
+      if (!formRow) {
+        return res.json({ requiresApplication: true, templates: [] });
+      }
+
       // expertId and isActive columns dropped in migration 013; all ESO rows are platform templates.
       // Filter by targetRoles only.
       const rows = await db
@@ -265,7 +270,7 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
         };
       });
 
-      res.json(templates);
+      res.json({ requiresApplication: false, templates });
     } catch (err) {
       console.error("Error fetching expert service templates:", err);
       res.status(500).json({ message: "Failed to fetch service templates" });
