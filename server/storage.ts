@@ -184,6 +184,7 @@ export interface IStorage {
   getServiceProviderForms(status?: string): Promise<ServiceProviderForm[]>;
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
   updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
+  updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
 
   // Provider Services
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
@@ -1082,6 +1083,14 @@ export class DatabaseStorage implements IStorage {
   async updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined> {
     const [updated] = await db.update(serviceProviderForms)
       .set({ status, rejectionMessage })
+      .where(eq(serviceProviderForms.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined> {
+    const [updated] = await db.update(serviceProviderForms)
+      .set({ rejectionMessage })
       .where(eq(serviceProviderForms.id, id))
       .returning();
     return updated;
