@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   Search,
   UserCheck,
@@ -192,9 +193,14 @@ function CommissionOverrideEditor({
   );
 }
 
+const DEFAULT_REJECTION_MESSAGE = "Does not meet requirements at this time.";
+
 export default function AdminExperts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"applications" | "active" | "rejected">("applications");
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState(DEFAULT_REJECTION_MESSAGE);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -545,7 +551,11 @@ export default function AdminExperts() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => updateStatusMutation.mutate({ id: app.id, status: "rejected", rejectionMessage: "Does not meet requirements at this time." })}
+                          onClick={() => {
+                            setRejectTargetId(app.id);
+                            setRejectReason(DEFAULT_REJECTION_MESSAGE);
+                            setRejectDialogOpen(true);
+                          }}
                           disabled={updateStatusMutation.isPending}
                           data-testid={`button-reject-${app.id}`}
                         >
@@ -707,6 +717,56 @@ export default function AdminExperts() {
           </Card>
         )}
       </div>
+
+      <Dialog open={rejectDialogOpen} onOpenChange={(open) => { setRejectDialogOpen(open); if (!open) setRejectTargetId(null); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-reject-application">
+          <DialogHeader>
+            <DialogTitle>Reject Application</DialogTitle>
+            <DialogDescription>
+              Enter the reason for rejection. The applicant will see this message.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={4}
+              className="resize-none"
+              placeholder="Rejection reason…"
+              data-testid="textarea-rejection-reason"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setRejectDialogOpen(false); setRejectTargetId(null); }}
+              data-testid="button-cancel-reject"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!rejectReason.trim() || updateStatusMutation.isPending}
+              onClick={() => {
+                if (!rejectTargetId) return;
+                updateStatusMutation.mutate(
+                  { id: rejectTargetId, status: "rejected", rejectionMessage: rejectReason.trim() },
+                  {
+                    onSuccess: () => {
+                      setRejectDialogOpen(false);
+                      setRejectTargetId(null);
+                    },
+                  }
+                );
+              }}
+              data-testid="button-confirm-reject"
+            >
+              {updateStatusMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
+              Confirm Rejection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
