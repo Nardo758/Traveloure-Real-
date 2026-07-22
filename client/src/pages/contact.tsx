@@ -165,18 +165,18 @@ export default function ContactPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
               >
-                <Card className="bg-white border-[#E5E7EB] hover:shadow-lg transition-shadow h-full">
+                <Card className="bg-white border-border hover:shadow-lg transition-shadow h-full">
                   <CardContent className="p-6 text-center">
                     <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#FFE3E8] flex items-center justify-center">
-                      <method.icon className="w-6 h-6 text-[#FF385C]" />
+                      <method.icon className="w-6 h-6 text-primary" />
                     </div>
-                    <h3 className="font-semibold text-[#111827] mb-1">
+                    <h3 className="font-semibold text-foreground mb-1">
                       {method.title}
                     </h3>
-                    <p className="text-[#FF385C] font-medium mb-1">
+                    <p className="text-primary font-medium mb-1">
                       {method.description}
                     </p>
-                    <p className="text-sm text-[#6B7280]">{method.detail}</p>
+                    <p className="text-sm text-muted-foreground">{method.detail}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -191,9 +191,9 @@ export default function ContactPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Contact Form */}
             <div className="lg:col-span-2">
-              <Card className="border-[#E5E7EB]">
+              <Card className="border-border">
                 <CardHeader>
-                  <CardTitle className="text-2xl text-[#111827]">
+                  <CardTitle className="text-2xl text-foreground">
                     Send Us a Message
                   </CardTitle>
                 </CardHeader>
@@ -209,7 +209,7 @@ export default function ContactPage() {
                           value={formData.name}
                           onChange={(e) => updateFormData("name", e.target.value)}
                           placeholder="John Doe"
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           required
                           data-testid="input-name"
                         />
@@ -224,7 +224,7 @@ export default function ContactPage() {
                           value={formData.email}
                           onChange={(e) => updateFormData("email", e.target.value)}
                           placeholder="john@example.com"
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           required
                           data-testid="input-email"
                         />
@@ -241,7 +241,7 @@ export default function ContactPage() {
                           onValueChange={(v) => updateFormData("reason", v)}
                         >
                           <SelectTrigger
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="select-reason"
                           >
                             <SelectValue placeholder="Select a reason" />
@@ -264,7 +264,7 @@ export default function ContactPage() {
                           value={formData.subject}
                           onChange={(e) => updateFormData("subject", e.target.value)}
                           placeholder="How can we help?"
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           required
                           data-testid="input-subject"
                         />
@@ -280,7 +280,7 @@ export default function ContactPage() {
                         value={formData.message}
                         onChange={(e) => updateFormData("message", e.target.value)}
                         placeholder="Tell us more about your inquiry..."
-                        className="mt-2 border-[#E5E7EB]"
+                        className="mt-2 border-border"
                         rows={5}
                         required
                         data-testid="textarea-message"
@@ -310,9 +310,9 @@ export default function ContactPage() {
             {/* Sidebar */}
             <div className="space-y-6">
               {/* Quick Links */}
-              <Card className="border-[#E5E7EB]">
+              <Card className="border-border">
                 <CardHeader>
-                  <CardTitle className="text-lg text-[#111827]">
+                  <CardTitle className="text-lg text-foreground">
                     Quick Links
                   </CardTitle>
                 </CardHeader>
@@ -322,10 +322,10 @@ export default function ContactPage() {
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
                     data-testid="link-faq"
                   >
-                    <HelpCircle className="w-5 h-5 text-[#FF385C]" />
+                    <HelpCircle className="w-5 h-5 text-primary" />
                     <div>
-                      <div className="font-medium text-[#111827]">FAQ</div>
-                      <div className="text-sm text-[#6B7280]">
+                      <div className="font-medium text-foreground">FAQ</div>
+                      <div className="text-sm text-muted-foreground">
                         Find quick answers
                       </div>
                     </div>
@@ -335,12 +335,12 @@ export default function ContactPage() {
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
                     data-testid="link-partner"
                   >
-                    <Users className="w-5 h-5 text-[#FF385C]" />
+                    <Users className="w-5 h-5 text-primary" />
                     <div>
-                      <div className="font-medium text-[#111827]">
+                      <div className="font-medium text-foreground">
                         Partner With Us
                       </div>
-                      <div className="text-sm text-[#6B7280]">
+                      <div className="text-sm text-muted-foreground">
                         Join our network
                       </div>
                     </div>
@@ -350,10 +350,10 @@ export default function ContactPage() {
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
                     data-testid="link-about"
                   >
-                    <Briefcase className="w-5 h-5 text-[#FF385C]" />
+                    <Briefcase className="w-5 h-5 text-primary" />
                     <div>
-                      <div className="font-medium text-[#111827]">About Us</div>
-                      <div className="text-sm text-[#6B7280]">
+                      <div className="font-medium text-foreground">About Us</div>
+                      <div className="text-sm text-muted-foreground">
                         Learn our story
                       </div>
                     </div>
@@ -362,9 +362,9 @@ export default function ContactPage() {
               </Card>
 
               {/* Office Locations */}
-              <Card className="border-[#E5E7EB]">
+              <Card className="border-border">
                 <CardHeader>
-                  <CardTitle className="text-lg text-[#111827]">
+                  <CardTitle className="text-lg text-foreground">
                     Our Offices
                   </CardTitle>
                 </CardHeader>
@@ -374,15 +374,15 @@ export default function ContactPage() {
                       key={office.city}
                       className="flex items-start gap-3 p-3 bg-[#F9FAFB] rounded-lg"
                     >
-                      <MapPin className="w-5 h-5 text-[#FF385C] mt-0.5" />
+                      <MapPin className="w-5 h-5 text-primary mt-0.5" />
                       <div>
-                        <div className="font-medium text-[#111827]">
+                        <div className="font-medium text-foreground">
                           {office.city}
                         </div>
-                        <div className="text-sm text-[#6B7280]">
+                        <div className="text-sm text-muted-foreground">
                           {office.address}
                         </div>
-                        <div className="text-sm text-[#6B7280]">
+                        <div className="text-sm text-muted-foreground">
                           {office.phone}
                         </div>
                       </div>
@@ -392,13 +392,13 @@ export default function ContactPage() {
               </Card>
 
               {/* Response Time */}
-              <Card className="border-[#E5E7EB] bg-[#FFE3E8]">
+              <Card className="border-border bg-[#FFE3E8]">
                 <CardContent className="p-6 text-center">
-                  <Clock className="w-8 h-8 text-[#FF385C] mx-auto mb-3" />
-                  <h3 className="font-semibold text-[#111827] mb-1">
+                  <Clock className="w-8 h-8 text-primary mx-auto mb-3" />
+                  <h3 className="font-semibold text-foreground mb-1">
                     Quick Response
                   </h3>
-                  <p className="text-sm text-[#6B7280]">
+                  <p className="text-sm text-muted-foreground">
                     We typically respond within 24 hours during business days.
                   </p>
                 </CardContent>

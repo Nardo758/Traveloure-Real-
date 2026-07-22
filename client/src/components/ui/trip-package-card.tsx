@@ -134,7 +134,7 @@ export function TripPackageCard({
           >
             <span className={cn(
               "text-lg font-bold",
-              heatScore >= 90 ? "text-[#FF385C]" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+              heatScore >= 90 ? "text-primary" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
             )}>
               {heatScore}
             </span>
@@ -175,7 +175,7 @@ export function TripPackageCard({
               className={cn(
                 "w-5 h-5",
                 isFavorite
-                  ? "fill-[#FF385C] text-[#FF385C]"
+                  ? "fill-[#FF385C] text-primary"
                   : "text-gray-700"
               )}
             />

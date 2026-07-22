@@ -161,7 +161,7 @@ export default function ServiceTemplates() {
                 <Card key={template.id} className="border-gray-200 hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-[#FF385C]">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                         {getDeliveryIcon(template.deliveryMethod)}
                       </div>
                       {template.suggestedPrice && (

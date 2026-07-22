@@ -221,21 +221,21 @@ export default function ServicesProviderPage() {
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       {/* Header */}
-      <header className="bg-white border-b border-[#E5E7EB] sticky top-0 z-50">
+      <header className="bg-white border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="flex items-center justify-between h-16">
-            <Link href="/earn" className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]" data-testid="link-back">
+            <Link href="/earn" className="flex items-center gap-2 text-muted-foreground hover:text-foreground" data-testid="link-back">
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
-            <span className="font-semibold text-[#111827]">Service Provider Registration</span>
+            <span className="font-semibold text-foreground">Service Provider Registration</span>
             <div className="w-20" />
           </div>
         </div>
       </header>
 
       {/* Progress Steps */}
-      <div className="bg-white border-b border-[#E5E7EB] py-4">
+      <div className="bg-white border-b border-border py-4">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="flex items-center justify-between">
             {steps.map((step, idx) => (
@@ -244,7 +244,7 @@ export default function ServicesProviderPage() {
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
                     currentStep === step.id
-                      ? "bg-[#FFE3E8] text-[#FF385C]"
+                      ? "bg-[#FFE3E8] text-primary"
                       : currentStep > step.id
                       ? "text-green-600"
                       : "text-[#9CA3AF]"
@@ -299,10 +299,10 @@ export default function ServicesProviderPage() {
         >
           {/* Step 1: Business Info */}
           {currentStep === 1 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827] flex items-center gap-2">
-                  <Building2 className="w-6 h-6 text-[#FF385C]" />
+                <CardTitle className="text-2xl text-foreground flex items-center gap-2">
+                  <Building2 className="w-6 h-6 text-primary" />
                   Business Information
                 </CardTitle>
               </CardHeader>
@@ -313,7 +313,7 @@ export default function ServicesProviderPage() {
                     value={formData.businessName}
                     onChange={(e) => updateFormData("businessName", e.target.value)}
                     placeholder="Your Business Name"
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-business-name"
                   />
                 </div>
@@ -324,7 +324,7 @@ export default function ServicesProviderPage() {
                     value={formData.businessType}
                     onValueChange={(v) => updateFormData("businessType", v)}
                   >
-                    <SelectTrigger className="mt-2 h-12 border-[#E5E7EB]" data-testid="select-business-type">
+                    <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-business-type">
                       <SelectValue placeholder="Select business type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -343,7 +343,7 @@ export default function ServicesProviderPage() {
                     <Input
                       value={formData.registrationNumber}
                       onChange={(e) => updateFormData("registrationNumber", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-registration"
                     />
                   </div>
@@ -352,7 +352,7 @@ export default function ServicesProviderPage() {
                     <Input
                       value={formData.taxId}
                       onChange={(e) => updateFormData("taxId", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-tax-id"
                     />
                   </div>
@@ -365,7 +365,7 @@ export default function ServicesProviderPage() {
                       type="email"
                       value={formData.email}
                       onChange={(e) => updateFormData("email", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-email"
                     />
                   </div>
@@ -375,7 +375,7 @@ export default function ServicesProviderPage() {
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => updateFormData("phone", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-phone"
                     />
                   </div>
@@ -387,7 +387,7 @@ export default function ServicesProviderPage() {
                     value={formData.website}
                     onChange={(e) => updateFormData("website", e.target.value)}
                     placeholder="https://yourbusiness.com"
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-website"
                   />
                 </div>
@@ -397,9 +397,9 @@ export default function ServicesProviderPage() {
 
           {/* Step 2: Services */}
           {currentStep === 2 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Service Categories</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Service Categories</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
@@ -414,8 +414,8 @@ export default function ServicesProviderPage() {
                         className={cn(
                           "p-4 rounded-lg border-2 text-left transition-all",
                           formData.serviceCategories.includes(category)
-                            ? "border-[#FF385C] bg-[#FFE3E8]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "border-primary bg-[#FFE3E8]"
+                            : "border-border hover:border-primary"
                         )}
                         data-testid={`button-category-${category.toLowerCase().replace(/\s/g, "-")}`}
                       >
@@ -423,7 +423,7 @@ export default function ServicesProviderPage() {
                           className={cn(
                             "font-medium",
                             formData.serviceCategories.includes(category)
-                              ? "text-[#FF385C]"
+                              ? "text-primary"
                               : "text-[#374151]"
                           )}
                         >
@@ -440,7 +440,7 @@ export default function ServicesProviderPage() {
                     value={formData.description}
                     onChange={(e) => updateFormData("description", e.target.value)}
                     placeholder="Describe your business, services offered, and what makes you unique..."
-                    className="mt-2 border-[#E5E7EB]"
+                    className="mt-2 border-border"
                     rows={5}
                     data-testid="textarea-description"
                   />
@@ -451,10 +451,10 @@ export default function ServicesProviderPage() {
 
           {/* Step 3: Details */}
           {currentStep === 3 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">
-                  <MapPin className="w-6 h-6 text-[#FF385C] inline mr-2" />
+                <CardTitle className="text-2xl text-foreground">
+                  <MapPin className="w-6 h-6 text-primary inline mr-2" />
                   Location & Details
                 </CardTitle>
               </CardHeader>
@@ -465,7 +465,7 @@ export default function ServicesProviderPage() {
                     value={formData.address}
                     onChange={(e) => updateFormData("address", e.target.value)}
                     placeholder="Street address"
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-address"
                   />
                 </div>
@@ -476,7 +476,7 @@ export default function ServicesProviderPage() {
                     <Input
                       value={formData.city}
                       onChange={(e) => updateFormData("city", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-city"
                     />
                   </div>
@@ -485,7 +485,7 @@ export default function ServicesProviderPage() {
                     <Input
                       value={formData.country}
                       onChange={(e) => updateFormData("country", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-country"
                     />
                   </div>
@@ -498,7 +498,7 @@ export default function ServicesProviderPage() {
                       value={formData.capacity}
                       onChange={(e) => updateFormData("capacity", e.target.value)}
                       placeholder="e.g., 50 guests"
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-capacity"
                     />
                   </div>
@@ -508,7 +508,7 @@ export default function ServicesProviderPage() {
                       value={formData.priceRange}
                       onValueChange={(v) => updateFormData("priceRange", v)}
                     >
-                      <SelectTrigger className="mt-2 h-12 border-[#E5E7EB]" data-testid="select-price-range">
+                      <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-price-range">
                         <SelectValue placeholder="Select range" />
                       </SelectTrigger>
                       <SelectContent>
@@ -527,13 +527,13 @@ export default function ServicesProviderPage() {
                     value={formData.amenities}
                     onChange={(e) => updateFormData("amenities", e.target.value)}
                     placeholder="List key amenities, features, or services you offer..."
-                    className="mt-2 border-[#E5E7EB]"
+                    className="mt-2 border-border"
                     rows={3}
                     data-testid="textarea-amenities"
                   />
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-[#E5E7EB]">
+                <div className="space-y-3 pt-4 border-t border-border">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="insurance"
@@ -563,34 +563,34 @@ export default function ServicesProviderPage() {
 
           {/* Step 4: Review */}
           {currentStep === 4 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Review Your Registration</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Review Your Registration</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-[#6B7280]">Business Name:</span>
-                    <span className="ml-2 text-[#111827] font-medium">{formData.businessName}</span>
+                    <span className="text-muted-foreground">Business Name:</span>
+                    <span className="ml-2 text-foreground font-medium">{formData.businessName}</span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Type:</span>
-                    <span className="ml-2 text-[#111827] font-medium">{formData.businessType}</span>
+                    <span className="text-muted-foreground">Type:</span>
+                    <span className="ml-2 text-foreground font-medium">{formData.businessType}</span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Location:</span>
-                    <span className="ml-2 text-[#111827] font-medium">
+                    <span className="text-muted-foreground">Location:</span>
+                    <span className="ml-2 text-foreground font-medium">
                       {formData.city}, {formData.country}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Contact:</span>
-                    <span className="ml-2 text-[#111827] font-medium">{formData.email}</span>
+                    <span className="text-muted-foreground">Contact:</span>
+                    <span className="ml-2 text-foreground font-medium">{formData.email}</span>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[#6B7280] text-sm">Service Categories:</span>
+                  <span className="text-muted-foreground text-sm">Service Categories:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {formData.serviceCategories.map((c) => (
                       <Badge key={c} variant="secondary" className="text-xs">
@@ -601,11 +601,11 @@ export default function ServicesProviderPage() {
                 </div>
 
                 <div className="p-4 bg-[#F3F4F6] rounded-lg">
-                  <h4 className="font-medium text-[#111827] mb-2">Platform Benefits:</h4>
+                  <h4 className="font-medium text-foreground mb-2">Platform Benefits:</h4>
                   <div className="grid grid-cols-2 gap-2">
                     {benefits.map((benefit) => (
-                      <div key={benefit.text} className="flex items-center gap-2 text-sm text-[#6B7280]">
-                        <benefit.icon className="w-4 h-4 text-[#FF385C]" />
+                      <div key={benefit.text} className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <benefit.icon className="w-4 h-4 text-primary" />
                         {benefit.text}
                       </div>
                     ))}
@@ -619,13 +619,13 @@ export default function ServicesProviderPage() {
                     onCheckedChange={(checked) => updateFormData("agreeToTerms", checked)}
                     data-testid="checkbox-terms"
                   />
-                  <label htmlFor="terms" className="text-sm text-[#6B7280]">
+                  <label htmlFor="terms" className="text-sm text-muted-foreground">
                     I agree to the{" "}
-                    <a href="/terms#service-provider-requirements" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
+                    <a href="/terms#service-provider-requirements" target="_blank" rel="noopener noreferrer" className="text-primary underline">
                       Service Provider Terms
                     </a>{" "}
                     and{" "}
-                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline">
                       Privacy Policy
                     </a>
                   </label>
@@ -641,7 +641,7 @@ export default function ServicesProviderPage() {
             variant="outline"
             onClick={prevStep}
             disabled={currentStep === 1}
-            className="border-[#E5E7EB]"
+            className="border-border"
             data-testid="button-back"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />

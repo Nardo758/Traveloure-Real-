@@ -126,10 +126,10 @@ export default function CreditsBillingPage() {
     <div className="p-6 space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
               Credits & Billing
             </h1>
-            <p className="text-[#6B7280] mt-1">Manage your credits and payment methods</p>
+            <p className="text-muted-foreground mt-1">Manage your credits and payment methods</p>
           </div>
           <Button className="bg-primary hover:bg-primary/90" data-testid="button-buy-credits">
             <Plus className="w-4 h-4 mr-2" />
@@ -159,11 +159,11 @@ export default function CreditsBillingPage() {
                   <ArrowDownLeft className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
-              <p className="text-[#6B7280] text-sm">This Month Spent</p>
-              <p className="text-3xl font-bold text-[#111827] dark:text-white mt-1" data-testid="text-monthly-spent">
+              <p className="text-muted-foreground text-sm">This Month Spent</p>
+              <p className="text-3xl font-bold text-foreground dark:text-white mt-1" data-testid="text-monthly-spent">
                 {monthlySpent}
               </p>
-              <p className="text-[#6B7280] text-sm mt-1">credits used</p>
+              <p className="text-muted-foreground text-sm mt-1">credits used</p>
               <Progress value={33} className="mt-3 h-2" />
             </CardContent>
           </Card>
@@ -175,10 +175,10 @@ export default function CreditsBillingPage() {
                   <Gift className="w-6 h-6 text-green-600 dark:text-green-400" />
                 </div>
               </div>
-              <p className="text-[#6B7280] text-sm">Bonus Credits</p>
-              <p className="text-3xl font-bold text-[#111827] dark:text-white mt-1" data-testid="text-bonus-credits">20</p>
-              <p className="text-[#6B7280] text-sm mt-1">earned this month</p>
-              <Button variant="ghost" className="mt-2 p-0 h-auto text-[#FF385C]" data-testid="link-earn-more">
+              <p className="text-muted-foreground text-sm">Bonus Credits</p>
+              <p className="text-3xl font-bold text-foreground dark:text-white mt-1" data-testid="text-bonus-credits">20</p>
+              <p className="text-muted-foreground text-sm mt-1">earned this month</p>
+              <Button variant="ghost" className="mt-2 p-0 h-auto text-primary" data-testid="link-earn-more">
                 Earn more <ArrowUpRight className="w-3 h-3 ml-1" />
               </Button>
             </CardContent>
@@ -200,9 +200,9 @@ export default function CreditsBillingPage() {
                   key={pkg.id}
                   className={`relative cursor-pointer transition-all ${
                     selectedPackage === pkg.id
-                      ? "ring-2 ring-[#FF385C] border-[#FF385C]"
+                      ? "ring-2 ring-[#FF385C] border-primary"
                       : "hover:shadow-md"
-                  } ${pkg.popular ? "border-[#FF385C]" : ""}`}
+                  } ${pkg.popular ? "border-primary" : ""}`}
                   onClick={() => setSelectedPackage(pkg.id)}
                   data-testid={`card-package-${pkg.credits}`}
                 >
@@ -213,11 +213,11 @@ export default function CreditsBillingPage() {
                   )}
                   <CardContent className="p-6 text-center">
                     <div className="p-3 bg-[#FFE3E8] dark:bg-primary/20 rounded-full w-fit mx-auto mb-4">
-                      <Sparkles className="w-8 h-8 text-[#FF385C]" />
+                      <Sparkles className="w-8 h-8 text-primary" />
                     </div>
-                    <p className="text-4xl font-bold text-[#111827] dark:text-white">{pkg.credits}</p>
-                    <p className="text-[#6B7280] mb-4">credits</p>
-                    <p className="text-2xl font-bold text-[#111827] dark:text-white">${pkg.price}</p>
+                    <p className="text-4xl font-bold text-foreground dark:text-white">{pkg.credits}</p>
+                    <p className="text-muted-foreground mb-4">credits</p>
+                    <p className="text-2xl font-bold text-foreground dark:text-white">${pkg.price}</p>
                     {pkg.savings && (
                       <Badge variant="secondary" className="mt-2">
                         {pkg.savings}
@@ -298,20 +298,20 @@ export default function CreditsBillingPage() {
                           )}
                         </div>
                         <div>
-                          <p className="font-medium text-[#111827] dark:text-white">{tx.description}</p>
-                          <p className="text-sm text-[#6B7280]">{format(tx.date, "MMM d, yyyy")}</p>
+                          <p className="font-medium text-foreground dark:text-white">{tx.description}</p>
+                          <p className="text-sm text-muted-foreground">{format(tx.date, "MMM d, yyyy")}</p>
                         </div>
                       </div>
                       <div className="text-right">
                         <p
                           className={`font-bold ${
-                            tx.credits > 0 ? "text-green-600" : "text-[#111827] dark:text-white"
+                            tx.credits > 0 ? "text-green-600" : "text-foreground dark:text-white"
                           }`}
                         >
                           {tx.credits > 0 ? "+" : ""}
                           {tx.credits} credits
                         </p>
-                        {tx.amount > 0 && <p className="text-sm text-[#6B7280]">${tx.amount}</p>}
+                        {tx.amount > 0 && <p className="text-sm text-muted-foreground">${tx.amount}</p>}
                       </div>
                     </div>
                   ))}
@@ -339,13 +339,13 @@ export default function CreditsBillingPage() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                          <CreditCard className="w-6 h-6 text-[#6B7280]" />
+                          <CreditCard className="w-6 h-6 text-muted-foreground" />
                         </div>
                         <div>
-                          <p className="font-medium text-[#111827] dark:text-white capitalize">
+                          <p className="font-medium text-foreground dark:text-white capitalize">
                             {method.type} ending in {method.last4}
                           </p>
-                          <p className="text-sm text-[#6B7280]">Expires {method.expiry}</p>
+                          <p className="text-sm text-muted-foreground">Expires {method.expiry}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -367,10 +367,10 @@ export default function CreditsBillingPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <p className="font-medium text-[#111827] dark:text-white">John Doe</p>
-                    <p className="text-[#6B7280] mt-1">123 Main Street</p>
-                    <p className="text-[#6B7280]">San Francisco, CA 94105</p>
-                    <p className="text-[#6B7280]">United States</p>
+                    <p className="font-medium text-foreground dark:text-white">John Doe</p>
+                    <p className="text-muted-foreground mt-1">123 Main Street</p>
+                    <p className="text-muted-foreground">San Francisco, CA 94105</p>
+                    <p className="text-muted-foreground">United States</p>
                     <Button variant="outline" size="sm" className="mt-4" data-testid="button-edit-billing">
                       Edit Address
                     </Button>
@@ -395,16 +395,16 @@ export default function CreditsBillingPage() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="p-2 bg-gray-200 dark:bg-gray-700 rounded-lg">
-                          <Receipt className="w-5 h-5 text-[#6B7280]" />
+                          <Receipt className="w-5 h-5 text-muted-foreground" />
                         </div>
                         <div>
-                          <p className="font-medium text-[#111827] dark:text-white">{invoice.id}</p>
-                          <p className="text-sm text-[#6B7280]">{format(invoice.date, "MMMM d, yyyy")}</p>
+                          <p className="font-medium text-foreground dark:text-white">{invoice.id}</p>
+                          <p className="text-sm text-muted-foreground">{format(invoice.date, "MMMM d, yyyy")}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="font-bold text-[#111827] dark:text-white">${invoice.amount}</p>
+                          <p className="font-bold text-foreground dark:text-white">${invoice.amount}</p>
                           <Badge variant="secondary" className="bg-green-100 text-green-700">
                             {invoice.status}
                           </Badge>

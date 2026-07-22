@@ -391,7 +391,7 @@ export default function OptimizePage() {
                         className={cn(
                           "relative flex items-start gap-3 p-4 rounded-lg border transition-colors cursor-pointer",
                           selectedTier === tier.id
-                            ? "border-[#FF385C] bg-pink-50"
+                            ? "border-primary bg-pink-50"
                             : "border-gray-200 hover:border-gray-300"
                         )}
                         onClick={() => setSelectedTier(tier.id)}
@@ -495,7 +495,7 @@ export default function OptimizePage() {
                 className={cn(
                   "relative cursor-pointer transition-all",
                   selectedPlan === plan.id
-                    ? "ring-2 ring-[#FF385C] border-[#FF385C]"
+                    ? "ring-2 ring-[#FF385C] border-primary"
                     : "border-gray-200 hover:border-gray-300"
                 )}
                 onClick={() => setSelectedPlan(plan.id)}

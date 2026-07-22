@@ -82,7 +82,7 @@ export default function EATravel() {
         <Card className="border border-gray-200">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Plane className="w-5 h-5 text-[#FF385C]" />
+              <Plane className="w-5 h-5 text-primary" />
               Active Trips
             </CardTitle>
           </CardHeader>
@@ -141,7 +141,7 @@ export default function EATravel() {
                   {(trip.segments ?? []).map((segment, idx) => (
                     <div key={idx} className="p-3 bg-white rounded-lg border border-gray-100">
                       <div className="flex items-center gap-2 mb-2">
-                        <MapPin className="w-4 h-4 text-[#FF385C]" />
+                        <MapPin className="w-4 h-4 text-primary" />
                         <span className="font-medium text-gray-900">{segment.city}</span>
                       </div>
                       <p className="text-xs text-gray-500 mb-2">{segment.dates}</p>

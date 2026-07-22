@@ -162,7 +162,7 @@ export default function FAQPage() {
                 placeholder="Search for answers..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 h-14 text-lg border-0 bg-white text-[#111827] rounded-xl"
+                className="pl-12 h-14 text-lg border-0 bg-white text-foreground rounded-xl"
                 data-testid="input-search-faq"
               />
             </div>
@@ -184,7 +184,7 @@ export default function FAQPage() {
                 className={
                   activeCategory === cat.id
                     ? "bg-primary hover:bg-primary/90 text-white"
-                    : "border-[#E5E7EB]"
+                    : "border-border"
                 }
                 data-testid={`button-category-${cat.id}`}
               >
@@ -195,7 +195,7 @@ export default function FAQPage() {
           </div>
 
           {/* FAQ Accordion */}
-          <Card className="border-[#E5E7EB]">
+          <Card className="border-border">
             <CardContent className="p-6">
               {filteredFaqs.length > 0 ? (
                 <Accordion type="single" collapsible className="w-full">
@@ -203,15 +203,15 @@ export default function FAQPage() {
                     <AccordionItem
                       key={idx}
                       value={`item-${idx}`}
-                      className="border-b border-[#E5E7EB]"
+                      className="border-b border-border"
                     >
                       <AccordionTrigger
-                        className="text-left text-[#111827] hover:text-[#FF385C] hover:no-underline py-4"
+                        className="text-left text-foreground hover:text-primary hover:no-underline py-4"
                         data-testid={`accordion-question-${idx}`}
                       >
                         {faq.question}
                       </AccordionTrigger>
-                      <AccordionContent className="text-[#6B7280] pb-4">
+                      <AccordionContent className="text-muted-foreground pb-4">
                         {faq.answer}
                       </AccordionContent>
                     </AccordionItem>
@@ -220,10 +220,10 @@ export default function FAQPage() {
               ) : (
                 <div className="text-center py-12">
                   <HelpCircle className="w-12 h-12 text-[#9CA3AF] mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-[#111827] mb-2">
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
                     No results found
                   </h3>
-                  <p className="text-[#6B7280] mb-4">
+                  <p className="text-muted-foreground mb-4">
                     Try adjusting your search or browse by category
                   </p>
                   <Button
@@ -244,12 +244,12 @@ export default function FAQPage() {
       </section>
 
       {/* Still Need Help */}
-      <section className="py-16 bg-white border-t border-[#E5E7EB]">
+      <section className="py-16 bg-white border-t border-border">
         <div className="container mx-auto px-4 max-w-4xl text-center">
-          <h2 className="text-2xl font-bold text-[#111827] mb-4">
+          <h2 className="text-2xl font-bold text-foreground mb-4">
             Still Have Questions?
           </h2>
-          <p className="text-[#6B7280] mb-8 max-w-xl mx-auto">
+          <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
             Can't find what you're looking for? Our support team is here to help
             you with any questions or concerns.
           </p>
@@ -268,7 +268,7 @@ export default function FAQPage() {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-[#E5E7EB]"
+                className="border-border"
                 data-testid="button-talk-to-expert"
               >
                 Talk to an Expert

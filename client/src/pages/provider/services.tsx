@@ -264,7 +264,7 @@ export default function ProviderServices() {
                   <button
                     key={card.slug}
                     onClick={() => navigate(`/provider/services/new?category=${encodeURIComponent(card.slug)}`)}
-                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-[#FF385C] hover:shadow-sm transition-all text-center group"
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-primary hover:shadow-sm transition-all text-center group"
                     data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}>
@@ -379,7 +379,7 @@ export default function ProviderServices() {
                                 <Badge
                                   key={tag}
                                   variant="secondary"
-                                  className="text-[10px] py-0 px-1.5 bg-primary/8 text-[#FF385C] border border-[#FF385C]/20"
+                                  className="text-[10px] py-0 px-1.5 bg-primary/8 text-primary border border-primary/20"
                                   data-testid={`chip-affinity-${service.id}-${tag}`}
                                 >
                                   {AFFINITY_TAG_LABELS[tag] ?? tag}

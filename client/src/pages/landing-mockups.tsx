@@ -88,7 +88,7 @@ export default function LandingMockups() {
                 
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight mb-6">
                   Plan Your Perfect<br />
-                  <span className="text-[#FF385C]">Life Experiences</span>
+                  <span className="text-primary">Life Experiences</span>
                 </h1>
                 
                 <p className="text-lg text-white/90 leading-relaxed mb-8 max-w-lg">
@@ -171,7 +171,7 @@ export default function LandingMockups() {
 
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight mb-4">
                 What's Your Next<br />
-                <span className="text-[#FF385C]">Adventure?</span>
+                <span className="text-primary">Adventure?</span>
               </h1>
               
               <p className="text-lg text-white/90 leading-relaxed max-w-2xl mx-auto mb-10">
@@ -246,7 +246,7 @@ export default function LandingMockups() {
                   BETA VERSION
                 </div>
                 <h1 className="text-4xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-3">
-                  Plan Unforgettable <span className="text-[#FF385C]">Experiences</span>
+                  Plan Unforgettable <span className="text-primary">Experiences</span>
                 </h1>
                 <p className="text-lg text-white/90 max-w-xl mx-auto">
                   Pick an experience to get started
@@ -271,7 +271,7 @@ export default function LandingMockups() {
                       <cat.icon className={cn("w-8 h-8", cat.color)} />
                     </div>
                     <span className="text-gray-800 text-sm font-bold text-center">{cat.label}</span>
-                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#FF385C] transition-colors" />
+                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
                   </button>
                 ))}
               </motion.div>
@@ -287,7 +287,7 @@ export default function LandingMockups() {
               <div className="max-w-3xl mx-auto bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20">
                 <div className="flex flex-col md:flex-row items-center justify-center gap-4">
                   <div className="flex items-center gap-3 text-white">
-                    <Bot className="w-6 h-6 text-[#FF385C]" />
+                    <Bot className="w-6 h-6 text-primary" />
                     <span className="font-medium">Plan with AI</span>
                   </div>
                   <div className="hidden md:block w-px h-8 bg-white/30" />

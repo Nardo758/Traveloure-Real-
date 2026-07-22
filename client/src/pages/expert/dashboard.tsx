@@ -274,7 +274,7 @@ export default function ExpertDashboard() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">My Clients ({analytics?.summary?.pendingBookings || 0})</CardTitle>
                   <Link href="/expert/clients">
-                    <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="link-view-all-clients">
+                    <Button variant="ghost" size="sm" className="text-primary" data-testid="link-view-all-clients">
                       View All <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   </Link>
@@ -289,7 +289,7 @@ export default function ExpertDashboard() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Plane className="w-5 h-5 text-[#FF385C]" />
+                        <Plane className="w-5 h-5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
@@ -331,7 +331,7 @@ export default function ExpertDashboard() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Plane className="w-5 h-5 text-[#FF385C]" />
+                        <Plane className="w-5 h-5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">

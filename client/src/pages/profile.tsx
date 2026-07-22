@@ -51,15 +51,15 @@ export default function Profile() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-        <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+        <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
           Profile Settings
         </h1>
 
         {/* Profile Photo */}
-        <Card className="border border-[#E5E7EB]">
+        <Card className="border border-border">
           <CardHeader>
-            <CardTitle className="text-lg text-[#111827] dark:text-white">Profile Photo</CardTitle>
-            <CardDescription className="text-[#6B7280]">
+            <CardTitle className="text-lg text-foreground dark:text-white">Profile Photo</CardTitle>
+            <CardDescription className="text-muted-foreground">
               This will be displayed on your profile and in messages
             </CardDescription>
           </CardHeader>
@@ -73,27 +73,27 @@ export default function Profile() {
               data-testid="input-photo-file"
             />
             <div className="relative">
-              <Avatar className="h-24 w-24 border-4 border-[#E5E7EB]">
+              <Avatar className="h-24 w-24 border-4 border-border">
                 <AvatarImage src={profileImage || user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
-                <AvatarFallback className="bg-[#FFE3E8] text-[#FF385C] text-2xl font-bold">
+                <AvatarFallback className="bg-[#FFE3E8] text-primary text-2xl font-bold">
                   {user?.firstName?.[0] || "U"}
                 </AvatarFallback>
               </Avatar>
               <Button
                 size="icon"
                 variant="outline"
-                className="absolute -bottom-2 -right-2 rounded-full bg-white border-[#E5E7EB]"
+                className="absolute -bottom-2 -right-2 rounded-full bg-white border-border"
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="button-change-photo"
               >
-                <Camera className="w-4 h-4 text-[#6B7280]" />
+                <Camera className="w-4 h-4 text-muted-foreground" />
               </Button>
             </div>
             <div>
               <Button variant="outline" className="mr-2" onClick={() => fileInputRef.current?.click()} data-testid="button-upload-photo">
                 Upload Photo
               </Button>
-              <Button variant="ghost" className="text-[#6B7280]" onClick={handleRemovePhoto} data-testid="button-remove-photo">
+              <Button variant="ghost" className="text-muted-foreground" onClick={handleRemovePhoto} data-testid="button-remove-photo">
                 Remove
               </Button>
             </div>
@@ -101,82 +101,82 @@ export default function Profile() {
         </Card>
 
         {/* Personal Information */}
-        <Card className="border border-[#E5E7EB]">
+        <Card className="border border-border">
           <CardHeader>
-            <CardTitle className="text-lg text-[#111827] dark:text-white">Personal Information</CardTitle>
-            <CardDescription className="text-[#6B7280]">
+            <CardTitle className="text-lg text-foreground dark:text-white">Personal Information</CardTitle>
+            <CardDescription className="text-muted-foreground">
               Update your personal details
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName" className="text-[#111827] dark:text-white">First Name</Label>
+                <Label htmlFor="firstName" className="text-foreground dark:text-white">First Name</Label>
                 <Input
                   id="firstName"
                   defaultValue={user?.firstName || ""}
-                  className="border-[#E5E7EB]"
+                  className="border-border"
                   data-testid="input-first-name"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName" className="text-[#111827] dark:text-white">Last Name</Label>
+                <Label htmlFor="lastName" className="text-foreground dark:text-white">Last Name</Label>
                 <Input
                   id="lastName"
                   defaultValue={user?.lastName || ""}
-                  className="border-[#E5E7EB]"
+                  className="border-border"
                   data-testid="input-last-name"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#111827] dark:text-white flex items-center gap-2">
-                <Mail className="w-4 h-4 text-[#6B7280]" />
+              <Label htmlFor="email" className="text-foreground dark:text-white flex items-center gap-2">
+                <Mail className="w-4 h-4 text-muted-foreground" />
                 Email Address
               </Label>
               <Input
                 id="email"
                 type="email"
                 defaultValue={user?.email || ""}
-                className="border-[#E5E7EB]"
+                className="border-border"
                 data-testid="input-email"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-[#111827] dark:text-white flex items-center gap-2">
-                <Phone className="w-4 h-4 text-[#6B7280]" />
+              <Label htmlFor="phone" className="text-foreground dark:text-white flex items-center gap-2">
+                <Phone className="w-4 h-4 text-muted-foreground" />
                 Phone Number
               </Label>
               <Input
                 id="phone"
                 type="tel"
                 placeholder="+1 (555) 123-4567"
-                className="border-[#E5E7EB]"
+                className="border-border"
                 data-testid="input-phone"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location" className="text-[#111827] dark:text-white flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#6B7280]" />
+              <Label htmlFor="location" className="text-foreground dark:text-white flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
                 Location
               </Label>
               <Input
                 id="location"
                 placeholder="City, Country"
-                className="border-[#E5E7EB]"
+                className="border-border"
                 data-testid="input-location"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="bio" className="text-[#111827] dark:text-white">Bio</Label>
+              <Label htmlFor="bio" className="text-foreground dark:text-white">Bio</Label>
               <Textarea
                 id="bio"
                 placeholder="Tell us a bit about yourself and your travel preferences..."
-                className="border-[#E5E7EB] min-h-[100px]"
+                className="border-border min-h-[100px]"
                 data-testid="input-bio"
               />
             </div>
@@ -184,19 +184,19 @@ export default function Profile() {
         </Card>
 
         {/* Travel Preferences */}
-        <Card className="border border-[#E5E7EB]">
+        <Card className="border border-border">
           <CardHeader>
-            <CardTitle className="text-lg text-[#111827] dark:text-white">Travel Preferences</CardTitle>
-            <CardDescription className="text-[#6B7280]">
+            <CardTitle className="text-lg text-foreground dark:text-white">Travel Preferences</CardTitle>
+            <CardDescription className="text-muted-foreground">
               Help us personalize your experience
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-[#111827] dark:text-white">Preferred Travel Style</Label>
+              <Label className="text-foreground dark:text-white">Preferred Travel Style</Label>
               <div className="flex flex-wrap gap-2">
                 {["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"].map(style => (
-                  <Button key={style} variant="outline" size="sm" className="border-[#E5E7EB]" data-testid={`button-style-${style.toLowerCase()}`}>
+                  <Button key={style} variant="outline" size="sm" className="border-border" data-testid={`button-style-${style.toLowerCase()}`}>
                     {style}
                   </Button>
                 ))}
@@ -204,10 +204,10 @@ export default function Profile() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-[#111827] dark:text-white">Budget Preference</Label>
+              <Label className="text-foreground dark:text-white">Budget Preference</Label>
               <div className="flex flex-wrap gap-2">
                 {["Budget-Friendly", "Moderate", "Luxury"].map(budget => (
-                  <Button key={budget} variant="outline" size="sm" className="border-[#E5E7EB]" data-testid={`button-budget-${budget.toLowerCase()}`}>
+                  <Button key={budget} variant="outline" size="sm" className="border-border" data-testid={`button-budget-${budget.toLowerCase()}`}>
                     {budget}
                   </Button>
                 ))}

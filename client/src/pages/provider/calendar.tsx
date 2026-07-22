@@ -164,7 +164,7 @@ export default function ProviderCalendar() {
     return (
       <ProviderLayout title="Calendar">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </ProviderLayout>
     );
@@ -439,7 +439,7 @@ export default function ProviderCalendar() {
                       onClick={() => setSelectedDate(day)}
                       className={`h-20 p-1 rounded-lg border transition-colors text-left ${
                         isSelected 
-                          ? "border-[#FF385C] bg-primary/5" 
+                          ? "border-primary bg-primary/5" 
                           : hasBookings 
                             ? hasConfirmed 
                               ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" 
@@ -489,7 +489,7 @@ export default function ProviderCalendar() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-[#FF385C]" />
+                <CalendarIcon className="w-5 h-5 text-primary" />
                 {selectedDate ? `${monthName} ${selectedDate}, ${year}` : "Select a Date"}
               </CardTitle>
             </CardHeader>

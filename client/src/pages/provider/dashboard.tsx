@@ -166,7 +166,7 @@ export default function ProviderDashboard() {
                     <CardTitle className="text-lg">Today's Bookings</CardTitle>
                   </div>
                   <Link href="/provider/calendar">
-                    <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="button-view-all-bookings">
+                    <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-bookings">
                       View All <ChevronRight className="w-4 h-4 ml-1" />
                     </Button>
                   </Link>
@@ -215,7 +215,7 @@ export default function ProviderDashboard() {
                     <CardTitle className="text-lg">My Services</CardTitle>
                   </div>
                   <Link href="/provider/services">
-                    <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="button-view-all-services">
+                    <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-services">
                       View All <ChevronRight className="w-4 h-4 ml-1" />
                     </Button>
                   </Link>

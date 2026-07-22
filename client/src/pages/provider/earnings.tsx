@@ -148,7 +148,7 @@ export default function ProviderEarnings() {
     return (
       <ProviderLayout title="Earnings">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </ProviderLayout>
     );
@@ -274,7 +274,7 @@ export default function ProviderEarnings() {
         <Card data-testid="card-revenue-share">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <PieChart className="w-5 h-5 text-[#FF385C]" />
+              <PieChart className="w-5 h-5 text-primary" />
               Revenue Share Breakdown
             </CardTitle>
           </CardHeader>

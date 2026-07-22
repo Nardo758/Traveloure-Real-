@@ -241,7 +241,7 @@ export default function EAExecutives() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="w-6 h-6 text-[#FF385C]" />
+                      <User className="w-6 h-6 text-primary" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -372,7 +372,7 @@ export default function EAExecutives() {
           ))}
         </div>
 
-        <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-show-all">
+        <Button variant="ghost" className="w-full text-primary" data-testid="button-show-all">
           Show All 8 Executives
         </Button>
       </div>

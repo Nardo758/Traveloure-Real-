@@ -131,7 +131,7 @@ export function ExpertChatWidget({
                 </AvatarFallback>
               </Avatar>
               {expertConnected && (
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-[#FF385C] rounded-full" />
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-primary rounded-full" />
               )}
             </div>
             <div>
@@ -283,10 +283,10 @@ export function ExpertSidebarCard({
   onConnect?: () => void;
 }) {
   return (
-    <Card className="bg-gradient-to-br from-[#FF385C]/5 to-[#FF385C]/10 border-[#FF385C]/20">
+    <Card className="bg-gradient-to-br from-[#FF385C]/5 to-[#FF385C]/10 border-primary/20">
       <CardContent className="p-4">
         <div className="flex items-center gap-3 mb-4">
-          <Avatar className="h-12 w-12 border-2 border-[#FF385C]/30">
+          <Avatar className="h-12 w-12 border-2 border-primary/30">
             <AvatarImage src="https://picsum.photos/seed/expert-avatar/100/100" />
             <AvatarFallback>SE</AvatarFallback>
           </Avatar>
@@ -360,7 +360,7 @@ export function CheckoutExpertBanner({
             variant="outline"
             size="sm"
             onClick={onConnect}
-            className="border-[#FF385C] text-[#FF385C] hover:bg-primary/10"
+            className="border-primary text-primary hover:bg-primary/10"
             data-testid="button-checkout-expert"
           >
             <MessageCircle className="w-3 h-3 mr-2" />

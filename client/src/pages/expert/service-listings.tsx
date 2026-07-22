@@ -370,7 +370,7 @@ export default function ExpertServiceListingsPage() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : serviceListings.length === 0 ? (
           <Card>

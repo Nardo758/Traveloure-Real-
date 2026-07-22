@@ -482,7 +482,7 @@ export function HotelSearch({
       <Card className="border-2 border-dashed">
         <CardContent className="p-6">
           <div className="text-center mb-4">
-            <Hotel className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+            <Hotel className="h-10 w-10 mx-auto mb-2 text-primary" />
             <h3 className="font-semibold text-lg mb-1">City Detection Failed</h3>
           </div>
           <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">

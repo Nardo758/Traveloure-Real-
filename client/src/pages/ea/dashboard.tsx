@@ -252,11 +252,11 @@ export default function EADashboard() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-[#FF385C]" />
+                    <Users className="w-5 h-5 text-primary" />
                     <CardTitle className="text-lg">Clients ({clientCount})</CardTitle>
                   </div>
                   <Link href="/ea/clients">
-                    <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="button-view-all-clients">
+                    <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-clients">
                       View All <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   </Link>
@@ -273,7 +273,7 @@ export default function EADashboard() {
                       return (
                         <div key={String(client.id)} className="flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E2]" data-testid={`client-row-${client.id}`}>
                           <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                            <span className="text-sm font-semibold text-[#FF385C]">
+                            <span className="text-sm font-semibold text-primary">
                               {String(name)[0]?.toUpperCase()}
                             </span>
                           </div>
@@ -321,11 +321,11 @@ export default function EADashboard() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <CalendarIcon className="w-5 h-5 text-[#FF385C]" />
+                    <CalendarIcon className="w-5 h-5 text-primary" />
                     <CardTitle className="text-lg">Upcoming Dates</CardTitle>
                   </div>
                   {upcomingDates.length > 0 && (
-                    <Badge className="bg-primary/10 text-[#FF385C] border-[#FF385C]/20" data-testid="badge-upcoming-count">
+                    <Badge className="bg-primary/10 text-primary border-primary/20" data-testid="badge-upcoming-count">
                       {upcomingDates.length}
                     </Badge>
                   )}
@@ -359,7 +359,7 @@ export default function EADashboard() {
                     <CalendarIcon className="w-8 h-8 text-[#AEAEA6] mx-auto mb-2" />
                     <p className="text-[#7A7A72] text-sm">No dates in the next 30 days</p>
                     <Link href="/ea/executives">
-                      <Button variant="ghost" size="sm" className="mt-2 text-[#FF385C] text-xs" data-testid="button-manage-executives">
+                      <Button variant="ghost" size="sm" className="mt-2 text-primary text-xs" data-testid="button-manage-executives">
                         Manage Executives
                       </Button>
                     </Link>

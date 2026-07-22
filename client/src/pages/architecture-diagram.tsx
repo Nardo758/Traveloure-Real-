@@ -439,10 +439,10 @@ export default function ArchitectureDiagram() {
           </p>
         </div>
 
-        <Card className="mb-8 border-2 border-[#FF385C]/20 bg-gradient-to-r from-[#FF385C]/5 to-transparent" data-testid="section-data-flow">
+        <Card className="mb-8 border-2 border-primary/20 bg-gradient-to-r from-[#FF385C]/5 to-transparent" data-testid="section-data-flow">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Zap className="h-4 w-4 text-[#FF385C]" />
+              <Zap className="h-4 w-4 text-primary" />
               How It All Connects
             </CardTitle>
           </CardHeader>

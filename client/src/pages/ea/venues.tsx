@@ -87,7 +87,7 @@ export default function EAVenues() {
           </Card>
           <Card className="border border-[#E8E8E2]" data-testid="stat-favorites">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-[#FF385C]">{savedVenues.filter(v => v.favorite).length}</p>
+              <p className="text-3xl font-bold text-primary">{savedVenues.filter(v => v.favorite).length}</p>
               <p className="text-sm text-[#7A7A72]">Favorites</p>
             </CardContent>
           </Card>
@@ -129,7 +129,7 @@ export default function EAVenues() {
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-gray-900">{venue.name}</h3>
                       {venue.favorite && (
-                        <Heart className="w-4 h-4 text-[#FF385C] fill-[#FF385C]" />
+                        <Heart className="w-4 h-4 text-primary fill-[#FF385C]" />
                       )}
                       <Badge variant="outline">{venue.type}</Badge>
                       <Badge variant="secondary">{venue.priceRange}</Badge>
@@ -162,7 +162,7 @@ export default function EAVenues() {
                       variant="ghost" 
                       data-testid={`button-favorite-${venue.id}`}
                     >
-                      <Heart className={`w-4 h-4 ${venue.favorite ? "text-[#FF385C] fill-[#FF385C]" : "text-gray-400"}`} />
+                      <Heart className={`w-4 h-4 ${venue.favorite ? "text-primary fill-[#FF385C]" : "text-gray-400"}`} />
                     </Button>
                   </div>
                 </div>
