@@ -6262,29 +6262,56 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         stripeRefundId = stripeRefund.id;
       }
 
-      // Step 2 — Atomic DB mutations (credit release + state flip). Both must succeed together.
+      // Step 2 — Atomic DB mutations: all three ledger/state writes in one transaction.
+      // Stripe call (step 1) already succeeded; a transaction failure here propagates as a 500
+      // so the admin can retry — the Stripe idempotency key prevents a duplicate charge on retry.
+      let reversedRevenueRows = 0;
       await db.transaction(async (tx) => {
-        // 2a. Release the consumed credit row (allow it to be reused or simply un-consumed)
+        // 2a. Release the consumed credit row (null out consumed_by / consumed_at).
         await tx
           .update(coordinationFeeCredits)
           .set({ consumedByCoordinationId: null, consumedAt: null })
           .where(eq(coordinationFeeCredits.consumedByCoordinationId, coordinationId));
 
-        // 2b. Mark the coordination state as refunded
+        // 2b. Reverse platform revenue (sourceId = paymentIntentId as recorded at pay/confirm).
+        //     Flip original row(s) to 'reversed' and insert a compensating negative entry per row
+        //     (double-entry: same pattern as reversePlatformRevenueForBooking in storage.ts).
+        const originals = await tx
+          .update(platformRevenue)
+          .set({ status: "reversed" })
+          .where(and(eq(platformRevenue.sourceId, paymentIntentId), ne(platformRevenue.status, "reversed")))
+          .returning();
+
+        reversedRevenueRows = originals.length;
+        const now = new Date();
+        for (const o of originals) {
+          const neg = (v: string | null) => String(-parseFloat(v || "0"));
+          await tx.insert(platformRevenue).values({
+            sourceType: o.sourceType,
+            sourceId: o.sourceId,
+            trackingNumber: o.trackingNumber,
+            grossAmount: neg(o.grossAmount),
+            platformFee: neg(o.platformFee),
+            netAmount: neg(o.netAmount),
+            processingFees: neg(o.processingFees),
+            currency: o.currency,
+            expertId: o.expertId,
+            expertEarnings: neg(o.expertEarnings),
+            providerId: o.providerId,
+            providerEarnings: neg(o.providerEarnings),
+            description: `Reversal of platform revenue ${o.id} (coordination ${coordinationId})`,
+            metadata: { reversalOf: o.id, reason: "coordination_fee_refund" },
+            status: "reversed",
+            transactionDate: now,
+          } as any);
+        }
+
+        // 2c. Mark the coordination state as refunded (terminal state).
         await tx
           .update(coordinationStates)
           .set({ feePaymentStatus: "refunded" })
           .where(eq(coordinationStates.id, coordinationId));
       });
-
-      // Step 3 — Reverse platform revenue. Uses sourceId = paymentIntentId (how it was recorded
-      // in pay/confirm). Runs after the transaction; a failure here is non-fatal and retryable.
-      let reversedRevenueRows = 0;
-      try {
-        reversedRevenueRows = await storage.reversePlatformRevenueForBooking(paymentIntentId);
-      } catch (revErr) {
-        console.warn("[coordination refund] revenue reversal failed (non-critical — retry manually):", revErr);
-      }
 
       return res.json({
         success: true,

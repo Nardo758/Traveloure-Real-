@@ -91,9 +91,11 @@ function RefundFeeButton({ request }: { request: ConciergeRequest }) {
   const { toast } = useToast();
 
   const refund = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", `/api/coordination-states/${request.coordination_id}/refund`, {}),
-    onSuccess: (data: any) => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/coordination-states/${request.coordination_id}/refund`, {});
+      return res.json() as Promise<{ success?: boolean; alreadyRefunded?: boolean; feePaymentStatus?: string }>;
+    },
+    onSuccess: (data) => {
       if (data?.alreadyRefunded) {
         toast({ title: "Already refunded", description: "This coordination fee was already refunded." });
       } else {
