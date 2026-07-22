@@ -1330,6 +1330,14 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     }
 
     if (status === "rejected") {
+      // Notify the user in-app
+      await insertNotification({
+        userId: updated.userId,
+        type: "application_rejected",
+        title: "Application Not Approved",
+        message: "Unfortunately, your provider application was not approved at this time. You can review the feedback and reapply when you're ready.",
+        data: { link: "/provider/apply" },
+      });
       // Send rejection email (fire-and-forget)
       const providerUser = await storage.getUser(updated.userId);
       if (providerUser?.email) {
