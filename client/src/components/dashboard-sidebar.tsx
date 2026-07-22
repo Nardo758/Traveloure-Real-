@@ -26,6 +26,7 @@ import {
   Compass,
   ShoppingCart,
   Package,
+  Crown,
   Sparkles,
 } from "lucide-react";
 
@@ -45,6 +46,7 @@ const menuGroups = [
       { title: "Discover", href: "/discover", icon: Users },
       { title: "Experts", href: "/chat", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
+      { title: "My events", href: "/my-events", icon: Crown },
       { title: "Trip plan", href: "/cart", icon: ShoppingCart },
     ],
   },
