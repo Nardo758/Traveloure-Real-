@@ -33,6 +33,27 @@ export default function EAGifts() {
   const aiSuggestions: Array<{ id: number; for: string; options: Array<{ name: string; price: string; matchScore: number }> }> = [];
   const giftHistory = allGifts.filter(g => g.gift && g.status === "sent" || g.rating);
 
+  // Derive stat cards from the real gifts list (were hardcoded 3/8/24/$18.5k — §13).
+  const thisYear = new Date().getFullYear();
+  const nowTs = new Date();
+  const giftsNeededCount = upcomingOccasions.length;
+  const upcomingCount = allGifts.filter(g => {
+    if (!g.occasionDate) return false;
+    const d = new Date(g.occasionDate);
+    return !isNaN(d.getTime()) && d >= nowTs;
+  }).length;
+  const giftsThisYear = giftHistory.filter(g => {
+    const raw = g.occasionDate ?? g.createdAt;
+    if (!raw) return false;
+    const d = new Date(raw);
+    return !isNaN(d.getTime()) && d.getFullYear() === thisYear;
+  }).length;
+  const ytdSpent = giftHistory.reduce((sum, g) => {
+    const amt = parseFloat(String(g.amount ?? "").replace(/[^0-9.]/g, "")) || 0;
+    return sum + amt;
+  }, 0);
+  const ytdSpentLabel = ytdSpent >= 1000 ? `$${(ytdSpent / 1000).toFixed(1)}k` : `$${ytdSpent.toFixed(0)}`;
+
   return (
     <EALayout title="Gifts">
       <div className="p-6 space-y-6">
@@ -57,25 +78,25 @@ export default function EAGifts() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border border-gray-200" data-testid="stat-pending-gifts">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-yellow-600">3</p>
+              <p className="text-3xl font-bold text-yellow-600">{giftsNeededCount}</p>
               <p className="text-sm text-gray-600">Gifts Needed</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-upcoming">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">8</p>
+              <p className="text-3xl font-bold text-gray-900">{upcomingCount}</p>
               <p className="text-sm text-gray-600">Upcoming Occasions</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-this-year">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">24</p>
+              <p className="text-3xl font-bold text-gray-900">{giftsThisYear}</p>
               <p className="text-sm text-gray-600">Gifts This Year</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-budget">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-green-600">$18.5k</p>
+              <p className="text-3xl font-bold text-green-600">{ytdSpentLabel}</p>
               <p className="text-sm text-gray-600">YTD Spent</p>
             </CardContent>
           </Card>
