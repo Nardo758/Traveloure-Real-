@@ -34,7 +34,7 @@ import {
 import { SiFacebook, SiInstagram } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 const defaultSteps = [
@@ -149,6 +149,7 @@ const benefits = [
 
 export default function TravelExpertsPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -410,6 +411,7 @@ export default function TravelExpertsPage() {
       return apiRequest("POST", "/api/expert-application", applicationData);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/service-templates"] });
       toast({
         title: "Application submitted!",
         description: "We'll review your application and get back to you within 48 hours.",
